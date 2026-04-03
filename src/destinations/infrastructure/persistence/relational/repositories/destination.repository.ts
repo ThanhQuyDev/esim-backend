@@ -1,0 +1,113 @@
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
+import { DestinationEntity } from '../entities/destination.entity';
+import { NullableType } from '../../../../../utils/types/nullable.type';
+import {
+  FilterDestinationDto,
+  SortDestinationDto,
+} from '../../../../dto/query-destination.dto';
+import { Destination } from '../../../../domain/destination';
+import { DestinationRepository } from '../../destination.repository';
+import { DestinationMapper } from '../mappers/destination.mapper';
+import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+
+@Injectable()
+export class DestinationsRelationalRepository
+  implements DestinationRepository
+{
+  constructor(
+    @InjectRepository(DestinationEntity)
+    private readonly destinationsRepository: Repository<DestinationEntity>,
+  ) {}
+
+  async create(data: Destination): Promise<Destination> {
+    const persistenceModel = DestinationMapper.toPersistence(data);
+    const newEntity = await this.destinationsRepository.save(
+      this.destinationsRepository.create(persistenceModel),
+    );
+    return DestinationMapper.toDomain(newEntity);
+  }
+
+  async findManyWithPagination({
+    filterOptions,
+    sortOptions,
+    paginationOptions,
+  }: {
+    filterOptions?: FilterDestinationDto | null;
+    sortOptions?: SortDestinationDto[] | null;
+    paginationOptions: IPaginationOptions;
+  }): Promise<Destination[]> {
+    const where: FindOptionsWhere<DestinationEntity> = {};
+
+    if (filterOptions?.isPopular !== undefined) {
+      where.isPopular = filterOptions.isPopular;
+    }
+    if (filterOptions?.isActive !== undefined) {
+      where.isActive = filterOptions.isActive;
+    }
+
+    const entities = await this.destinationsRepository.find({
+      skip: (paginationOptions.page - 1) * paginationOptions.limit,
+      take: paginationOptions.limit,
+      where: where,
+      order: sortOptions?.reduce(
+        (accumulator, sort) => ({
+          ...accumulator,
+          [sort.orderBy]: sort.order,
+        }),
+        {},
+      ),
+    });
+
+    return entities.map((entity) => DestinationMapper.toDomain(entity));
+  }
+
+  async findById(
+    id: Destination['id'],
+  ): Promise<NullableType<Destination>> {
+    const entity = await this.destinationsRepository.findOne({
+      where: { id: Number(id) },
+    });
+
+    return entity ? DestinationMapper.toDomain(entity) : null;
+  }
+
+  async findBySlug(
+    slug: Destination['slug'],
+  ): Promise<NullableType<Destination>> {
+    const entity = await this.destinationsRepository.findOne({
+      where: { slug },
+    });
+
+    return entity ? DestinationMapper.toDomain(entity) : null;
+  }
+
+  async update(
+    id: Destination['id'],
+    payload: Partial<Destination>,
+  ): Promise<Destination> {
+    const entity = await this.destinationsRepository.findOne({
+      where: { id: Number(id) },
+    });
+
+    if (!entity) {
+      throw new Error('Destination not found');
+    }
+
+    const updatedEntity = await this.destinationsRepository.save(
+      this.destinationsRepository.create(
+        DestinationMapper.toPersistence({
+          ...DestinationMapper.toDomain(entity),
+          ...payload,
+        }),
+      ),
+    );
+
+    return DestinationMapper.toDomain(updatedEntity);
+  }
+
+  async remove(id: Destination['id']): Promise<void> {
+    await this.destinationsRepository.softDelete(id);
+  }
+}
