@@ -78,6 +78,12 @@ export class DestinationsService {
     return this.destinationsRepository.findByCountryCode(countryCode);
   }
 
+  findByName(
+    name: Destination['name'],
+  ): Promise<NullableType<Destination>> {
+    return this.destinationsRepository.findByName(name);
+  }
+
   async update(
     id: Destination['id'],
     updateDestinationDto: UpdateDestinationDto,

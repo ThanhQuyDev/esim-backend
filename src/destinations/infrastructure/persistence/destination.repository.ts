@@ -34,6 +34,10 @@ export abstract class DestinationRepository {
     countryCode: Destination['countryCode'],
   ): Promise<NullableType<Destination>>;
 
+  abstract findByName(
+    name: Destination['name'],
+  ): Promise<NullableType<Destination>>;
+
   abstract update(
     id: Destination['id'],
     payload: DeepPartial<Destination>,

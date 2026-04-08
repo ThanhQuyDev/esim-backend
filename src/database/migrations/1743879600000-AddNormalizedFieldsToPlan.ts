@@ -21,6 +21,16 @@ export class RefactorPlanNormalizedFields1743879600000
     await queryRunner.query(`ALTER TABLE "plan" DROP COLUMN IF EXISTS "currency"`);
     await queryRunner.query(`ALTER TABLE "plan" DROP COLUMN IF EXISTS "provider"`);
 
+    // Widen destination.countryCode from varchar(2) to varchar(10)
+    await queryRunner.query(
+      `ALTER TABLE "destination" ALTER COLUMN "countryCode" TYPE character varying(10)`,
+    );
+
+    // Make destinationId nullable (was NOT NULL from original migration)
+    await queryRunner.query(
+      `ALTER TABLE "plan" ALTER COLUMN "destinationId" DROP NOT NULL`,
+    );
+
     // Add new normalized columns
     await queryRunner.query(
       `ALTER TABLE "plan" ADD "provider" character varying NOT NULL DEFAULT 'esimaccess'`,

@@ -7,6 +7,7 @@ import { AllConfigType } from '../../config/config.type';
 import { PlansService } from '../../plans/plans.service';
 import { DestinationsService } from '../../destinations/destinations.service';
 import { RegionsService } from '../../regions/regions.service';
+import { ProfitMarginsService } from '../../profit-margins/profit-margins.service';
 import { ProviderSyncLogsService } from '../../provider-sync-logs/provider-sync-logs.service';
 import {
   AiraloTokenResponse,
@@ -27,6 +28,7 @@ export class AiraloService implements OnModuleInit {
     private readonly plansService: PlansService,
     private readonly destinationsService: DestinationsService,
     private readonly regionsService: RegionsService,
+    private readonly profitMarginsService: ProfitMarginsService,
     private readonly providerSyncLogsService: ProviderSyncLogsService,
   ) {}
 
@@ -48,6 +50,7 @@ export class AiraloService implements OnModuleInit {
     try {
       const token = await this.authenticate();
       const countries = await this.fetchAllPackages(token);
+      const profitPercentage = await this.profitMarginsService.getActivePercentage();
       let itemsSynced = 0;
 
       for (const country of countries) {
@@ -56,12 +59,25 @@ export class AiraloService implements OnModuleInit {
             if (pkg.type === 'topup') continue;
 
             try {
-              await this.processPackage(country, operator, pkg);
+              await this.processPackage(country, operator, pkg, profitPercentage);
               itemsSynced++;
             } catch (error) {
-              this.logger.warn(
-                `Failed to process airalo package ${pkg.id}: ${error.message}`,
+              this.logger.error(
+                `Failed to process airalo package ${pkg.id} (${pkg.title}): ${error.message}`,
+                error.stack,
               );
+              this.logger.error(
+                `Package data: ${JSON.stringify({ id: pkg.id, type: pkg.type, country: country.country_code, operator: operator.title, countriesCount: operator.countries?.length })}`,
+              );
+
+              await this.providerSyncLogsService.update(syncLog.id, {
+                status: 'failed',
+                itemsSynced,
+                errorMessage: `Package ${pkg.id}: ${error.message}`,
+                completedAt: new Date(),
+              });
+
+              throw error;
             }
           }
         }
@@ -77,11 +93,13 @@ export class AiraloService implements OnModuleInit {
         `Airalo plan sync completed. ${itemsSynced} packages synced.`,
       );
     } catch (error) {
-      await this.providerSyncLogsService.update(syncLog.id, {
-        status: 'failed',
-        errorMessage: error.message,
-        completedAt: new Date(),
-      });
+      if (!error._logged) {
+        await this.providerSyncLogsService.update(syncLog.id, {
+          status: 'failed',
+          errorMessage: error.message,
+          completedAt: new Date(),
+        });
+      }
 
       this.logger.error(`Airalo plan sync failed: ${error.message}`);
     }
@@ -144,21 +162,21 @@ export class AiraloService implements OnModuleInit {
     country: AiraloCountry,
     operator: AiraloOperator,
     pkg: AiraloPackage,
+    profitPercentage: number,
   ): Promise<void> {
     const operatorCountries = operator.countries ?? [];
     const isRegionPackage = operatorCountries.length > 1;
 
     if (isRegionPackage) {
       const region = await this.resolveRegion(country, operatorCountries);
-      await this.upsertPlan(country, operator, pkg, null, region.id);
+      await this.upsertPlan(country, operator, pkg, null, region.id, profitPercentage);
     } else {
       const destination = await this.resolveDestination(
         country.country_code,
         country.title,
         country.image?.url || null,
-        country.slug,
       );
-      await this.upsertPlan(country, operator, pkg, destination.id, null);
+      await this.upsertPlan(country, operator, pkg, destination.id, null, profitPercentage);
     }
   }
 
@@ -166,19 +184,28 @@ export class AiraloService implements OnModuleInit {
     countryCode: string,
     title: string,
     flagUrl: string | null,
-    slug: string,
   ) {
     const existing =
       await this.destinationsService.findByCountryCode(countryCode);
     if (existing) return existing;
 
-    return this.destinationsService.create({
-      name: title,
-      slug,
-      countryCode,
-      flagUrl,
-      isActive: true,
-    });
+    const byName = await this.destinationsService.findByName(title);
+    if (byName) return byName;
+
+    const slug = this.toSlug(title);
+    try {
+      return await this.destinationsService.create({
+        name: title,
+        slug,
+        countryCode,
+        flagUrl,
+        isActive: true,
+      });
+    } catch {
+      const bySlug = await this.destinationsService.findBySlug(slug);
+      if (bySlug) return bySlug;
+      throw new Error(`Failed to resolve destination for ${countryCode}`);
+    }
   }
 
   private async resolveRegion(
@@ -206,7 +233,6 @@ export class AiraloService implements OnModuleInit {
         c.country_code,
         c.title,
         c.image?.url || null,
-        c.country_code.toLowerCase(),
       );
       await this.destinationsService.addRegion(dest.id, region.id);
     }
@@ -220,11 +246,13 @@ export class AiraloService implements OnModuleInit {
     pkg: AiraloPackage,
     destinationId: number | null,
     regionId: number | null,
+    profitPercentage: number,
   ) {
     const slug = `airalo-${pkg.id}`;
     const existing = await this.plansService.findBySlug(slug);
 
     const costPrice = pkg.net_price;
+    const price = Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
     const planData = {
       provider: 'airalo',
       providerPlanId: pkg.id,
@@ -235,7 +263,7 @@ export class AiraloService implements OnModuleInit {
       durationDays: pkg.day,
       dataGb: pkg.amount / 1024,
       costPrice,
-      price: costPrice,
+      price,
       retailPrice: pkg.price,
       currency: 'USD',
       type: pkg.is_unlimited ? 'daily-unlimited' : 'data-in-total',
@@ -251,5 +279,14 @@ export class AiraloService implements OnModuleInit {
       ...planData,
       slug,
     });
+  }
+
+  private toSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
   }
 }

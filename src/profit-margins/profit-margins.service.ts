@@ -50,6 +50,15 @@ export class ProfitMarginsService {
     });
   }
 
+  async getActivePercentage(): Promise<number> {
+    const results = await this.profitMarginRepository.findManyWithPagination({
+      filterOptions: { isActive: true },
+      sortOptions: null,
+      paginationOptions: { page: 1, limit: 1 },
+    });
+    return results.length > 0 ? Number(results[0].percentage) : 0;
+  }
+
   async remove(id: ProfitMargin['id']): Promise<void> {
     await this.profitMarginRepository.remove(id);
   }

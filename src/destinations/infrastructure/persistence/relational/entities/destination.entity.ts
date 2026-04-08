@@ -27,7 +27,7 @@ export class DestinationEntity extends EntityRelationalHelper {
   slug: string;
 
   @Index()
-  @Column({ type: String, length: 2 })
+  @Column({ type: String, length: 10 })
   countryCode: string;
 
   @ManyToMany(() => RegionEntity, { eager: true })

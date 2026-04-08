@@ -7,6 +7,7 @@ import { AllConfigType } from '../../config/config.type';
 import { PlansService } from '../../plans/plans.service';
 import { DestinationsService } from '../../destinations/destinations.service';
 import { RegionsService } from '../../regions/regions.service';
+import { ProfitMarginsService } from '../../profit-margins/profit-margins.service';
 import { ProviderSyncLogsService } from '../../provider-sync-logs/provider-sync-logs.service';
 import {
   EsimAccessApiResponse,
@@ -23,6 +24,7 @@ export class EsimAccessService implements OnModuleInit {
     private readonly plansService: PlansService,
     private readonly destinationsService: DestinationsService,
     private readonly regionsService: RegionsService,
+    private readonly profitMarginsService: ProfitMarginsService,
     private readonly providerSyncLogsService: ProviderSyncLogsService,
   ) {}
 
@@ -43,16 +45,30 @@ export class EsimAccessService implements OnModuleInit {
 
     try {
       const packages = await this.fetchPackages();
+      const profitPercentage = await this.profitMarginsService.getActivePercentage();
       let itemsSynced = 0;
 
       for (const pkg of packages) {
         try {
-          await this.processPackage(pkg);
+          await this.processPackage(pkg, profitPercentage);
           itemsSynced++;
         } catch (error) {
-          this.logger.warn(
-            `Failed to process package ${pkg.packageCode}: ${error.message}`,
+          this.logger.error(
+            `Failed to process package ${pkg.packageCode} (${pkg.name}): ${error.message}`,
+            error.stack,
           );
+          this.logger.error(
+            `Package data: ${JSON.stringify({ packageCode: pkg.packageCode, slug: pkg.slug, location: pkg.location, locationCode: pkg.locationCode })}`,
+          );
+
+          await this.providerSyncLogsService.update(syncLog.id, {
+            status: 'failed',
+            itemsSynced,
+            errorMessage: `Package ${pkg.packageCode}: ${error.message}`,
+            completedAt: new Date(),
+          });
+
+          throw error;
         }
       }
 
@@ -66,11 +82,13 @@ export class EsimAccessService implements OnModuleInit {
         `Esimaccess plan sync completed. ${itemsSynced}/${packages.length} packages synced.`,
       );
     } catch (error) {
-      await this.providerSyncLogsService.update(syncLog.id, {
-        status: 'failed',
-        errorMessage: error.message,
-        completedAt: new Date(),
-      });
+      if (!error._logged) {
+        await this.providerSyncLogsService.update(syncLog.id, {
+          status: 'failed',
+          errorMessage: error.message,
+          completedAt: new Date(),
+        });
+      }
 
       this.logger.error(`Esimaccess plan sync failed: ${error.message}`);
     }
@@ -112,16 +130,19 @@ export class EsimAccessService implements OnModuleInit {
     return data.obj.packageList;
   }
 
-  private async processPackage(pkg: EsimAccessPackage): Promise<void> {
+  private async processPackage(
+    pkg: EsimAccessPackage,
+    profitPercentage: number,
+  ): Promise<void> {
     const locationCodes = pkg.location.split(',').map((s) => s.trim());
     const isRegionPackage = locationCodes.length > 1;
 
     if (isRegionPackage) {
       const region = await this.resolveRegion(pkg, locationCodes);
-      await this.upsertPlan(pkg, null, region.id);
+      await this.upsertPlan(pkg, null, region.id, profitPercentage);
     } else {
       const destination = await this.resolveDestination(pkg);
-      await this.upsertPlan(pkg, destination.id, null);
+      await this.upsertPlan(pkg, destination.id, null, profitPercentage);
     }
   }
 
@@ -133,8 +154,11 @@ export class EsimAccessService implements OnModuleInit {
 
     const locationInfo = pkg.locationNetworkList?.[0];
     const name = locationInfo?.locationName || pkg.locationCode;
+
+    const byName = await this.destinationsService.findByName(name);
+    if (byName) return byName;
     const flagUrl = locationInfo?.locationLogo || null;
-    const slug = pkg.locationCode.toLowerCase();
+    const slug = this.toSlug(name);
 
     try {
       return await this.destinationsService.create({
@@ -159,10 +183,15 @@ export class EsimAccessService implements OnModuleInit {
     const existing = await this.destinationsService.findByCountryCode(code);
     if (existing) return existing;
 
+    const displayName = name || code;
+
+    const byName = await this.destinationsService.findByName(displayName);
+    if (byName) return byName;
+
     try {
       return await this.destinationsService.create({
-        name: name || code,
-        slug: code.toLowerCase(),
+        name: displayName,
+        slug: this.toSlug(displayName),
         countryCode: code,
         flagUrl: flagUrl || null,
         isActive: true,
@@ -170,7 +199,7 @@ export class EsimAccessService implements OnModuleInit {
     } catch {
       // Slug conflict — find by slug instead
       const bySlug = await this.destinationsService.findBySlug(
-        code.toLowerCase(),
+        this.toSlug(displayName),
       );
       if (bySlug) return bySlug;
       throw new Error(`Failed to create or find destination for ${code}`);
@@ -226,6 +255,7 @@ export class EsimAccessService implements OnModuleInit {
     pkg: EsimAccessPackage,
     destinationId: number | null,
     regionId: number | null,
+    profitPercentage: number,
   ) {
     const slug = `esimaccess-${pkg.packageCode}`;
     const existing = await this.plansService.findBySlug(slug);
@@ -237,7 +267,8 @@ export class EsimAccessService implements OnModuleInit {
       4: 'daily-unlimited',
     };
 
-    const costPrice = pkg.price;
+    const costPrice = pkg.price / 10000;
+    const price = Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
     const planData = {
       provider: 'esimaccess',
       providerPlanId: pkg.packageCode,
@@ -248,8 +279,8 @@ export class EsimAccessService implements OnModuleInit {
       durationDays: pkg.duration,
       dataGb: pkg.volume / 1024 / 1024 / 1024,
       costPrice,
-      price: costPrice,
-      retailPrice: pkg.retailPrice,
+      price,
+      retailPrice: pkg.retailPrice / 10000,
       currency: pkg.currencyCode,
       type: dataTypeMap[pkg.dataType] ?? 'data-in-total',
       topUp: pkg.supportTopUpType === 2,
@@ -264,5 +295,14 @@ export class EsimAccessService implements OnModuleInit {
       ...planData,
       slug,
     });
+  }
+
+  private toSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
   }
 }

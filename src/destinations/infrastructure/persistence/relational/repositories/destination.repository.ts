@@ -93,6 +93,16 @@ export class DestinationsRelationalRepository
     return entity ? DestinationMapper.toDomain(entity) : null;
   }
 
+  async findByName(
+    name: Destination['name'],
+  ): Promise<NullableType<Destination>> {
+    const entity = await this.destinationsRepository.findOne({
+      where: { name },
+    });
+
+    return entity ? DestinationMapper.toDomain(entity) : null;
+  }
+
   async update(
     id: Destination['id'],
     payload: Partial<Destination>,
