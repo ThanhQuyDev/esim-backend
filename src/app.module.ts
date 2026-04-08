@@ -8,6 +8,8 @@ import appConfig from './config/app.config';
 import mailConfig from './mail/config/mail.config';
 import fileConfig from './files/config/file.config';
 import googleConfig from './auth-google/config/google.config';
+import esimAccessConfig from './esim-providers/config/esimaccess.config';
+import airaloConfig from './esim-providers/config/airalo.config';
 import path from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -21,6 +23,15 @@ import { AllConfigType } from './config/config.type';
 import { SessionModule } from './session/session.module';
 import { MailerModule } from './mailer/mailer.module';
 import { DestinationsModule } from './destinations/destinations.module';
+import { RegionsModule } from './regions/regions.module';
+import { PlansModule } from './plans/plans.module';
+import { PlanPricesModule } from './plan-prices/plan-prices.module';
+import { OrdersModule } from './orders/orders.module';
+import { OrderItemsModule } from './order-items/order-items.module';
+import { EsimsModule } from './esims/esims.module';
+import { ProviderSyncLogsModule } from './provider-sync-logs/provider-sync-logs.module';
+import { EsimProvidersModule } from './esim-providers/esim-providers.module';
+import { ProfitMarginsModule } from './profit-margins/profit-margins.module';
 
 const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
   useClass: TypeOrmConfigService,
@@ -40,6 +51,8 @@ const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
         mailConfig,
         fileConfig,
         googleConfig,
+        esimAccessConfig,
+        airaloConfig,
       ],
       envFilePath: ['.env'],
     }),
@@ -76,6 +89,15 @@ const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
     MailerModule,
     HomeModule,
     DestinationsModule,
+    RegionsModule,
+    PlansModule,
+    PlanPricesModule,
+    OrdersModule,
+    OrderItemsModule,
+    EsimsModule,
+    ProviderSyncLogsModule,
+    EsimProvidersModule,
+    ProfitMarginsModule,
   ],
 })
 export class AppModule {}

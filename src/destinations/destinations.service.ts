@@ -72,6 +72,12 @@ export class DestinationsService {
     return this.destinationsRepository.findBySlug(slug);
   }
 
+  findByCountryCode(
+    countryCode: Destination['countryCode'],
+  ): Promise<NullableType<Destination>> {
+    return this.destinationsRepository.findByCountryCode(countryCode);
+  }
+
   async update(
     id: Destination['id'],
     updateDestinationDto: UpdateDestinationDto,
@@ -101,6 +107,13 @@ export class DestinationsService {
       isActive: updateDestinationDto.isActive,
       description: updateDestinationDto.description,
     });
+  }
+
+  async addRegion(
+    destinationId: Destination['id'],
+    regionId: number,
+  ): Promise<void> {
+    await this.destinationsRepository.addRegion(destinationId, regionId);
   }
 
   async remove(id: Destination['id']): Promise<void> {

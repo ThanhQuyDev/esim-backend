@@ -1,0 +1,1806 @@
+{
+    "pricing": {
+        "model": "net_pricing",
+        "discount_percentage": 0
+    },
+    "data": [
+        {
+            "slug": "united-states",
+            "country_code": "US",
+            "title": "United States",
+            "image": {
+                "width": 132,
+                "height": 99,
+                "url": "https://cdn.airalo.com/images/600de234-ec12-4e1f-b793-c70860e4545a.png"
+            },
+            "operators": [
+                {
+                    "id": 687,
+                    "style": "light",
+                    "gradient_start": "#0f1b3f",
+                    "gradient_end": "#194281",
+                    "type": "local",
+                    "is_prepaid": false,
+                    "title": "Change",
+                    "esim_type": "Prepaid",
+                    "warning": null,
+                    "apn_type": "manual",
+                    "apn_value": "wbdata",
+                    "is_roaming": true,
+                    "info": [
+                        "5G Data-only eSIM.",
+                        "Rechargeable online with no expiry.",
+                        "Operates on T-Mobile and Verizon networks in the United States of America."
+                    ],
+                    "image": {
+                        "width": 1035,
+                        "height": 653,
+                        "url": "https://cdn.airalo.com/images/030f0576-f611-4eee-bba5-eb90a994c4ff.png"
+                    },
+                    "plan_type": "data",
+                    "activation_policy": "first-usage",
+                    "is_kyc_verify": false,
+                    "rechargeability": true,
+                    "other_info": "This eSIM is for travelers to the United States. The coverage applies to all 50 states of the United States, and Puerto Rico.",
+                    "coverages": [
+                        {
+                            "name": "US",
+                            "code": "US",
+                            "networks": [
+                                {
+                                    "name": "T-Mobile",
+                                    "types": [
+                                        "5G"
+                                    ]
+                                },
+                                {
+                                    "name": "Verizon",
+                                    "types": [
+                                        "5G"
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "install_window_days": null,
+                    "topup_grace_window_days": null,
+                    "apn": {
+                        "ios": {
+                            "apn_type": "automatic",
+                            "apn_value": "wbdata"
+                        },
+                        "android": {
+                            "apn_type": "manual",
+                            "apn_value": "wbdata"
+                        }
+                    },
+                    "packages": [
+                        {
+                            "id": "change-7days-1gb",
+                            "type": "sim",
+                            "price": 4.5,
+                            "amount": 1024,
+                            "day": 7,
+                            "is_unlimited": false,
+                            "title": "1 GB - 7 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "1 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 1.1,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 1.72,
+                                    "BRL": 6.26,
+                                    "GBP": 0.81,
+                                    "CAD": 1.53,
+                                    "AED": 4.04,
+                                    "EUR": 0.98,
+                                    "INR": 93.96,
+                                    "IDR": 17920,
+                                    "ILS": 3.86,
+                                    "JPY": 160,
+                                    "MYR": 4.65,
+                                    "MXN": 21.33,
+                                    "SGD": 1.42,
+                                    "KRW": 1512,
+                                    "USD": 1.1,
+                                    "VND": 28536
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 7.02,
+                                    "BRL": 25.6,
+                                    "GBP": 3.33,
+                                    "CAD": 6.26,
+                                    "AED": 16.52,
+                                    "EUR": 4,
+                                    "INR": 384.39,
+                                    "IDR": 73309,
+                                    "ILS": 15.8,
+                                    "JPY": 656,
+                                    "MYR": 19.04,
+                                    "MXN": 87.26,
+                                    "SGD": 5.8,
+                                    "KRW": 6186,
+                                    "USD": 4.5,
+                                    "VND": 116738
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-15days-2gb",
+                            "type": "sim",
+                            "price": 8,
+                            "amount": 2048,
+                            "day": 15,
+                            "is_unlimited": false,
+                            "title": "2 GB - 15 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "2 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 2.2,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 3.43,
+                                    "BRL": 12.52,
+                                    "GBP": 1.63,
+                                    "CAD": 3.06,
+                                    "AED": 8.07,
+                                    "EUR": 1.96,
+                                    "INR": 187.92,
+                                    "IDR": 35840,
+                                    "ILS": 7.72,
+                                    "JPY": 321,
+                                    "MYR": 9.31,
+                                    "MXN": 42.66,
+                                    "SGD": 2.84,
+                                    "KRW": 3024,
+                                    "USD": 2.2,
+                                    "VND": 57072
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 12.48,
+                                    "BRL": 45.52,
+                                    "GBP": 5.92,
+                                    "CAD": 11.12,
+                                    "AED": 29.36,
+                                    "EUR": 7.12,
+                                    "INR": 683.36,
+                                    "IDR": 130328,
+                                    "ILS": 28.08,
+                                    "JPY": 1166,
+                                    "MYR": 33.84,
+                                    "MXN": 155.12,
+                                    "SGD": 10.32,
+                                    "KRW": 10997,
+                                    "USD": 8,
+                                    "VND": 207534
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-30days-3gb",
+                            "type": "sim",
+                            "price": 11,
+                            "amount": 3072,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "3 GB - 30 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "3 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 3.1,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 4.84,
+                                    "BRL": 17.64,
+                                    "GBP": 2.29,
+                                    "CAD": 4.31,
+                                    "AED": 11.38,
+                                    "EUR": 2.76,
+                                    "INR": 264.8,
+                                    "IDR": 50502,
+                                    "ILS": 10.88,
+                                    "JPY": 452,
+                                    "MYR": 13.11,
+                                    "MXN": 60.11,
+                                    "SGD": 4,
+                                    "KRW": 4261,
+                                    "USD": 3.1,
+                                    "VND": 80420
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 17.16,
+                                    "BRL": 62.59,
+                                    "GBP": 8.14,
+                                    "CAD": 15.29,
+                                    "AED": 40.37,
+                                    "EUR": 9.79,
+                                    "INR": 939.62,
+                                    "IDR": 179200,
+                                    "ILS": 38.61,
+                                    "JPY": 1603,
+                                    "MYR": 46.53,
+                                    "MXN": 213.29,
+                                    "SGD": 14.19,
+                                    "KRW": 15120,
+                                    "USD": 11,
+                                    "VND": 285360
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-30days-5gb",
+                            "type": "sim",
+                            "price": 16,
+                            "amount": 5120,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "5 GB - 30 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "5 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 7.8,
+                                    "BRL": 28.45,
+                                    "GBP": 3.7,
+                                    "CAD": 6.95,
+                                    "AED": 18.35,
+                                    "EUR": 4.45,
+                                    "INR": 427.1,
+                                    "IDR": 81455,
+                                    "ILS": 17.55,
+                                    "JPY": 729,
+                                    "MYR": 21.15,
+                                    "MXN": 96.95,
+                                    "SGD": 6.45,
+                                    "KRW": 6873,
+                                    "USD": 5,
+                                    "VND": 129709
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 24.96,
+                                    "BRL": 91.04,
+                                    "GBP": 11.84,
+                                    "CAD": 22.24,
+                                    "AED": 58.72,
+                                    "EUR": 14.24,
+                                    "INR": 1366.72,
+                                    "IDR": 260655,
+                                    "ILS": 56.16,
+                                    "JPY": 2332,
+                                    "MYR": 67.68,
+                                    "MXN": 310.24,
+                                    "SGD": 20.64,
+                                    "KRW": 21993,
+                                    "USD": 16,
+                                    "VND": 415069
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-30days-10gb",
+                            "type": "sim",
+                            "price": 26,
+                            "amount": 10240,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "10 GB - 30 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "10 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 9.5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 14.82,
+                                    "BRL": 54.06,
+                                    "GBP": 7.03,
+                                    "CAD": 13.2,
+                                    "AED": 34.86,
+                                    "EUR": 8.46,
+                                    "INR": 811.49,
+                                    "IDR": 154764,
+                                    "ILS": 33.34,
+                                    "JPY": 1384,
+                                    "MYR": 40.18,
+                                    "MXN": 184.2,
+                                    "SGD": 12.26,
+                                    "KRW": 13058,
+                                    "USD": 9.5,
+                                    "VND": 246447
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 40.56,
+                                    "BRL": 147.94,
+                                    "GBP": 19.24,
+                                    "CAD": 36.14,
+                                    "AED": 95.42,
+                                    "EUR": 23.14,
+                                    "INR": 2220.92,
+                                    "IDR": 423565,
+                                    "ILS": 91.26,
+                                    "JPY": 3789,
+                                    "MYR": 109.98,
+                                    "MXN": 504.14,
+                                    "SGD": 33.54,
+                                    "KRW": 35739,
+                                    "USD": 26,
+                                    "VND": 674487
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-30days-20gb",
+                            "type": "sim",
+                            "price": 42,
+                            "amount": 20480,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "20 GB - 30 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "20 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 17.5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 27.3,
+                                    "BRL": 99.58,
+                                    "GBP": 12.95,
+                                    "CAD": 24.32,
+                                    "AED": 64.22,
+                                    "EUR": 15.58,
+                                    "INR": 1494.85,
+                                    "IDR": 285092,
+                                    "ILS": 61.42,
+                                    "JPY": 2550,
+                                    "MYR": 74.02,
+                                    "MXN": 339.32,
+                                    "SGD": 22.58,
+                                    "KRW": 24055,
+                                    "USD": 17.5,
+                                    "VND": 453982
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 65.52,
+                                    "BRL": 238.98,
+                                    "GBP": 31.08,
+                                    "CAD": 58.38,
+                                    "AED": 154.14,
+                                    "EUR": 37.38,
+                                    "INR": 3587.64,
+                                    "IDR": 684220,
+                                    "ILS": 147.42,
+                                    "JPY": 6121,
+                                    "MYR": 177.66,
+                                    "MXN": 814.38,
+                                    "SGD": 54.18,
+                                    "KRW": 57732,
+                                    "USD": 42,
+                                    "VND": 1089556
+                                }
+                            }
+                        }
+                    ],
+                    "countries": [
+                        {
+                            "country_code": "US",
+                            "title": "United States",
+                            "image": {
+                                "width": 132,
+                                "height": 99,
+                                "url": "https://cdn.airalo.com/images/600de234-ec12-4e1f-b793-c70860e4545a.png"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": 823,
+                    "style": "light",
+                    "gradient_start": "#0f1b3f",
+                    "gradient_end": "#194281",
+                    "type": "local",
+                    "is_prepaid": false,
+                    "title": "Change+",
+                    "esim_type": "Prepaid",
+                    "warning": null,
+                    "apn_type": "manual",
+                    "apn_value": "wbdata",
+                    "is_roaming": true,
+                    "info": [
+                        "5G Data-only eSIM.",
+                        "Rechargeable online with no expiry.",
+                        "Operates on the T-Mobile network in the United States of America."
+                    ],
+                    "image": {
+                        "width": 1035,
+                        "height": 653,
+                        "url": "https://cdn.airalo.com/images/a4687e6a-b166-4c02-8a2e-deee2f032bfc.png"
+                    },
+                    "plan_type": "data-voice-text",
+                    "activation_policy": "first-usage",
+                    "is_kyc_verify": false,
+                    "rechargeability": true,
+                    "other_info": "This eSIM is for travelers to the United States. The coverage does applies to US states, except for Alaska. Puerto Rico is also covered. Incoming calls are deducted from the minutes balance. Outgoing international calls are not allowed.",
+                    "coverages": [
+                        {
+                            "name": "US",
+                            "code": "US",
+                            "networks": [
+                                {
+                                    "name": "T-Mobile",
+                                    "types": [
+                                        "5G"
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "install_window_days": null,
+                    "topup_grace_window_days": null,
+                    "apn": {
+                        "ios": {
+                            "apn_type": "automatic",
+                            "apn_value": "wbdata"
+                        },
+                        "android": {
+                            "apn_type": "manual",
+                            "apn_value": "wbdata"
+                        }
+                    },
+                    "packages": [
+                        {
+                            "id": "change-plus-7days-1gb",
+                            "type": "sim",
+                            "price": 7,
+                            "amount": 1024,
+                            "day": 7,
+                            "is_unlimited": false,
+                            "title": "1 GB - 10 SMS - 20 Mins - 7 Days",
+                            "short_info": "This eSIM does come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "1 GB",
+                            "voice": 20,
+                            "text": 10,
+                            "net_price": 1.7,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 2.65,
+                                    "BRL": 9.67,
+                                    "GBP": 1.26,
+                                    "CAD": 2.36,
+                                    "AED": 6.24,
+                                    "EUR": 1.51,
+                                    "INR": 145.21,
+                                    "IDR": 27695,
+                                    "ILS": 5.97,
+                                    "JPY": 248,
+                                    "MYR": 7.19,
+                                    "MXN": 32.96,
+                                    "SGD": 2.19,
+                                    "KRW": 2337,
+                                    "USD": 1.7,
+                                    "VND": 44101
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 10.92,
+                                    "BRL": 39.83,
+                                    "GBP": 5.18,
+                                    "CAD": 9.73,
+                                    "AED": 25.69,
+                                    "EUR": 6.23,
+                                    "INR": 597.94,
+                                    "IDR": 114037,
+                                    "ILS": 24.57,
+                                    "JPY": 1020,
+                                    "MYR": 29.61,
+                                    "MXN": 135.73,
+                                    "SGD": 9.03,
+                                    "KRW": 9622,
+                                    "USD": 7,
+                                    "VND": 181593
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-plus-15days-2gb",
+                            "type": "sim",
+                            "price": 12.5,
+                            "amount": 2048,
+                            "day": 15,
+                            "is_unlimited": false,
+                            "title": "2 GB - 20 SMS - 40 Mins - 15 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "2 GB",
+                            "voice": 40,
+                            "text": 20,
+                            "net_price": 3.3,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 5.15,
+                                    "BRL": 18.78,
+                                    "GBP": 2.44,
+                                    "CAD": 4.59,
+                                    "AED": 12.11,
+                                    "EUR": 2.94,
+                                    "INR": 281.89,
+                                    "IDR": 53760,
+                                    "ILS": 11.58,
+                                    "JPY": 481,
+                                    "MYR": 13.96,
+                                    "MXN": 63.99,
+                                    "SGD": 4.26,
+                                    "KRW": 4536,
+                                    "USD": 3.3,
+                                    "VND": 85608
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 19.5,
+                                    "BRL": 71.12,
+                                    "GBP": 9.25,
+                                    "CAD": 17.38,
+                                    "AED": 45.88,
+                                    "EUR": 11.12,
+                                    "INR": 1067.75,
+                                    "IDR": 203637,
+                                    "ILS": 43.88,
+                                    "JPY": 1822,
+                                    "MYR": 52.88,
+                                    "MXN": 242.38,
+                                    "SGD": 16.12,
+                                    "KRW": 17182,
+                                    "USD": 12.5,
+                                    "VND": 324272
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-plus-30days-3gb",
+                            "type": "sim",
+                            "price": 16,
+                            "amount": 3072,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "3 GB - 30 SMS - 60 Mins - 30 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "3 GB",
+                            "voice": 60,
+                            "text": 30,
+                            "net_price": 4.5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 7.02,
+                                    "BRL": 25.6,
+                                    "GBP": 3.33,
+                                    "CAD": 6.26,
+                                    "AED": 16.52,
+                                    "EUR": 4,
+                                    "INR": 384.39,
+                                    "IDR": 73309,
+                                    "ILS": 15.8,
+                                    "JPY": 656,
+                                    "MYR": 19.04,
+                                    "MXN": 87.26,
+                                    "SGD": 5.8,
+                                    "KRW": 6186,
+                                    "USD": 4.5,
+                                    "VND": 116738
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 24.96,
+                                    "BRL": 91.04,
+                                    "GBP": 11.84,
+                                    "CAD": 22.24,
+                                    "AED": 58.72,
+                                    "EUR": 14.24,
+                                    "INR": 1366.72,
+                                    "IDR": 260655,
+                                    "ILS": 56.16,
+                                    "JPY": 2332,
+                                    "MYR": 67.68,
+                                    "MXN": 310.24,
+                                    "SGD": 20.64,
+                                    "KRW": 21993,
+                                    "USD": 16,
+                                    "VND": 415069
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-plus-30days-5gb",
+                            "type": "sim",
+                            "price": 22.5,
+                            "amount": 5120,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "5 GB - 50 SMS - 100 Mins - 30 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "5 GB",
+                            "voice": 100,
+                            "text": 50,
+                            "net_price": 7,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 10.92,
+                                    "BRL": 39.83,
+                                    "GBP": 5.18,
+                                    "CAD": 9.73,
+                                    "AED": 25.69,
+                                    "EUR": 6.23,
+                                    "INR": 597.94,
+                                    "IDR": 114037,
+                                    "ILS": 24.57,
+                                    "JPY": 1020,
+                                    "MYR": 29.61,
+                                    "MXN": 135.73,
+                                    "SGD": 9.03,
+                                    "KRW": 9622,
+                                    "USD": 7,
+                                    "VND": 181593
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 35.1,
+                                    "BRL": 128.02,
+                                    "GBP": 16.65,
+                                    "CAD": 31.28,
+                                    "AED": 82.58,
+                                    "EUR": 20.02,
+                                    "INR": 1921.95,
+                                    "IDR": 366546,
+                                    "ILS": 78.98,
+                                    "JPY": 3279,
+                                    "MYR": 95.18,
+                                    "MXN": 436.28,
+                                    "SGD": 29.02,
+                                    "KRW": 30928,
+                                    "USD": 22.5,
+                                    "VND": 583690
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-plus-30days-10gb",
+                            "type": "sim",
+                            "price": 34.5,
+                            "amount": 10240,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "10 GB - 100 SMS - 200 Mins - 30 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "10 GB",
+                            "voice": 200,
+                            "text": 100,
+                            "net_price": 12.6,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 19.66,
+                                    "BRL": 71.69,
+                                    "GBP": 9.32,
+                                    "CAD": 17.51,
+                                    "AED": 46.24,
+                                    "EUR": 11.21,
+                                    "INR": 1076.29,
+                                    "IDR": 205266,
+                                    "ILS": 44.23,
+                                    "JPY": 1836,
+                                    "MYR": 53.3,
+                                    "MXN": 244.31,
+                                    "SGD": 16.25,
+                                    "KRW": 17320,
+                                    "USD": 12.6,
+                                    "VND": 326867
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 53.82,
+                                    "BRL": 196.3,
+                                    "GBP": 25.53,
+                                    "CAD": 47.96,
+                                    "AED": 126.62,
+                                    "EUR": 30.7,
+                                    "INR": 2946.99,
+                                    "IDR": 562038,
+                                    "ILS": 121.1,
+                                    "JPY": 5028,
+                                    "MYR": 145.94,
+                                    "MXN": 668.96,
+                                    "SGD": 44.5,
+                                    "KRW": 47423,
+                                    "USD": 34.5,
+                                    "VND": 894992
+                                }
+                            }
+                        },
+                        {
+                            "id": "change-plus-30days-20gb",
+                            "type": "sim",
+                            "price": 49,
+                            "amount": 20480,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "20 GB - 200 SMS - 400 Mins - 30 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Change</p><p><b>Coverage: </b>United States</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "20 GB",
+                            "voice": 400,
+                            "text": 200,
+                            "net_price": 20.4,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 31.82,
+                                    "BRL": 116.08,
+                                    "GBP": 15.1,
+                                    "CAD": 28.36,
+                                    "AED": 74.87,
+                                    "EUR": 18.16,
+                                    "INR": 1742.57,
+                                    "IDR": 332335,
+                                    "ILS": 71.6,
+                                    "JPY": 2973,
+                                    "MYR": 86.29,
+                                    "MXN": 395.56,
+                                    "SGD": 26.32,
+                                    "KRW": 28041,
+                                    "USD": 20.4,
+                                    "VND": 529213
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 76.44,
+                                    "BRL": 278.81,
+                                    "GBP": 36.26,
+                                    "CAD": 68.11,
+                                    "AED": 179.83,
+                                    "EUR": 43.61,
+                                    "INR": 4185.58,
+                                    "IDR": 798257,
+                                    "ILS": 171.99,
+                                    "JPY": 7141,
+                                    "MYR": 207.27,
+                                    "MXN": 950.11,
+                                    "SGD": 63.21,
+                                    "KRW": 67354,
+                                    "USD": 49,
+                                    "VND": 1271148
+                                }
+                            }
+                        }
+                    ],
+                    "countries": [
+                        {
+                            "country_code": "US",
+                            "title": "United States",
+                            "image": {
+                                "width": 132,
+                                "height": 99,
+                                "url": "https://cdn.airalo.com/images/600de234-ec12-4e1f-b793-c70860e4545a.png"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "slug": "france",
+            "country_code": "FR",
+            "title": "France",
+            "image": {
+                "width": 132,
+                "height": 99,
+                "url": "https://cdn.airalo.com/images/9753dedb-d495-47cf-b6e4-82e555564743.png"
+            },
+            "operators": [
+                {
+                    "id": 826,
+                    "style": "dark",
+                    "gradient_start": "#F1D4FB",
+                    "gradient_end": "#EEC0FF",
+                    "type": "local",
+                    "is_prepaid": false,
+                    "title": "Élan",
+                    "esim_type": "Prepaid",
+                    "warning": null,
+                    "apn_type": "automatic",
+                    "apn_value": null,
+                    "is_roaming": false,
+                    "info": [
+                        "4G Data-only eSIM.",
+                        "Rechargeable online with no expiry.",
+                        "Operates on the Orange network in France."
+                    ],
+                    "image": {
+                        "width": 1035,
+                        "height": 653,
+                        "url": "https://cdn.airalo.com/images/6e8c08d1-9e2d-4feb-b60f-e8c4bd344d47.png"
+                    },
+                    "plan_type": "data",
+                    "activation_policy": "first-usage",
+                    "is_kyc_verify": false,
+                    "rechargeability": true,
+                    "other_info": "You can add a top-up to this eSIM within 120 days from when it was activated. Adding a new package will reset this period.",
+                    "coverages": [
+                        {
+                            "name": "FR",
+                            "code": "FR",
+                            "networks": [
+                                {
+                                    "name": "Orange",
+                                    "types": [
+                                        "4G"
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "install_window_days": 1825,
+                    "topup_grace_window_days": 180,
+                    "apn": {
+                        "ios": {
+                            "apn_type": "automatic",
+                            "apn_value": null
+                        },
+                        "android": {
+                            "apn_type": "automatic",
+                            "apn_value": null
+                        }
+                    },
+                    "packages": [
+                        {
+                            "id": "elan-7days-1gb",
+                            "type": "sim",
+                            "price": 4.5,
+                            "amount": 1024,
+                            "day": 7,
+                            "is_unlimited": false,
+                            "title": "1 GB - 7 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on another device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "1 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 0.8,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 1.25,
+                                    "BRL": 4.55,
+                                    "GBP": 0.59,
+                                    "CAD": 1.11,
+                                    "AED": 2.94,
+                                    "EUR": 0.71,
+                                    "INR": 68.34,
+                                    "IDR": 13033,
+                                    "ILS": 2.81,
+                                    "JPY": 117,
+                                    "MYR": 3.38,
+                                    "MXN": 15.51,
+                                    "SGD": 1.03,
+                                    "KRW": 1100,
+                                    "USD": 0.8,
+                                    "VND": 20753
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 7.02,
+                                    "BRL": 25.6,
+                                    "GBP": 3.33,
+                                    "CAD": 6.26,
+                                    "AED": 16.52,
+                                    "EUR": 4,
+                                    "INR": 384.39,
+                                    "IDR": 73309,
+                                    "ILS": 15.8,
+                                    "JPY": 656,
+                                    "MYR": 19.04,
+                                    "MXN": 87.26,
+                                    "SGD": 5.8,
+                                    "KRW": 6186,
+                                    "USD": 4.5,
+                                    "VND": 116738
+                                }
+                            }
+                        },
+                        {
+                            "id": "elan-15days-2gb",
+                            "type": "sim",
+                            "price": 6,
+                            "amount": 2048,
+                            "day": 15,
+                            "is_unlimited": false,
+                            "title": "2 GB - 15 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on another device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "2 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 1.5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 2.34,
+                                    "BRL": 8.54,
+                                    "GBP": 1.11,
+                                    "CAD": 2.08,
+                                    "AED": 5.5,
+                                    "EUR": 1.34,
+                                    "INR": 128.13,
+                                    "IDR": 24436,
+                                    "ILS": 5.26,
+                                    "JPY": 219,
+                                    "MYR": 6.34,
+                                    "MXN": 29.08,
+                                    "SGD": 1.94,
+                                    "KRW": 2062,
+                                    "USD": 1.5,
+                                    "VND": 38913
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 9.36,
+                                    "BRL": 34.14,
+                                    "GBP": 4.44,
+                                    "CAD": 8.34,
+                                    "AED": 22.02,
+                                    "EUR": 5.34,
+                                    "INR": 512.52,
+                                    "IDR": 97746,
+                                    "ILS": 21.06,
+                                    "JPY": 874,
+                                    "MYR": 25.38,
+                                    "MXN": 116.34,
+                                    "SGD": 7.74,
+                                    "KRW": 8247,
+                                    "USD": 6,
+                                    "VND": 155651
+                                }
+                            }
+                        },
+                        {
+                            "id": "elan-30days-3gb",
+                            "type": "sim",
+                            "price": 7.5,
+                            "amount": 3072,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "3 GB - 30 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on another device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "3 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 2.1,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 3.28,
+                                    "BRL": 11.95,
+                                    "GBP": 1.55,
+                                    "CAD": 2.92,
+                                    "AED": 7.71,
+                                    "EUR": 1.87,
+                                    "INR": 179.38,
+                                    "IDR": 34211,
+                                    "ILS": 7.37,
+                                    "JPY": 306,
+                                    "MYR": 8.88,
+                                    "MXN": 40.72,
+                                    "SGD": 2.71,
+                                    "KRW": 2887,
+                                    "USD": 2.1,
+                                    "VND": 54478
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 11.7,
+                                    "BRL": 42.68,
+                                    "GBP": 5.55,
+                                    "CAD": 10.42,
+                                    "AED": 27.52,
+                                    "EUR": 6.68,
+                                    "INR": 640.65,
+                                    "IDR": 122182,
+                                    "ILS": 26.32,
+                                    "JPY": 1093,
+                                    "MYR": 31.72,
+                                    "MXN": 145.42,
+                                    "SGD": 9.68,
+                                    "KRW": 10309,
+                                    "USD": 7.5,
+                                    "VND": 194564
+                                }
+                            }
+                        },
+                        {
+                            "id": "elan-30days-5gb",
+                            "type": "sim",
+                            "price": 10,
+                            "amount": 5120,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "5 GB - 30 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on another device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "5 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 3.5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 5.46,
+                                    "BRL": 19.92,
+                                    "GBP": 2.59,
+                                    "CAD": 4.86,
+                                    "AED": 12.84,
+                                    "EUR": 3.12,
+                                    "INR": 298.97,
+                                    "IDR": 57018,
+                                    "ILS": 12.28,
+                                    "JPY": 510,
+                                    "MYR": 14.8,
+                                    "MXN": 67.86,
+                                    "SGD": 4.52,
+                                    "KRW": 4811,
+                                    "USD": 3.5,
+                                    "VND": 90796
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 15.6,
+                                    "BRL": 56.9,
+                                    "GBP": 7.4,
+                                    "CAD": 13.9,
+                                    "AED": 36.7,
+                                    "EUR": 8.9,
+                                    "INR": 854.2,
+                                    "IDR": 162910,
+                                    "ILS": 35.1,
+                                    "JPY": 1457,
+                                    "MYR": 42.3,
+                                    "MXN": 193.9,
+                                    "SGD": 12.9,
+                                    "KRW": 13746,
+                                    "USD": 10,
+                                    "VND": 259418
+                                }
+                            }
+                        },
+                        {
+                            "id": "elan-30days-10gb",
+                            "type": "sim",
+                            "price": 16,
+                            "amount": 10240,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "10 GB - 30 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on another device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "10 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 6,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 9.36,
+                                    "BRL": 34.14,
+                                    "GBP": 4.44,
+                                    "CAD": 8.34,
+                                    "AED": 22.02,
+                                    "EUR": 5.34,
+                                    "INR": 512.52,
+                                    "IDR": 97746,
+                                    "ILS": 21.06,
+                                    "JPY": 874,
+                                    "MYR": 25.38,
+                                    "MXN": 116.34,
+                                    "SGD": 7.74,
+                                    "KRW": 8247,
+                                    "USD": 6,
+                                    "VND": 155651
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 24.96,
+                                    "BRL": 91.04,
+                                    "GBP": 11.84,
+                                    "CAD": 22.24,
+                                    "AED": 58.72,
+                                    "EUR": 14.24,
+                                    "INR": 1366.72,
+                                    "IDR": 260655,
+                                    "ILS": 56.16,
+                                    "JPY": 2332,
+                                    "MYR": 67.68,
+                                    "MXN": 310.24,
+                                    "SGD": 20.64,
+                                    "KRW": 21993,
+                                    "USD": 16,
+                                    "VND": 415069
+                                }
+                            }
+                        },
+                        {
+                            "id": "elan-30days-20gb",
+                            "type": "sim",
+                            "price": 23.5,
+                            "amount": 20480,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "20 GB - 30 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on another device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Élan</p><p><b>Coverage: </b>France</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Turn on the eSIM line</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p><p><br></p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "20 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 11.5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 17.94,
+                                    "BRL": 65.44,
+                                    "GBP": 8.51,
+                                    "CAD": 15.98,
+                                    "AED": 42.2,
+                                    "EUR": 10.24,
+                                    "INR": 982.33,
+                                    "IDR": 187346,
+                                    "ILS": 40.36,
+                                    "JPY": 1676,
+                                    "MYR": 48.64,
+                                    "MXN": 222.98,
+                                    "SGD": 14.84,
+                                    "KRW": 15808,
+                                    "USD": 11.5,
+                                    "VND": 298331
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 36.66,
+                                    "BRL": 133.72,
+                                    "GBP": 17.39,
+                                    "CAD": 32.66,
+                                    "AED": 86.24,
+                                    "EUR": 20.92,
+                                    "INR": 2007.37,
+                                    "IDR": 382837,
+                                    "ILS": 82.48,
+                                    "JPY": 3425,
+                                    "MYR": 99.4,
+                                    "MXN": 455.66,
+                                    "SGD": 30.32,
+                                    "KRW": 32302,
+                                    "USD": 23.5,
+                                    "VND": 609632
+                                }
+                            }
+                        }
+                    ],
+                    "countries": [
+                        {
+                            "country_code": "FR",
+                            "title": "France",
+                            "image": {
+                                "width": 132,
+                                "height": 99,
+                                "url": "https://cdn.airalo.com/images/9753dedb-d495-47cf-b6e4-82e555564743.png"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "slug": "china",
+            "country_code": "CN",
+            "title": "China",
+            "image": {
+                "width": 132,
+                "height": 99,
+                "url": "https://cdn.airalo.com/images/301616a0-cd3e-4151-a4ec-78c8ddb04ca9.png"
+            },
+            "operators": [
+                {
+                    "id": 1000,
+                    "style": "light",
+                    "gradient_start": "#ff2d2f",
+                    "gradient_end": "#de2627",
+                    "type": "local",
+                    "is_prepaid": false,
+                    "title": "Chinacom",
+                    "esim_type": "Prepaid",
+                    "warning": null,
+                    "apn_type": "manual",
+                    "apn_value": "globaldata",
+                    "is_roaming": true,
+                    "info": [
+                        "5G Data-only eSIM.",
+                        "Rechargeable online with no expiry.",
+                        "Operates on the China Mobile network in China."
+                    ],
+                    "image": {
+                        "width": 1035,
+                        "height": 653,
+                        "url": "https://cdn.airalo.com/images/0859ba94-c5af-417c-b366-51e1420d7308.png"
+                    },
+                    "plan_type": "data",
+                    "activation_policy": "first-usage",
+                    "is_kyc_verify": false,
+                    "rechargeability": false,
+                    "other_info": null,
+                    "coverages": [
+                        {
+                            "name": "CN",
+                            "code": "CN",
+                            "networks": [
+                                {
+                                    "name": "China Mobile",
+                                    "types": [
+                                        "5G"
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "install_window_days": null,
+                    "topup_grace_window_days": null,
+                    "apn": {
+                        "ios": {
+                            "apn_type": "automatic",
+                            "apn_value": "globaldata"
+                        },
+                        "android": {
+                            "apn_type": "manual",
+                            "apn_value": "globaldata"
+                        }
+                    },
+                    "packages": [
+                        {
+                            "id": "chinam-mobile-10days-unlimited",
+                            "type": "sim",
+                            "price": 35,
+                            "amount": 0,
+                            "day": 10,
+                            "is_unlimited": true,
+                            "title": "Unlimited - 10 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To manually activate the eSIM on your eSIM capable device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p><p><br></p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "Unlimited",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 25,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 39,
+                                    "BRL": 142.25,
+                                    "GBP": 18.5,
+                                    "CAD": 34.75,
+                                    "AED": 91.75,
+                                    "EUR": 22.25,
+                                    "INR": 2135.5,
+                                    "IDR": 407274,
+                                    "ILS": 87.75,
+                                    "JPY": 3643,
+                                    "MYR": 105.75,
+                                    "MXN": 484.75,
+                                    "SGD": 32.25,
+                                    "KRW": 34364,
+                                    "USD": 25,
+                                    "VND": 648545
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 54.6,
+                                    "BRL": 199.15,
+                                    "GBP": 25.9,
+                                    "CAD": 48.65,
+                                    "AED": 128.45,
+                                    "EUR": 31.15,
+                                    "INR": 2989.7,
+                                    "IDR": 570183,
+                                    "ILS": 122.85,
+                                    "JPY": 5101,
+                                    "MYR": 148.05,
+                                    "MXN": 678.65,
+                                    "SGD": 45.15,
+                                    "KRW": 48110,
+                                    "USD": 35,
+                                    "VND": 907963
+                                }
+                            }
+                        }
+                    ],
+                    "countries": [
+                        {
+                            "country_code": "CN",
+                            "title": "China",
+                            "image": {
+                                "width": 132,
+                                "height": 99,
+                                "url": "https://cdn.airalo.com/images/301616a0-cd3e-4151-a4ec-78c8ddb04ca9.png"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": 4,
+                    "style": "light",
+                    "gradient_start": "#ff2d2f",
+                    "gradient_end": "#de2627",
+                    "type": "local",
+                    "is_prepaid": false,
+                    "title": "Chinacom",
+                    "esim_type": "Prepaid",
+                    "warning": null,
+                    "apn_type": "manual",
+                    "apn_value": "globaldata",
+                    "is_roaming": true,
+                    "info": [
+                        "5G Data-only eSIM.",
+                        "Rechargeable online with no expiry.",
+                        "Operates on the China Mobile network in China."
+                    ],
+                    "image": {
+                        "width": 1035,
+                        "height": 653,
+                        "url": "https://cdn.airalo.com/images/3834f175-be96-49c8-b4ab-91196e135037.png"
+                    },
+                    "plan_type": "data",
+                    "activation_policy": "first-usage",
+                    "is_kyc_verify": false,
+                    "rechargeability": true,
+                    "other_info": null,
+                    "coverages": [
+                        {
+                            "name": "CN",
+                            "code": "CN",
+                            "networks": [
+                                {
+                                    "name": "China Mobile",
+                                    "types": [
+                                        "5G"
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "install_window_days": null,
+                    "topup_grace_window_days": null,
+                    "apn": {
+                        "ios": {
+                            "apn_type": "automatic",
+                            "apn_value": "globaldata"
+                        },
+                        "android": {
+                            "apn_type": "manual",
+                            "apn_value": "globaldata"
+                        }
+                    },
+                    "packages": [
+                        {
+                            "id": "chinacom-30days-20gb",
+                            "type": "sim",
+                            "price": 49,
+                            "amount": 20480,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "20 GB - 30 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To manually activate the eSIM on your eSIM capable device:</b><br></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "20 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 18.5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 28.86,
+                                    "BRL": 105.26,
+                                    "GBP": 13.69,
+                                    "CAD": 25.72,
+                                    "AED": 67.9,
+                                    "EUR": 16.46,
+                                    "INR": 1580.27,
+                                    "IDR": 301383,
+                                    "ILS": 64.94,
+                                    "JPY": 2696,
+                                    "MYR": 78.26,
+                                    "MXN": 358.72,
+                                    "SGD": 23.86,
+                                    "KRW": 25430,
+                                    "USD": 18.5,
+                                    "VND": 479923
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 76.44,
+                                    "BRL": 278.81,
+                                    "GBP": 36.26,
+                                    "CAD": 68.11,
+                                    "AED": 179.83,
+                                    "EUR": 43.61,
+                                    "INR": 4185.58,
+                                    "IDR": 798257,
+                                    "ILS": 171.99,
+                                    "JPY": 7141,
+                                    "MYR": 207.27,
+                                    "MXN": 950.11,
+                                    "SGD": 63.21,
+                                    "KRW": 67354,
+                                    "USD": 49,
+                                    "VND": 1271148
+                                }
+                            }
+                        },
+                        {
+                            "id": "chinacom-30days-10gb",
+                            "type": "sim",
+                            "price": 28,
+                            "amount": 10240,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "10 GB - 30 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To manually activate the eSIM on your eSIM capable device:</b><br></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "10 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 10,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 15.6,
+                                    "BRL": 56.9,
+                                    "GBP": 7.4,
+                                    "CAD": 13.9,
+                                    "AED": 36.7,
+                                    "EUR": 8.9,
+                                    "INR": 854.2,
+                                    "IDR": 162910,
+                                    "ILS": 35.1,
+                                    "JPY": 1457,
+                                    "MYR": 42.3,
+                                    "MXN": 193.9,
+                                    "SGD": 12.9,
+                                    "KRW": 13746,
+                                    "USD": 10,
+                                    "VND": 259418
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 43.68,
+                                    "BRL": 159.32,
+                                    "GBP": 20.72,
+                                    "CAD": 38.92,
+                                    "AED": 102.76,
+                                    "EUR": 24.92,
+                                    "INR": 2391.76,
+                                    "IDR": 456147,
+                                    "ILS": 98.28,
+                                    "JPY": 4080,
+                                    "MYR": 118.44,
+                                    "MXN": 542.92,
+                                    "SGD": 36.12,
+                                    "KRW": 38488,
+                                    "USD": 28,
+                                    "VND": 726370
+                                }
+                            }
+                        },
+                        {
+                            "id": "chinacom-30days-5gb",
+                            "type": "sim",
+                            "price": 16.5,
+                            "amount": 5120,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "5 GB - 30 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To manually activate the eSIM on your eSIM capable device:</b><br></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "5 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 5,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 7.8,
+                                    "BRL": 28.45,
+                                    "GBP": 3.7,
+                                    "CAD": 6.95,
+                                    "AED": 18.35,
+                                    "EUR": 4.45,
+                                    "INR": 427.1,
+                                    "IDR": 81455,
+                                    "ILS": 17.55,
+                                    "JPY": 729,
+                                    "MYR": 21.15,
+                                    "MXN": 96.95,
+                                    "SGD": 6.45,
+                                    "KRW": 6873,
+                                    "USD": 5,
+                                    "VND": 129709
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 25.74,
+                                    "BRL": 93.88,
+                                    "GBP": 12.21,
+                                    "CAD": 22.94,
+                                    "AED": 60.56,
+                                    "EUR": 14.68,
+                                    "INR": 1409.43,
+                                    "IDR": 268801,
+                                    "ILS": 57.92,
+                                    "JPY": 2405,
+                                    "MYR": 69.8,
+                                    "MXN": 319.94,
+                                    "SGD": 21.28,
+                                    "KRW": 22680,
+                                    "USD": 16.5,
+                                    "VND": 428040
+                                }
+                            }
+                        },
+                        {
+                            "id": "chinacom-30days-3gb",
+                            "type": "sim",
+                            "price": 11.5,
+                            "amount": 3072,
+                            "day": 30,
+                            "is_unlimited": false,
+                            "title": "3 GB - 30 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To manually activate the eSIM on your eSIM capable device:</b><br></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "3 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 3.2,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 4.99,
+                                    "BRL": 18.21,
+                                    "GBP": 2.37,
+                                    "CAD": 4.45,
+                                    "AED": 11.74,
+                                    "EUR": 2.85,
+                                    "INR": 273.34,
+                                    "IDR": 52131,
+                                    "ILS": 11.23,
+                                    "JPY": 466,
+                                    "MYR": 13.54,
+                                    "MXN": 62.05,
+                                    "SGD": 4.13,
+                                    "KRW": 4399,
+                                    "USD": 3.2,
+                                    "VND": 83014
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 17.94,
+                                    "BRL": 65.44,
+                                    "GBP": 8.51,
+                                    "CAD": 15.98,
+                                    "AED": 42.2,
+                                    "EUR": 10.24,
+                                    "INR": 982.33,
+                                    "IDR": 187346,
+                                    "ILS": 40.36,
+                                    "JPY": 1676,
+                                    "MYR": 48.64,
+                                    "MXN": 222.98,
+                                    "SGD": 14.84,
+                                    "KRW": 15808,
+                                    "USD": 11.5,
+                                    "VND": 298331
+                                }
+                            }
+                        },
+                        {
+                            "id": "chinacom-15days-2gb",
+                            "type": "sim",
+                            "price": 8.5,
+                            "amount": 2048,
+                            "day": 15,
+                            "is_unlimited": false,
+                            "title": "2 GB - 15 Days",
+                            "short_info": null,
+                            "qr_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To manually activate the eSIM on your eSIM capable device:</b><br></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "2 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 2.3,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 3.59,
+                                    "BRL": 13.09,
+                                    "GBP": 1.7,
+                                    "CAD": 3.2,
+                                    "AED": 8.44,
+                                    "EUR": 2.05,
+                                    "INR": 196.47,
+                                    "IDR": 37469,
+                                    "ILS": 8.07,
+                                    "JPY": 335,
+                                    "MYR": 9.73,
+                                    "MXN": 44.6,
+                                    "SGD": 2.97,
+                                    "KRW": 3162,
+                                    "USD": 2.3,
+                                    "VND": 59666
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 13.26,
+                                    "BRL": 48.36,
+                                    "GBP": 6.29,
+                                    "CAD": 11.82,
+                                    "AED": 31.2,
+                                    "EUR": 7.56,
+                                    "INR": 726.07,
+                                    "IDR": 138473,
+                                    "ILS": 29.84,
+                                    "JPY": 1239,
+                                    "MYR": 35.96,
+                                    "MXN": 164.82,
+                                    "SGD": 10.96,
+                                    "KRW": 11684,
+                                    "USD": 8.5,
+                                    "VND": 220505
+                                }
+                            }
+                        },
+                        {
+                            "id": "chinacom-7days-1gb",
+                            "type": "sim",
+                            "price": 5,
+                            "amount": 1024,
+                            "day": 7,
+                            "is_unlimited": false,
+                            "title": "1 GB - 7 Days",
+                            "short_info": "This eSIM doesn't come with a phone number.",
+                            "qr_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To activate the eSIM by scanning the QR code on your eSIM capable device you need to print or display this QR code on other device:</b></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Scan QR code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "manual_installation": "<p><b>eSIM name:</b> Chinacom</p><p><b>Coverage: </b>China</p><p><b>To manually activate the eSIM on your eSIM capable device:</b><br></p><ol><li>Settings > Cellular/Mobile > Add Cellular/Mobile Plan.</li><li>Manually enter the SM-DP+ Address and activation code.</li><li>Confirm eSIM plan details.</li><li>Label the eSIM.</li></ol><p><b>To access Data:</b></p><ol><li>Locate the APN settings in your settings menu.</li><li>Update the APN to \"globaldata\".</li><li>Enable data roaming.</li></ol><p><b>To top up:</b></p><p>Visit airalo.com/my-esims or if purchased through the Airalo website/app visit “My eSIMs” tab.</p>",
+                            "is_fair_usage_policy": false,
+                            "fair_usage_policy": null,
+                            "data": "1 GB",
+                            "voice": null,
+                            "text": null,
+                            "net_price": 1.2,
+                            "prices": {
+                                "net_price": {
+                                    "AUD": 1.87,
+                                    "BRL": 6.83,
+                                    "GBP": 0.89,
+                                    "CAD": 1.67,
+                                    "AED": 4.4,
+                                    "EUR": 1.07,
+                                    "INR": 102.5,
+                                    "IDR": 19549,
+                                    "ILS": 4.21,
+                                    "JPY": 175,
+                                    "MYR": 5.08,
+                                    "MXN": 23.27,
+                                    "SGD": 1.55,
+                                    "KRW": 1649,
+                                    "USD": 1.2,
+                                    "VND": 31130
+                                },
+                                "recommended_retail_price": {
+                                    "AUD": 7.8,
+                                    "BRL": 28.45,
+                                    "GBP": 3.7,
+                                    "CAD": 6.95,
+                                    "AED": 18.35,
+                                    "EUR": 4.45,
+                                    "INR": 427.1,
+                                    "IDR": 81455,
+                                    "ILS": 17.55,
+                                    "JPY": 729,
+                                    "MYR": 21.15,
+                                    "MXN": 96.95,
+                                    "SGD": 6.45,
+                                    "KRW": 6873,
+                                    "USD": 5,
+                                    "VND": 129709
+                                }
+                            }
+                        }
+                    ],
+                    "countries": [
+                        {
+                            "country_code": "CN",
+                            "title": "China",
+                            "image": {
+                                "width": 132,
+                                "height": 99,
+                                "url": "https://cdn.airalo.com/images/301616a0-cd3e-4151-a4ec-78c8ddb04ca9.png"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "links": {
+        "first": "https://partners-api.airalo.com/v2/packages?limit=3&language=en&page=1",
+        "last": "https://partners-api.airalo.com/v2/packages?limit=3&language=en&page=71",
+        "prev": null,
+        "next": "https://partners-api.airalo.com/v2/packages?limit=3&language=en&page=2"
+    },
+    "meta": {
+        "message": "success",
+        "current_page": 1,
+        "from": 1,
+        "last_page": 71,
+        "path": "https://partners-api.airalo.com/v2/packages",
+        "per_page": "3",
+        "to": 3,
+        "total": 211
+    }
+}

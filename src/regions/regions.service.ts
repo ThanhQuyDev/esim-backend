@@ -55,6 +55,10 @@ export class RegionsService {
     return this.regionsRepository.findById(id);
   }
 
+  findBySlug(slug: Region['slug']): Promise<NullableType<Region>> {
+    return this.regionsRepository.findBySlug(slug);
+  }
+
   async update(
     id: Region['id'],
     updateRegionDto: UpdateRegionDto,

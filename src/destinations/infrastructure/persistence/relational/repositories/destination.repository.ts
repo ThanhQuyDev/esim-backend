@@ -83,6 +83,16 @@ export class DestinationsRelationalRepository
     return entity ? DestinationMapper.toDomain(entity) : null;
   }
 
+  async findByCountryCode(
+    countryCode: Destination['countryCode'],
+  ): Promise<NullableType<Destination>> {
+    const entity = await this.destinationsRepository.findOne({
+      where: { countryCode },
+    });
+
+    return entity ? DestinationMapper.toDomain(entity) : null;
+  }
+
   async update(
     id: Destination['id'],
     payload: Partial<Destination>,
@@ -105,6 +115,26 @@ export class DestinationsRelationalRepository
     );
 
     return DestinationMapper.toDomain(updatedEntity);
+  }
+
+  async addRegion(
+    destinationId: Destination['id'],
+    regionId: number,
+  ): Promise<void> {
+    const entity = await this.destinationsRepository.findOne({
+      where: { id: Number(destinationId) },
+      relations: ['regions'],
+    });
+    if (!entity) return;
+
+    const alreadyLinked = entity.regions?.some((r) => r.id === regionId);
+    if (alreadyLinked) return;
+
+    await this.destinationsRepository
+      .createQueryBuilder()
+      .relation(DestinationEntity, 'regions')
+      .of(destinationId)
+      .add(regionId);
   }
 
   async remove(id: Destination['id']): Promise<void> {

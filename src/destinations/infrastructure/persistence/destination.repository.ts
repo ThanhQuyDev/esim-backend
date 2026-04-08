@@ -30,10 +30,19 @@ export abstract class DestinationRepository {
     slug: Destination['slug'],
   ): Promise<NullableType<Destination>>;
 
+  abstract findByCountryCode(
+    countryCode: Destination['countryCode'],
+  ): Promise<NullableType<Destination>>;
+
   abstract update(
     id: Destination['id'],
     payload: DeepPartial<Destination>,
   ): Promise<Destination | null>;
+
+  abstract addRegion(
+    destinationId: Destination['id'],
+    regionId: number,
+  ): Promise<void>;
 
   abstract remove(id: Destination['id']): Promise<void>;
 }
