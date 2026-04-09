@@ -66,8 +66,8 @@ export class DestinationsController {
   ): Promise<InfinityPaginationResponseDto<Destination>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
-    if (limit > 50) {
-      limit = 50;
+    if (limit > 500) {
+      limit = 500;
     }
 
     return infinityPagination(

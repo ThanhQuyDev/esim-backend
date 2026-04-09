@@ -1,0 +1,27 @@
+# Stage 1: Build
+FROM node:24.14.0-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# Stage 2: Production
+FROM node:24.14.0-alpine
+
+RUN apk add --no-cache bash
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src/database/migrations ./src/database/migrations
+COPY startup.railway.sh /opt/startup.railway.sh
+RUN chmod +x /opt/startup.railway.sh
+
+CMD ["/opt/startup.railway.sh"]

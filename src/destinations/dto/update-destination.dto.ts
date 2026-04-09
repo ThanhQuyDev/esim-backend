@@ -1,6 +1,12 @@
 import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateDestinationDto } from './create-destination.dto';
-import { IsBoolean, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class UpdateDestinationDto extends PartialType(CreateDestinationDto) {
   @ApiPropertyOptional({ example: 'Japan', type: String })

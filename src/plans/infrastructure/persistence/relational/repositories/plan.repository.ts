@@ -37,11 +37,7 @@ export class PlansRelationalRepository implements PlanRepository {
       const qb = this.plansRepository
         .createQueryBuilder('plan')
         .leftJoinAndSelect('plan.destination', 'dest')
-        .leftJoin(
-          'destination',
-          'child',
-          'child."parentId" = dest.id',
-        );
+        .leftJoin('destination', 'child', 'child."parentId" = dest.id');
 
       qb.where(
         '(plan.name ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search)',

@@ -15,7 +15,7 @@ export class SyncOrchestratorService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    // await this.runFullSync();
+    await this.runFullSync();
   }
 
   @Cron('0 */6 * * *')
