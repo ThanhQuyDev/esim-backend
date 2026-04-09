@@ -4,13 +4,12 @@ import {
   DeleteDateColumn,
   Entity,
   Index,
-  ManyToOne,
-  OneToMany,
-  JoinColumn,
+  ManyToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
+import { DestinationEntity } from '../../../../../destinations/infrastructure/persistence/relational/entities/destination.entity';
 
 @Entity({ name: 'region' })
 export class RegionEntity extends EntityRelationalHelper {
@@ -24,18 +23,8 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: String, unique: true })
   slug: string;
 
-  @Column({ type: Number, nullable: true })
-  parentId: number | null;
-
-  @ManyToOne(() => RegionEntity, (region) => region.children, {
-    nullable: true,
-    onDelete: 'SET NULL',
-  })
-  @JoinColumn({ name: 'parentId' })
-  parent: RegionEntity | null;
-
-  @OneToMany(() => RegionEntity, (region) => region.parent)
-  children: RegionEntity[];
+  @ManyToMany(() => DestinationEntity, (destination) => destination.regions)
+  destinations: DestinationEntity[];
 
   @Column({ type: String, nullable: true })
   avatarUrl: string | null;

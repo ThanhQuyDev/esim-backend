@@ -1,5 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
@@ -15,7 +14,7 @@ import {
 } from './esimaccess-api.types';
 
 @Injectable()
-export class EsimAccessService implements OnModuleInit {
+export class EsimAccessService {
   private readonly logger = new Logger(EsimAccessService.name);
 
   constructor(
@@ -28,11 +27,6 @@ export class EsimAccessService implements OnModuleInit {
     private readonly providerSyncLogsService: ProviderSyncLogsService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    await this.syncPlans();
-  }
-
-  @Cron('0 */6 * * *')
   async syncPlans(): Promise<void> {
     this.logger.log('Starting esimaccess plan sync...');
 
@@ -45,7 +39,8 @@ export class EsimAccessService implements OnModuleInit {
 
     try {
       const packages = await this.fetchPackages();
-      const profitPercentage = await this.profitMarginsService.getActivePercentage();
+      const profitPercentage =
+        await this.profitMarginsService.getActivePercentage();
       let itemsSynced = 0;
 
       for (const pkg of packages) {
@@ -98,10 +93,9 @@ export class EsimAccessService implements OnModuleInit {
     const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
       infer: true,
     });
-    const accessCode = this.configService.getOrThrow(
-      'esimAccess.accessCode',
-      { infer: true },
-    );
+    const accessCode = this.configService.getOrThrow('esimAccess.accessCode', {
+      infer: true,
+    });
 
     const { data } = await firstValueFrom(
       this.httpService.post<EsimAccessApiResponse>(
@@ -122,9 +116,7 @@ export class EsimAccessService implements OnModuleInit {
     );
 
     if (!data.success) {
-      throw new Error(
-        `API error: ${data.errorCode} - ${data.errorMsg}`,
-      );
+      throw new Error(`API error: ${data.errorCode} - ${data.errorMsg}`);
     }
 
     return data.obj.packageList;
@@ -206,10 +198,7 @@ export class EsimAccessService implements OnModuleInit {
     }
   }
 
-  private async resolveRegion(
-    pkg: EsimAccessPackage,
-    locationCodes: string[],
-  ) {
+  private async resolveRegion(pkg: EsimAccessPackage, locationCodes: string[]) {
     const regionSlug = `esimaccess-${pkg.locationCode.toLowerCase()}`;
     const existing = await this.regionsService.findBySlug(regionSlug);
 
@@ -268,7 +257,8 @@ export class EsimAccessService implements OnModuleInit {
     };
 
     const costPrice = pkg.price / 10000;
-    const price = Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
+    const price =
+      Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
     const planData = {
       provider: 'esimaccess',
       providerPlanId: pkg.packageCode,

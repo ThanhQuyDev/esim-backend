@@ -1,6 +1,5 @@
 import { Destination } from '../../../../domain/destination';
 import { DestinationEntity } from '../entities/destination.entity';
-import { RegionMapper } from '../../../../../regions/infrastructure/persistence/relational/mappers/region.mapper';
 
 export class DestinationMapper {
   static toDomain(raw: DestinationEntity): Destination {
@@ -9,9 +8,6 @@ export class DestinationMapper {
     domainEntity.name = raw.name;
     domainEntity.slug = raw.slug;
     domainEntity.countryCode = raw.countryCode;
-    if (raw.regions) {
-      domainEntity.regions = raw.regions.map(RegionMapper.toDomain);
-    }
     domainEntity.flagUrl = raw.flagUrl;
     domainEntity.avatarUrl = raw.avatarUrl;
     domainEntity.keySearch = raw.keySearch;

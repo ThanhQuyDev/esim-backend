@@ -2,7 +2,10 @@ import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { ProviderSyncLog } from '../../domain/provider-sync-log';
-import { FilterProviderSyncLogDto, SortProviderSyncLogDto } from '../../dto/query-provider-sync-log.dto';
+import {
+  FilterProviderSyncLogDto,
+  SortProviderSyncLogDto,
+} from '../../dto/query-provider-sync-log.dto';
 
 export abstract class ProviderSyncLogRepository {
   abstract create(
@@ -19,7 +22,9 @@ export abstract class ProviderSyncLogRepository {
     paginationOptions: IPaginationOptions;
   }): Promise<ProviderSyncLog[]>;
 
-  abstract findById(id: ProviderSyncLog['id']): Promise<NullableType<ProviderSyncLog>>;
+  abstract findById(
+    id: ProviderSyncLog['id'],
+  ): Promise<NullableType<ProviderSyncLog>>;
 
   abstract update(
     id: ProviderSyncLog['id'],

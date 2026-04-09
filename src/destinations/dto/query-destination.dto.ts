@@ -10,6 +10,11 @@ import { Transform, Type, plainToInstance } from 'class-transformer';
 import { Destination } from '../domain/destination';
 
 export class FilterDestinationDto {
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
   @ApiPropertyOptional({ type: Boolean })
   @IsOptional()
   @IsBoolean()

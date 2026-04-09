@@ -2,7 +2,9 @@ import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateProviderSyncLogDto } from './create-provider-sync-log.dto';
 import { IsDateString, IsNumber, IsOptional, IsString } from 'class-validator';
 
-export class UpdateProviderSyncLogDto extends PartialType(CreateProviderSyncLogDto) {
+export class UpdateProviderSyncLogDto extends PartialType(
+  CreateProviderSyncLogDto,
+) {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()

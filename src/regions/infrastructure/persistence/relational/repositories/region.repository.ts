@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository, IsNull } from 'typeorm';
+import { Repository } from 'typeorm';
 import { RegionEntity } from '../entities/region.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
-import { FilterRegionDto, SortRegionDto } from '../../../../dto/query-region.dto';
+import {
+  FilterRegionDto,
+  SortRegionDto,
+} from '../../../../dto/query-region.dto';
 import { Region } from '../../../../domain/region';
 import { RegionRepository } from '../../region.repository';
 import { RegionMapper } from '../mappers/region.mapper';
@@ -33,46 +36,82 @@ export class RegionsRelationalRepository implements RegionRepository {
     sortOptions?: SortRegionDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<Region[]> {
-    const where: FindOptionsWhere<RegionEntity> = {};
+    const qb = this.regionsRepository
+      .createQueryBuilder('region')
+      .leftJoin('destination_region', 'dr', 'dr."regionId" = region.id')
+      .leftJoin('destination', 'dest', 'dest.id = dr."destinationId"')
+      .addSelect('COUNT(DISTINCT dest.id)', 'dest_count');
 
     if (filterOptions?.isActive !== undefined) {
-      where.isActive = filterOptions.isActive;
-    }
-    if (filterOptions?.parentId !== undefined) {
-      where.parentId = filterOptions.parentId === null ? IsNull() as any : filterOptions.parentId;
+      qb.andWhere('region."isActive" = :isActive', {
+        isActive: filterOptions.isActive,
+      });
     }
 
-    const entities = await this.regionsRepository.find({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      where: where,
-      relations: ['children'],
-      order: sortOptions?.reduce(
-        (accumulator, sort) => ({
-          ...accumulator,
-          [sort.orderBy]: sort.order,
-        }),
-        {},
-      ),
+    if (filterOptions?.search) {
+      qb.andWhere('(region.name ILIKE :search OR dest.name ILIKE :search)', {
+        search: `%${filterOptions.search}%`,
+      });
+    }
+
+    qb.groupBy('region.id');
+
+    if (sortOptions?.length) {
+      for (const sort of sortOptions) {
+        qb.addOrderBy(
+          `region.${String(sort.orderBy)}`,
+          sort.order as 'ASC' | 'DESC',
+        );
+      }
+    }
+
+    qb.offset((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.limit(paginationOptions.limit);
+
+    const rawResults = await qb.getRawAndEntities();
+
+    return rawResults.entities.map((entity, index) => {
+      const domain = RegionMapper.toDomain(entity);
+      domain.destinationCount = parseInt(
+        rawResults.raw[index]?.dest_count ?? '0',
+        10,
+      );
+      return domain;
     });
-
-    return entities.map((entity) => RegionMapper.toDomain(entity));
   }
 
   async findById(id: Region['id']): Promise<NullableType<Region>> {
     const entity = await this.regionsRepository.findOne({
       where: { id: Number(id) },
-      relations: ['children'],
     });
-    return entity ? RegionMapper.toDomain(entity) : null;
+    if (!entity) return null;
+
+    const destinations = await this.regionsRepository.query(
+      `SELECT d.* FROM "destination" d
+       INNER JOIN "destination_region" dr ON dr."destinationId" = d.id
+       WHERE dr."regionId" = $1 AND d."deletedAt" IS NULL`,
+      [id],
+    );
+    entity.destinations = destinations;
+
+    return RegionMapper.toDomain(entity);
   }
 
   async findBySlug(slug: Region['slug']): Promise<NullableType<Region>> {
     const entity = await this.regionsRepository.findOne({
       where: { slug },
-      relations: ['children'],
     });
-    return entity ? RegionMapper.toDomain(entity) : null;
+    if (!entity) return null;
+
+    const destinations = await this.regionsRepository.query(
+      `SELECT d.* FROM "destination" d
+       INNER JOIN "destination_region" dr ON dr."destinationId" = d.id
+       WHERE dr."regionId" = $1 AND d."deletedAt" IS NULL`,
+      [entity.id],
+    );
+    entity.destinations = destinations;
+
+    return RegionMapper.toDomain(entity);
   }
 
   async update(id: Region['id'], payload: Partial<Region>): Promise<Region> {

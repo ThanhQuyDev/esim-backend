@@ -50,9 +50,7 @@ export class PlanPricesController {
   })
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(
-    @Body() createPlanPriceDto: CreatePlanPriceDto,
-  ): Promise<PlanPrice> {
+  create(@Body() createPlanPriceDto: CreatePlanPriceDto): Promise<PlanPrice> {
     return this.planPricesService.create(createPlanPriceDto);
   }
 
@@ -93,9 +91,7 @@ export class PlanPricesController {
     type: String,
     required: true,
   })
-  findOne(
-    @Param('id') id: PlanPrice['id'],
-  ): Promise<NullableType<PlanPrice>> {
+  findOne(@Param('id') id: PlanPrice['id']): Promise<NullableType<PlanPrice>> {
     return this.planPricesService.findById(id);
   }
 

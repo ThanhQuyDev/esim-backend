@@ -2,7 +2,10 @@ import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { OrderItem } from '../../domain/order-item';
-import { FilterOrderItemDto, SortOrderItemDto } from '../../dto/query-order-item.dto';
+import {
+  FilterOrderItemDto,
+  SortOrderItemDto,
+} from '../../dto/query-order-item.dto';
 
 export abstract class OrderItemRepository {
   abstract create(

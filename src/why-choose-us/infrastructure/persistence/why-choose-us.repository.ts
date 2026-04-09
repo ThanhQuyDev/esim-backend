@@ -1,0 +1,27 @@
+import { DeepPartial } from '../../../utils/types/deep-partial.type';
+import { NullableType } from '../../../utils/types/nullable.type';
+import { IPaginationOptions } from '../../../utils/types/pagination-options';
+import { WhyChooseUs } from '../../domain/why-choose-us';
+
+export abstract class WhyChooseUsRepository {
+  abstract create(
+    data: Omit<WhyChooseUs, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<WhyChooseUs>;
+
+  abstract findAllWithPagination({
+    paginationOptions,
+  }: {
+    paginationOptions: IPaginationOptions;
+  }): Promise<WhyChooseUs[]>;
+
+  abstract findById(id: WhyChooseUs['id']): Promise<NullableType<WhyChooseUs>>;
+
+  abstract findByIds(ids: WhyChooseUs['id'][]): Promise<WhyChooseUs[]>;
+
+  abstract update(
+    id: WhyChooseUs['id'],
+    payload: DeepPartial<WhyChooseUs>,
+  ): Promise<WhyChooseUs | null>;
+
+  abstract remove(id: WhyChooseUs['id']): Promise<void>;
+}

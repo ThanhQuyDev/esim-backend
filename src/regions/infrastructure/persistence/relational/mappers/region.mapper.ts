@@ -1,5 +1,6 @@
 import { Region } from '../../../../domain/region';
 import { RegionEntity } from '../entities/region.entity';
+import { DestinationMapper } from '../../../../../destinations/infrastructure/persistence/relational/mappers/destination.mapper';
 
 export class RegionMapper {
   static toDomain(raw: RegionEntity): Region {
@@ -7,12 +8,11 @@ export class RegionMapper {
     domainEntity.id = raw.id;
     domainEntity.name = raw.name;
     domainEntity.slug = raw.slug;
-    domainEntity.parentId = raw.parentId;
-    if (raw.parent) {
-      domainEntity.parent = RegionMapper.toDomain(raw.parent);
-    }
-    if (raw.children) {
-      domainEntity.children = raw.children.map(RegionMapper.toDomain);
+    if (raw.destinations) {
+      domainEntity.destinations = raw.destinations.map(
+        DestinationMapper.toDomain,
+      );
+      domainEntity.destinationCount = raw.destinations.length;
     }
     domainEntity.avatarUrl = raw.avatarUrl;
     domainEntity.isActive = raw.isActive;
@@ -29,7 +29,6 @@ export class RegionMapper {
     }
     persistenceEntity.name = domainEntity.name;
     persistenceEntity.slug = domainEntity.slug;
-    persistenceEntity.parentId = domainEntity.parentId;
     persistenceEntity.avatarUrl = domainEntity.avatarUrl;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.createdAt = domainEntity.createdAt;

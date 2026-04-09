@@ -59,6 +59,9 @@ export class Plan {
   @ApiProperty({ type: Boolean, example: true })
   topUp: boolean;
 
+  @ApiProperty({ type: Boolean, example: false })
+  isCheapest: boolean;
+
   @ApiProperty({ type: Boolean, example: true })
   isActive: boolean;
 

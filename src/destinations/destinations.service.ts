@@ -16,9 +16,7 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 
 @Injectable()
 export class DestinationsService {
-  constructor(
-    private readonly destinationsRepository: DestinationRepository,
-  ) {}
+  constructor(private readonly destinationsRepository: DestinationRepository) {}
 
   async create(
     createDestinationDto: CreateDestinationDto,
@@ -78,9 +76,7 @@ export class DestinationsService {
     return this.destinationsRepository.findByCountryCode(countryCode);
   }
 
-  findByName(
-    name: Destination['name'],
-  ): Promise<NullableType<Destination>> {
+  findByName(name: Destination['name']): Promise<NullableType<Destination>> {
     return this.destinationsRepository.findByName(name);
   }
 

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, ILike, Repository } from 'typeorm';
 import { DestinationEntity } from '../entities/destination.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import {
@@ -13,9 +13,7 @@ import { DestinationMapper } from '../mappers/destination.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 
 @Injectable()
-export class DestinationsRelationalRepository
-  implements DestinationRepository
-{
+export class DestinationsRelationalRepository implements DestinationRepository {
   constructor(
     @InjectRepository(DestinationEntity)
     private readonly destinationsRepository: Repository<DestinationEntity>,
@@ -38,19 +36,29 @@ export class DestinationsRelationalRepository
     sortOptions?: SortDestinationDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<Destination[]> {
-    const where: FindOptionsWhere<DestinationEntity> = {};
+    const where: FindOptionsWhere<DestinationEntity>[] = [];
+    const baseWhere: FindOptionsWhere<DestinationEntity> = {};
 
     if (filterOptions?.isPopular !== undefined) {
-      where.isPopular = filterOptions.isPopular;
+      baseWhere.isPopular = filterOptions.isPopular;
     }
     if (filterOptions?.isActive !== undefined) {
-      where.isActive = filterOptions.isActive;
+      baseWhere.isActive = filterOptions.isActive;
+    }
+
+    if (filterOptions?.search) {
+      where.push(
+        { ...baseWhere, name: ILike(`%${filterOptions.search}%`) },
+        { ...baseWhere, keySearch: ILike(`%${filterOptions.search}%`) },
+      );
+    } else {
+      where.push(baseWhere);
     }
 
     const entities = await this.destinationsRepository.find({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
-      where: where,
+      where,
       order: sortOptions?.reduce(
         (accumulator, sort) => ({
           ...accumulator,
@@ -63,9 +71,7 @@ export class DestinationsRelationalRepository
     return entities.map((entity) => DestinationMapper.toDomain(entity));
   }
 
-  async findById(
-    id: Destination['id'],
-  ): Promise<NullableType<Destination>> {
+  async findById(id: Destination['id']): Promise<NullableType<Destination>> {
     const entity = await this.destinationsRepository.findOne({
       where: { id: Number(id) },
     });

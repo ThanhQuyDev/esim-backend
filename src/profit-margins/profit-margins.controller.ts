@@ -73,7 +73,9 @@ export class ProfitMarginsController {
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: String, required: true })
-  findOne(@Param('id') id: ProfitMargin['id']): Promise<NullableType<ProfitMargin>> {
+  findOne(
+    @Param('id') id: ProfitMargin['id'],
+  ): Promise<NullableType<ProfitMargin>> {
     return this.profitMarginsService.findById(id);
   }
 

@@ -1,7 +1,10 @@
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { ProfitMargin } from '../../domain/profit-margin';
-import { FilterProfitMarginDto, SortProfitMarginDto } from '../../dto/query-profit-margin.dto';
+import {
+  FilterProfitMarginDto,
+  SortProfitMarginDto,
+} from '../../dto/query-profit-margin.dto';
 import { DeepPartial } from '../../../utils/types/deep-partial.type';
 
 export abstract class ProfitMarginRepository {
@@ -19,7 +22,9 @@ export abstract class ProfitMarginRepository {
     paginationOptions: IPaginationOptions;
   }): Promise<ProfitMargin[]>;
 
-  abstract findById(id: ProfitMargin['id']): Promise<NullableType<ProfitMargin>>;
+  abstract findById(
+    id: ProfitMargin['id'],
+  ): Promise<NullableType<ProfitMargin>>;
 
   abstract update(
     id: ProfitMargin['id'],

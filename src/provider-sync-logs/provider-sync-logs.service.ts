@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { CreateProviderSyncLogDto } from './dto/create-provider-sync-log.dto';
 import { UpdateProviderSyncLogDto } from './dto/update-provider-sync-log.dto';
 import { NullableType } from '../utils/types/nullable.type';
-import { FilterProviderSyncLogDto, SortProviderSyncLogDto } from './dto/query-provider-sync-log.dto';
+import {
+  FilterProviderSyncLogDto,
+  SortProviderSyncLogDto,
+} from './dto/query-provider-sync-log.dto';
 import { ProviderSyncLogRepository } from './infrastructure/persistence/provider-sync-log.repository';
 import { ProviderSyncLog } from './domain/provider-sync-log';
 import { IPaginationOptions } from '../utils/types/pagination-options';
@@ -13,9 +16,7 @@ export class ProviderSyncLogsService {
     private readonly providerSyncLogsRepository: ProviderSyncLogRepository,
   ) {}
 
-  async create(
-    createDto: CreateProviderSyncLogDto,
-  ): Promise<ProviderSyncLog> {
+  async create(createDto: CreateProviderSyncLogDto): Promise<ProviderSyncLog> {
     return this.providerSyncLogsRepository.create({
       provider: createDto.provider,
       syncType: createDto.syncType,

@@ -33,19 +33,64 @@ export class PlansRelationalRepository implements PlanRepository {
     sortOptions?: SortPlanDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<Plan[]> {
+    if (filterOptions?.search) {
+      const qb = this.plansRepository
+        .createQueryBuilder('plan')
+        .leftJoinAndSelect('plan.destination', 'dest');
+
+      qb.where(
+        '(plan.name ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search)',
+        { search: `%${filterOptions.search}%` },
+      );
+
+      if (filterOptions?.isCheapest !== undefined) {
+        qb.andWhere('plan."isCheapest" = :isCheapest', {
+          isCheapest: filterOptions.isCheapest,
+        });
+      }
+      if (filterOptions?.isActive !== undefined) {
+        qb.andWhere('plan."isActive" = :isActive', {
+          isActive: filterOptions.isActive,
+        });
+      }
+      if (filterOptions?.destinationId !== undefined) {
+        qb.andWhere('plan."destinationId" = :destinationId', {
+          destinationId: filterOptions.destinationId,
+        });
+      }
+
+      if (sortOptions?.length) {
+        for (const sort of sortOptions) {
+          qb.addOrderBy(
+            `plan.${String(sort.orderBy)}`,
+            sort.order as 'ASC' | 'DESC',
+          );
+        }
+      }
+
+      qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+      qb.take(paginationOptions.limit);
+
+      const entities = await qb.getMany();
+      return entities.map((entity) => PlanMapper.toDomain(entity));
+    }
+
     const where: FindOptionsWhere<PlanEntity> = {};
 
+    if (filterOptions?.isCheapest !== undefined) {
+      where.isCheapest = filterOptions.isCheapest;
+    }
     if (filterOptions?.isActive !== undefined) {
       where.isActive = filterOptions.isActive;
     }
     if (filterOptions?.destinationId !== undefined) {
-      where.destinationId = filterOptions.destinationId;
+      where.destinationId = filterOptions.destinationId as any;
     }
 
     const entities = await this.plansRepository.find({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
-      where: where,
+      where,
       order: sortOptions?.reduce(
         (accumulator, sort) => ({
           ...accumulator,
@@ -91,6 +136,41 @@ export class PlansRelationalRepository implements PlanRepository {
     );
 
     return PlanMapper.toDomain(updatedEntity);
+  }
+
+  async markCheapestPlans(): Promise<void> {
+    // Reset all isCheapest to false
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "isCheapest" = false WHERE "deletedAt" IS NULL`,
+    );
+
+    // Mark cheapest plan per group (destinationId, type, dataGb, durationDays)
+    // Only for plans with a destinationId (single-country plans)
+    await this.plansRepository.query(`
+      UPDATE "plan" SET "isCheapest" = true
+      WHERE id IN (
+        SELECT DISTINCT ON ("destinationId", "type", "dataGb", "durationDays") id
+        FROM "plan"
+        WHERE "deletedAt" IS NULL
+          AND "isActive" = true
+          AND "destinationId" IS NOT NULL
+        ORDER BY "destinationId", "type", "dataGb", "durationDays", "costPrice" ASC
+      )
+    `);
+
+    // Mark cheapest plan per group (regionId, type, dataGb, durationDays)
+    // For region plans
+    await this.plansRepository.query(`
+      UPDATE "plan" SET "isCheapest" = true
+      WHERE id IN (
+        SELECT DISTINCT ON ("regionId", "type", "dataGb", "durationDays") id
+        FROM "plan"
+        WHERE "deletedAt" IS NULL
+          AND "isActive" = true
+          AND "regionId" IS NOT NULL
+        ORDER BY "regionId", "type", "dataGb", "durationDays", "costPrice" ASC
+      )
+    `);
   }
 
   async remove(id: Plan['id']): Promise<void> {

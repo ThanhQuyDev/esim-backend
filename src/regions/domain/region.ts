@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Destination } from '../../destinations/domain/destination';
 
 const idType = Number;
 
@@ -6,20 +7,17 @@ export class Region {
   @ApiProperty({ type: idType })
   id: number;
 
-  @ApiProperty({ type: String, example: 'Asia' })
+  @ApiProperty({ type: String, example: 'Europe' })
   name: string;
 
-  @ApiProperty({ type: String, example: 'asia' })
+  @ApiProperty({ type: String, example: 'europe' })
   slug: string;
 
-  @ApiPropertyOptional({ type: idType, example: 1 })
-  parentId: number | null;
+  @ApiPropertyOptional({ type: () => [Destination] })
+  destinations?: Destination[];
 
-  @ApiPropertyOptional({ type: () => Region })
-  parent?: Region | null;
-
-  @ApiPropertyOptional({ type: () => [Region] })
-  children?: Region[];
+  @ApiPropertyOptional({ type: Number, example: 42 })
+  destinationCount?: number;
 
   @ApiPropertyOptional({ type: String })
   avatarUrl: string | null;

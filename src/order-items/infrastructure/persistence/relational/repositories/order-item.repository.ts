@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { OrderItemEntity } from '../entities/order-item.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
-import { FilterOrderItemDto, SortOrderItemDto } from '../../../../dto/query-order-item.dto';
+import {
+  FilterOrderItemDto,
+  SortOrderItemDto,
+} from '../../../../dto/query-order-item.dto';
 import { OrderItem } from '../../../../domain/order-item';
 import { OrderItemRepository } from '../../order-item.repository';
 import { OrderItemMapper } from '../mappers/order-item.mapper';
@@ -65,7 +68,10 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     return entity ? OrderItemMapper.toDomain(entity) : null;
   }
 
-  async update(id: OrderItem['id'], payload: Partial<OrderItem>): Promise<OrderItem> {
+  async update(
+    id: OrderItem['id'],
+    payload: Partial<OrderItem>,
+  ): Promise<OrderItem> {
     const entity = await this.orderItemsRepository.findOne({
       where: { id: Number(id) },
     });

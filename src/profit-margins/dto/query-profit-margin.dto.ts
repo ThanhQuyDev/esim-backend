@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  IsBoolean,
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Transform, Type, plainToInstance } from 'class-transformer';
 import { ProfitMargin } from '../domain/profit-margin';
 
@@ -37,7 +43,9 @@ export class QueryProfitMarginDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @Transform(({ value }) =>
-    value ? plainToInstance(FilterProfitMarginDto, JSON.parse(value)) : undefined,
+    value
+      ? plainToInstance(FilterProfitMarginDto, JSON.parse(value))
+      : undefined,
   )
   @ValidateNested()
   @Type(() => FilterProfitMarginDto)
@@ -46,7 +54,9 @@ export class QueryProfitMarginDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @Transform(({ value }) => {
-    return value ? plainToInstance(SortProfitMarginDto, JSON.parse(value)) : undefined;
+    return value
+      ? plainToInstance(SortProfitMarginDto, JSON.parse(value))
+      : undefined;
   })
   @ValidateNested({ each: true })
   @Type(() => SortProfitMarginDto)

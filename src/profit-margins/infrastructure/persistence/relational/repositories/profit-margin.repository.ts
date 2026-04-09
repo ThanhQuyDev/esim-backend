@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { ProfitMarginEntity } from '../entities/profit-margin.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
-import { FilterProfitMarginDto, SortProfitMarginDto } from '../../../../dto/query-profit-margin.dto';
+import {
+  FilterProfitMarginDto,
+  SortProfitMarginDto,
+} from '../../../../dto/query-profit-margin.dto';
 import { ProfitMargin } from '../../../../domain/profit-margin';
 import { ProfitMarginRepository } from '../../profit-margin.repository';
 import { ProfitMarginMapper } from '../mappers/profit-margin.mapper';

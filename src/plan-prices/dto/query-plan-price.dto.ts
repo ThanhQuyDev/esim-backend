@@ -48,9 +48,7 @@ export class QueryPlanPriceDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @Transform(({ value }) =>
-    value
-      ? plainToInstance(FilterPlanPriceDto, JSON.parse(value))
-      : undefined,
+    value ? plainToInstance(FilterPlanPriceDto, JSON.parse(value)) : undefined,
   )
   @ValidateNested()
   @Type(() => FilterPlanPriceDto)

@@ -28,5 +28,7 @@ export abstract class PlanRepository {
     payload: DeepPartial<Plan>,
   ): Promise<Plan | null>;
 
+  abstract markCheapestPlans(): Promise<void>;
+
   abstract remove(id: Plan['id']): Promise<void>;
 }

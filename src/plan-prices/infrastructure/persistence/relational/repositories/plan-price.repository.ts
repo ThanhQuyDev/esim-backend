@@ -61,9 +61,7 @@ export class PlanPricesRelationalRepository implements PlanPriceRepository {
     return entities.map((entity) => PlanPriceMapper.toDomain(entity));
   }
 
-  async findById(
-    id: PlanPrice['id'],
-  ): Promise<NullableType<PlanPrice>> {
+  async findById(id: PlanPrice['id']): Promise<NullableType<PlanPrice>> {
     const entity = await this.planPricesRepository.findOne({
       where: { id: Number(id) },
     });

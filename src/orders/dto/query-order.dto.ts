@@ -56,9 +56,7 @@ export class QueryOrderDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @Transform(({ value }) => {
-    return value
-      ? plainToInstance(SortOrderDto, JSON.parse(value))
-      : undefined;
+    return value ? plainToInstance(SortOrderDto, JSON.parse(value)) : undefined;
   })
   @ValidateNested({ each: true })
   @Type(() => SortOrderDto)

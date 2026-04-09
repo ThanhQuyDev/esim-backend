@@ -40,8 +40,17 @@ const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
   },
 });
 
+import { FaqsModule } from './faqs/faqs.module';
+
+import { WhyChooseUsModule } from './why-choose-us/why-choose-us.module';
+
+import { BlogsModule } from './blogs/blogs.module';
+
 @Module({
   imports: [
+    BlogsModule,
+    WhyChooseUsModule,
+    FaqsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [

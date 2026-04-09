@@ -22,9 +22,7 @@ export abstract class DestinationRepository {
     paginationOptions: IPaginationOptions;
   }): Promise<Destination[]>;
 
-  abstract findById(
-    id: Destination['id'],
-  ): Promise<NullableType<Destination>>;
+  abstract findById(id: Destination['id']): Promise<NullableType<Destination>>;
 
   abstract findBySlug(
     slug: Destination['slug'],

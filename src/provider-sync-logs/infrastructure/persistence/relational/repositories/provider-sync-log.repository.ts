@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { ProviderSyncLogEntity } from '../entities/provider-sync-log.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
-import { FilterProviderSyncLogDto, SortProviderSyncLogDto } from '../../../../dto/query-provider-sync-log.dto';
+import {
+  FilterProviderSyncLogDto,
+  SortProviderSyncLogDto,
+} from '../../../../dto/query-provider-sync-log.dto';
 import { ProviderSyncLog } from '../../../../domain/provider-sync-log';
 import { ProviderSyncLogRepository } from '../../provider-sync-log.repository';
 import { ProviderSyncLogMapper } from '../mappers/provider-sync-log.mapper';
@@ -61,14 +64,19 @@ export class ProviderSyncLogsRelationalRepository implements ProviderSyncLogRepo
     return entities.map((entity) => ProviderSyncLogMapper.toDomain(entity));
   }
 
-  async findById(id: ProviderSyncLog['id']): Promise<NullableType<ProviderSyncLog>> {
+  async findById(
+    id: ProviderSyncLog['id'],
+  ): Promise<NullableType<ProviderSyncLog>> {
     const entity = await this.providerSyncLogsRepository.findOne({
       where: { id: Number(id) },
     });
     return entity ? ProviderSyncLogMapper.toDomain(entity) : null;
   }
 
-  async update(id: ProviderSyncLog['id'], payload: Partial<ProviderSyncLog>): Promise<ProviderSyncLog> {
+  async update(
+    id: ProviderSyncLog['id'],
+    payload: Partial<ProviderSyncLog>,
+  ): Promise<ProviderSyncLog> {
     const entity = await this.providerSyncLogsRepository.findOne({
       where: { id: Number(id) },
     });

@@ -42,6 +42,7 @@ export class PlansService {
       currency: createPlanDto.currency,
       type: createPlanDto.type ?? 'data-in-total',
       topUp: createPlanDto.topUp ?? false,
+      isCheapest: false,
       isActive: createPlanDto.isActive ?? true,
     });
   }
@@ -104,6 +105,10 @@ export class PlansService {
       topUp: updatePlanDto.topUp,
       isActive: updatePlanDto.isActive,
     });
+  }
+
+  async markCheapestPlans(): Promise<void> {
+    await this.plansRepository.markCheapestPlans();
   }
 
   async remove(id: Plan['id']): Promise<void> {

@@ -12,13 +12,9 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 
 @Injectable()
 export class PlanPricesService {
-  constructor(
-    private readonly planPriceRepository: PlanPriceRepository,
-  ) {}
+  constructor(private readonly planPriceRepository: PlanPriceRepository) {}
 
-  async create(
-    createPlanPriceDto: CreatePlanPriceDto,
-  ): Promise<PlanPrice> {
+  async create(createPlanPriceDto: CreatePlanPriceDto): Promise<PlanPrice> {
     return this.planPriceRepository.create({
       planId: createPlanPriceDto.planId,
       currency: createPlanPriceDto.currency,

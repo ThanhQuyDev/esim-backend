@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Region } from '../../regions/domain/region';
 
 const idType = Number;
 
@@ -26,11 +25,6 @@ export class Destination {
     example: 'JP',
   })
   countryCode: string;
-
-  @ApiPropertyOptional({
-    type: () => [Region],
-  })
-  regions?: Region[];
 
   @ApiPropertyOptional({
     type: String,

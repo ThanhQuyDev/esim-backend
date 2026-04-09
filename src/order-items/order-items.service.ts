@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { CreateOrderItemDto } from './dto/create-order-item.dto';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto';
 import { NullableType } from '../utils/types/nullable.type';
-import { FilterOrderItemDto, SortOrderItemDto } from './dto/query-order-item.dto';
+import {
+  FilterOrderItemDto,
+  SortOrderItemDto,
+} from './dto/query-order-item.dto';
 import { OrderItemRepository } from './infrastructure/persistence/order-item.repository';
 import { OrderItem } from './domain/order-item';
 import { IPaginationOptions } from '../utils/types/pagination-options';

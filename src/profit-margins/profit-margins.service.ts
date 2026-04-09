@@ -2,14 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { CreateProfitMarginDto } from './dto/create-profit-margin.dto';
 import { UpdateProfitMarginDto } from './dto/update-profit-margin.dto';
 import { NullableType } from '../utils/types/nullable.type';
-import { FilterProfitMarginDto, SortProfitMarginDto } from './dto/query-profit-margin.dto';
+import {
+  FilterProfitMarginDto,
+  SortProfitMarginDto,
+} from './dto/query-profit-margin.dto';
 import { ProfitMarginRepository } from './infrastructure/persistence/profit-margin.repository';
 import { ProfitMargin } from './domain/profit-margin';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 
 @Injectable()
 export class ProfitMarginsService {
-  constructor(private readonly profitMarginRepository: ProfitMarginRepository) {}
+  constructor(
+    private readonly profitMarginRepository: ProfitMarginRepository,
+  ) {}
 
   async create(createDto: CreateProfitMarginDto): Promise<ProfitMargin> {
     return this.profitMarginRepository.create({

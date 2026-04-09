@@ -23,7 +23,6 @@ export default registerAs<EsimAccessConfig>('esimAccess', () => {
   return {
     accessCode: process.env.ESIMS_ACCESS_CODE!,
     secretKey: process.env.ESIM_ACCESS_SECRET_KEY!,
-    baseUrl:
-      process.env.ESIM_ACCESS_BASE_URL || 'https://api.esimaccess.com',
+    baseUrl: process.env.ESIM_ACCESS_BASE_URL || 'https://api.esimaccess.com',
   };
 });

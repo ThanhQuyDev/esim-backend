@@ -1,5 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
@@ -19,7 +18,7 @@ import {
 } from './airalo-api.types';
 
 @Injectable()
-export class AiraloService implements OnModuleInit {
+export class AiraloService {
   private readonly logger = new Logger(AiraloService.name);
 
   constructor(
@@ -32,11 +31,6 @@ export class AiraloService implements OnModuleInit {
     private readonly providerSyncLogsService: ProviderSyncLogsService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    await this.syncPlans();
-  }
-
-  @Cron('0 */6 * * *')
   async syncPlans(): Promise<void> {
     this.logger.log('Starting airalo plan sync...');
 
@@ -50,7 +44,8 @@ export class AiraloService implements OnModuleInit {
     try {
       const token = await this.authenticate();
       const countries = await this.fetchAllPackages(token);
-      const profitPercentage = await this.profitMarginsService.getActivePercentage();
+      const profitPercentage =
+        await this.profitMarginsService.getActivePercentage();
       let itemsSynced = 0;
 
       for (const country of countries) {
@@ -59,7 +54,12 @@ export class AiraloService implements OnModuleInit {
             if (pkg.type === 'topup') continue;
 
             try {
-              await this.processPackage(country, operator, pkg, profitPercentage);
+              await this.processPackage(
+                country,
+                operator,
+                pkg,
+                profitPercentage,
+              );
               itemsSynced++;
             } catch (error) {
               this.logger.error(
@@ -138,16 +138,13 @@ export class AiraloService implements OnModuleInit {
 
     do {
       const { data } = await firstValueFrom(
-        this.httpService.get<AiraloPackagesResponse>(
-          `${baseUrl}/v2/packages`,
-          {
-            params: { page, limit: 100 },
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/json',
-            },
+        this.httpService.get<AiraloPackagesResponse>(`${baseUrl}/v2/packages`, {
+          params: { page, limit: 100 },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
           },
-        ),
+        }),
       );
 
       allCountries.push(...data.data);
@@ -169,14 +166,28 @@ export class AiraloService implements OnModuleInit {
 
     if (isRegionPackage) {
       const region = await this.resolveRegion(country, operatorCountries);
-      await this.upsertPlan(country, operator, pkg, null, region.id, profitPercentage);
+      await this.upsertPlan(
+        country,
+        operator,
+        pkg,
+        null,
+        region.id,
+        profitPercentage,
+      );
     } else {
       const destination = await this.resolveDestination(
         country.country_code,
         country.title,
         country.image?.url || null,
       );
-      await this.upsertPlan(country, operator, pkg, destination.id, null, profitPercentage);
+      await this.upsertPlan(
+        country,
+        operator,
+        pkg,
+        destination.id,
+        null,
+        profitPercentage,
+      );
     }
   }
 
@@ -252,7 +263,8 @@ export class AiraloService implements OnModuleInit {
     const existing = await this.plansService.findBySlug(slug);
 
     const costPrice = pkg.net_price;
-    const price = Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
+    const price =
+      Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
     const planData = {
       provider: 'airalo',
       providerPlanId: pkg.id,

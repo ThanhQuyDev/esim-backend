@@ -83,6 +83,9 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   topUp: boolean;
 
+  @Column({ type: Boolean, default: false })
+  isCheapest: boolean;
+
   @Index()
   @Column({ type: Boolean, default: true })
   isActive: boolean;

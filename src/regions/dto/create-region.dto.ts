@@ -1,21 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsNumber } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateRegionDto {
-  @ApiProperty({ example: 'Asia', type: String })
+  @ApiProperty({ example: 'Europe', type: String })
   @IsNotEmpty()
   @IsString()
   name: string;
 
-  @ApiProperty({ example: 'asia', type: String })
+  @ApiProperty({ example: 'europe', type: String })
   @IsNotEmpty()
   @IsString()
   slug: string;
-
-  @ApiPropertyOptional({ example: 1, type: Number })
-  @IsOptional()
-  @IsNumber()
-  parentId?: number | null;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()

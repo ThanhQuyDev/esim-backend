@@ -30,7 +30,7 @@ export class DestinationEntity extends EntityRelationalHelper {
   @Column({ type: String, length: 10 })
   countryCode: string;
 
-  @ManyToMany(() => RegionEntity, { eager: true })
+  @ManyToMany(() => RegionEntity)
   @JoinTable({
     name: 'destination_region',
     joinColumn: { name: 'destinationId', referencedColumnName: 'id' },

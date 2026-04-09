@@ -1,5 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Transform, Type, plainToInstance } from 'class-transformer';
 import { ProviderSyncLog } from '../domain/provider-sync-log';
 
@@ -47,7 +52,9 @@ export class QueryProviderSyncLogDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @Transform(({ value }) =>
-    value ? plainToInstance(FilterProviderSyncLogDto, JSON.parse(value)) : undefined,
+    value
+      ? plainToInstance(FilterProviderSyncLogDto, JSON.parse(value))
+      : undefined,
   )
   @ValidateNested()
   @Type(() => FilterProviderSyncLogDto)
@@ -56,7 +63,9 @@ export class QueryProviderSyncLogDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @Transform(({ value }) =>
-    value ? plainToInstance(SortProviderSyncLogDto, JSON.parse(value)) : undefined,
+    value
+      ? plainToInstance(SortProviderSyncLogDto, JSON.parse(value))
+      : undefined,
   )
   @ValidateNested({ each: true })
   @Type(() => SortProviderSyncLogDto)

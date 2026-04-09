@@ -23,7 +23,6 @@ export default registerAs<AiraloConfig>('airalo', () => {
   return {
     clientId: process.env.AIRALO_API_CLIENT_ID!,
     clientSecret: process.env.AIRALO_API_CLIENT_SECRET!,
-    baseUrl:
-      process.env.AIRALO_BASE_URL || 'https://partners-api.airalo.com',
+    baseUrl: process.env.AIRALO_BASE_URL || 'https://partners-api.airalo.com',
   };
 });

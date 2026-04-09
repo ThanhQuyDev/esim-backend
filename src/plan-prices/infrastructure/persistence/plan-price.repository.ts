@@ -22,9 +22,7 @@ export abstract class PlanPriceRepository {
     paginationOptions: IPaginationOptions;
   }): Promise<PlanPrice[]>;
 
-  abstract findById(
-    id: PlanPrice['id'],
-  ): Promise<NullableType<PlanPrice>>;
+  abstract findById(id: PlanPrice['id']): Promise<NullableType<PlanPrice>>;
 
   abstract findByPlanIdAndCurrency(
     planId: PlanPrice['planId'],
