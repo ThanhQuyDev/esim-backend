@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -22,8 +23,13 @@ export class CreateDestinationDto {
   @ApiProperty({ example: 'JP', type: String })
   @IsNotEmpty()
   @IsString()
-  @MaxLength(2)
+  @MaxLength(10)
   countryCode: string;
+
+  @ApiPropertyOptional({ example: 1, type: Number })
+  @IsOptional()
+  @IsNumber()
+  parentId?: number | null;
 
   @ApiPropertyOptional({
     example: 'https://example.com/flags/jp.png',

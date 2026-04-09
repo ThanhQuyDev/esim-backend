@@ -4,8 +4,10 @@ import {
   DeleteDateColumn,
   Entity,
   Index,
+  JoinColumn,
   JoinTable,
   ManyToMany,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -29,6 +31,13 @@ export class DestinationEntity extends EntityRelationalHelper {
   @Index()
   @Column({ type: String, length: 10 })
   countryCode: string;
+
+  @Column({ type: Number, nullable: true })
+  parentId: number | null;
+
+  @ManyToOne(() => DestinationEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'parentId' })
+  parent: DestinationEntity | null;
 
   @ManyToMany(() => RegionEntity)
   @JoinTable({

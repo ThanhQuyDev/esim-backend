@@ -26,6 +26,9 @@ export class Destination {
   })
   countryCode: string;
 
+  @ApiPropertyOptional({ type: Number, example: 1 })
+  parentId: number | null;
+
   @ApiPropertyOptional({
     type: String,
     example: 'https://example.com/flags/jp.png',
