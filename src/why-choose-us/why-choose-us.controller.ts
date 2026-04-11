@@ -29,8 +29,6 @@ import { infinityPagination } from '../utils/infinity-pagination';
 import { FindAllWhyChooseUsDto } from './dto/find-all-why-choose-us.dto';
 
 @ApiTags('Whychooseus')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
 @Controller({
   path: 'why-choose-us',
   version: '1',
@@ -38,6 +36,8 @@ import { FindAllWhyChooseUsDto } from './dto/find-all-why-choose-us.dto';
 export class WhyChooseUsController {
   constructor(private readonly whyChooseUsService: WhyChooseUsService) {}
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Post()
   @ApiCreatedResponse({
     type: WhyChooseUs,
@@ -83,6 +83,8 @@ export class WhyChooseUsController {
     return this.whyChooseUsService.findById(id);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -99,6 +101,8 @@ export class WhyChooseUsController {
     return this.whyChooseUsService.update(id, updateWhyChooseUsDto);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Delete(':id')
   @ApiParam({
     name: 'id',

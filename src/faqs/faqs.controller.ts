@@ -29,8 +29,6 @@ import { infinityPagination } from '../utils/infinity-pagination';
 import { FindAllFaqsDto } from './dto/find-all-faqs.dto';
 
 @ApiTags('Faqs')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
 @Controller({
   path: 'faqs',
   version: '1',
@@ -38,6 +36,8 @@ import { FindAllFaqsDto } from './dto/find-all-faqs.dto';
 export class FaqsController {
   constructor(private readonly faqsService: FaqsService) {}
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Post()
   @ApiCreatedResponse({
     type: Faq,
@@ -83,6 +83,8 @@ export class FaqsController {
     return this.faqsService.findById(id);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -96,6 +98,8 @@ export class FaqsController {
     return this.faqsService.update(id, updateFaqDto);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Delete(':id')
   @ApiParam({
     name: 'id',

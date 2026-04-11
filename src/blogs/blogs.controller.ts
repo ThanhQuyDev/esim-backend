@@ -29,8 +29,6 @@ import { infinityPagination } from '../utils/infinity-pagination';
 import { FindAllBlogsDto } from './dto/find-all-blogs.dto';
 
 @ApiTags('Blogs')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
 @Controller({
   path: 'blogs',
   version: '1',
@@ -38,6 +36,8 @@ import { FindAllBlogsDto } from './dto/find-all-blogs.dto';
 export class BlogsController {
   constructor(private readonly blogsService: BlogsService) {}
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Post()
   @ApiCreatedResponse({
     type: Blog,
@@ -83,6 +83,8 @@ export class BlogsController {
     return this.blogsService.findById(id);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -96,6 +98,8 @@ export class BlogsController {
     return this.blogsService.update(id, updateBlogDto);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Delete(':id')
   @ApiParam({
     name: 'id',
