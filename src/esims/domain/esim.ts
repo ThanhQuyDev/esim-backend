@@ -21,6 +21,24 @@ export class Esim {
   @ApiPropertyOptional({ type: String })
   activationCode: string | null;
 
+  @ApiPropertyOptional({ type: String })
+  lpa: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  matchId: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  qrcode: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  directAppleInstallationUrl: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  apnValue: string | null;
+
+  @ApiPropertyOptional({ type: Boolean })
+  isRoaming: boolean | null;
+
   @ApiProperty({ type: String, example: 'available' })
   status: string;
 

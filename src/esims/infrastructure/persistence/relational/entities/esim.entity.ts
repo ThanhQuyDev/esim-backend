@@ -42,6 +42,24 @@ export class EsimEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   activationCode: string | null;
 
+  @Column({ type: String, nullable: true })
+  lpa: string | null;
+
+  @Column({ type: String, nullable: true })
+  matchId: string | null;
+
+  @Column({ type: String, nullable: true })
+  qrcode: string | null;
+
+  @Column({ type: String, nullable: true })
+  directAppleInstallationUrl: string | null;
+
+  @Column({ type: String, nullable: true })
+  apnValue: string | null;
+
+  @Column({ type: Boolean, nullable: true })
+  isRoaming: boolean | null;
+
   @Index()
   @Column({ type: String, default: 'available' })
   status: string;

@@ -24,5 +24,6 @@ export default registerAs<AiraloConfig>('airalo', () => {
     clientId: process.env.AIRALO_API_CLIENT_ID!,
     clientSecret: process.env.AIRALO_API_CLIENT_SECRET!,
     baseUrl: process.env.AIRALO_BASE_URL || 'https://partners-api.airalo.com',
+    webhookSecret: process.env.AIRALO_WEBHOOK_SECRET,
   };
 });

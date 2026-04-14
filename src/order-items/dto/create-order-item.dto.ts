@@ -18,10 +18,25 @@ export class CreateOrderItemDto {
   @IsNumber()
   planId: number;
 
-  @ApiProperty({ type: Number })
-  @IsNotEmpty()
-  @IsNumber()
-  planPriceId: number;
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  orderRequestId?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  providerOrderId?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  providerOrderCode?: string | null;
+
+  @ApiPropertyOptional({ type: String, example: 'pending' })
+  @IsOptional()
+  @IsString()
+  status?: string;
 
   @ApiProperty({ type: Number, example: 9.99 })
   @IsNotEmpty()

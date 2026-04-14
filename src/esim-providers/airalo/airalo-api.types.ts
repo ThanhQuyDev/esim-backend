@@ -66,6 +66,24 @@ export interface AiraloCountry {
   operators: AiraloOperator[];
 }
 
+export interface AiraloOrderAsyncRequest {
+  quantity: number;
+  package_id: string;
+  type: 'sim' | 'esim';
+  description?: string;
+  webhook_url?: string;
+}
+
+export interface AiraloOrderAsyncResponse {
+  data: {
+    request_id: string;
+    accepted_at: string;
+  };
+  meta: {
+    message: string;
+  };
+}
+
 export interface AiraloPackagesResponse {
   data: AiraloCountry[];
   meta: {

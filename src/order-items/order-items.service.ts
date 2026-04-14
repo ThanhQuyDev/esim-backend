@@ -18,7 +18,10 @@ export class OrderItemsService {
     return this.orderItemsRepository.create({
       orderId: createOrderItemDto.orderId,
       planId: createOrderItemDto.planId,
-      planPriceId: createOrderItemDto.planPriceId,
+      orderRequestId: createOrderItemDto.orderRequestId ?? null,
+      providerOrderId: createOrderItemDto.providerOrderId ?? null,
+      providerOrderCode: createOrderItemDto.providerOrderCode ?? null,
+      status: createOrderItemDto.status ?? 'pending',
       price: createOrderItemDto.price,
       currency: createOrderItemDto.currency,
       quantity: createOrderItemDto.quantity ?? 1,
@@ -45,6 +48,10 @@ export class OrderItemsService {
     return this.orderItemsRepository.findById(id);
   }
 
+  findByOrderRequestId(orderRequestId: string): Promise<OrderItem[]> {
+    return this.orderItemsRepository.findByOrderRequestId(orderRequestId);
+  }
+
   async update(
     id: OrderItem['id'],
     updateOrderItemDto: UpdateOrderItemDto,
@@ -52,7 +59,10 @@ export class OrderItemsService {
     return this.orderItemsRepository.update(id, {
       orderId: updateOrderItemDto.orderId,
       planId: updateOrderItemDto.planId,
-      planPriceId: updateOrderItemDto.planPriceId,
+      orderRequestId: updateOrderItemDto.orderRequestId,
+      providerOrderId: updateOrderItemDto.providerOrderId,
+      providerOrderCode: updateOrderItemDto.providerOrderCode,
+      status: updateOrderItemDto.status,
       price: updateOrderItemDto.price,
       currency: updateOrderItemDto.currency,
       quantity: updateOrderItemDto.quantity,

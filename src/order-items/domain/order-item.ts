@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Plan } from '../../plans/domain/plan';
-import { PlanPrice } from '../../plan-prices/domain/plan-price';
 
 const idType = Number;
 
@@ -17,11 +16,17 @@ export class OrderItem {
   @ApiPropertyOptional({ type: () => Plan })
   plan?: Plan;
 
-  @ApiProperty({ type: idType })
-  planPriceId: number;
+  @ApiPropertyOptional({ type: String })
+  orderRequestId: string | null;
 
-  @ApiPropertyOptional({ type: () => PlanPrice })
-  planPrice?: PlanPrice;
+  @ApiPropertyOptional({ type: String })
+  providerOrderId: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  providerOrderCode: string | null;
+
+  @ApiProperty({ type: String, example: 'pending' })
+  status: string;
 
   @ApiProperty({ type: Number, example: 9.99 })
   price: number;

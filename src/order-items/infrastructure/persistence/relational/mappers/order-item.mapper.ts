@@ -7,7 +7,10 @@ export class OrderItemMapper {
     domainEntity.id = raw.id;
     domainEntity.orderId = raw.orderId;
     domainEntity.planId = raw.planId;
-    domainEntity.planPriceId = raw.planPriceId;
+    domainEntity.orderRequestId = raw.orderRequestId;
+    domainEntity.providerOrderId = raw.providerOrderId;
+    domainEntity.providerOrderCode = raw.providerOrderCode;
+    domainEntity.status = raw.status;
     domainEntity.price = raw.price;
     domainEntity.currency = raw.currency;
     domainEntity.quantity = raw.quantity;
@@ -23,7 +26,10 @@ export class OrderItemMapper {
     }
     persistenceEntity.orderId = domainEntity.orderId;
     persistenceEntity.planId = domainEntity.planId;
-    persistenceEntity.planPriceId = domainEntity.planPriceId;
+    persistenceEntity.orderRequestId = domainEntity.orderRequestId;
+    persistenceEntity.providerOrderId = domainEntity.providerOrderId;
+    persistenceEntity.providerOrderCode = domainEntity.providerOrderCode;
+    persistenceEntity.status = domainEntity.status;
     persistenceEntity.price = domainEntity.price;
     persistenceEntity.currency = domainEntity.currency;
     persistenceEntity.quantity = domainEntity.quantity;

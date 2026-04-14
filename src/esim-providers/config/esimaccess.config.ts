@@ -24,5 +24,6 @@ export default registerAs<EsimAccessConfig>('esimAccess', () => {
     accessCode: process.env.ESIMS_ACCESS_CODE!,
     secretKey: process.env.ESIM_ACCESS_SECRET_KEY!,
     baseUrl: process.env.ESIM_ACCESS_BASE_URL || 'https://api.esimaccess.com',
+    webhookSecret: process.env.ESIM_ACCESS_WEBHOOK_SECRET,
   };
 });

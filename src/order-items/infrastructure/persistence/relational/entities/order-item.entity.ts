@@ -11,7 +11,6 @@ import {
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { OrderEntity } from '../../../../../orders/infrastructure/persistence/relational/entities/order.entity';
 import { PlanEntity } from '../../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
-import { PlanPriceEntity } from '../../../../../plan-prices/infrastructure/persistence/relational/entities/plan-price.entity';
 
 @Entity({ name: 'order_item' })
 export class OrderItemEntity extends EntityRelationalHelper {
@@ -34,12 +33,18 @@ export class OrderItemEntity extends EntityRelationalHelper {
   @JoinColumn({ name: 'planId' })
   plan: PlanEntity;
 
-  @Column()
-  planPriceId: number;
+  @Column({ type: String, nullable: true })
+  orderRequestId: string | null;
 
-  @ManyToOne(() => PlanPriceEntity, { eager: true })
-  @JoinColumn({ name: 'planPriceId' })
-  planPrice: PlanPriceEntity;
+  @Column({ type: String, nullable: true })
+  providerOrderId: string | null;
+
+  @Column({ type: String, nullable: true })
+  providerOrderCode: string | null;
+
+  @Index()
+  @Column({ type: String, default: 'pending' })
+  status: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   price: number;

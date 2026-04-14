@@ -92,6 +92,13 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     return OrderItemMapper.toDomain(updatedEntity);
   }
 
+  async findByOrderRequestId(orderRequestId: string): Promise<OrderItem[]> {
+    const entities = await this.orderItemsRepository.find({
+      where: { orderRequestId },
+    });
+    return entities.map((e) => OrderItemMapper.toDomain(e));
+  }
+
   async remove(id: OrderItem['id']): Promise<void> {
     await this.orderItemsRepository.delete(id);
   }

@@ -13,10 +13,25 @@ export class UpdateOrderItemDto extends PartialType(CreateOrderItemDto) {
   @IsNumber()
   planId?: number;
 
-  @ApiPropertyOptional({ type: Number })
+  @ApiPropertyOptional({ type: String })
   @IsOptional()
-  @IsNumber()
-  planPriceId?: number;
+  @IsString()
+  orderRequestId?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  providerOrderId?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  providerOrderCode?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  status?: string;
 
   @ApiPropertyOptional({ type: Number, example: 9.99 })
   @IsOptional()

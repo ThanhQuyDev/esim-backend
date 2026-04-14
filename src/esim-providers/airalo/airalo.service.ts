@@ -15,6 +15,8 @@ import {
   AiraloOperator,
   AiraloPackage,
   AiraloOperatorCountry,
+  AiraloOrderAsyncRequest,
+  AiraloOrderAsyncResponse,
 } from './airalo-api.types';
 
 @Injectable()
@@ -291,6 +293,50 @@ export class AiraloService {
       ...planData,
       slug,
     });
+  }
+
+  async submitOrderAsync(params: {
+    packageId: string;
+    quantity: number;
+    type?: 'sim' | 'esim';
+    description?: string;
+    webhookUrl?: string;
+  }): Promise<AiraloOrderAsyncResponse['data']> {
+    const token = await this.authenticate();
+    const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
+      infer: true,
+    });
+
+    const body: AiraloOrderAsyncRequest = {
+      quantity: params.quantity,
+      package_id: params.packageId,
+      type: params.type ?? 'sim',
+      description: params.description,
+      webhook_url: params.webhookUrl,
+    };
+
+    this.logger.log(
+      `Submitting async order to Airalo: package_id=${params.packageId}, qty=${params.quantity}`,
+    );
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<AiraloOrderAsyncResponse>(
+        `${baseUrl}/v2/orders-async`,
+        body,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        },
+      ),
+    );
+
+    this.logger.log(
+      `Airalo async order submitted: request_id=${data.data.request_id}, accepted_at=${data.data.accepted_at}`,
+    );
+
+    return data.data;
   }
 
   private toSlug(name: string): string {

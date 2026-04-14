@@ -10,9 +10,11 @@ import {
   Query,
   HttpStatus,
   HttpCode,
+  Request,
 } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+import { SubmitOrderDto } from './dto/submit-order.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -45,18 +47,25 @@ import { infinityPagination } from '../utils/infinity-pagination';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  @ApiCreatedResponse({
-    type: Order,
-  })
+  @ApiCreatedResponse({ type: Order })
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() createOrderDto: CreateOrderDto): Promise<Order> {
     return this.ordersService.create(createOrderDto);
   }
 
-  @ApiOkResponse({
-    type: InfinityPaginationResponse(Order),
-  })
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @ApiCreatedResponse({ type: Order })
+  @Post('submit')
+  @HttpCode(HttpStatus.CREATED)
+  submitOrder(
+    @Request() req: { user: { id: number } },
+    @Body() dto: SubmitOrderDto,
+  ): Promise<Order> {
+    return this.ordersService.submitOrder(req.user.id, dto);
+  }
+
+  @ApiOkResponse({ type: InfinityPaginationResponse(Order) })
   @Get()
   @HttpCode(HttpStatus.OK)
   async findAll(
@@ -72,39 +81,24 @@ export class OrdersController {
       await this.ordersService.findManyWithPagination({
         filterOptions: query?.filters,
         sortOptions: query?.sort,
-        paginationOptions: {
-          page,
-          limit,
-        },
+        paginationOptions: { page, limit },
       }),
       { page, limit },
     );
   }
 
-  @ApiOkResponse({
-    type: Order,
-  })
+  @ApiOkResponse({ type: Order })
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiParam({
-    name: 'id',
-    type: String,
-    required: true,
-  })
+  @ApiParam({ name: 'id', type: String, required: true })
   findOne(@Param('id') id: Order['id']): Promise<NullableType<Order>> {
     return this.ordersService.findById(id);
   }
 
-  @ApiOkResponse({
-    type: Order,
-  })
+  @ApiOkResponse({ type: Order })
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiParam({
-    name: 'id',
-    type: String,
-    required: true,
-  })
+  @ApiParam({ name: 'id', type: String, required: true })
   update(
     @Param('id') id: Order['id'],
     @Body() updateOrderDto: UpdateOrderDto,
@@ -113,11 +107,7 @@ export class OrdersController {
   }
 
   @Delete(':id')
-  @ApiParam({
-    name: 'id',
-    type: String,
-    required: true,
-  })
+  @ApiParam({ name: 'id', type: String, required: true })
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: Order['id']): Promise<void> {
     return this.ordersService.remove(id);

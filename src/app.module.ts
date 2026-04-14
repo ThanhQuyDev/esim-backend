@@ -46,11 +46,14 @@ import { WhyChooseUsModule } from './why-choose-us/why-choose-us.module';
 
 import { BlogsModule } from './blogs/blogs.module';
 
+import { WebhooksModule } from './webhooks/webhooks.module';
+
 @Module({
   imports: [
     BlogsModule,
     WhyChooseUsModule,
     FaqsModule,
+    WebhooksModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [

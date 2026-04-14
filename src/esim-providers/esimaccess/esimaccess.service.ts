@@ -11,6 +11,10 @@ import { ProviderSyncLogsService } from '../../provider-sync-logs/provider-sync-
 import {
   EsimAccessApiResponse,
   EsimAccessPackage,
+  EsimAccessOrderRequest,
+  EsimAccessOrderResponse,
+  EsimAccessQueryEsimResponse,
+  EsimAccessQueryEsimItem,
 } from './esimaccess-api.types';
 
 @Injectable()
@@ -285,6 +289,84 @@ export class EsimAccessService {
       ...planData,
       slug,
     });
+  }
+
+  async submitOrder(params: {
+    transactionId: string;
+    amount: number;
+    packageInfoList: { packageCode: string; count: number; price: number }[];
+  }): Promise<EsimAccessOrderResponse['obj']> {
+    const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
+      infer: true,
+    });
+    const accessCode = this.configService.getOrThrow('esimAccess.accessCode', {
+      infer: true,
+    });
+
+    const body: EsimAccessOrderRequest = {
+      transactionId: params.transactionId,
+      amount: params.amount,
+      packageInfoList: params.packageInfoList,
+    };
+
+    this.logger.log(
+      `Submitting order to EsimAccess: txn=${params.transactionId}, amount=${params.amount}`,
+    );
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<EsimAccessOrderResponse>(
+        `${baseUrl}/api/v1/open/esim/order`,
+        body,
+        {
+          headers: {
+            'RT-AccessCode': accessCode,
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    if (!data.success) {
+      throw new Error(
+        `EsimAccess order failed: ${data.errorCode} - ${data.errorMsg}`,
+      );
+    }
+
+    this.logger.log(`EsimAccess order submitted: orderNo=${data.obj.orderNo}`);
+
+    return data.obj;
+  }
+
+  async queryEsims(orderNo: string): Promise<EsimAccessQueryEsimItem[]> {
+    const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
+      infer: true,
+    });
+    const accessCode = this.configService.getOrThrow('esimAccess.accessCode', {
+      infer: true,
+    });
+
+    this.logger.log(`Querying EsimAccess eSIMs for orderNo=${orderNo}`);
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<EsimAccessQueryEsimResponse>(
+        `${baseUrl}/api/v1/open/esim/query`,
+        { orderNo, pager: { pageNum: 1, pageSize: 20 } },
+        {
+          headers: {
+            'RT-AccessCode': accessCode,
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    if (!data.success) {
+      throw new Error(
+        `EsimAccess query failed: ${data.errorCode} - ${data.errorMsg}`,
+      );
+    }
+
+    return data.obj?.esimList ?? [];
   }
 
   private toSlug(name: string): string {

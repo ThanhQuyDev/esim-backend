@@ -32,6 +32,13 @@ export class EsimsService {
       iccid: createEsimDto.iccid,
       smdpAddress: createEsimDto.smdpAddress ?? null,
       activationCode: createEsimDto.activationCode ?? null,
+      lpa: createEsimDto.lpa ?? null,
+      matchId: createEsimDto.matchId ?? null,
+      qrcode: createEsimDto.qrcode ?? null,
+      directAppleInstallationUrl:
+        createEsimDto.directAppleInstallationUrl ?? null,
+      apnValue: createEsimDto.apnValue ?? null,
+      isRoaming: createEsimDto.isRoaming ?? null,
       status: createEsimDto.status ?? 'available',
       dataUsed: createEsimDto.dataUsed ?? null,
       dataTotal: createEsimDto.dataTotal ?? null,
@@ -58,6 +65,10 @@ export class EsimsService {
 
   findById(id: Esim['id']): Promise<NullableType<Esim>> {
     return this.esimsRepository.findById(id);
+  }
+
+  findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {
+    return this.esimsRepository.findByIccid(iccid);
   }
 
   async update(

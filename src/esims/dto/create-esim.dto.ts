@@ -33,6 +33,35 @@ export class CreateEsimDto {
   @IsString()
   activationCode?: string | null;
 
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  lpa?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  matchId?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  qrcode?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  directAppleInstallationUrl?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  apnValue?: string | null;
+
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  isRoaming?: boolean | null;
+
   @ApiPropertyOptional({ example: 'available', type: String })
   @IsOptional()
   @IsString()

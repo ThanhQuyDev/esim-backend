@@ -21,5 +21,6 @@ import { ProviderSyncLogsModule } from '../provider-sync-logs/provider-sync-logs
     ProviderSyncLogsModule,
   ],
   providers: [EsimAccessService, AiraloService, SyncOrchestratorService],
+  exports: [AiraloService, EsimAccessService],
 })
 export class EsimProvidersModule {}
