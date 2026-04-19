@@ -23,7 +23,6 @@ export default registerAs<GadgetKoreaConfig>('gadgetKorea', () => {
   return {
     accessKey: process.env.GADGET_KOREA_ACCESS_KEY!,
     secretKey: process.env.GADGET_KOREA_SECRET_KEY!,
-    baseUrl:
-      process.env.GADGET_KOREA_BASE_URL || 'https://open-api.usimsa.com',
+    baseUrl: process.env.GADGET_KOREA_BASE_URL || 'https://open-api.usimsa.com',
   };
 });

@@ -51,7 +51,7 @@ export class EsimAccessService {
         try {
           await this.processPackage(pkg, profitPercentage);
           itemsSynced++;
-        } catch (error) {
+        } catch (error: any) {
           this.logger.error(
             `Failed to process package ${pkg.packageCode} (${pkg.name}): ${error.message}`,
             error.stack,
@@ -80,7 +80,7 @@ export class EsimAccessService {
       this.logger.log(
         `Esimaccess plan sync completed. ${itemsSynced}/${packages.length} packages synced.`,
       );
-    } catch (error) {
+    } catch (error: any) {
       if (!error._logged) {
         await this.providerSyncLogsService.update(syncLog.id, {
           status: 'failed',
@@ -250,9 +250,6 @@ export class EsimAccessService {
     regionId: number | null,
     profitPercentage: number,
   ) {
-    const slug = `esimaccess-${pkg.packageCode}`;
-    const existing = await this.plansService.findBySlug(slug);
-
     const dataTypeMap: Record<number, string> = {
       1: 'data-in-total',
       2: 'daily-limit-speed-reduced',
@@ -260,13 +257,30 @@ export class EsimAccessService {
       4: 'daily-unlimited',
     };
 
+    const locationName =
+      pkg.locationNetworkList?.[0]?.locationName || pkg.location;
+    const dataGb = pkg.volume / 1024 / 1024 / 1024;
+    const planType = dataTypeMap[pkg.dataType] ?? 'data-in-total';
+    const slug = this.buildPlanSlug(
+      locationName,
+      dataGb,
+      pkg.duration,
+      'esimaccess',
+      planType,
+    );
+    const existing = await this.plansService.findBySlug(slug);
+
+    // Format name: "{location} {data} {days} Days"
+    const dataSize = this.formatDataSize(pkg.volume);
+    const planName = `${locationName} ${dataSize} ${pkg.duration} Days`;
+
     const costPrice = pkg.price / 10000;
     const price =
       Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
     const planData = {
       provider: 'esimaccess',
       providerPlanId: pkg.packageCode,
-      name: pkg.name,
+      name: planName,
       countryCode: destinationId ? pkg.location : null,
       destinationId,
       regionId,
@@ -276,8 +290,17 @@ export class EsimAccessService {
       price,
       retailPrice: pkg.retailPrice / 10000,
       currency: pkg.currencyCode,
-      type: dataTypeMap[pkg.dataType] ?? 'data-in-total',
+      sms: null,
+      call: null,
+      type: planType,
       topUp: pkg.supportTopUpType === 2,
+      speed: pkg.speed || null,
+      operatorName:
+        (pkg.locationNetworkList ?? [])
+          .flatMap((l) => l.operatorList ?? [])
+          .map((o) => o.operatorName)
+          .filter(Boolean)
+          .join(',') || null,
       isActive: true,
     };
 
@@ -367,6 +390,37 @@ export class EsimAccessService {
     }
 
     return data.obj?.esimList ?? [];
+  }
+
+  private buildPlanSlug(
+    locationName: string,
+    dataGb: number,
+    days: number,
+    provider: string,
+    type: string,
+  ): string {
+    const name = locationName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
+    const prefix = provider.substring(0, 2).toLowerCase();
+    const dataPart = dataGb > 0 ? `-${dataGb}gb` : '';
+    const unlimitedPart =
+      type === 'daily-unlimited' || type === 'daily-limit-speed-reduced'
+        ? '-unlimited'
+        : '';
+    return `${name}${dataPart}-${days}days${unlimitedPart}-${prefix}`;
+  }
+
+  private formatDataSize(volumeBytes: number): string {
+    const gb = volumeBytes / 1024 / 1024 / 1024;
+    if (gb >= 1) {
+      return gb % 1 === 0 ? `${gb}GB` : `${gb.toFixed(1)}GB`;
+    }
+    const mb = volumeBytes / 1024 / 1024;
+    return mb % 1 === 0 ? `${mb}MB` : `${mb.toFixed(0)}MB`;
   }
 
   private toSlug(name: string): string {

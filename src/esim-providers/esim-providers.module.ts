@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { EsimAccessService } from './esimaccess/esimaccess.service';
 import { AiraloService } from './airalo/airalo.service';
 import { SyncOrchestratorService } from './sync-orchestrator.service';
+import { GadgetKoreaService } from './gadgetkorea/gadgetkorea.service';
 import { PlansModule } from '../plans/plans.module';
 import { DestinationsModule } from '../destinations/destinations.module';
 import { RegionsModule } from '../regions/regions.module';
@@ -20,7 +21,12 @@ import { ProviderSyncLogsModule } from '../provider-sync-logs/provider-sync-logs
     ProfitMarginsModule,
     ProviderSyncLogsModule,
   ],
-  providers: [EsimAccessService, AiraloService, SyncOrchestratorService],
-  exports: [AiraloService, EsimAccessService],
+  providers: [
+    EsimAccessService,
+    AiraloService,
+    SyncOrchestratorService,
+    GadgetKoreaService,
+  ],
+  exports: [AiraloService, EsimAccessService, GadgetKoreaService],
 })
 export class EsimProvidersModule {}

@@ -59,6 +59,12 @@ export class Plan {
   @ApiProperty({ type: Boolean, example: true })
   topUp: boolean;
 
+  @ApiPropertyOptional({ type: String, example: '4G,5G' })
+  speed: string | null;
+
+  @ApiPropertyOptional({ type: String, example: 'Viettel,Mobifone' })
+  operatorName: string | null;
+
   @ApiProperty({ type: Boolean, example: false })
   isCheapest: boolean;
 

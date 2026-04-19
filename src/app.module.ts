@@ -10,6 +10,7 @@ import fileConfig from './files/config/file.config';
 import googleConfig from './auth-google/config/google.config';
 import esimAccessConfig from './esim-providers/config/esimaccess.config';
 import airaloConfig from './esim-providers/config/airalo.config';
+import gadgetKoreaConfig from './esim-providers/config/gadgetkorea.config';
 import path from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -65,6 +66,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
         googleConfig,
         esimAccessConfig,
         airaloConfig,
+        gadgetKoreaConfig,
       ],
       envFilePath: ['.env'],
     }),

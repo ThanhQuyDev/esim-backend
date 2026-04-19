@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddSpeedOperatorNameToPlan1776500000000
-  implements MigrationInterface
-{
+export class AddSpeedOperatorNameToPlan1776500000000 implements MigrationInterface {
   name = 'AddSpeedOperatorNameToPlan1776500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

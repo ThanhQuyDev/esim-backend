@@ -28,6 +28,8 @@ export class PlanMapper {
     domainEntity.currency = raw.currency;
     domainEntity.type = raw.type;
     domainEntity.topUp = raw.topUp;
+    domainEntity.speed = raw.speed;
+    domainEntity.operatorName = raw.operatorName;
     domainEntity.isCheapest = raw.isCheapest;
     domainEntity.isActive = raw.isActive;
     domainEntity.createdAt = raw.createdAt;
@@ -56,6 +58,8 @@ export class PlanMapper {
     persistenceEntity.currency = domainEntity.currency;
     persistenceEntity.type = domainEntity.type;
     persistenceEntity.topUp = domainEntity.topUp;
+    persistenceEntity.speed = domainEntity.speed;
+    persistenceEntity.operatorName = domainEntity.operatorName;
     persistenceEntity.isCheapest = domainEntity.isCheapest;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.createdAt = domainEntity.createdAt;

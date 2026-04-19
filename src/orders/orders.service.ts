@@ -12,6 +12,7 @@ import { PlansService } from '../plans/plans.service';
 import { OrderItemsService } from '../order-items/order-items.service';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
+import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { AllConfigType } from '../config/config.type';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class OrdersService {
     private readonly orderItemsService: OrderItemsService,
     private readonly airaloService: AiraloService,
     private readonly esimAccessService: EsimAccessService,
+    private readonly gadgetKoreaService: GadgetKoreaService,
     private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
@@ -73,6 +75,9 @@ export class OrdersService {
     const airaloItems = planDetails.filter((i) => i.plan.provider === 'airalo');
     const esimAccessItems = planDetails.filter(
       (i) => i.plan.provider === 'esimaccess',
+    );
+    const gadgetKoreaItems = planDetails.filter(
+      (i) => i.plan.provider === 'gadgetkorea',
     );
 
     // 5. Call Airalo API — one call per plan
@@ -144,6 +149,34 @@ export class OrdersService {
           quantity: item.quantity,
         });
       }
+    }
+
+    // 7. Call Gadget Korea API — one call per item
+    for (const item of gadgetKoreaItems) {
+      let orderRequestId: string | null = null;
+      try {
+        const result = await this.gadgetKoreaService.submitOrder({
+          orderId: `${orderNumber}-gk-${item.planId}`,
+          products: [
+            { optionId: item.plan.providerPlanId, qty: item.quantity },
+          ],
+        });
+        orderRequestId = result.orderId ?? null;
+      } catch (err) {
+        this.logger.error(
+          `Gadget Korea order failed for plan ${item.planId}: ${(err as Error).message}`,
+        );
+      }
+
+      await this.orderItemsService.create({
+        orderId: order.id,
+        planId: item.planId,
+        orderRequestId,
+        status: 'pending',
+        price: item.plan.price,
+        currency: dto.currency,
+        quantity: item.quantity,
+      });
     }
 
     return order;

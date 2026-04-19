@@ -63,7 +63,7 @@ export class AiraloService {
                 profitPercentage,
               );
               itemsSynced++;
-            } catch (error) {
+            } catch (error: any) {
               this.logger.error(
                 `Failed to process airalo package ${pkg.id} (${pkg.title}): ${error.message}`,
                 error.stack,
@@ -94,7 +94,7 @@ export class AiraloService {
       this.logger.log(
         `Airalo plan sync completed. ${itemsSynced} packages synced.`,
       );
-    } catch (error) {
+    } catch (error: any) {
       if (!error._logged) {
         await this.providerSyncLogsService.update(syncLog.id, {
           status: 'failed',
@@ -261,7 +261,17 @@ export class AiraloService {
     regionId: number | null,
     profitPercentage: number,
   ) {
-    const slug = `airalo-${pkg.id}`;
+    const locationName = country.title;
+    const planType = pkg.is_unlimited
+      ? 'daily-limit-speed-reduced'
+      : 'data-in-total';
+    const slug = this.buildPlanSlug(
+      locationName,
+      pkg.amount / 1024,
+      pkg.day,
+      'airalo',
+      planType,
+    );
     const existing = await this.plansService.findBySlug(slug);
 
     const costPrice = pkg.net_price;
@@ -280,8 +290,27 @@ export class AiraloService {
       price,
       retailPrice: pkg.price,
       currency: 'USD',
-      type: pkg.is_unlimited ? 'daily-unlimited' : 'data-in-total',
+      sms: pkg.text ?? null,
+      call: pkg.voice ?? null,
+      type: planType,
       topUp: true,
+      speed:
+        [
+          ...new Set(
+            (operator.coverages ?? [])
+              .flatMap((c) => c.networks ?? [])
+              .flatMap((n) => n.types ?? []),
+          ),
+        ].join(',') || null,
+      operatorName:
+        [
+          ...new Set(
+            (operator.coverages ?? [])
+              .flatMap((c) => c.networks ?? [])
+              .map((n) => n.name)
+              .filter(Boolean),
+          ),
+        ].join(',') || null,
       isActive: true,
     };
 
@@ -337,6 +366,28 @@ export class AiraloService {
     );
 
     return data.data;
+  }
+
+  private buildPlanSlug(
+    locationName: string,
+    dataGb: number,
+    days: number,
+    provider: string,
+    type: string,
+  ): string {
+    const name = locationName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
+    const prefix = provider.substring(0, 2).toLowerCase();
+    const dataPart = dataGb > 0 ? `-${dataGb}gb` : '';
+    const unlimitedPart =
+      type === 'daily-unlimited' || type === 'daily-limit-speed-reduced'
+        ? '-unlimited'
+        : '';
+    return `${name}${dataPart}-${days}days${unlimitedPart}-${prefix}`;
   }
 
   private toSlug(name: string): string {

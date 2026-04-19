@@ -87,4 +87,14 @@ export class CreatePlanDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ example: '4G,5G', type: String })
+  @IsOptional()
+  @IsString()
+  speed?: string | null;
+
+  @ApiPropertyOptional({ example: 'Viettel,Mobifone', type: String })
+  @IsOptional()
+  @IsString()
+  operatorName?: string | null;
 }

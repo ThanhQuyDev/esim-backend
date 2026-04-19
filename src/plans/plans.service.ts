@@ -42,6 +42,8 @@ export class PlansService {
       currency: createPlanDto.currency,
       type: createPlanDto.type ?? 'data-in-total',
       topUp: createPlanDto.topUp ?? false,
+      speed: createPlanDto.speed ?? null,
+      operatorName: createPlanDto.operatorName ?? null,
       isCheapest: false,
       isActive: createPlanDto.isActive ?? true,
     });

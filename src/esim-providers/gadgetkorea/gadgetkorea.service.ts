@@ -67,9 +67,7 @@ export class GadgetKoreaService {
       ),
     );
 
-    this.logger.log(
-      `Gadget Korea order response: ${JSON.stringify(data)}`,
-    );
+    this.logger.log(`Gadget Korea order response: ${JSON.stringify(data)}`);
 
     return data;
   }
