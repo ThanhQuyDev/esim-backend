@@ -85,6 +85,66 @@ export class PlansController {
     );
   }
 
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        dataPlans: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        slowUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        fastUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        dailyUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+      },
+    },
+  })
+  @Get('by-destination/:slug')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'slug', type: String, required: true })
+  findPlansByDestination(@Param('slug') slug: string) {
+    return this.plansService.findPlansByDestination(slug);
+  }
+
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        dataPlans: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        slowUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        fastUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        dailyUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+      },
+    },
+  })
+  @Get('by-region/:slug')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'slug', type: String, required: true })
+  findPlansByRegion(@Param('slug') slug: string) {
+    return this.plansService.findPlansByRegion(slug);
+  }
+
   @ApiOkResponse({ type: Plan })
   @Get(':id')
   @HttpCode(HttpStatus.OK)

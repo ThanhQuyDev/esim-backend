@@ -65,6 +65,12 @@ export class Plan {
   @ApiPropertyOptional({ type: String, example: 'Viettel,Mobifone' })
   operatorName: string | null;
 
+  @ApiPropertyOptional({ type: String, example: '1 Mbps' })
+  fupSpeed: string | null;
+
+  @ApiProperty({ type: Boolean, example: false })
+  isAbleMultidate: boolean;
+
   @ApiProperty({ type: Boolean, example: false })
   isCheapest: boolean;
 

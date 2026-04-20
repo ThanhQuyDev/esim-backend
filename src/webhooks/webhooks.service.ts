@@ -5,6 +5,7 @@ import { EsimsService } from '../esims/esims.service';
 import { OrderItemsService } from '../order-items/order-items.service';
 import { OrdersService } from '../orders/orders.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
+import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { AllConfigType } from '../config/config.type';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class WebhooksService {
     private readonly orderItemsService: OrderItemsService,
     private readonly ordersService: OrdersService,
     private readonly esimAccessService: EsimAccessService,
+    private readonly gadgetKoreaService: GadgetKoreaService,
     private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
@@ -292,13 +294,17 @@ export class WebhooksService {
   // ─── Gadget Korea ─────────────────────────────────────────────────────────────
 
   verifyGadgetKoreaSignature(rawBody: Buffer, signature: string): void {
-    const secret = process.env.GADGET_KOREA_WEBHOOK_SECRET;
+    const gadgetKoreaConfig = this.configService.get('gadgetKorea', {
+      infer: true,
+    });
+    const secret = gadgetKoreaConfig?.secretKey;
     if (!secret) return;
 
+    const secretKeyBuffer = Buffer.from(secret, 'base64');
     const expected = crypto
-      .createHmac('sha256', secret)
+      .createHmac('sha256', secretKeyBuffer)
       .update(rawBody)
-      .digest('hex');
+      .digest('base64');
 
     const trusted = Buffer.from(expected, 'utf8');
     const received = Buffer.from(signature, 'utf8');
@@ -312,53 +318,102 @@ export class WebhooksService {
   }
 
   async handleGadgetKoreaEvent(payload: any): Promise<void> {
+    const topupId: string = payload.topupId;
+    const optionId: string = payload.optionId;
+    const iccid: string = payload.iccid;
+    const downloadLink: string = payload.downloadLink; // "LPA:$<smdp>$<activateCode>"
+    const smdp: string = payload.smdp;
+    const activateCode: string = payload.activateCode;
+    const qrcodeImgUrl: string = payload.qrcodeImgUrl;
+
     this.logger.log(
-      `Gadget Korea webhook received: notifyType=${payload.notifyType}, order=${payload.order?.orderNo}`,
+      `Gadget Korea webhook received: topupId=${topupId}, iccid=${iccid}`,
     );
 
-    const { notifyType, order } = payload;
-
-    if (!['ORDER_COMPLETE', 'ORDER_SUCCESS'].includes(notifyType)) {
-      this.logger.log(`Gadget Korea event "${notifyType}" ignored`);
+    if (!topupId) {
+      this.logger.warn('Gadget Korea webhook missing topupId');
       return;
     }
 
-    if (!order?.esimList?.length) {
+    // 1. Find order items by topupId (stored as orderRequestId)
+    let userId: number | null = null;
+    let orderItemId: number | null = null;
+
+    const orderItems =
+      await this.orderItemsService.findByOrderRequestId(topupId);
+
+    for (const item of orderItems) {
+      await this.orderItemsService.update(item.id, {
+        status: 'completed',
+        providerOrderId: topupId,
+        providerOrderCode: optionId,
+      });
+    }
+
+    if (orderItems.length > 0) {
+      orderItemId = orderItems[0].id;
+      const order = await this.ordersService.findById(orderItems[0].orderId);
+      userId = order?.userId ?? null;
+      this.logger.log(
+        `Updated ${orderItems.length} order item(s) to completed (topupId=${topupId})`,
+      );
+    } else {
+      this.logger.warn(`No order item found for topupId=${topupId}`);
+    }
+
+    if (!iccid) {
       this.logger.warn(
-        `Gadget Korea order ${order?.orderNo} has no eSIMs in payload`,
+        `Gadget Korea webhook missing iccid for topupId=${topupId}`,
       );
       return;
     }
 
-    for (const esim of order.esimList) {
-      if (!esim.iccid) continue;
+    // 2. Parse smdpAddress + activationCode from downloadLink "LPA:$<smdp>$<activateCode>"
+    let smdpAddress: string | null = smdp ?? null;
+    let activationCode: string | null = activateCode ?? null;
 
-      try {
-        const existing = await this.esimsService.findByIccid(esim.iccid);
-
-        if (existing) {
-          await this.esimsService.update(existing.id, {
-            smdpAddress: esim.smdpAddress ?? existing.smdpAddress ?? undefined,
-            activationCode:
-              esim.activationCode ?? existing.activationCode ?? undefined,
-            status: 'available',
-          });
-          this.logger.log(`Updated eSIM iccid=${esim.iccid} (Gadget Korea)`);
-        } else {
-          await this.esimsService.create({
-            iccid: esim.iccid,
-            smdpAddress: esim.smdpAddress ?? null,
-            activationCode: esim.activationCode ?? null,
-            status: 'available',
-          });
-          this.logger.log(`Created eSIM iccid=${esim.iccid} (Gadget Korea)`);
-        }
-      } catch (err) {
-        this.logger.error(
-          `Failed to upsert eSIM iccid=${esim.iccid}: ${(err as Error).message}`,
-          (err as Error).stack,
-        );
+    if (downloadLink) {
+      const parts = downloadLink.split('$');
+      if (parts.length >= 2) {
+        smdpAddress = parts[1] ?? smdpAddress;
+        activationCode = parts[2] ?? activationCode;
       }
+    }
+
+    // 3. Upsert eSIM record
+    try {
+      const existing = await this.esimsService.findByIccid(iccid);
+
+      if (existing) {
+        await this.esimsService.update(existing.id, {
+          smdpAddress: smdpAddress ?? existing.smdpAddress ?? undefined,
+          activationCode:
+            activationCode ?? existing.activationCode ?? undefined,
+          lpa: downloadLink ?? existing.lpa ?? undefined,
+          qrcode: qrcodeImgUrl ?? existing.qrcode ?? undefined,
+          status: 'available',
+          userId: userId ?? existing.userId ?? undefined,
+          orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
+        });
+        this.logger.log(`Updated eSIM iccid=${iccid} (Gadget Korea)`);
+      } else {
+        await this.esimsService.create({
+          iccid,
+          smdpAddress,
+          activationCode,
+          lpa: downloadLink ?? null,
+          qrcode: qrcodeImgUrl ?? null,
+          status: 'available',
+          userId,
+          orderItemId,
+        });
+        this.logger.log(`Created eSIM iccid=${iccid} (Gadget Korea)`);
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to upsert eSIM iccid=${iccid}: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
     }
   }
 }

@@ -179,6 +179,7 @@ export class PlansImportService {
       isActive: this.getCellBoolean(getValue('isActive')) ?? true,
       speed: this.getCellString(getValue('speed')) || null,
       operatorName: this.getCellString(getValue('operatorName')) || null,
+      fupSpeed: this.getCellString(getValue('fupSpeed')) || null,
     };
   }
 

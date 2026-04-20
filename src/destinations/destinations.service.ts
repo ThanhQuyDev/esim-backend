@@ -89,7 +89,7 @@ export class DestinationsService {
       const existingBySlug = await this.destinationsRepository.findBySlug(
         updateDestinationDto.slug,
       );
-      if (existingBySlug && existingBySlug.id !== id) {
+      if (existingBySlug && existingBySlug.id !== Number(id)) {
         throw new UnprocessableEntityException({
           status: HttpStatus.UNPROCESSABLE_ENTITY,
           errors: {

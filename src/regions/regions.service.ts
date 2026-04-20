@@ -66,7 +66,7 @@ export class RegionsService {
       const existingBySlug = await this.regionsRepository.findBySlug(
         updateRegionDto.slug,
       );
-      if (existingBySlug && existingBySlug.id !== id) {
+      if (existingBySlug && existingBySlug.id !== Number(id)) {
         throw new UnprocessableEntityException({
           status: HttpStatus.UNPROCESSABLE_ENTITY,
           errors: { slug: 'slugAlreadyExists' },

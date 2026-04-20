@@ -97,4 +97,14 @@ export class CreatePlanDto {
   @IsOptional()
   @IsString()
   operatorName?: string | null;
+
+  @ApiPropertyOptional({ example: '1 Mbps', type: String })
+  @IsOptional()
+  @IsString()
+  fupSpeed?: string | null;
+
+  @ApiPropertyOptional({ example: false, type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isAbleMultidate?: boolean;
 }

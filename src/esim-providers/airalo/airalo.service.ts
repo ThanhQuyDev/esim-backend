@@ -285,7 +285,7 @@ export class AiraloService {
       destinationId,
       regionId,
       durationDays: pkg.day,
-      dataGb: pkg.amount / 1024,
+      dataGb: pkg.is_unlimited ? 3 : pkg.amount / 1024,
       costPrice,
       price,
       retailPrice: pkg.price,
@@ -311,6 +311,7 @@ export class AiraloService {
               .filter(Boolean),
           ),
         ].join(',') || null,
+      fupSpeed: pkg.is_unlimited ? '1 Mbps' : null,
       isActive: true,
     };
 

@@ -88,7 +88,9 @@ export class WebhooksController {
     @Headers('x-gadgetkorea-signature') signature: string,
     @Body() payload: Record<string, any>,
   ): Promise<{ received: boolean }> {
-    this.logger.log(`[GadgetKorea] raw payload: ${JSON.stringify(payload)}`);
+    this.logger.log(
+      `[GadgetKorea] raw payload: ${JSON.stringify(payload)} signature: ${signature}`,
+    );
     if (signature && req.rawBody) {
       this.webhooksService.verifyGadgetKoreaSignature(req.rawBody, signature);
     }

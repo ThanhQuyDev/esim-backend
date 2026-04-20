@@ -29,6 +29,11 @@ export class FilterPlanDto {
   @IsOptional()
   @IsNumber()
   destinationId?: number;
+
+  @ApiPropertyOptional({ type: Number })
+  @IsOptional()
+  @IsNumber()
+  regionId?: number;
 }
 
 export class SortPlanDto {

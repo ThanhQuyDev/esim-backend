@@ -59,6 +59,11 @@ export class PlansRelationalRepository implements PlanRepository {
           destinationId: filterOptions.destinationId,
         });
       }
+      if (filterOptions?.regionId !== undefined) {
+        qb.andWhere('plan."regionId" = :regionId', {
+          regionId: filterOptions.regionId,
+        });
+      }
 
       if (sortOptions?.length) {
         for (const sort of sortOptions) {
@@ -86,6 +91,9 @@ export class PlansRelationalRepository implements PlanRepository {
     }
     if (filterOptions?.destinationId !== undefined) {
       where.destinationId = filterOptions.destinationId as any;
+    }
+    if (filterOptions?.regionId !== undefined) {
+      where.regionId = filterOptions.regionId as any;
     }
 
     const entities = await this.plansRepository.find({

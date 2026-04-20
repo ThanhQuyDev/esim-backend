@@ -64,7 +64,8 @@ export type PlanColumnMapping = Partial<
     | 'topUp'
     | 'isActive'
     | 'speed'
-    | 'operatorName',
+    | 'operatorName'
+    | 'fupSpeed',
     string
   >
 >;

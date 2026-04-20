@@ -30,6 +30,8 @@ export class PlanMapper {
     domainEntity.topUp = raw.topUp;
     domainEntity.speed = raw.speed;
     domainEntity.operatorName = raw.operatorName;
+    domainEntity.fupSpeed = raw.fupSpeed;
+    domainEntity.isAbleMultidate = raw.isAbleMultidate;
     domainEntity.isCheapest = raw.isCheapest;
     domainEntity.isActive = raw.isActive;
     domainEntity.createdAt = raw.createdAt;
@@ -60,6 +62,8 @@ export class PlanMapper {
     persistenceEntity.topUp = domainEntity.topUp;
     persistenceEntity.speed = domainEntity.speed;
     persistenceEntity.operatorName = domainEntity.operatorName;
+    persistenceEntity.fupSpeed = domainEntity.fupSpeed;
+    persistenceEntity.isAbleMultidate = domainEntity.isAbleMultidate;
     persistenceEntity.isCheapest = domainEntity.isCheapest;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.createdAt = domainEntity.createdAt;

@@ -151,32 +151,44 @@ export class OrdersService {
       }
     }
 
-    // 7. Call Gadget Korea API — one call per item
-    for (const item of gadgetKoreaItems) {
-      let orderRequestId: string | null = null;
+    // 7. Call Gadget Korea API — one call for all gadgetkorea items
+    if (gadgetKoreaItems.length > 0) {
+      const gkOrderId = `${orderNumber}-gk`;
+      // Map optionId -> topupId after response
+      const topupIdMap = new Map<string, string>();
       try {
         const result = await this.gadgetKoreaService.submitOrder({
-          orderId: `${orderNumber}-gk-${item.planId}`,
-          products: [
-            { optionId: item.plan.providerPlanId, qty: item.quantity },
-          ],
+          orderId: gkOrderId,
+          products: gadgetKoreaItems.map((i) => ({
+            optionId: i.plan.providerPlanId.toLowerCase(),
+            qty: i.quantity,
+          })),
         });
-        orderRequestId = result.orderId ?? null;
+        // result.products: [{ topupId, optionId }]
+        for (const p of result.products ?? []) {
+          if (p.topupId && p.optionId) {
+            topupIdMap.set(p.optionId.toLowerCase(), p.topupId);
+          }
+        }
       } catch (err) {
         this.logger.error(
-          `Gadget Korea order failed for plan ${item.planId}: ${(err as Error).message}`,
+          `Gadget Korea order failed: ${(err as Error).message}`,
         );
       }
 
-      await this.orderItemsService.create({
-        orderId: order.id,
-        planId: item.planId,
-        orderRequestId,
-        status: 'pending',
-        price: item.plan.price,
-        currency: dto.currency,
-        quantity: item.quantity,
-      });
+      for (const item of gadgetKoreaItems) {
+        const topupId =
+          topupIdMap.get(item.plan.providerPlanId.toLowerCase()) ?? null;
+        await this.orderItemsService.create({
+          orderId: order.id,
+          planId: item.planId,
+          orderRequestId: topupId,
+          status: 'pending',
+          price: item.plan.price,
+          currency: dto.currency,
+          quantity: item.quantity,
+        });
+      }
     }
 
     return order;

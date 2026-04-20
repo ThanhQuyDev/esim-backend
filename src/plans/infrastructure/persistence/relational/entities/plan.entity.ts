@@ -89,6 +89,12 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   operatorName: string | null;
 
+  @Column({ type: String, nullable: true })
+  fupSpeed: string | null;
+
+  @Column({ type: Boolean, default: false })
+  isAbleMultidate: boolean;
+
   @Column({ type: Boolean, default: false })
   isCheapest: boolean;
 

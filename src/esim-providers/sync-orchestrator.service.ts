@@ -15,7 +15,7 @@ export class SyncOrchestratorService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.runFullSync();
+    // await this.runFullSync();
   }
 
   @Cron('0 */6 * * *')
@@ -24,13 +24,13 @@ export class SyncOrchestratorService implements OnModuleInit {
 
     try {
       await this.airaloService.syncPlans();
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Airalo sync failed: ${error.message}`);
     }
 
     try {
       await this.esimAccessService.syncPlans();
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`EsimAccess sync failed: ${error.message}`);
     }
 

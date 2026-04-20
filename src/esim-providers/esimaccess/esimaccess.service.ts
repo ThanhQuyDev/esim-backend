@@ -301,6 +301,8 @@ export class EsimAccessService {
           .map((o) => o.operatorName)
           .filter(Boolean)
           .join(',') || null,
+      fupSpeed: pkg.fupPolicy || null,
+      isAbleMultidate: planType === 'daily-limit-speed-reduced',
       isActive: true,
     };
 
@@ -406,7 +408,10 @@ export class EsimAccessService {
       .replace(/-+/g, '-')
       .trim();
     const prefix = provider.substring(0, 2).toLowerCase();
-    const dataPart = dataGb > 0 ? `-${dataGb}gb` : '';
+    const dataPart =
+      dataGb > 0
+        ? `-${this.formatDataSize(dataGb * 1024 * 1024 * 1024).toLowerCase()}`
+        : '';
     const unlimitedPart =
       type === 'daily-unlimited' || type === 'daily-limit-speed-reduced'
         ? '-unlimited'
