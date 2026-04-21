@@ -4,7 +4,9 @@ import { FilterCouponDto, SortCouponDto } from '../../dto/query-coupon.dto';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 
 export abstract class CouponRepository {
-  abstract create(data: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<Coupon>;
+  abstract create(
+    data: Omit<Coupon, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+  ): Promise<Coupon>;
   abstract findManyWithPagination(options: {
     filterOptions?: FilterCouponDto | null;
     sortOptions?: SortCouponDto[] | null;

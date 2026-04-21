@@ -12,9 +12,19 @@ import { ProfitMarginsModule } from '../profit-margins/profit-margins.module';
 const infrastructurePersistenceModule = RelationalPlanPersistenceModule;
 
 @Module({
-  imports: [infrastructurePersistenceModule, DestinationsModule, RegionsModule, ProfitMarginsModule],
+  imports: [
+    infrastructurePersistenceModule,
+    DestinationsModule,
+    RegionsModule,
+    ProfitMarginsModule,
+  ],
   controllers: [PlansController],
-  providers: [PlansService, PlansImportService, PlansEsimvnImportService, PlansGadgetkoreaImportService],
+  providers: [
+    PlansService,
+    PlansImportService,
+    PlansEsimvnImportService,
+    PlansGadgetkoreaImportService,
+  ],
   exports: [PlansService, infrastructurePersistenceModule],
 })
 export class PlansModule {}

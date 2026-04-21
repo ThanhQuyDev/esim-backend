@@ -21,7 +21,7 @@ const COL = {
   TOP_UP: 13,
   OPTION_ID: 17,
   NORMAL_PRICE: 18, // retail_price
-  B2B_PRICE: 20,    // cost_price
+  B2B_PRICE: 20, // cost_price
 };
 
 const PROVIDER = 'gadgetkorea';
@@ -38,7 +38,9 @@ export class PlansGadgetkoreaImportService {
 
   async importFromExcel(
     fileBuffer: Buffer,
-  ): Promise<ImportResult & { updated: number; destinationNotFound: string[] }> {
+  ): Promise<
+    ImportResult & { updated: number; destinationNotFound: string[] }
+  > {
     const workbook = new Workbook();
     await workbook.xlsx.load(fileBuffer as any);
 
@@ -54,7 +56,8 @@ export class PlansGadgetkoreaImportService {
       destinationNotFound: [],
     };
 
-    const profitPercentage = await this.profitMarginsService.getActivePercentage();
+    const profitPercentage =
+      await this.profitMarginsService.getActivePercentage();
 
     const destinationCache = new Map<string, number | null>();
     const notFoundNames = new Set<string>();
@@ -84,7 +87,8 @@ export class PlansGadgetkoreaImportService {
 
         try {
           const countryName = this.getString(row.getCell(COL.PLAN).value);
-          if (!countryName) throw new Error('Missing country name in Plan column');
+          if (!countryName)
+            throw new Error('Missing country name in Plan column');
 
           let destinationId: number | null = null;
           if (destinationCache.has(countryName)) {
@@ -169,7 +173,9 @@ export class PlansGadgetkoreaImportService {
             row: rowNum,
             error: error?.message || 'Unknown error',
           });
-          this.logger.warn(`Sheet "${ws.name}" row ${rowNum}: ${error?.message}`);
+          this.logger.warn(
+            `Sheet "${ws.name}" row ${rowNum}: ${error?.message}`,
+          );
         }
       }
     }

@@ -22,8 +22,12 @@ export class CreateCouponTable1776700000000 implements MigrationInterface {
         CONSTRAINT "PK_coupon" PRIMARY KEY ("id")
       )
     `);
-    await queryRunner.query(`CREATE INDEX "IDX_coupon_code" ON "coupon" ("code")`);
-    await queryRunner.query(`CREATE INDEX "IDX_coupon_isActive" ON "coupon" ("isActive")`);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_coupon_code" ON "coupon" ("code")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_coupon_isActive" ON "coupon" ("isActive")`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

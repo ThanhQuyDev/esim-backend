@@ -10,7 +10,9 @@ export class CouponMapper {
     domain.maxUsage = raw.maxUsage;
     domain.maxUsagePerUser = raw.maxUsagePerUser;
     domain.usageCount = raw.usageCount;
-    domain.minOrderAmount = raw.minOrderAmount ? Number(raw.minOrderAmount) : null;
+    domain.minOrderAmount = raw.minOrderAmount
+      ? Number(raw.minOrderAmount)
+      : null;
     domain.expiresAt = raw.expiresAt;
     domain.isActive = raw.isActive;
     domain.createdAt = raw.createdAt;
