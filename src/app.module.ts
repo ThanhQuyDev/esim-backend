@@ -48,6 +48,7 @@ import { WhyChooseUsModule } from './why-choose-us/why-choose-us.module';
 import { BlogsModule } from './blogs/blogs.module';
 
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { CouponsModule } from './coupons/coupons.module';
 
 @Module({
   imports: [
@@ -112,6 +113,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     ProviderSyncLogsModule,
     EsimProvidersModule,
     ProfitMarginsModule,
+    CouponsModule,
   ],
 })
 export class AppModule {}

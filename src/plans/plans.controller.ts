@@ -43,6 +43,7 @@ import { Plan } from './domain/plan';
 import { PlansService } from './plans.service';
 import { PlansImportService, ImportResult } from './plans-import.service';
 import { PlansEsimvnImportService } from './plans-esimvn-import.service';
+import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 
@@ -53,6 +54,7 @@ export class PlansController {
     private readonly plansService: PlansService,
     private readonly plansImportService: PlansImportService,
     private readonly plansEsimvnImportService: PlansEsimvnImportService,
+    private readonly plansGadgetkoreaImportService: PlansGadgetkoreaImportService,
   ) {}
 
   @ApiBearerAuth()
@@ -361,5 +363,72 @@ export class PlansController {
       provider,
       sheetList,
     );
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('import-gadgetkorea')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description:
+      'Upload GadgetKorea Excel file. Provider is auto-set to gadgetkorea, sheets are auto-detected.',
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'GadgetKorea Excel file (.xlsx)',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Import result summary',
+    schema: {
+      type: 'object',
+      properties: {
+        total: { type: 'number' },
+        created: { type: 'number' },
+        updated: { type: 'number' },
+        skipped: { type: 'number' },
+        destinationNotFound: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        errors: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              row: { type: 'number' },
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  async importGadgetkorea(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+
+    const allowedMimes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/octet-stream',
+    ];
+    if (!allowedMimes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Invalid file type: ${file.mimetype}. Only .xlsx and .xls files are allowed.`,
+      );
+    }
+
+    return this.plansGadgetkoreaImportService.importFromExcel(file.buffer);
   }
 }

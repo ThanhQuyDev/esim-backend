@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -14,6 +14,7 @@ import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { AllConfigType } from '../config/config.type';
+import { CouponsService } from '../coupons/coupons.service';
 
 @Injectable()
 export class OrdersService {
@@ -27,6 +28,8 @@ export class OrdersService {
     private readonly esimAccessService: EsimAccessService,
     private readonly gadgetKoreaService: GadgetKoreaService,
     private readonly configService: ConfigService<AllConfigType>,
+    @Inject(forwardRef(() => CouponsService))
+    private readonly couponsService: CouponsService,
   ) {}
 
   create(createOrderDto: CreateOrderDto): Promise<Order> {
@@ -38,6 +41,8 @@ export class OrdersService {
       currency: createOrderDto.currency,
       paymentMethod: createOrderDto.paymentMethod,
       paymentId: createOrderDto.paymentId,
+      couponCode: null,
+      discountAmount: 0,
     });
   }
 
@@ -59,16 +64,32 @@ export class OrdersService {
       0,
     );
 
+    // 2.5 Apply coupon if provided
+    let discountAmount = 0;
+    let couponCode: string | null = null;
+    if (dto.couponCode) {
+      const couponResult = await this.couponsService.validateCoupon(
+        { code: dto.couponCode, orderAmount: totalAmount },
+        userId,
+      );
+      discountAmount = couponResult.discountAmount;
+      couponCode = dto.couponCode.toUpperCase();
+    }
+
+    const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
+
     // 3. Create order
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const order = await this.orderRepository.create({
       userId,
       orderNumber,
       status: 'pending',
-      totalAmount: Math.round(totalAmount * 100) / 100,
+      totalAmount: finalAmount,
       currency: dto.currency,
       paymentMethod: dto.paymentMethod ?? null,
       paymentId: dto.paymentId ?? null,
+      couponCode,
+      discountAmount,
     });
 
     // 4. Group items by provider
@@ -189,6 +210,11 @@ export class OrdersService {
           quantity: item.quantity,
         });
       }
+    }
+
+    // Increment coupon usage after order created
+    if (couponCode) {
+      await this.couponsService.applyCoupon(couponCode);
     }
 
     return order;

@@ -53,6 +53,18 @@ export class Order {
   })
   paymentId?: string | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: 'SUMMER10',
+  })
+  couponCode?: string | null;
+
+  @ApiProperty({
+    type: Number,
+    example: 0,
+  })
+  discountAmount: number;
+
   @ApiProperty()
   createdAt: Date;
 

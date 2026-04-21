@@ -45,4 +45,9 @@ export class SubmitOrderDto {
   @ValidateNested({ each: true })
   @Type(() => SubmitOrderItemDto)
   items: SubmitOrderItemDto[];
+
+  @ApiPropertyOptional({ type: String, example: 'SUMMER10' })
+  @IsOptional()
+  @IsString()
+  couponCode?: string;
 }

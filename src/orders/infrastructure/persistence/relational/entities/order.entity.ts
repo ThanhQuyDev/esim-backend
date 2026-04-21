@@ -49,6 +49,13 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   paymentId?: string | null;
 
+  @Index()
+  @Column({ type: String, nullable: true })
+  couponCode?: string | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  discountAmount: number;
+
   @CreateDateColumn()
   createdAt: Date;
 
