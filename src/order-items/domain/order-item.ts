@@ -37,6 +37,16 @@ export class OrderItem {
   @ApiProperty({ type: Number, example: 1 })
   quantity: number;
 
+  @ApiProperty({ type: Number, example: 450000, description: 'Price in VND' })
+  vndPrice: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 300000,
+    description: 'Cost price in VND at time of purchase',
+  })
+  vndCostPrice: number;
+
   @ApiProperty()
   createdAt: Date;
 

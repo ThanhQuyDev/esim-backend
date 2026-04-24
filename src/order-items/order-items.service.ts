@@ -25,6 +25,8 @@ export class OrderItemsService {
       price: createOrderItemDto.price,
       currency: createOrderItemDto.currency,
       quantity: createOrderItemDto.quantity ?? 1,
+      vndPrice: createOrderItemDto.vndPrice ?? 0,
+      vndCostPrice: createOrderItemDto.vndCostPrice ?? 0,
     });
   }
 
@@ -46,6 +48,10 @@ export class OrderItemsService {
 
   findById(id: OrderItem['id']): Promise<NullableType<OrderItem>> {
     return this.orderItemsRepository.findById(id);
+  }
+
+  findByOrderId(orderId: number): Promise<OrderItem[]> {
+    return this.orderItemsRepository.findByOrderId(orderId);
   }
 
   findByOrderRequestId(orderRequestId: string): Promise<OrderItem[]> {

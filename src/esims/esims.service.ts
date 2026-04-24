@@ -71,6 +71,10 @@ export class EsimsService {
     return this.esimsRepository.findByIccid(iccid);
   }
 
+  findByOrderItemIds(orderItemIds: number[]): Promise<Esim[]> {
+    return this.esimsRepository.findByOrderItemIds(orderItemIds);
+  }
+
   async update(
     id: Esim['id'],
     updateEsimDto: UpdateEsimDto,

@@ -30,5 +30,18 @@ export abstract class PlanRepository {
 
   abstract markCheapestPlans(): Promise<void>;
 
+  abstract batchUpdateDiscount(ids: number[], discount: number): Promise<void>;
+
+  abstract recalculatePrices(profitPercentage: number): Promise<void>;
+
+  abstract updateAllVndPrices(rate: number): Promise<void>;
+
   abstract remove(id: Plan['id']): Promise<void>;
+
+  abstract deactivateStaleProviderPlans(
+    provider: string,
+    syncStartedAt: Date,
+  ): Promise<void>;
+
+  abstract deactivateAllProviderPlans(provider: string): Promise<void>;
 }

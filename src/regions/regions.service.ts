@@ -26,12 +26,15 @@ export class RegionsService {
       });
     }
 
-    return this.regionsRepository.create({
-      name: createRegionDto.name,
-      slug: createRegionDto.slug,
-      avatarUrl: createRegionDto.avatarUrl ?? null,
-      isActive: createRegionDto.isActive ?? true,
-    });
+    return this.regionsRepository.create(
+      {
+        name: createRegionDto.name,
+        slug: createRegionDto.slug,
+        avatarUrl: createRegionDto.avatarUrl ?? null,
+        isActive: createRegionDto.isActive ?? true,
+      },
+      createRegionDto.destinationIds,
+    );
   }
 
   findManyWithPagination({
@@ -74,12 +77,16 @@ export class RegionsService {
       }
     }
 
-    return this.regionsRepository.update(id, {
-      name: updateRegionDto.name,
-      slug: updateRegionDto.slug,
-      avatarUrl: updateRegionDto.avatarUrl,
-      isActive: updateRegionDto.isActive,
-    });
+    return this.regionsRepository.update(
+      id,
+      {
+        name: updateRegionDto.name,
+        slug: updateRegionDto.slug,
+        avatarUrl: updateRegionDto.avatarUrl,
+        isActive: updateRegionDto.isActive,
+      },
+      updateRegionDto.destinationIds,
+    );
   }
 
   async remove(id: Region['id']): Promise<void> {

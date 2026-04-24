@@ -182,7 +182,46 @@ export class PlansRelationalRepository implements PlanRepository {
     `);
   }
 
+  async batchUpdateDiscount(ids: number[], discount: number): Promise<void> {
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "discount" = $1 WHERE "id" = ANY($2) AND "deletedAt" IS NULL`,
+      [discount, ids],
+    );
+  }
+
+  async recalculatePrices(profitPercentage: number): Promise<void> {
+    const multiplier = 1 + profitPercentage / 100;
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "price" = ROUND("costPrice" * $1 * 100) / 100 WHERE "deletedAt" IS NULL`,
+      [multiplier],
+    );
+  }
+
+  async updateAllVndPrices(rate: number): Promise<void> {
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "vndPrice" = ROUND("retailPrice" * $1 / 1000) * 1000 WHERE "deletedAt" IS NULL`,
+      [rate],
+    );
+  }
+
   async remove(id: Plan['id']): Promise<void> {
     await this.plansRepository.softDelete(id);
+  }
+
+  async deactivateStaleProviderPlans(
+    provider: string,
+    syncStartedAt: Date,
+  ): Promise<void> {
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "isActive" = false WHERE "provider" = $1 AND "deletedAt" IS NULL AND "lastSyncedAt" IS NOT NULL AND "lastSyncedAt" < $2`,
+      [provider, syncStartedAt],
+    );
+  }
+
+  async deactivateAllProviderPlans(provider: string): Promise<void> {
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "isActive" = false WHERE "provider" = $1 AND "deletedAt" IS NULL`,
+      [provider],
+    );
   }
 }

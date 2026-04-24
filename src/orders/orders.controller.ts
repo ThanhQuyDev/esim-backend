@@ -35,6 +35,7 @@ import { Order } from './domain/order';
 import { OrdersService } from './orders.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
+import { UserOrderDetailDto } from './dto/user-order-detail.dto';
 
 @ApiBearerAuth()
 @Roles(RoleEnum.admin)
@@ -63,6 +64,43 @@ export class OrdersController {
     @Body() dto: SubmitOrderDto,
   ): Promise<Order> {
     return this.ordersService.submitOrder(req.user.id, dto);
+  }
+
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @ApiOkResponse({ type: UserOrderDetailDto })
+  @Get('my/by-number/:orderNumber')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'orderNumber', type: String, required: true })
+  findMyOrderByNumber(
+    @Request() req: { user: { id: number } },
+    @Param('orderNumber') orderNumber: string,
+  ): Promise<UserOrderDetailDto | null> {
+    return this.ordersService.findByOrderNumberAndUserId(
+      orderNumber,
+      req.user.id,
+    );
+  }
+
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @ApiOkResponse({ type: InfinityPaginationResponse(Order) })
+  @Get('my/list')
+  @HttpCode(HttpStatus.OK)
+  async findMyOrders(
+    @Request() req: { user: { id: number } },
+    @Query() query: QueryOrderDto,
+  ): Promise<InfinityPaginationResponseDto<Order>> {
+    const page = query?.page ?? 1;
+    let limit = query?.limit ?? 10;
+    if (limit > 50) limit = 50;
+
+    return infinityPagination(
+      await this.ordersService.findManyWithPagination({
+        filterOptions: { ...query?.filters, userId: req.user.id },
+        sortOptions: query?.sort,
+        paginationOptions: { page, limit },
+      }),
+      { page, limit },
+    );
   }
 
   @ApiOkResponse({ type: InfinityPaginationResponse(Order) })

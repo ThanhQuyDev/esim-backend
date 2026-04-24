@@ -55,6 +55,12 @@ export class OrderItemEntity extends EntityRelationalHelper {
   @Column({ type: 'int', default: 1 })
   quantity: number;
 
+  @Column({ type: 'decimal', precision: 12, scale: 0, default: 0 })
+  vndPrice: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 0, default: 0 })
+  vndCostPrice: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

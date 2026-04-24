@@ -72,6 +72,14 @@ export class EsimsRelationalRepository implements EsimRepository {
     return entity ? EsimMapper.toDomain(entity) : null;
   }
 
+  async findByOrderItemIds(orderItemIds: number[]): Promise<Esim[]> {
+    if (!orderItemIds.length) return [];
+    const entities = await this.esimsRepository.find({
+      where: orderItemIds.map((id) => ({ orderItemId: id })),
+    });
+    return entities.map(EsimMapper.toDomain);
+  }
+
   async update(id: Esim['id'], payload: Partial<Esim>): Promise<Esim> {
     const entity = await this.esimsRepository.findOne({
       where: { id: Number(id) },

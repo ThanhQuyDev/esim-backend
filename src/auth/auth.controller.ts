@@ -24,6 +24,8 @@ import { LoginResponseDto } from './dto/login-response.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { User } from '../users/domain/user';
 import { RefreshResponseDto } from './dto/refresh-response.dto';
+import { AuthOtpSendDto } from './dto/auth-otp-send.dto';
+import { AuthOtpVerifyDto } from './dto/auth-otp-verify.dto';
 
 @ApiTags('Auth')
 @Controller({
@@ -49,6 +51,24 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async register(@Body() createUserDto: AuthRegisterLoginDto): Promise<void> {
     return this.service.register(createUserDto);
+  }
+
+  @Post('email/otp/send')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async sendOtp(@Body() dto: AuthOtpSendDto): Promise<void> {
+    return this.service.sendOtp(dto.email);
+  }
+
+  @SerializeOptions({
+    groups: ['me'],
+  })
+  @Post('email/otp/verify')
+  @ApiOkResponse({
+    type: LoginResponseDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  async verifyOtp(@Body() dto: AuthOtpVerifyDto): Promise<LoginResponseDto> {
+    return this.service.verifyOtp(dto.email, dto.otp);
   }
 
   @Post('email/confirm')

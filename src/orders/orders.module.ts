@@ -6,6 +6,8 @@ import { EsimProvidersModule } from '../esim-providers/esim-providers.module';
 import { PlansModule } from '../plans/plans.module';
 import { OrderItemsModule } from '../order-items/order-items.module';
 import { CouponsModule } from '../coupons/coupons.module';
+import { EsimsModule } from '../esims/esims.module';
+import { CartsModule } from '../carts/carts.module';
 
 const infrastructurePersistenceModule = RelationalOrderPersistenceModule;
 
@@ -16,6 +18,8 @@ const infrastructurePersistenceModule = RelationalOrderPersistenceModule;
     PlansModule,
     OrderItemsModule,
     forwardRef(() => CouponsModule),
+    EsimsModule,
+    CartsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

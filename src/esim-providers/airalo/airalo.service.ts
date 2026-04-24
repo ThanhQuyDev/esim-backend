@@ -35,6 +35,7 @@ export class AiraloService {
 
   async syncPlans(): Promise<void> {
     this.logger.log('Starting airalo plan sync...');
+    const syncStartedAt = new Date();
 
     const syncLog = await this.providerSyncLogsService.create({
       provider: 'airalo',
@@ -90,6 +91,11 @@ export class AiraloService {
         itemsSynced,
         completedAt: new Date(),
       });
+
+      await this.plansService.deactivateStaleProviderPlans(
+        'airalo',
+        syncStartedAt,
+      );
 
       this.logger.log(
         `Airalo plan sync completed. ${itemsSynced} packages synced.`,
@@ -262,9 +268,7 @@ export class AiraloService {
     profitPercentage: number,
   ) {
     const locationName = country.title;
-    const planType = pkg.is_unlimited
-      ? 'daily-limit-speed-reduced'
-      : 'data-in-total';
+    const planType = pkg.is_unlimited ? 'unlimited-reduce' : 'fixed';
     const slug = this.buildPlanSlug(
       locationName,
       pkg.amount / 1024,
@@ -277,10 +281,18 @@ export class AiraloService {
     const costPrice = pkg.net_price;
     const price =
       Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
+
+    const planName = this.buildPlanName(
+      locationName,
+      pkg.amount / 1024,
+      pkg.day,
+      planType,
+    );
+
     const planData = {
       provider: 'airalo',
       providerPlanId: pkg.id,
-      name: pkg.title,
+      name: planName,
       countryCode: destinationId ? country.country_code : null,
       destinationId,
       regionId,
@@ -312,6 +324,9 @@ export class AiraloService {
           ),
         ].join(',') || null,
       fupSpeed: pkg.is_unlimited ? '1 Mbps' : null,
+      isKyc: operator.is_kyc_verify ?? false,
+      apn: operator.apn_value ?? null,
+      lastSyncedAt: new Date(),
       isActive: true,
     };
 
@@ -369,6 +384,25 @@ export class AiraloService {
     return data.data;
   }
 
+  private buildPlanName(
+    locationName: string,
+    dataGb: number,
+    durationDays: number,
+    type: string,
+  ): string {
+    switch (type) {
+      case 'fixed':
+        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+      case 'daily':
+        return `${locationName} ${dataGb}GB per day`;
+      case 'unlimited-reduce':
+      case 'unlimited':
+        return `${locationName} unlimited`;
+      default:
+        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+    }
+  }
+
   private buildPlanSlug(
     locationName: string,
     dataGb: number,
@@ -384,11 +418,7 @@ export class AiraloService {
       .trim();
     const prefix = provider.substring(0, 2).toLowerCase();
     const dataPart = dataGb > 0 ? `-${dataGb}gb` : '';
-    const unlimitedPart =
-      type === 'daily-unlimited' || type === 'daily-limit-speed-reduced'
-        ? '-unlimited'
-        : '';
-    return `${name}${dataPart}-${days}days${unlimitedPart}-${prefix}`;
+    return `${name}${dataPart}-${days}days-${type}-${prefix}`;
   }
 
   private toSlug(name: string): string {

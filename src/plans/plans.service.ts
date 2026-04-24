@@ -54,6 +54,11 @@ export class PlansService {
       fupSpeed: createPlanDto.fupSpeed ?? null,
       isAbleMultidate: createPlanDto.isAbleMultidate ?? false,
       isCheapest: false,
+      discount: createPlanDto.discount ?? 0,
+      vndPrice: 0,
+      isKyc: createPlanDto.isKyc ?? false,
+      apn: createPlanDto.apn ?? null,
+      lastSyncedAt: createPlanDto.lastSyncedAt ?? null,
       isActive: createPlanDto.isActive ?? true,
     });
   }
@@ -114,11 +119,24 @@ export class PlansService {
       currency: updatePlanDto.currency,
       type: updatePlanDto.type,
       topUp: updatePlanDto.topUp,
+      speed: updatePlanDto.speed,
+      operatorName: updatePlanDto.operatorName,
+      fupSpeed: updatePlanDto.fupSpeed,
+      isAbleMultidate: updatePlanDto.isAbleMultidate,
+      discount: updatePlanDto.discount,
+      isKyc: updatePlanDto.isKyc,
+      apn: updatePlanDto.apn,
+      lastSyncedAt: updatePlanDto.lastSyncedAt,
       isActive: updatePlanDto.isActive,
     });
   }
 
   async markCheapestPlans(): Promise<void> {
+    await this.plansRepository.markCheapestPlans();
+  }
+
+  async recalculatePrices(profitPercentage: number): Promise<void> {
+    await this.plansRepository.recalculatePrices(profitPercentage);
     await this.plansRepository.markCheapestPlans();
   }
 
@@ -138,32 +156,11 @@ export class PlansService {
       paginationOptions: { page: 1, limit: 1000 },
     });
 
-    const parseFupMbps = (fupSpeed: string | null): number => {
-      if (!fupSpeed) return 0;
-      const match = fupSpeed.match(/([\d.]+)\s*([MmGg]bps)/i);
-      if (!match) return 0;
-      const val = parseFloat(match[1]);
-      const unit = match[2].toLowerCase();
-      return unit === 'gbps' ? val * 1000 : val;
-    };
-
     return {
-      // Group 1: data-in-total, cheapest only
-      dataPlans: all.filter((p) => p.type === 'data-in-total' && p.isCheapest),
-      // Group 2: daily-limit-speed-reduced with fupSpeed < 1 Mbps
-      slowUnlimited: all.filter(
-        (p) =>
-          p.type === 'daily-limit-speed-reduced' &&
-          parseFupMbps(p.fupSpeed) < 1,
-      ),
-      // Group 3: daily-limit-speed-reduced with fupSpeed >= 1 Mbps
-      fastUnlimited: all.filter(
-        (p) =>
-          p.type === 'daily-limit-speed-reduced' &&
-          parseFupMbps(p.fupSpeed) >= 1,
-      ),
-      // Group 4: daily-unlimited
-      dailyUnlimited: all.filter((p) => p.type === 'daily-unlimited'),
+      dataPlans: all.filter((p) => p.type === 'fixed' && p.isCheapest),
+      slowUnlimited: all.filter((p) => p.type === 'daily'),
+      fastUnlimited: all.filter((p) => p.type === 'unlimited-reduce'),
+      dailyUnlimited: all.filter((p) => p.type === 'unlimited'),
     };
   }
 
@@ -183,32 +180,33 @@ export class PlansService {
       paginationOptions: { page: 1, limit: 1000 },
     });
 
-    const parseFupMbps = (fupSpeed: string | null): number => {
-      if (!fupSpeed) return 0;
-      const match = fupSpeed.match(/([\d.]+)\s*([MmGg]bps)/i);
-      if (!match) return 0;
-      const val = parseFloat(match[1]);
-      const unit = match[2].toLowerCase();
-      return unit === 'gbps' ? val * 1000 : val;
-    };
-
     return {
-      dataPlans: all.filter((p) => p.type === 'data-in-total' && p.isCheapest),
-      slowUnlimited: all.filter(
-        (p) =>
-          p.type === 'daily-limit-speed-reduced' &&
-          parseFupMbps(p.fupSpeed) < 1,
-      ),
-      fastUnlimited: all.filter(
-        (p) =>
-          p.type === 'daily-limit-speed-reduced' &&
-          parseFupMbps(p.fupSpeed) >= 1,
-      ),
-      dailyUnlimited: all.filter((p) => p.type === 'daily-unlimited'),
+      dataPlans: all.filter((p) => p.type === 'fixed' && p.isCheapest),
+      slowUnlimited: all.filter((p) => p.type === 'daily'),
+      fastUnlimited: all.filter((p) => p.type === 'unlimited-reduce'),
+      dailyUnlimited: all.filter((p) => p.type === 'unlimited'),
     };
+  }
+
+  async batchUpdateDiscount(ids: number[], discount: number): Promise<void> {
+    await this.plansRepository.batchUpdateDiscount(ids, discount);
   }
 
   async remove(id: Plan['id']): Promise<void> {
     await this.plansRepository.remove(id);
+  }
+
+  async deactivateStaleProviderPlans(
+    provider: string,
+    syncStartedAt: Date,
+  ): Promise<void> {
+    await this.plansRepository.deactivateStaleProviderPlans(
+      provider,
+      syncStartedAt,
+    );
+  }
+
+  async deactivateAllProviderPlans(provider: string): Promise<void> {
+    await this.plansRepository.deactivateAllProviderPlans(provider);
   }
 }

@@ -21,6 +21,13 @@ export abstract class OrderRepository {
 
   abstract findById(id: Order['id']): Promise<NullableType<Order>>;
 
+  abstract findByOrderNumber(orderNumber: string): Promise<NullableType<Order>>;
+
+  abstract findByOrderNumberAndUserId(
+    orderNumber: string,
+    userId: number,
+  ): Promise<NullableType<Order>>;
+
   abstract update(
     id: Order['id'],
     payload: DeepPartial<Order>,

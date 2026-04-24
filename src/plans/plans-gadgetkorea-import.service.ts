@@ -6,9 +6,9 @@ import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 import { ImportResult } from './plans-import.service';
 
 const SHEET_TYPE_MAP: Record<string, string> = {
-  'Daily Unlimited': 'daily-limit-speed-reduced',
-  'Pay-as-you-go': 'data-in-total',
-  'Real Unlimited': 'daily-unlimited',
+  'Daily Unlimited': 'daily',
+  'Pay-as-you-go': 'fixed',
+  'Real Unlimited': 'unlimited',
 };
 
 const COL = {
@@ -18,7 +18,9 @@ const COL = {
   OPTION_NAME: 5,
   CARRIER: 6,
   NETWORK: 7,
+  APN: 11,
   TOP_UP: 13,
+  KYC: 14,
   OPTION_ID: 17,
   NORMAL_PRICE: 18, // retail_price
   B2B_PRICE: 20, // cost_price
@@ -75,6 +77,8 @@ export class PlansGadgetkoreaImportService {
       );
     }
 
+    await this.plansService.deactivateAllProviderPlans(PROVIDER);
+
     for (const ws of targetSheets) {
       const planType = SHEET_TYPE_MAP[ws.name];
       this.logger.log(`Importing sheet "${ws.name}" as type "${planType}"`);
@@ -104,18 +108,20 @@ export class PlansGadgetkoreaImportService {
             this.getString(row.getCell(COL.OPTION_ID).value) || '';
           if (!providerPlanId) throw new Error('Missing Option ID');
 
-          const optionName =
-            this.getString(row.getCell(COL.OPTION_NAME).value) || '';
           const durationDays = this.parseDays(
             this.getString(row.getCell(COL.DAY).value),
           );
           const dataGb =
-            planType === 'daily-unlimited'
+            planType === 'unlimited'
               ? 0
               : this.parseDataGb(this.getString(row.getCell(COL.DATA).value));
           const topUp = this.parseOX(
             this.getString(row.getCell(COL.TOP_UP).value),
           );
+          const isKyc = this.parseOX(
+            this.getString(row.getCell(COL.KYC).value),
+          );
+          const apn = this.getString(row.getCell(COL.APN).value) || null;
 
           const costPrice =
             this.getNumber(row.getCell(COL.B2B_PRICE).value) ?? 0;
@@ -139,7 +145,12 @@ export class PlansGadgetkoreaImportService {
           const planData = {
             provider: PROVIDER,
             providerPlanId,
-            name: optionName || `${countryName} ${optionName}`,
+            name: this.buildPlanName(
+              countryName,
+              dataGb,
+              durationDays,
+              planType,
+            ),
             slug,
             countryCode: null,
             destinationId,
@@ -156,6 +167,8 @@ export class PlansGadgetkoreaImportService {
             topUp,
             speed,
             operatorName,
+            isKyc,
+            apn,
             isActive: true,
           };
 
@@ -186,6 +199,25 @@ export class PlansGadgetkoreaImportService {
     return result;
   }
 
+  private buildPlanName(
+    locationName: string,
+    dataGb: number,
+    durationDays: number,
+    type: string,
+  ): string {
+    switch (type) {
+      case 'fixed':
+        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+      case 'daily':
+        return `${locationName} ${dataGb}GB per day`;
+      case 'unlimited-reduce':
+      case 'unlimited':
+        return `${locationName} unlimited`;
+      default:
+        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+    }
+  }
+
   private buildPlanSlug(
     locationName: string,
     dataGb: number,
@@ -201,11 +233,7 @@ export class PlansGadgetkoreaImportService {
       .trim();
     const prefix = provider.substring(0, 2).toLowerCase();
     const dataPart = dataGb > 0 ? `-${dataGb}gb` : '';
-    const unlimitedPart =
-      type === 'daily-unlimited' || type === 'daily-limit-speed-reduced'
-        ? '-unlimited'
-        : '';
-    return `${name}${dataPart}-${days}days${unlimitedPart}-${prefix}`;
+    return `${name}${dataPart}-${days}days-${type}-${prefix}`;
   }
 
   private parseDays(value: string | null): number {

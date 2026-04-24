@@ -107,4 +107,27 @@ export class CreatePlanDto {
   @IsOptional()
   @IsBoolean()
   isAbleMultidate?: boolean;
+
+  @ApiPropertyOptional({
+    example: 0,
+    type: Number,
+    description: 'Discount percentage (0-100)',
+  })
+  @IsOptional()
+  @IsNumber()
+  discount?: number;
+
+  @ApiPropertyOptional({ example: false, type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isKyc?: boolean;
+
+  @ApiPropertyOptional({ example: 'internet', type: String })
+  @IsOptional()
+  @IsString()
+  apn?: string | null;
+
+  @ApiPropertyOptional({ type: Date })
+  @IsOptional()
+  lastSyncedAt?: Date | null;
 }

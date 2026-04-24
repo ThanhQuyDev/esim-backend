@@ -7,6 +7,7 @@ import { FilterRegionDto, SortRegionDto } from '../../dto/query-region.dto';
 export abstract class RegionRepository {
   abstract create(
     data: Omit<Region, 'id' | 'createdAt' | 'deletedAt' | 'updatedAt'>,
+    destinationIds?: number[],
   ): Promise<Region>;
 
   abstract findManyWithPagination({
@@ -26,6 +27,7 @@ export abstract class RegionRepository {
   abstract update(
     id: Region['id'],
     payload: DeepPartial<Region>,
+    destinationIds?: number[],
   ): Promise<Region | null>;
 
   abstract remove(id: Region['id']): Promise<void>;

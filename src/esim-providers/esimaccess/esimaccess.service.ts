@@ -33,6 +33,7 @@ export class EsimAccessService {
 
   async syncPlans(): Promise<void> {
     this.logger.log('Starting esimaccess plan sync...');
+    const syncStartedAt = new Date();
 
     const syncLog = await this.providerSyncLogsService.create({
       provider: 'esimaccess',
@@ -76,6 +77,11 @@ export class EsimAccessService {
         itemsSynced,
         completedAt: new Date(),
       });
+
+      await this.plansService.deactivateStaleProviderPlans(
+        'esimaccess',
+        syncStartedAt,
+      );
 
       this.logger.log(
         `Esimaccess plan sync completed. ${itemsSynced}/${packages.length} packages synced.`,
@@ -244,6 +250,37 @@ export class EsimAccessService {
     return region;
   }
 
+  private parseFupMbps(fupPolicy: string): number {
+    if (!fupPolicy) return 0;
+    const normalized = fupPolicy.replace(/\s+/g, ' ').trim();
+    const match = normalized.match(/([\d.]+)\s*([KkMmGg]bps)/i);
+    if (!match) return 0;
+    const val = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit === 'gbps') return val * 1000;
+    if (unit === 'kbps') return val / 1000;
+    return val;
+  }
+
+  private buildPlanName(
+    locationName: string,
+    dataGb: number,
+    durationDays: number,
+    type: string,
+  ): string {
+    switch (type) {
+      case 'fixed':
+        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+      case 'daily':
+        return `${locationName} ${dataGb}GB per day`;
+      case 'unlimited-reduce':
+      case 'unlimited':
+        return `${locationName} unlimited`;
+      default:
+        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+    }
+  }
+
   private async upsertPlan(
     pkg: EsimAccessPackage,
     destinationId: number | null,
@@ -251,16 +288,23 @@ export class EsimAccessService {
     profitPercentage: number,
   ) {
     const dataTypeMap: Record<number, string> = {
-      1: 'data-in-total',
-      2: 'daily-limit-speed-reduced',
+      1: 'fixed',
       3: 'daily-limit-service-cutoff',
-      4: 'daily-unlimited',
+      4: 'unlimited',
     };
 
     const locationName =
       pkg.locationNetworkList?.[0]?.locationName || pkg.location;
     const dataGb = pkg.volume / 1024 / 1024 / 1024;
-    const planType = dataTypeMap[pkg.dataType] ?? 'data-in-total';
+
+    let planType: string;
+    if (pkg.dataType === 2) {
+      const fupMbps = this.parseFupMbps(pkg.fupPolicy);
+      planType = fupMbps >= 1 ? 'unlimited-reduce' : 'daily';
+    } else {
+      planType = dataTypeMap[pkg.dataType] ?? 'fixed';
+    }
+
     const slug = this.buildPlanSlug(
       locationName,
       dataGb,
@@ -270,9 +314,12 @@ export class EsimAccessService {
     );
     const existing = await this.plansService.findBySlug(slug);
 
-    // Format name: "{location} {data} {days} Days"
-    const dataSize = this.formatDataSize(pkg.volume);
-    const planName = `${locationName} ${dataSize} ${pkg.duration} Days`;
+    const planName = this.buildPlanName(
+      locationName,
+      dataGb,
+      pkg.duration,
+      planType,
+    );
 
     const costPrice = pkg.price / 10000;
     const price =
@@ -302,7 +349,10 @@ export class EsimAccessService {
           .filter(Boolean)
           .join(',') || null,
       fupSpeed: pkg.fupPolicy || null,
-      isAbleMultidate: planType === 'daily-limit-speed-reduced',
+      isAbleMultidate: planType === 'unlimited-reduce',
+      isKyc: false,
+      apn: null,
+      lastSyncedAt: new Date(),
       isActive: true,
     };
 
@@ -412,11 +462,7 @@ export class EsimAccessService {
       dataGb > 0
         ? `-${this.formatDataSize(dataGb * 1024 * 1024 * 1024).toLowerCase()}`
         : '';
-    const unlimitedPart =
-      type === 'daily-unlimited' || type === 'daily-limit-speed-reduced'
-        ? '-unlimited'
-        : '';
-    return `${name}${dataPart}-${days}days${unlimitedPart}-${prefix}`;
+    return `${name}${dataPart}-${days}days-${type}-${prefix}`;
   }
 
   private formatDataSize(volumeBytes: number): string {

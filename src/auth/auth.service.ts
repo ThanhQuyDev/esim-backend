@@ -28,6 +28,10 @@ import { Session } from '../session/domain/session';
 import { SessionService } from '../session/session.service';
 import { StatusEnum } from '../statuses/statuses.enum';
 import { User } from '../users/domain/user';
+import { OtpService } from '../otp/otp.service';
+
+const OTP_TTL_MS = 5 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
 
 @Injectable()
 export class AuthService {
@@ -37,6 +41,7 @@ export class AuthService {
     private sessionService: SessionService,
     private mailService: MailService,
     private configService: ConfigService<AllConfigType>,
+    private otpService: OtpService,
   ) {}
 
   async validateLogin(loginDto: AuthEmailLoginDto): Promise<LoginResponseDto> {
@@ -537,6 +542,129 @@ export class AuthService {
 
   async logout(data: Pick<JwtRefreshPayloadType, 'sessionId'>) {
     return this.sessionService.deleteById(data.sessionId);
+  }
+
+  async sendOtp(email: string): Promise<void> {
+    let user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      user = await this.usersService.create({
+        email,
+        firstName: null,
+        lastName: null,
+        role: { id: RoleEnum.user },
+        status: { id: StatusEnum.active },
+      });
+      user = await this.usersService.findById(user.id);
+    }
+
+    if (!user) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { email: 'userCreationFailed' },
+      });
+    }
+
+    const existingOtp = await this.otpService.findActiveByUserId(user.id);
+    if (existingOtp) {
+      const timeSinceCreated =
+        Date.now() - new Date(existingOtp.createdAt).getTime();
+      if (timeSinceCreated < 60 * 1000) {
+        throw new UnprocessableEntityException({
+          status: HttpStatus.UNPROCESSABLE_ENTITY,
+          errors: { otp: 'otpRecentlySent' },
+        });
+      }
+    }
+
+    await this.otpService.deleteByUserId(user.id);
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = await bcrypt.hash(otpCode, 10);
+
+    await this.otpService.create({
+      user,
+      otpHash,
+      expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      attempts: 0,
+    });
+
+    await this.mailService.sendOtp({
+      to: email,
+      data: { otp: otpCode },
+    });
+  }
+
+  async verifyOtp(email: string, otp: string): Promise<LoginResponseDto> {
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { email: 'notFound' },
+      });
+    }
+
+    const otpRecord = await this.otpService.findActiveByUserId(user.id);
+
+    if (!otpRecord) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpNotFound' },
+      });
+    }
+
+    if (new Date() > new Date(otpRecord.expiresAt)) {
+      await this.otpService.deleteByUserId(user.id);
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpExpired' },
+      });
+    }
+
+    if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
+      await this.otpService.deleteByUserId(user.id);
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpMaxAttemptsExceeded' },
+      });
+    }
+
+    const isValid = await bcrypt.compare(otp, otpRecord.otpHash);
+
+    if (!isValid) {
+      await this.otpService.incrementAttempts(otpRecord.id);
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpInvalid' },
+      });
+    }
+
+    await this.otpService.deleteByUserId(user.id);
+
+    const hash = crypto
+      .createHash('sha256')
+      .update(randomStringGenerator())
+      .digest('hex');
+
+    const session = await this.sessionService.create({
+      user,
+      hash,
+    });
+
+    const { token, refreshToken, tokenExpires } = await this.getTokensData({
+      id: user.id,
+      role: user.role,
+      sessionId: session.id,
+      hash,
+    });
+
+    return {
+      refreshToken,
+      token,
+      tokenExpires,
+      user,
+    };
   }
 
   private async getTokensData(data: {

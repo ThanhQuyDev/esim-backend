@@ -68,6 +68,13 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     return entity ? OrderItemMapper.toDomain(entity) : null;
   }
 
+  async findByOrderId(orderId: number): Promise<OrderItem[]> {
+    const entities = await this.orderItemsRepository.find({
+      where: { orderId },
+    });
+    return entities.map((e) => OrderItemMapper.toDomain(e));
+  }
+
   async update(
     id: OrderItem['id'],
     payload: Partial<OrderItem>,

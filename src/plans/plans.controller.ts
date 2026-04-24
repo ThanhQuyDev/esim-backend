@@ -17,6 +17,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
+import { BatchUpdateDiscountDto } from './dto/batch-update-discount.dto';
 import {
   ImportPlansExcelDto,
   PlanColumnMapping,
@@ -42,7 +43,6 @@ import { QueryPlanDto } from './dto/query-plan.dto';
 import { Plan } from './domain/plan';
 import { PlansService } from './plans.service';
 import { PlansImportService, ImportResult } from './plans-import.service';
-import { PlansEsimvnImportService } from './plans-esimvn-import.service';
 import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
@@ -53,7 +53,6 @@ export class PlansController {
   constructor(
     private readonly plansService: PlansService,
     private readonly plansImportService: PlansImportService,
-    private readonly plansEsimvnImportService: PlansEsimvnImportService,
     private readonly plansGadgetkoreaImportService: PlansGadgetkoreaImportService,
   ) {}
 
@@ -145,6 +144,17 @@ export class PlansController {
   @ApiParam({ name: 'slug', type: String, required: true })
   findPlansByRegion(@Param('slug') slug: string) {
     return this.plansService.findPlansByRegion(slug);
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('batch-discount')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Batch update discount for plans' })
+  async batchUpdateDiscount(@Body() dto: BatchUpdateDiscountDto) {
+    await this.plansService.batchUpdateDiscount(dto.ids, dto.discount);
+    return { success: true };
   }
 
   @ApiOkResponse({ type: Plan })
@@ -268,100 +278,6 @@ export class PlansController {
       dto.provider,
       columnMapping,
       dto.sheet,
-    );
-  }
-
-  @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Post('import-esimvn')
-  @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description:
-      'Upload eSIMvn B2B Price Excel file. Auto-detects sheets and column mapping.',
-    schema: {
-      type: 'object',
-      required: ['file', 'provider'],
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-          description: 'eSIMvn B2B Price Excel file (.xlsx)',
-        },
-        provider: {
-          type: 'string',
-          example: 'esimvn',
-          description: 'Provider name applied to all imported plans',
-        },
-        sheets: {
-          type: 'string',
-          description:
-            'Comma-separated sheet names to import. Defaults to all: "Daily Unlimited,Pay-as-you-go,Real Unlimited"',
-        },
-      },
-    },
-  })
-  @ApiOkResponse({
-    description: 'Import result summary',
-    schema: {
-      type: 'object',
-      properties: {
-        total: { type: 'number' },
-        created: { type: 'number' },
-        updated: { type: 'number' },
-        skipped: { type: 'number' },
-        destinationNotFound: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'Country names from Excel that could not be matched to a destination',
-        },
-        errors: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              row: { type: 'number' },
-              error: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  })
-  async importEsimvn(
-    @UploadedFile() file: Express.Multer.File,
-    @Body('provider') provider: string,
-    @Body('sheets') sheets?: string,
-  ) {
-    if (!file) {
-      throw new BadRequestException('Excel file is required');
-    }
-    if (!provider) {
-      throw new BadRequestException('provider is required');
-    }
-
-    const allowedMimes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'application/octet-stream',
-    ];
-    if (!allowedMimes.includes(file.mimetype)) {
-      throw new BadRequestException(
-        `Invalid file type: ${file.mimetype}. Only .xlsx and .xls files are allowed.`,
-      );
-    }
-
-    const sheetList = sheets
-      ? sheets.split(',').map((s) => s.trim())
-      : undefined;
-
-    return this.plansEsimvnImportService.importFromExcel(
-      file.buffer,
-      provider,
-      sheetList,
     );
   }
 

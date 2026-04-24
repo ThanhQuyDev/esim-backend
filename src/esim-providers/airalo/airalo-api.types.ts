@@ -39,6 +39,8 @@ export interface AiraloOperator {
   plan_type: string;
   activation_policy: string;
   rechargeability: boolean;
+  is_kyc_verify?: boolean;
+  apn_value?: string;
   coverages: AiraloCoverage[];
   packages: AiraloPackage[];
   countries?: AiraloOperatorCountry[];

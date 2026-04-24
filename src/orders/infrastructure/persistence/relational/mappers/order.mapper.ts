@@ -19,6 +19,8 @@ export class OrderMapper {
     domainEntity.paymentId = raw.paymentId;
     domainEntity.couponCode = raw.couponCode;
     domainEntity.discountAmount = Number(raw.discountAmount);
+    domainEntity.vndPrice = Number(raw.vndPrice);
+    domainEntity.vndCostPrice = Number(raw.vndCostPrice);
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
@@ -44,6 +46,8 @@ export class OrderMapper {
     persistenceEntity.paymentId = domainEntity.paymentId;
     persistenceEntity.couponCode = domainEntity.couponCode;
     persistenceEntity.discountAmount = domainEntity.discountAmount ?? 0;
+    persistenceEntity.vndPrice = domainEntity.vndPrice ?? 0;
+    persistenceEntity.vndCostPrice = domainEntity.vndCostPrice ?? 0;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     persistenceEntity.deletedAt = domainEntity.deletedAt;

@@ -119,6 +119,46 @@ export class MailService {
     });
   }
 
+  async sendOtp(mailData: MailData<{ otp: string }>): Promise<void> {
+    const i18n = I18nContext.current();
+    let otpTitle: MaybeType<string>;
+    let text1: MaybeType<string>;
+    let text2: MaybeType<string>;
+    let text3: MaybeType<string>;
+
+    if (i18n) {
+      [otpTitle, text1, text2, text3] = await Promise.all([
+        i18n.t('otp.title'),
+        i18n.t('otp.text1'),
+        i18n.t('otp.text2'),
+        i18n.t('otp.text3'),
+      ]);
+    }
+
+    await this.mailerService.sendMail({
+      to: mailData.to,
+      subject: otpTitle,
+      text: `${otpTitle}: ${mailData.data.otp}`,
+      templatePath: path.join(
+        this.configService.getOrThrow('app.workingDirectory', {
+          infer: true,
+        }),
+        'src',
+        'mail',
+        'mail-templates',
+        'otp.hbs',
+      ),
+      context: {
+        title: otpTitle,
+        otp: mailData.data.otp,
+        app_name: this.configService.get('app.name', { infer: true }),
+        text1,
+        text2,
+        text3,
+      },
+    });
+  }
+
   async confirmNewEmail(mailData: MailData<{ hash: string }>): Promise<void> {
     const i18n = I18nContext.current();
     let emailConfirmTitle: MaybeType<string>;

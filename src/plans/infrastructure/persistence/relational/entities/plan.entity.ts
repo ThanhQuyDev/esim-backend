@@ -98,6 +98,21 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isCheapest: boolean;
 
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  discount: number;
+
+  @Column({ type: 'bigint', default: 0 })
+  vndPrice: number;
+
+  @Column({ type: Boolean, default: false })
+  isKyc: boolean;
+
+  @Column({ type: String, nullable: true })
+  apn: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date | null;
+
   @Index()
   @Column({ type: Boolean, default: true })
   isActive: boolean;

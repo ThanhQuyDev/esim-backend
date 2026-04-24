@@ -53,4 +53,14 @@ export class CreateOrderItemDto {
   @IsOptional()
   @IsNumber()
   quantity?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 450000 })
+  @IsOptional()
+  @IsNumber()
+  vndPrice?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 300000 })
+  @IsOptional()
+  @IsNumber()
+  vndCostPrice?: number;
 }

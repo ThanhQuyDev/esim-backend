@@ -82,4 +82,18 @@ export class UpdatePlanDto extends PartialType(CreatePlanDto) {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ example: false, type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isKyc?: boolean;
+
+  @ApiPropertyOptional({ example: 'internet', type: String })
+  @IsOptional()
+  @IsString()
+  apn?: string | null;
+
+  @ApiPropertyOptional({ type: Date })
+  @IsOptional()
+  lastSyncedAt?: Date | null;
 }

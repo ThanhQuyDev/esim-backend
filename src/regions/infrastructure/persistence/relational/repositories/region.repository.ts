@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { RegionEntity } from '../entities/region.entity';
+import { DestinationEntity } from '../../../../../destinations/infrastructure/persistence/relational/entities/destination.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import {
   FilterRegionDto,
@@ -17,13 +18,31 @@ export class RegionsRelationalRepository implements RegionRepository {
   constructor(
     @InjectRepository(RegionEntity)
     private readonly regionsRepository: Repository<RegionEntity>,
+    @InjectRepository(DestinationEntity)
+    private readonly destinationsRepository: Repository<DestinationEntity>,
   ) {}
 
-  async create(data: Region): Promise<Region> {
+  async create(data: Region, destinationIds?: number[]): Promise<Region> {
     const persistenceModel = RegionMapper.toPersistence(data);
     const newEntity = await this.regionsRepository.save(
       this.regionsRepository.create(persistenceModel),
     );
+
+    if (destinationIds?.length) {
+      const destinations = await this.destinationsRepository.findBy({
+        id: In(destinationIds),
+      });
+      if (destinations.length) {
+        const values = destinations
+          .map((d) => `(${d.id}, ${newEntity.id})`)
+          .join(', ');
+        await this.regionsRepository.query(
+          `INSERT INTO "destination_region" ("destinationId", "regionId") VALUES ${values} ON CONFLICT DO NOTHING`,
+        );
+        newEntity.destinations = destinations;
+      }
+    }
+
     return RegionMapper.toDomain(newEntity);
   }
 
@@ -114,7 +133,11 @@ export class RegionsRelationalRepository implements RegionRepository {
     return RegionMapper.toDomain(entity);
   }
 
-  async update(id: Region['id'], payload: Partial<Region>): Promise<Region> {
+  async update(
+    id: Region['id'],
+    payload: Partial<Region>,
+    destinationIds?: number[],
+  ): Promise<Region> {
     const entity = await this.regionsRepository.findOne({
       where: { id: Number(id) },
     });
@@ -131,6 +154,32 @@ export class RegionsRelationalRepository implements RegionRepository {
         }),
       ),
     );
+
+    if (destinationIds !== undefined) {
+      // Remove existing destination associations
+      await this.regionsRepository.query(
+        `DELETE FROM "destination_region" WHERE "regionId" = $1`,
+        [Number(id)],
+      );
+
+      // Add new destination associations
+      if (destinationIds.length) {
+        const destinations = await this.destinationsRepository.findBy({
+          id: In(destinationIds),
+        });
+        if (destinations.length) {
+          const values = destinations
+            .map((d) => `(${d.id}, ${Number(id)})`)
+            .join(', ');
+          await this.regionsRepository.query(
+            `INSERT INTO "destination_region" ("destinationId", "regionId") VALUES ${values} ON CONFLICT DO NOTHING`,
+          );
+          updatedEntity.destinations = destinations;
+        }
+      } else {
+        updatedEntity.destinations = [];
+      }
+    }
 
     return RegionMapper.toDomain(updatedEntity);
   }

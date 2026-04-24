@@ -21,6 +21,9 @@ import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.servi
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { AllConfigType } from '../config/config.type';
 import { CouponsService } from '../coupons/coupons.service';
+import { EsimsService } from '../esims/esims.service';
+import { UserOrderDetailDto } from './dto/user-order-detail.dto';
+import { CartsService } from '../carts/carts.service';
 
 @Injectable()
 export class OrdersService {
@@ -36,6 +39,8 @@ export class OrdersService {
     private readonly configService: ConfigService<AllConfigType>,
     @Inject(forwardRef(() => CouponsService))
     private readonly couponsService: CouponsService,
+    private readonly esimsService: EsimsService,
+    private readonly cartsService: CartsService,
   ) {}
 
   create(createOrderDto: CreateOrderDto): Promise<Order> {
@@ -49,6 +54,8 @@ export class OrdersService {
       paymentId: createOrderDto.paymentId,
       couponCode: null,
       discountAmount: 0,
+      vndPrice: 0,
+      vndCostPrice: 0,
     });
   }
 
@@ -96,6 +103,8 @@ export class OrdersService {
       paymentId: dto.paymentId ?? null,
       couponCode,
       discountAmount,
+      vndPrice: 0,
+      vndCostPrice: 0,
     });
 
     // 4. Group items by provider
@@ -223,7 +232,250 @@ export class OrdersService {
       await this.couponsService.applyCoupon(couponCode);
     }
 
+    await this.cartsService.clearCart(userId);
+
     return order;
+  }
+
+  async createPendingOrder(
+    userId: number,
+    dto: SubmitOrderDto,
+    orderNumber: string,
+    vndRate?: number,
+  ): Promise<Order> {
+    const planDetails = await Promise.all(
+      dto.items.map(async (item) => {
+        const plan = await this.plansService.findById(item.planId);
+        if (!plan) {
+          throw new NotFoundException(`Plan ${item.planId} not found`);
+        }
+        return { ...item, plan };
+      }),
+    );
+
+    const totalAmount = planDetails.reduce(
+      (sum, item) => sum + item.plan.price * item.quantity,
+      0,
+    );
+
+    let discountAmount = 0;
+    let couponCode: string | null = null;
+    if (dto.couponCode) {
+      const couponResult = await this.couponsService.validateCoupon(
+        { code: dto.couponCode, orderAmount: totalAmount },
+        userId,
+      );
+      discountAmount = couponResult.discountAmount;
+      couponCode = dto.couponCode.toUpperCase();
+    }
+
+    const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
+
+    const totalVndPrice = planDetails.reduce(
+      (sum, item) => sum + (item.plan.vndPrice ?? 0) * item.quantity,
+      0,
+    );
+    const totalVndCostPrice = vndRate
+      ? planDetails.reduce(
+          (sum, item) =>
+            sum + Math.round(item.plan.costPrice * vndRate) * item.quantity,
+          0,
+        )
+      : 0;
+
+    const order = await this.orderRepository.create({
+      userId,
+      orderNumber,
+      status: 'pending',
+      totalAmount: finalAmount,
+      currency: dto.currency,
+      paymentMethod: null,
+      paymentId: null,
+      couponCode,
+      discountAmount,
+      vndPrice: totalVndPrice,
+      vndCostPrice: totalVndCostPrice,
+    });
+
+    for (const item of planDetails) {
+      const itemVndCostPrice = vndRate
+        ? Math.round(item.plan.costPrice * vndRate) * item.quantity
+        : 0;
+
+      await this.orderItemsService.create({
+        orderId: order.id,
+        planId: item.planId,
+        orderRequestId: null,
+        status: 'pending',
+        price: item.plan.price,
+        currency: dto.currency,
+        quantity: item.quantity,
+        vndPrice: (item.plan.vndPrice ?? 0) * item.quantity,
+        vndCostPrice: itemVndCostPrice,
+      });
+    }
+
+    if (couponCode) {
+      await this.couponsService.applyCoupon(couponCode);
+    }
+
+    await this.cartsService.clearCart(userId);
+
+    return order;
+  }
+
+  async findByOrderNumber(orderNumber: string): Promise<NullableType<Order>> {
+    return this.orderRepository.findByOrderNumber(orderNumber);
+  }
+
+  async findByOrderNumberAndUserId(
+    orderNumber: string,
+    userId: number,
+  ): Promise<UserOrderDetailDto | null> {
+    const order = await this.orderRepository.findByOrderNumberAndUserId(
+      orderNumber,
+      userId,
+    );
+    if (!order) return null;
+
+    const orderItems = await this.orderItemsService.findByOrderId(order.id);
+    const esims = await this.esimsService.findByOrderItemIds(
+      orderItems.map((i) => i.id),
+    );
+
+    const esimsByOrderItemId = new Map<number, typeof esims>();
+    for (const esim of esims) {
+      if (esim.orderItemId == null) continue;
+      const list = esimsByOrderItemId.get(esim.orderItemId) ?? [];
+      list.push(esim);
+      esimsByOrderItemId.set(esim.orderItemId, list);
+    }
+
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      vndPrice: order.vndPrice,
+      paymentMethod: order.paymentMethod,
+      couponCode: order.couponCode,
+      createdAt: order.createdAt,
+      items: orderItems.map((item) => ({
+        id: item.id,
+        planId: item.planId,
+        orderRequestId: item.orderRequestId,
+        status: item.status,
+        vndPrice: item.vndPrice,
+        quantity: item.quantity,
+        esims: esimsByOrderItemId.get(item.id) ?? [],
+      })),
+    };
+  }
+
+  async submitProviders(orderId: number): Promise<void> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+
+    const orderItems = await this.orderItemsService.findByOrderId(orderId);
+
+    const itemsWithPlans = await Promise.all(
+      orderItems.map(async (oi) => {
+        const plan = await this.plansService.findById(oi.planId);
+        if (!plan) throw new NotFoundException(`Plan ${oi.planId} not found`);
+        return { ...oi, plan };
+      }),
+    );
+
+    const airaloItems = itemsWithPlans.filter(
+      (i) => i.plan.provider === 'airalo',
+    );
+    const esimAccessItems = itemsWithPlans.filter(
+      (i) => i.plan.provider === 'esimaccess',
+    );
+    const gadgetKoreaItems = itemsWithPlans.filter(
+      (i) => i.plan.provider === 'gadgetkorea',
+    );
+
+    for (const item of airaloItems) {
+      try {
+        const backendDomain = this.configService.getOrThrow(
+          'app.backendDomain',
+          { infer: true },
+        );
+        const webhookUrl = `${backendDomain}/api/v1/webhooks/airalo`;
+        const result = await this.airaloService.submitOrderAsync({
+          packageId: item.plan.providerPlanId,
+          quantity: item.quantity,
+          type: 'sim',
+          webhookUrl,
+        });
+        await this.orderItemsService.update(item.id, {
+          orderRequestId: result.request_id ?? null,
+        });
+      } catch (err) {
+        this.logger.error(
+          `Airalo order failed for plan ${item.planId}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    if (esimAccessItems.length > 0) {
+      const totalEsimAccessAmount = esimAccessItems.reduce(
+        (sum, i) => sum + i.plan.costPrice * i.quantity,
+        0,
+      );
+      const txnId = `${order.orderNumber}-esimaccess`;
+      try {
+        const result = await this.esimAccessService.submitOrder({
+          transactionId: txnId,
+          amount: Math.round(totalEsimAccessAmount * 10000),
+          packageInfoList: esimAccessItems.map((i) => ({
+            packageCode: i.plan.providerPlanId,
+            count: i.quantity,
+            price: Math.round(i.plan.costPrice * 10000),
+          })),
+        });
+        for (const item of esimAccessItems) {
+          await this.orderItemsService.update(item.id, {
+            orderRequestId: result.orderNo ?? null,
+          });
+        }
+      } catch (err) {
+        this.logger.error(`EsimAccess order failed: ${(err as Error).message}`);
+      }
+    }
+
+    if (gadgetKoreaItems.length > 0) {
+      const gkOrderId = `${order.orderNumber}-gk`;
+      const topupIdMap = new Map<string, string>();
+      try {
+        const result = await this.gadgetKoreaService.submitOrder({
+          orderId: gkOrderId,
+          products: gadgetKoreaItems.map((i) => ({
+            optionId: i.plan.providerPlanId.toLowerCase(),
+            qty: i.quantity,
+          })),
+        });
+        for (const p of result.products ?? []) {
+          if (p.topupId && p.optionId) {
+            topupIdMap.set(p.optionId.toLowerCase(), p.topupId);
+          }
+        }
+      } catch (err) {
+        this.logger.error(
+          `Gadget Korea order failed: ${(err as Error).message}`,
+        );
+      }
+
+      for (const item of gadgetKoreaItems) {
+        const topupId =
+          topupIdMap.get(item.plan.providerPlanId.toLowerCase()) ?? null;
+        if (topupId) {
+          await this.orderItemsService.update(item.id, {
+            orderRequestId: topupId,
+          });
+        }
+      }
+    }
   }
 
   findManyWithPagination({

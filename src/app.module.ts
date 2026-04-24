@@ -11,6 +11,7 @@ import googleConfig from './auth-google/config/google.config';
 import esimAccessConfig from './esim-providers/config/esimaccess.config';
 import airaloConfig from './esim-providers/config/airalo.config';
 import gadgetKoreaConfig from './esim-providers/config/gadgetkorea.config';
+import onepayConfig from './payment/config/onepay.config';
 import path from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -49,9 +50,13 @@ import { BlogsModule } from './blogs/blogs.module';
 
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { CouponsModule } from './coupons/coupons.module';
+import { PaymentModule } from './payment/payment.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { CartsModule } from './carts/carts.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     BlogsModule,
     WhyChooseUsModule,
     FaqsModule,
@@ -68,6 +73,7 @@ import { CouponsModule } from './coupons/coupons.module';
         esimAccessConfig,
         airaloConfig,
         gadgetKoreaConfig,
+        onepayConfig,
       ],
       envFilePath: ['.env'],
     }),
@@ -114,6 +120,8 @@ import { CouponsModule } from './coupons/coupons.module';
     EsimProvidersModule,
     ProfitMarginsModule,
     CouponsModule,
+    PaymentModule,
+    CartsModule,
   ],
 })
 export class AppModule {}

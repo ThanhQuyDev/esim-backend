@@ -56,6 +56,12 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   discountAmount: number;
 
+  @Column({ type: 'decimal', precision: 12, scale: 0, default: 0 })
+  vndPrice: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 0, default: 0 })
+  vndCostPrice: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

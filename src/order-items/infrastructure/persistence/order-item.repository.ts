@@ -24,6 +24,8 @@ export abstract class OrderItemRepository {
 
   abstract findById(id: OrderItem['id']): Promise<NullableType<OrderItem>>;
 
+  abstract findByOrderId(orderId: number): Promise<OrderItem[]>;
+
   abstract findByOrderRequestId(orderRequestId: string): Promise<OrderItem[]>;
 
   abstract update(

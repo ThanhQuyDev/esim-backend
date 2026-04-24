@@ -23,6 +23,8 @@ export abstract class EsimRepository {
 
   abstract findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>>;
 
+  abstract findByOrderItemIds(orderItemIds: number[]): Promise<Esim[]>;
+
   abstract update(
     id: Esim['id'],
     payload: DeepPartial<Esim>,

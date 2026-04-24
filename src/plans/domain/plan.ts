@@ -74,6 +74,25 @@ export class Plan {
   @ApiProperty({ type: Boolean, example: false })
   isCheapest: boolean;
 
+  @ApiProperty({
+    type: Number,
+    example: 10,
+    description: 'Discount percentage',
+  })
+  discount: number;
+
+  @ApiProperty({ type: Number, example: 45000, description: 'Price in VND' })
+  vndPrice: number;
+
+  @ApiProperty({ type: Boolean, example: false })
+  isKyc: boolean;
+
+  @ApiPropertyOptional({ type: String, example: 'internet' })
+  apn: string | null;
+
+  @ApiPropertyOptional()
+  lastSyncedAt: Date | null;
+
   @ApiProperty({ type: Boolean, example: true })
   isActive: boolean;
 
