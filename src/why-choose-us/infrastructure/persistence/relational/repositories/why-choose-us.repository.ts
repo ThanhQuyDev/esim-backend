@@ -31,6 +31,7 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
     const entities = await this.whyChooseUsRepository.find({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
+      order: { createdAt: 'DESC' },
     });
 
     return entities.map((entity) => WhyChooseUsMapper.toDomain(entity));

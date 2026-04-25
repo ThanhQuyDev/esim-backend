@@ -132,34 +132,70 @@ export class EsimsService {
 
   async getDataUsage(esim: Esim): Promise<DataUsageResult> {
     if (esim.provider === 'airalo') {
-      const usage = await this.airaloService.getDataUsage(esim.iccid);
-      return {
-        remaining: usage.remaining,
-        total: usage.total,
-        dataUsed: usage.total - usage.remaining,
-        expiredAt: usage.expired_at,
-        isUnlimited: usage.is_unlimited,
-        status: usage.status,
-        lastUpdateTime: null,
-      };
+      try {
+        const usage = await this.airaloService.getDataUsage(esim.iccid);
+        const result: DataUsageResult = {
+          remaining: usage.remaining,
+          total: usage.total,
+          dataUsed: usage.total - usage.remaining,
+          expiredAt: usage.expired_at,
+          isUnlimited: usage.is_unlimited,
+          status: usage.status,
+          lastUpdateTime: null,
+        };
+        await this.esimsRepository.update(esim.id, {
+          dataUsed: String(result.dataUsed),
+          dataTotal: String(result.total),
+        });
+        return result;
+      } catch {
+        return this.fallbackFromDb(esim);
+      }
     }
 
     if (esim.provider === 'esimaccess') {
       if (!esim.esimTranNo) {
         throw new NotFoundException('esimTranNo not found for this eSIM');
       }
-      const usage = await this.esimAccessService.getDataUsage(esim.esimTranNo);
-      return {
-        remaining: usage.totalData - usage.dataUsage,
-        total: usage.totalData,
-        dataUsed: usage.dataUsage,
-        expiredAt: null,
-        isUnlimited: false,
-        status: 'ACTIVE',
-        lastUpdateTime: usage.lastUpdateTime,
-      };
+      try {
+        const usage = await this.esimAccessService.getDataUsage(
+          esim.esimTranNo,
+        );
+        const bytesToMb = (bytes: number) =>
+          Math.round((bytes / (1024 * 1024)) * 100) / 100;
+        const result: DataUsageResult = {
+          remaining: bytesToMb(usage.totalData - usage.dataUsage),
+          total: bytesToMb(usage.totalData),
+          dataUsed: bytesToMb(usage.dataUsage),
+          expiredAt: null,
+          isUnlimited: false,
+          status: 'ACTIVE',
+          lastUpdateTime: usage.lastUpdateTime,
+        };
+        await this.esimsRepository.update(esim.id, {
+          dataUsed: String(result.dataUsed),
+          dataTotal: String(result.total),
+        });
+        return result;
+      } catch {
+        return this.fallbackFromDb(esim);
+      }
     }
 
     throw new NotFoundException('Provider not supported or not set');
+  }
+
+  private fallbackFromDb(esim: Esim): DataUsageResult {
+    const total = esim.dataTotal ? parseFloat(esim.dataTotal) : 0;
+    const dataUsed = esim.dataUsed ? parseFloat(esim.dataUsed) : 0;
+    return {
+      remaining: total - dataUsed,
+      total,
+      dataUsed,
+      expiredAt: null,
+      isUnlimited: false,
+      status: esim.status ?? 'UNKNOWN',
+      lastUpdateTime: null,
+    };
   }
 }

@@ -43,10 +43,10 @@ export class UpdatePlanDto extends PartialType(CreatePlanDto) {
   @IsNumber()
   durationDays?: number;
 
-  @ApiPropertyOptional({ example: 3.0, type: Number })
+  @ApiPropertyOptional({ example: 3072, type: Number })
   @IsOptional()
   @IsNumber()
-  dataGb?: number;
+  dataMb?: number;
 
   @ApiPropertyOptional({ example: 1.1, type: Number })
   @IsOptional()

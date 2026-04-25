@@ -266,20 +266,21 @@ export class EsimAccessService {
 
   private buildPlanName(
     locationName: string,
-    dataGb: number,
+    dataMb: number,
     durationDays: number,
     type: string,
   ): string {
+    const dataLabel = dataMb >= 1024 ? `${dataMb / 1024}GB` : `${dataMb}MB`;
     switch (type) {
       case 'fixed':
-        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+        return `${locationName} ${dataLabel} / ${durationDays}day`;
       case 'daily':
-        return `${locationName} ${dataGb}GB per day`;
+        return `${locationName} ${dataLabel} per day`;
       case 'unlimited-reduce':
       case 'unlimited':
         return `${locationName} unlimited`;
       default:
-        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+        return `${locationName} ${dataLabel} / ${durationDays}day`;
     }
   }
 
@@ -297,7 +298,7 @@ export class EsimAccessService {
 
     const locationName =
       pkg.locationNetworkList?.[0]?.locationName || pkg.location;
-    const dataGb = pkg.volume / 1024 / 1024 / 1024;
+    const dataMb = Math.round(pkg.volume / 1024 / 1024);
 
     let planType: string;
     if (pkg.dataType === 2) {
@@ -309,7 +310,7 @@ export class EsimAccessService {
 
     const slug = this.buildPlanSlug(
       locationName,
-      dataGb,
+      dataMb,
       pkg.duration,
       'esimaccess',
       planType,
@@ -318,7 +319,7 @@ export class EsimAccessService {
 
     const planName = this.buildPlanName(
       locationName,
-      dataGb,
+      dataMb,
       pkg.duration,
       planType,
     );
@@ -334,7 +335,7 @@ export class EsimAccessService {
       destinationId,
       regionId,
       durationDays: pkg.duration,
-      dataGb: pkg.volume / 1024 / 1024 / 1024,
+      dataMb: Math.round(pkg.volume / 1024 / 1024),
       costPrice,
       price,
       retailPrice: pkg.retailPrice / 10000,
@@ -483,7 +484,7 @@ export class EsimAccessService {
 
   private buildPlanSlug(
     locationName: string,
-    dataGb: number,
+    dataMb: number,
     days: number,
     provider: string,
     type: string,
@@ -495,19 +496,19 @@ export class EsimAccessService {
       .replace(/-+/g, '-')
       .trim();
     const prefix = provider.substring(0, 2).toLowerCase();
-    const dataPart =
-      dataGb > 0
-        ? `-${this.formatDataSize(dataGb * 1024 * 1024 * 1024).toLowerCase()}`
+    const dataLabel =
+      dataMb > 0
+        ? `-${this.formatDataSize(dataMb * 1024 * 1024).toLowerCase()}`
         : '';
-    return `${name}${dataPart}-${days}days-${type}-${prefix}`;
+    return `${name}${dataLabel}-${days}days-${type}-${prefix}`;
   }
 
   private formatDataSize(volumeBytes: number): string {
-    const gb = volumeBytes / 1024 / 1024 / 1024;
-    if (gb >= 1) {
+    const mb = volumeBytes / 1024 / 1024;
+    if (mb >= 1024) {
+      const gb = mb / 1024;
       return gb % 1 === 0 ? `${gb}GB` : `${gb.toFixed(1)}GB`;
     }
-    const mb = volumeBytes / 1024 / 1024;
     return mb % 1 === 0 ? `${mb}MB` : `${mb.toFixed(0)}MB`;
   }
 

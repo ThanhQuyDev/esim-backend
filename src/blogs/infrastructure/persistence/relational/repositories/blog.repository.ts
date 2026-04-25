@@ -31,6 +31,7 @@ export class BlogRelationalRepository implements BlogRepository {
     const entities = await this.blogRepository.find({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
+      order: { createdAt: 'DESC' },
     });
 
     return entities.map((entity) => BlogMapper.toDomain(entity));

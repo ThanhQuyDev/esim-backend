@@ -65,6 +65,7 @@ export class WebhooksService {
     let userId: number | null = null;
     let orderItemId: number | null = null;
 
+    let dataTotal: string | null = null;
     if (requestId) {
       const orderItems =
         await this.orderItemsService.findByOrderRequestId(requestId);
@@ -86,6 +87,10 @@ export class WebhooksService {
         orderItemId = orderItems[0].id;
         const order = await this.ordersService.findById(orderItems[0].orderId);
         userId = order?.userId ?? null;
+        const dataMb = orderItems[0].plan?.dataMb;
+        if (dataMb != null) {
+          dataTotal = dataMb >= 1024 ? `${dataMb / 1024}GB` : `${dataMb}MB`;
+        }
       }
     }
 
@@ -126,6 +131,8 @@ export class WebhooksService {
             userId: userId ?? existing.userId ?? undefined,
             orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
             provider: 'airalo',
+            dataUsed: existing.dataUsed ?? '0',
+            dataTotal: dataTotal ?? existing.dataTotal ?? undefined,
           });
           this.logger.log(`Updated eSIM iccid=${sim.iccid} (Airalo)`);
         } else {
@@ -144,6 +151,8 @@ export class WebhooksService {
             userId,
             orderItemId,
             provider: 'airalo',
+            dataUsed: '0',
+            dataTotal,
           });
           this.logger.log(`Created eSIM iccid=${sim.iccid} (Airalo)`);
         }
@@ -221,10 +230,15 @@ export class WebhooksService {
       `Updated ${orderItems.length} order item(s) to completed (orderNo=${orderNo})`,
     );
 
+    let dataTotal: string | null = null;
     if (orderItems.length > 0) {
       orderItemId = orderItems[0].id;
       const order = await this.ordersService.findById(orderItems[0].orderId);
       userId = order?.userId ?? null;
+      const dataMb = orderItems[0].plan?.dataMb;
+      if (dataMb != null) {
+        dataTotal = dataMb >= 1024 ? `${dataMb / 1024}GB` : `${dataMb}MB`;
+      }
     }
 
     // 2. Query EsimAccess for eSIM details
@@ -270,6 +284,8 @@ export class WebhooksService {
             orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
             esimTranNo: esim.esimTranNo ?? existing.esimTranNo ?? undefined,
             provider: 'esimaccess',
+            dataUsed: existing.dataUsed ?? '0',
+            dataTotal: dataTotal ?? existing.dataTotal ?? undefined,
           });
           this.logger.log(`Updated eSIM iccid=${esim.iccid} (EsimAccess)`);
         } else {
@@ -285,6 +301,8 @@ export class WebhooksService {
             orderItemId,
             esimTranNo: esim.esimTranNo ?? null,
             provider: 'esimaccess',
+            dataUsed: '0',
+            dataTotal,
           });
           this.logger.log(`Created eSIM iccid=${esim.iccid} (EsimAccess)`);
         }

@@ -48,10 +48,10 @@ export class CreatePlanDto {
   @IsNumber()
   durationDays: number;
 
-  @ApiProperty({ example: 3.0, type: Number })
+  @ApiProperty({ example: 3072, type: Number })
   @IsNotEmpty()
   @IsNumber()
-  dataGb: number;
+  dataMb: number;
 
   @ApiProperty({ example: 1.1, type: Number })
   @IsNotEmpty()

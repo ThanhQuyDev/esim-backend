@@ -272,7 +272,7 @@ export class AiraloService {
     const planType = pkg.is_unlimited ? 'unlimited-reduce' : 'fixed';
     const slug = this.buildPlanSlug(
       locationName,
-      pkg.amount / 1024,
+      pkg.amount,
       pkg.day,
       'airalo',
       planType,
@@ -283,9 +283,11 @@ export class AiraloService {
     const price =
       Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
 
+    const dataMb = pkg.is_unlimited ? 3072 : pkg.amount;
+
     const planName = this.buildPlanName(
       locationName,
-      pkg.amount / 1024,
+      dataMb,
       pkg.day,
       planType,
     );
@@ -298,7 +300,7 @@ export class AiraloService {
       destinationId,
       regionId,
       durationDays: pkg.day,
-      dataGb: pkg.is_unlimited ? 3 : pkg.amount / 1024,
+      dataMb,
       costPrice,
       price,
       retailPrice: pkg.price,
@@ -408,26 +410,27 @@ export class AiraloService {
 
   private buildPlanName(
     locationName: string,
-    dataGb: number,
+    dataMb: number,
     durationDays: number,
     type: string,
   ): string {
+    const dataLabel = dataMb >= 1024 ? `${dataMb / 1024}GB` : `${dataMb}MB`;
     switch (type) {
       case 'fixed':
-        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+        return `${locationName} ${dataLabel} / ${durationDays}day`;
       case 'daily':
-        return `${locationName} ${dataGb}GB per day`;
+        return `${locationName} ${dataLabel} per day`;
       case 'unlimited-reduce':
       case 'unlimited':
         return `${locationName} unlimited`;
       default:
-        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+        return `${locationName} ${dataLabel} / ${durationDays}day`;
     }
   }
 
   private buildPlanSlug(
     locationName: string,
-    dataGb: number,
+    dataMb: number,
     days: number,
     provider: string,
     type: string,
@@ -439,7 +442,8 @@ export class AiraloService {
       .replace(/-+/g, '-')
       .trim();
     const prefix = provider.substring(0, 2).toLowerCase();
-    const dataPart = dataGb > 0 ? `-${dataGb}gb` : '';
+    const dataLabel = dataMb >= 1024 ? `${dataMb / 1024}gb` : `${dataMb}mb`;
+    const dataPart = dataMb > 0 ? `-${dataLabel}` : '';
     return `${name}${dataPart}-${days}days-${type}-${prefix}`;
   }
 

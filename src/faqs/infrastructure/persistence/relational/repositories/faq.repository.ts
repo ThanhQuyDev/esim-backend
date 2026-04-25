@@ -31,6 +31,7 @@ export class FaqRelationalRepository implements FaqRepository {
     const entities = await this.faqRepository.find({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
+      order: { createdAt: 'DESC' },
     });
 
     return entities.map((entity) => FaqMapper.toDomain(entity));

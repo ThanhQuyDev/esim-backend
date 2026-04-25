@@ -21,7 +21,7 @@ export class PlanMapper {
       domainEntity.region = RegionMapper.toDomain(raw.region);
     }
     domainEntity.durationDays = raw.durationDays;
-    domainEntity.dataGb = raw.dataGb;
+    domainEntity.dataMb = raw.dataMb;
     domainEntity.costPrice = raw.costPrice;
     domainEntity.price = raw.price;
     domainEntity.retailPrice = raw.retailPrice;
@@ -58,7 +58,7 @@ export class PlanMapper {
     persistenceEntity.destinationId = domainEntity.destinationId;
     persistenceEntity.regionId = domainEntity.regionId;
     persistenceEntity.durationDays = domainEntity.durationDays;
-    persistenceEntity.dataGb = domainEntity.dataGb;
+    persistenceEntity.dataMb = domainEntity.dataMb;
     persistenceEntity.costPrice = domainEntity.costPrice;
     persistenceEntity.price = domainEntity.price;
     persistenceEntity.retailPrice = domainEntity.retailPrice;

@@ -47,13 +47,15 @@ export class OrdersRelationalRepository implements OrderRepository {
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where: where,
-      order: sortOptions?.reduce(
-        (accumulator, sort) => ({
-          ...accumulator,
-          [sort.orderBy]: sort.order,
-        }),
-        {},
-      ),
+      order: sortOptions?.length
+        ? sortOptions.reduce(
+            (accumulator, sort) => ({
+              ...accumulator,
+              [sort.orderBy]: sort.order,
+            }),
+            {},
+          )
+        : { createdAt: 'DESC' },
     });
 
     return entities.map((entity) => OrderMapper.toDomain(entity));

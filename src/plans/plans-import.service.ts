@@ -152,7 +152,7 @@ export class PlansImportService {
       `${provider}-${providerPlanId}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
     const durationDays = this.getCellNumber(getValue('durationDays')) ?? 0;
-    const dataGb = this.getCellNumber(getValue('dataGb')) ?? 0;
+    const dataMb = this.getCellNumber(getValue('dataMb')) ?? 0;
     const costPrice = this.getCellNumber(getValue('costPrice')) ?? 0;
     const price = this.getCellNumber(getValue('price')) ?? 0;
     const retailPrice = this.getCellNumber(getValue('retailPrice')) ?? 0;
@@ -167,7 +167,7 @@ export class PlansImportService {
       destinationId: this.getCellNumber(getValue('destinationId')) || null,
       regionId: this.getCellNumber(getValue('regionId')) || null,
       durationDays,
-      dataGb,
+      dataMb,
       costPrice,
       price,
       retailPrice,

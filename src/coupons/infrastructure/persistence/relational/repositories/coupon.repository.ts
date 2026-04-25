@@ -49,13 +49,15 @@ export class CouponsRelationalRepository implements CouponRepository {
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
-      order: sortOptions?.reduce(
-        (accumulator, sort) => ({
-          ...accumulator,
-          [sort.orderBy]: sort.order,
-        }),
-        {},
-      ),
+      order: sortOptions?.length
+        ? sortOptions.reduce(
+            (accumulator, sort) => ({
+              ...accumulator,
+              [sort.orderBy]: sort.order,
+            }),
+            {},
+          )
+        : { createdAt: 'DESC' },
     });
 
     return entities.map((entity) => CouponMapper.toDomain(entity));

@@ -1,5 +1,6 @@
 import { OrderItem } from '../../../../domain/order-item';
 import { OrderItemEntity } from '../entities/order-item.entity';
+import { PlanMapper } from '../../../../../plans/infrastructure/persistence/relational/mappers/plan.mapper';
 
 export class OrderItemMapper {
   static toDomain(raw: OrderItemEntity): OrderItem {
@@ -7,6 +8,9 @@ export class OrderItemMapper {
     domainEntity.id = raw.id;
     domainEntity.orderId = raw.orderId;
     domainEntity.planId = raw.planId;
+    if (raw.plan) {
+      domainEntity.plan = PlanMapper.toDomain(raw.plan);
+    }
     domainEntity.orderRequestId = raw.orderRequestId;
     domainEntity.providerOrderId = raw.providerOrderId;
     domainEntity.providerOrderCode = raw.providerOrderCode;

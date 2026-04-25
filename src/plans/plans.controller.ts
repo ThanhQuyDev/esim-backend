@@ -216,7 +216,7 @@ export class PlansController {
           type: 'string',
           description:
             'JSON string mapping plan fields to Excel column names. ' +
-            'Example: {"providerPlanId":"Plan ID","name":"Plan Name","durationDays":"Duration","dataGb":"Data (GB)","costPrice":"Cost","price":"Price","retailPrice":"Retail Price","currency":"Currency"}',
+            'Example: {"providerPlanId":"Plan ID","name":"Plan Name","durationDays":"Duration","dataMb":"Data (MB)","costPrice":"Cost","price":"Price","retailPrice":"Retail Price","currency":"Currency"}',
         },
         sheet: {
           type: 'string',

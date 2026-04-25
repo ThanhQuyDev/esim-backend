@@ -19,7 +19,7 @@ export class ImportPlansExcelDto {
       name: 'Plan Name',
       countryCode: 'Country',
       durationDays: 'Duration',
-      dataGb: 'Data (GB)',
+      dataMb: 'Data (MB)',
       costPrice: 'Cost',
       price: 'Price',
       retailPrice: 'Retail Price',
@@ -53,7 +53,7 @@ export type PlanColumnMapping = Partial<
     | 'destinationId'
     | 'regionId'
     | 'durationDays'
-    | 'dataGb'
+    | 'dataMb'
     | 'costPrice'
     | 'price'
     | 'retailPrice'

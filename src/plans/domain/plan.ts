@@ -38,8 +38,8 @@ export class Plan {
   @ApiProperty({ type: Number, example: 30 })
   durationDays: number;
 
-  @ApiProperty({ type: Number, example: 3.0 })
-  dataGb: number;
+  @ApiProperty({ type: Number, example: 3072 })
+  dataMb: number;
 
   @ApiProperty({ type: Number, example: 1.1 })
   costPrice: number;

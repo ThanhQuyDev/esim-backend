@@ -54,6 +54,7 @@ import { CouponsModule } from './coupons/coupons.module';
 import { PaymentModule } from './payment/payment.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CartsModule } from './carts/carts.module';
+import { SupportedDevicesModule } from './supported-devices/supported-devices.module';
 
 @Module({
   imports: [
@@ -124,6 +125,7 @@ import { CartsModule } from './carts/carts.module';
     CouponsModule,
     PaymentModule,
     CartsModule,
+    SupportedDevicesModule,
   ],
 })
 export class AppModule {}

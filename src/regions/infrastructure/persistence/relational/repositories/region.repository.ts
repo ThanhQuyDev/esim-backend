@@ -82,6 +82,8 @@ export class RegionsRelationalRepository implements RegionRepository {
           sort.order as 'ASC' | 'DESC',
         );
       }
+    } else {
+      qb.orderBy('region.createdAt', 'DESC');
     }
 
     qb.offset((paginationOptions.page - 1) * paginationOptions.limit);

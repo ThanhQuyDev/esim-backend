@@ -46,10 +46,12 @@ export class ProfitMarginsRelationalRepository implements ProfitMarginRepository
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
-      order: sortOptions?.reduce(
-        (acc, sort) => ({ ...acc, [sort.orderBy]: sort.order }),
-        {},
-      ),
+      order: sortOptions?.length
+        ? sortOptions.reduce(
+            (acc, sort) => ({ ...acc, [sort.orderBy]: sort.order }),
+            {},
+          )
+        : { createdAt: 'DESC' },
     });
 
     return entities.map((entity) => ProfitMarginMapper.toDomain(entity));

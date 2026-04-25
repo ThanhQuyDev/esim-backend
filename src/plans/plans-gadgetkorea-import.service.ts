@@ -111,10 +111,10 @@ export class PlansGadgetkoreaImportService {
           const durationDays = this.parseDays(
             this.getString(row.getCell(COL.DAY).value),
           );
-          const dataGb =
+          const dataMb =
             planType === 'unlimited'
               ? 0
-              : this.parseDataGb(this.getString(row.getCell(COL.DATA).value));
+              : this.parseDataMb(this.getString(row.getCell(COL.DATA).value));
           const topUp = this.parseOX(
             this.getString(row.getCell(COL.TOP_UP).value),
           );
@@ -136,7 +136,7 @@ export class PlansGadgetkoreaImportService {
 
           const slug = this.buildPlanSlug(
             countryName,
-            dataGb,
+            dataMb,
             durationDays,
             PROVIDER,
             planType,
@@ -147,7 +147,7 @@ export class PlansGadgetkoreaImportService {
             providerPlanId,
             name: this.buildPlanName(
               countryName,
-              dataGb,
+              dataMb,
               durationDays,
               planType,
             ),
@@ -156,7 +156,7 @@ export class PlansGadgetkoreaImportService {
             destinationId,
             regionId: null,
             durationDays,
-            dataGb,
+            dataMb,
             costPrice,
             price,
             retailPrice,
@@ -201,26 +201,27 @@ export class PlansGadgetkoreaImportService {
 
   private buildPlanName(
     locationName: string,
-    dataGb: number,
+    dataMb: number,
     durationDays: number,
     type: string,
   ): string {
+    const dataLabel = dataMb >= 1024 ? `${dataMb / 1024}GB` : `${dataMb}MB`;
     switch (type) {
       case 'fixed':
-        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+        return `${locationName} ${dataLabel} / ${durationDays}day`;
       case 'daily':
-        return `${locationName} ${dataGb}GB per day`;
+        return `${locationName} ${dataLabel} per day`;
       case 'unlimited-reduce':
       case 'unlimited':
         return `${locationName} unlimited`;
       default:
-        return `${locationName} ${dataGb}GB / ${durationDays}day`;
+        return `${locationName} ${dataLabel} / ${durationDays}day`;
     }
   }
 
   private buildPlanSlug(
     locationName: string,
-    dataGb: number,
+    dataMb: number,
     days: number,
     provider: string,
     type: string,
@@ -232,7 +233,8 @@ export class PlansGadgetkoreaImportService {
       .replace(/-+/g, '-')
       .trim();
     const prefix = provider.substring(0, 2).toLowerCase();
-    const dataPart = dataGb > 0 ? `-${dataGb}gb` : '';
+    const dataLabel = dataMb >= 1024 ? `${dataMb / 1024}gb` : `${dataMb}mb`;
+    const dataPart = dataMb > 0 ? `-${dataLabel}` : '';
     return `${name}${dataPart}-${days}days-${type}-${prefix}`;
   }
 
@@ -242,12 +244,12 @@ export class PlansGadgetkoreaImportService {
     return match ? parseInt(match[1], 10) : 0;
   }
 
-  private parseDataGb(value: string | null): number {
+  private parseDataMb(value: string | null): number {
     if (!value) return 0;
     const gbMatch = value.match(/^([\d.]+)\s*GB/i);
-    if (gbMatch) return parseFloat(gbMatch[1]);
+    if (gbMatch) return Math.round(parseFloat(gbMatch[1]) * 1024);
     const mbMatch = value.match(/^([\d.]+)\s*MB/i);
-    if (mbMatch) return parseFloat(mbMatch[1]) / 1024;
+    if (mbMatch) return Math.round(parseFloat(mbMatch[1]));
     return 0;
   }
 

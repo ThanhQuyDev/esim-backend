@@ -72,6 +72,8 @@ export class PlansRelationalRepository implements PlanRepository {
             sort.order as 'ASC' | 'DESC',
           );
         }
+      } else {
+        qb.orderBy('plan.createdAt', 'DESC');
       }
 
       qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
@@ -100,13 +102,15 @@ export class PlansRelationalRepository implements PlanRepository {
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
-      order: sortOptions?.reduce(
-        (accumulator, sort) => ({
-          ...accumulator,
-          [sort.orderBy]: sort.order,
-        }),
-        {},
-      ),
+      order: sortOptions?.length
+        ? sortOptions.reduce(
+            (accumulator, sort) => ({
+              ...accumulator,
+              [sort.orderBy]: sort.order,
+            }),
+            {},
+          )
+        : { createdAt: 'DESC' },
     });
 
     return entities.map((entity) => PlanMapper.toDomain(entity));
@@ -153,31 +157,31 @@ export class PlansRelationalRepository implements PlanRepository {
       `UPDATE "plan" SET "isCheapest" = false WHERE "deletedAt" IS NULL`,
     );
 
-    // Mark cheapest plan per group (destinationId, type, dataGb, durationDays)
+    // Mark cheapest plan per group (destinationId, type, dataMb, durationDays)
     // Only for plans with a destinationId (single-country plans)
     await this.plansRepository.query(`
       UPDATE "plan" SET "isCheapest" = true
       WHERE id IN (
-        SELECT DISTINCT ON ("destinationId", "type", "dataGb", "durationDays") id
+        SELECT DISTINCT ON ("destinationId", "type", "dataMb", "durationDays") id
         FROM "plan"
         WHERE "deletedAt" IS NULL
           AND "isActive" = true
           AND "destinationId" IS NOT NULL
-        ORDER BY "destinationId", "type", "dataGb", "durationDays", "costPrice" ASC
+        ORDER BY "destinationId", "type", "dataMb", "durationDays", "costPrice" ASC
       )
     `);
 
-    // Mark cheapest plan per group (regionId, type, dataGb, durationDays)
+    // Mark cheapest plan per group (regionId, type, dataMb, durationDays)
     // For region plans
     await this.plansRepository.query(`
       UPDATE "plan" SET "isCheapest" = true
       WHERE id IN (
-        SELECT DISTINCT ON ("regionId", "type", "dataGb", "durationDays") id
+        SELECT DISTINCT ON ("regionId", "type", "dataMb", "durationDays") id
         FROM "plan"
         WHERE "deletedAt" IS NULL
           AND "isActive" = true
           AND "regionId" IS NOT NULL
-        ORDER BY "regionId", "type", "dataGb", "durationDays", "costPrice" ASC
+        ORDER BY "regionId", "type", "dataMb", "durationDays", "costPrice" ASC
       )
     `);
   }
