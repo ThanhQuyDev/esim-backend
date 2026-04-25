@@ -105,3 +105,20 @@ export interface AiraloPackagesResponse {
     next: string | null;
   };
 }
+
+export interface AiraloUsageResponse {
+  data: {
+    remaining: number;
+    total: number;
+    expired_at: string;
+    is_unlimited: boolean;
+    status: string;
+    remaining_voice: number;
+    remaining_text: number;
+    total_voice: number;
+    total_text: number;
+  };
+  meta: {
+    message: string;
+  };
+}

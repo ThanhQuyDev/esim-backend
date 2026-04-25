@@ -17,6 +17,7 @@ import {
   AiraloOperatorCountry,
   AiraloOrderAsyncRequest,
   AiraloOrderAsyncResponse,
+  AiraloUsageResponse,
 } from './airalo-api.types';
 
 @Injectable()
@@ -379,6 +380,27 @@ export class AiraloService {
 
     this.logger.log(
       `Airalo async order submitted: request_id=${data.data.request_id}, accepted_at=${data.data.accepted_at}`,
+    );
+
+    return data.data;
+  }
+
+  async getDataUsage(iccid: string): Promise<AiraloUsageResponse['data']> {
+    const token = await this.authenticate();
+    const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
+      infer: true,
+    });
+
+    const { data } = await firstValueFrom(
+      this.httpService.get<AiraloUsageResponse>(
+        `${baseUrl}/v2/sims/${iccid}/usage`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        },
+      ),
     );
 
     return data.data;

@@ -54,6 +54,12 @@ export class Esim {
   @ApiPropertyOptional()
   activatedAt: Date | null;
 
+  @ApiPropertyOptional({ type: String })
+  esimTranNo: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  provider: string | null;
+
   @ApiProperty()
   createdAt: Date;
 

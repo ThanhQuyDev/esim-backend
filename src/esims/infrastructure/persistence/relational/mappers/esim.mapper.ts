@@ -21,6 +21,8 @@ export class EsimMapper {
     domainEntity.dataTotal = raw.dataTotal;
     domainEntity.expiresAt = raw.expiresAt;
     domainEntity.activatedAt = raw.activatedAt;
+    domainEntity.esimTranNo = raw.esimTranNo;
+    domainEntity.provider = raw.provider;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
@@ -49,6 +51,8 @@ export class EsimMapper {
     persistenceEntity.dataTotal = domainEntity.dataTotal;
     persistenceEntity.expiresAt = domainEntity.expiresAt;
     persistenceEntity.activatedAt = domainEntity.activatedAt;
+    persistenceEntity.esimTranNo = domainEntity.esimTranNo;
+    persistenceEntity.provider = domainEntity.provider;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     persistenceEntity.deletedAt = domainEntity.deletedAt;

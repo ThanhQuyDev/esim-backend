@@ -86,4 +86,14 @@ export class CreateEsimDto {
   @IsOptional()
   @IsDateString()
   activatedAt?: Date | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  esimTranNo?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  provider?: string | null;
 }

@@ -101,3 +101,19 @@ export interface EsimAccessOrderResponse {
     esimList?: EsimAccessOrderEsim[];
   };
 }
+
+export interface EsimAccessUsageItem {
+  esimTranNo: string;
+  dataUsage: number;
+  totalData: number;
+  lastUpdateTime: string;
+}
+
+export interface EsimAccessUsageResponse {
+  success: boolean;
+  errorCode: string;
+  errorMsg: string | null;
+  obj: {
+    esimUsageList: EsimAccessUsageItem[];
+  };
+}

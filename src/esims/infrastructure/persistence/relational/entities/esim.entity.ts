@@ -76,6 +76,12 @@ export class EsimEntity extends EntityRelationalHelper {
   @Column({ type: 'timestamp', nullable: true })
   activatedAt: Date | null;
 
+  @Column({ type: String, nullable: true })
+  esimTranNo: string | null;
+
+  @Column({ type: String, nullable: true })
+  provider: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

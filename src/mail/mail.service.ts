@@ -46,7 +46,7 @@ export class MailService {
         this.configService.getOrThrow('app.workingDirectory', {
           infer: true,
         }),
-        'src',
+        'dist',
         'mail',
         'mail-templates',
         'activation.hbs',
@@ -99,7 +99,7 @@ export class MailService {
         this.configService.getOrThrow('app.workingDirectory', {
           infer: true,
         }),
-        'src',
+        'dist',
         'mail',
         'mail-templates',
         'reset-password.hbs',
@@ -143,7 +143,7 @@ export class MailService {
         this.configService.getOrThrow('app.workingDirectory', {
           infer: true,
         }),
-        'src',
+        'dist',
         'mail',
         'mail-templates',
         'otp.hbs',
@@ -190,7 +190,7 @@ export class MailService {
         this.configService.getOrThrow('app.workingDirectory', {
           infer: true,
         }),
-        'src',
+        'dist',
         'mail',
         'mail-templates',
         'confirm-new-email.hbs',

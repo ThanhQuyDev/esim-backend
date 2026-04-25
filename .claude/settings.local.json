@@ -4,7 +4,8 @@
       "WebSearch",
       "Bash(npm run:*)",
       "Bash(docker compose up:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

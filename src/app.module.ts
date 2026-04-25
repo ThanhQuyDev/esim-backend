@@ -47,6 +47,7 @@ import { FaqsModule } from './faqs/faqs.module';
 import { WhyChooseUsModule } from './why-choose-us/why-choose-us.module';
 
 import { BlogsModule } from './blogs/blogs.module';
+import { HelpCenterModule } from './help-center/help-center.module';
 
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { CouponsModule } from './coupons/coupons.module';
@@ -58,6 +59,7 @@ import { CartsModule } from './carts/carts.module';
   imports: [
     ScheduleModule.forRoot(),
     BlogsModule,
+    HelpCenterModule,
     WhyChooseUsModule,
     FaqsModule,
     WebhooksModule,

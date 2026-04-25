@@ -15,6 +15,8 @@ import {
   EsimAccessOrderResponse,
   EsimAccessQueryEsimResponse,
   EsimAccessQueryEsimItem,
+  EsimAccessUsageResponse,
+  EsimAccessUsageItem,
 } from './esimaccess-api.types';
 
 @Injectable()
@@ -442,6 +444,41 @@ export class EsimAccessService {
     }
 
     return data.obj?.esimList ?? [];
+  }
+
+  async getDataUsage(esimTranNo: string): Promise<EsimAccessUsageItem> {
+    const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
+      infer: true,
+    });
+    const accessCode = this.configService.getOrThrow('esimAccess.accessCode', {
+      infer: true,
+    });
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<EsimAccessUsageResponse>(
+        `${baseUrl}/api/v1/open/esim/usage/query`,
+        { esimTranNoList: [esimTranNo] },
+        {
+          headers: {
+            'RT-AccessCode': accessCode,
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    if (!data.success) {
+      throw new Error(
+        `EsimAccess usage query failed: ${data.errorCode} - ${data.errorMsg}`,
+      );
+    }
+
+    const item = data.obj?.esimUsageList?.[0];
+    if (!item) {
+      throw new Error(`No usage data returned for esimTranNo=${esimTranNo}`);
+    }
+
+    return item;
   }
 
   private buildPlanSlug(

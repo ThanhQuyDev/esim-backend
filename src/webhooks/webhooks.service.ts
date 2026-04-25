@@ -125,6 +125,7 @@ export class WebhooksService {
             status: 'available',
             userId: userId ?? existing.userId ?? undefined,
             orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
+            provider: 'airalo',
           });
           this.logger.log(`Updated eSIM iccid=${sim.iccid} (Airalo)`);
         } else {
@@ -142,6 +143,7 @@ export class WebhooksService {
             status: 'available',
             userId,
             orderItemId,
+            provider: 'airalo',
           });
           this.logger.log(`Created eSIM iccid=${sim.iccid} (Airalo)`);
         }
@@ -266,6 +268,8 @@ export class WebhooksService {
             status: 'available',
             userId: userId ?? existing.userId ?? undefined,
             orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
+            esimTranNo: esim.esimTranNo ?? existing.esimTranNo ?? undefined,
+            provider: 'esimaccess',
           });
           this.logger.log(`Updated eSIM iccid=${esim.iccid} (EsimAccess)`);
         } else {
@@ -279,6 +283,8 @@ export class WebhooksService {
             status: 'available',
             userId,
             orderItemId,
+            esimTranNo: esim.esimTranNo ?? null,
+            provider: 'esimaccess',
           });
           this.logger.log(`Created eSIM iccid=${esim.iccid} (EsimAccess)`);
         }

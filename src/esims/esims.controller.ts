@@ -10,6 +10,8 @@ import {
   Query,
   HttpStatus,
   HttpCode,
+  Request,
+  NotFoundException,
 } from '@nestjs/common';
 import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';
@@ -33,6 +35,7 @@ import { Esim } from './domain/esim';
 import { EsimsService } from './esims.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
+import { DataUsageResult } from './esims.service';
 
 @ApiBearerAuth()
 @Roles(RoleEnum.admin)
@@ -41,6 +44,60 @@ import { infinityPagination } from '../utils/infinity-pagination';
 @Controller({ path: 'esims', version: '1' })
 export class EsimsController {
   constructor(private readonly esimsService: EsimsService) {}
+
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @ApiOkResponse({ type: InfinityPaginationResponse(Esim) })
+  @Get('my/list')
+  @HttpCode(HttpStatus.OK)
+  async findMyEsims(
+    @Request() req: { user: { id: number } },
+    @Query() query: QueryEsimDto,
+  ): Promise<InfinityPaginationResponseDto<Esim>> {
+    const page = query?.page ?? 1;
+    let limit = query?.limit ?? 10;
+    if (limit > 50) limit = 50;
+
+    return infinityPagination(
+      await this.esimsService.findManyWithPagination({
+        filterOptions: { ...query?.filters, userId: req.user.id },
+        sortOptions: query?.sort,
+        paginationOptions: { page, limit },
+      }),
+      { page, limit },
+    );
+  }
+
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @ApiOkResponse({ type: Esim })
+  @Get('my/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: Number, required: true })
+  async findMyEsimById(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+  ): Promise<Esim> {
+    const esim = await this.esimsService.findById(id);
+    if (!esim || esim.userId !== req.user.id) {
+      throw new NotFoundException();
+    }
+    return esim;
+  }
+
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @ApiOkResponse()
+  @Get('my/:id/data-usage')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: Number, required: true })
+  async getMyEsimDataUsage(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+  ): Promise<DataUsageResult> {
+    const esim = await this.esimsService.findById(id);
+    if (!esim || esim.userId !== req.user.id) {
+      throw new NotFoundException();
+    }
+    return this.esimsService.getDataUsage(esim);
+  }
 
   @ApiCreatedResponse({ type: Esim })
   @Post()
