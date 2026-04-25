@@ -2,6 +2,20 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 const idType = Number;
 
+export class RegionRef {
+  @ApiProperty({ type: Number })
+  id: number;
+
+  @ApiProperty({ type: String })
+  name: string;
+
+  @ApiProperty({ type: String })
+  slug: string;
+
+  @ApiPropertyOptional({ type: String })
+  avatarUrl: string | null;
+}
+
 export class Destination {
   @ApiProperty({
     type: idType,
@@ -64,6 +78,9 @@ export class Destination {
     example: 'High-speed 4G/5G coverage across Japan',
   })
   description: string | null;
+
+  @ApiPropertyOptional({ type: () => [RegionRef] })
+  regions?: RegionRef[];
 
   @ApiProperty()
   createdAt: Date;

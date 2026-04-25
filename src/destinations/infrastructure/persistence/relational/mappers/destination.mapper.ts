@@ -1,4 +1,4 @@
-import { Destination } from '../../../../domain/destination';
+import { Destination, RegionRef } from '../../../../domain/destination';
 import { DestinationEntity } from '../entities/destination.entity';
 
 export class DestinationMapper {
@@ -15,6 +15,16 @@ export class DestinationMapper {
     domainEntity.isPopular = raw.isPopular;
     domainEntity.isActive = raw.isActive;
     domainEntity.description = raw.description;
+    if (raw.regions) {
+      domainEntity.regions = raw.regions.map((r) => {
+        const ref = new RegionRef();
+        ref.id = r.id;
+        ref.name = r.name;
+        ref.slug = r.slug;
+        ref.avatarUrl = r.avatarUrl;
+        return ref;
+      });
+    }
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;

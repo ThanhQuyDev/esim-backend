@@ -70,6 +70,16 @@ export class RegionsController {
   }
 
   @ApiOkResponse({ type: Region })
+  @Get('slug/:slug')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'slug', type: String, required: true })
+  findBySlug(
+    @Param('slug') slug: Region['slug'],
+  ): Promise<NullableType<Region>> {
+    return this.regionsService.findBySlug(slug);
+  }
+
+  @ApiOkResponse({ type: Region })
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: String, required: true })

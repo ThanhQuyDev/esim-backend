@@ -86,6 +86,18 @@ export class DestinationsController {
   @ApiOkResponse({
     type: Destination,
   })
+  @Get('slug/:slug')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'slug', type: String, required: true })
+  findBySlug(
+    @Param('slug') slug: Destination['slug'],
+  ): Promise<NullableType<Destination>> {
+    return this.destinationsService.findBySlug(slug);
+  }
+
+  @ApiOkResponse({
+    type: Destination,
+  })
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({

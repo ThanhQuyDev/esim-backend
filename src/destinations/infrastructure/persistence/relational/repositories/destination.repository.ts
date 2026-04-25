@@ -86,6 +86,7 @@ export class DestinationsRelationalRepository implements DestinationRepository {
   ): Promise<NullableType<Destination>> {
     const entity = await this.destinationsRepository.findOne({
       where: { slug },
+      relations: ['regions'],
     });
 
     return entity ? DestinationMapper.toDomain(entity) : null;
