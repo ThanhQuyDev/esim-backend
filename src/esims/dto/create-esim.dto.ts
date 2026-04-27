@@ -18,6 +18,11 @@ export class CreateEsimDto {
   @IsNumber()
   userId?: number | null;
 
+  @ApiPropertyOptional({ type: Number })
+  @IsOptional()
+  @IsNumber()
+  planId?: number | null;
+
   @ApiProperty({ example: '8901234567890123456', type: String })
   @IsNotEmpty()
   @IsString()
@@ -96,4 +101,9 @@ export class CreateEsimDto {
   @IsOptional()
   @IsString()
   provider?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string | null;
 }

@@ -107,6 +107,9 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isKyc: boolean;
 
+  @Column({ type: Boolean, default: false })
+  isLocalInventory: boolean;
+
   @Column({ type: String, nullable: true })
   apn: string | null;
 

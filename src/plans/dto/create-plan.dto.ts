@@ -122,10 +122,20 @@ export class CreatePlanDto {
   @IsBoolean()
   isKyc?: boolean;
 
+  @ApiPropertyOptional({ example: false, type: Boolean, description: 'True if esims are served from local inventory' })
+  @IsOptional()
+  @IsBoolean()
+  isLocalInventory?: boolean;
+
   @ApiPropertyOptional({ example: 'internet', type: String })
   @IsOptional()
   @IsString()
   apn?: string | null;
+
+  @ApiPropertyOptional({ example: 45000, type: Number, description: 'Price in VND (set directly for VND currency plans)' })
+  @IsOptional()
+  @IsNumber()
+  vndPrice?: number;
 
   @ApiPropertyOptional({ type: Date })
   @IsOptional()

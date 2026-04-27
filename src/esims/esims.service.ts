@@ -46,6 +46,7 @@ export class EsimsService {
     return this.esimsRepository.create({
       orderItemId: createEsimDto.orderItemId ?? null,
       userId: createEsimDto.userId ?? null,
+      planId: createEsimDto.planId ?? null,
       iccid: createEsimDto.iccid,
       smdpAddress: createEsimDto.smdpAddress ?? null,
       activationCode: createEsimDto.activationCode ?? null,
@@ -63,6 +64,7 @@ export class EsimsService {
       activatedAt: createEsimDto.activatedAt ?? null,
       esimTranNo: createEsimDto.esimTranNo ?? null,
       provider: createEsimDto.provider ?? null,
+      phoneNumber: createEsimDto.phoneNumber ?? null,
     });
   }
 
@@ -94,6 +96,10 @@ export class EsimsService {
     return this.esimsRepository.findByOrderItemIds(orderItemIds);
   }
 
+  findAvailableByPlanId(planId: number, limit: number): Promise<Esim[]> {
+    return this.esimsRepository.findAvailableByPlanId(planId, limit);
+  }
+
   async update(
     id: Esim['id'],
     updateEsimDto: UpdateEsimDto,
@@ -113,6 +119,7 @@ export class EsimsService {
     return this.esimsRepository.update(id, {
       orderItemId: updateEsimDto.orderItemId,
       userId: updateEsimDto.userId,
+      planId: updateEsimDto.planId,
       iccid: updateEsimDto.iccid,
       smdpAddress: updateEsimDto.smdpAddress,
       activationCode: updateEsimDto.activationCode,
@@ -123,6 +130,7 @@ export class EsimsService {
       activatedAt: updateEsimDto.activatedAt,
       esimTranNo: updateEsimDto.esimTranNo,
       provider: updateEsimDto.provider,
+      phoneNumber: updateEsimDto.phoneNumber,
     });
   }
 

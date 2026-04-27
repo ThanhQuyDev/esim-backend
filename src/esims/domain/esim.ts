@@ -12,6 +12,9 @@ export class Esim {
   @ApiPropertyOptional({ type: idType })
   userId: number | null;
 
+  @ApiPropertyOptional({ type: idType })
+  planId: number | null;
+
   @ApiProperty({ type: String, example: '8901234567890123456' })
   iccid: string;
 
@@ -59,6 +62,9 @@ export class Esim {
 
   @ApiPropertyOptional({ type: String })
   provider: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  phoneNumber: string | null;
 
   @ApiProperty()
   createdAt: Date;

@@ -87,6 +87,9 @@ export class Plan {
   @ApiProperty({ type: Boolean, example: false })
   isKyc: boolean;
 
+  @ApiProperty({ type: Boolean, example: false, description: 'True if esims are served from local inventory, not from provider API' })
+  isLocalInventory: boolean;
+
   @ApiPropertyOptional({ type: String, example: 'internet' })
   apn: string | null;
 

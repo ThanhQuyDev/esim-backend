@@ -115,6 +115,7 @@ export class OrdersService {
     const gadgetKoreaItems = planDetails.filter(
       (i) => i.plan.provider === 'gadgetkorea',
     );
+    const localItems = planDetails.filter((i) => i.plan.isLocalInventory);
 
     // 5. Call Airalo API — one call per plan
     for (const item of airaloItems) {
@@ -224,6 +225,50 @@ export class OrdersService {
           currency: dto.currency,
           quantity: item.quantity,
         });
+      }
+    }
+
+    // 8. Local providers (esimvn) — assign available esims from inventory
+    for (const item of localItems) {
+      const orderItem = await this.orderItemsService.create({
+        orderId: order.id,
+        planId: item.planId,
+        orderRequestId: null,
+        status: 'pending',
+        price: item.plan.price,
+        currency: dto.currency,
+        quantity: item.quantity,
+      });
+
+      try {
+        const availableEsims = await this.esimsService.findAvailableByPlanId(
+          item.planId,
+          item.quantity,
+        );
+
+        if (availableEsims.length < item.quantity) {
+          this.logger.warn(
+            `Not enough local esims for plan ${item.planId}: need ${item.quantity}, found ${availableEsims.length}`,
+          );
+        }
+
+        for (const esim of availableEsims) {
+          await this.esimsService.update(esim.id, {
+            orderItemId: orderItem.id,
+            userId,
+            status: 'assigned',
+          });
+        }
+
+        if (availableEsims.length >= item.quantity) {
+          await this.orderItemsService.update(orderItem.id, {
+            status: 'completed',
+          });
+        }
+      } catch (err) {
+        this.logger.error(
+          `Local esim assignment failed for plan ${item.planId}: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -394,6 +439,7 @@ export class OrdersService {
     const gadgetKoreaItems = itemsWithPlans.filter(
       (i) => i.plan.provider === 'gadgetkorea',
     );
+    const localItems = itemsWithPlans.filter((i) => i.plan.isLocalInventory);
 
     for (const item of airaloItems) {
       try {
@@ -474,6 +520,38 @@ export class OrdersService {
             orderRequestId: topupId,
           });
         }
+      }
+    }
+
+    // 8. Local providers (esimvn) — assign available esims from inventory
+    for (const item of localItems) {
+      try {
+        const availableEsims = await this.esimsService.findAvailableByPlanId(
+          item.planId,
+          item.quantity,
+        );
+
+        if (availableEsims.length < item.quantity) {
+          this.logger.warn(
+            `Not enough local esims for plan ${item.planId}: need ${item.quantity}, found ${availableEsims.length}`,
+          );
+        }
+
+        for (const esim of availableEsims) {
+          await this.esimsService.update(esim.id, {
+            orderItemId: item.id,
+            userId: order.userId,
+            status: 'assigned',
+          });
+        }
+
+        await this.orderItemsService.update(item.id, {
+          status: availableEsims.length >= item.quantity ? 'completed' : 'pending',
+        });
+      } catch (err) {
+        this.logger.error(
+          `Local esim assignment failed for plan ${item.planId}: ${(err as Error).message}`,
+        );
       }
     }
   }

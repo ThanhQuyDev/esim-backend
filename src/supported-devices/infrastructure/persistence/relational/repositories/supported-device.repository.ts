@@ -51,8 +51,12 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
     return entities.map(SupportedDeviceMapper.toDomain);
   }
 
-  async findGrouped(): Promise<SupportedDevice[]> {
+  async findGrouped(search?: string): Promise<SupportedDevice[]> {
+    const where: Record<string, unknown> = {};
+    if (search) where.device = ILike(`%${search}%`);
+
     const entities = await this.repo.find({
+      where,
       order: { type: 'ASC', manufacturer: 'ASC', device: 'ASC' },
     });
     return entities.map(SupportedDeviceMapper.toDomain);

@@ -203,7 +203,7 @@ export class PlansRelationalRepository implements PlanRepository {
 
   async updateAllVndPrices(rate: number): Promise<void> {
     await this.plansRepository.query(
-      `UPDATE "plan" SET "vndPrice" = ROUND("retailPrice" * $1 / 1000) * 1000 WHERE "deletedAt" IS NULL`,
+      `UPDATE "plan" SET "vndPrice" = ROUND("retailPrice" * $1 / 1000) * 1000 WHERE "deletedAt" IS NULL AND "currency" != 'VND'`,
       [rate],
     );
   }

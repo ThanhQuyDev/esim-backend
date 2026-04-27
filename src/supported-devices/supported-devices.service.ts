@@ -35,8 +35,8 @@ export class SupportedDevicesService {
     });
   }
 
-  async findGrouped() {
-    const devices = await this.supportedDeviceRepository.findGrouped();
+  async findGrouped(search?: string) {
+    const devices = await this.supportedDeviceRepository.findGrouped(search);
 
     const typeOrder = [
       DeviceType.SMART_PHONES,

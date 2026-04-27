@@ -7,6 +7,7 @@ export class EsimMapper {
     domainEntity.id = raw.id;
     domainEntity.orderItemId = raw.orderItemId;
     domainEntity.userId = raw.userId;
+    domainEntity.planId = raw.planId;
     domainEntity.iccid = raw.iccid;
     domainEntity.smdpAddress = raw.smdpAddress;
     domainEntity.activationCode = raw.activationCode;
@@ -23,6 +24,7 @@ export class EsimMapper {
     domainEntity.activatedAt = raw.activatedAt;
     domainEntity.esimTranNo = raw.esimTranNo;
     domainEntity.provider = raw.provider;
+    domainEntity.phoneNumber = raw.phoneNumber;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
@@ -36,6 +38,7 @@ export class EsimMapper {
     }
     persistenceEntity.orderItemId = domainEntity.orderItemId;
     persistenceEntity.userId = domainEntity.userId;
+    persistenceEntity.planId = domainEntity.planId;
     persistenceEntity.iccid = domainEntity.iccid;
     persistenceEntity.smdpAddress = domainEntity.smdpAddress;
     persistenceEntity.activationCode = domainEntity.activationCode;
@@ -53,6 +56,7 @@ export class EsimMapper {
     persistenceEntity.activatedAt = domainEntity.activatedAt;
     persistenceEntity.esimTranNo = domainEntity.esimTranNo;
     persistenceEntity.provider = domainEntity.provider;
+    persistenceEntity.phoneNumber = domainEntity.phoneNumber;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     persistenceEntity.deletedAt = domainEntity.deletedAt;

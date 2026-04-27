@@ -25,6 +25,8 @@ export abstract class EsimRepository {
 
   abstract findByOrderItemIds(orderItemIds: number[]): Promise<Esim[]>;
 
+  abstract findAvailableByPlanId(planId: number, limit: number): Promise<Esim[]>;
+
   abstract update(
     id: Esim['id'],
     payload: DeepPartial<Esim>,

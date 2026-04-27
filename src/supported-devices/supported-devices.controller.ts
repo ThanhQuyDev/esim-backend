@@ -70,8 +70,8 @@ export class SupportedDevicesController {
 
   @Get('grouped')
   @ApiOkResponse()
-  async findGrouped() {
-    return { data: await this.supportedDevicesService.findGrouped() };
+  async findGrouped(@Query('search') search?: string) {
+    return { data: await this.supportedDevicesService.findGrouped(search) };
   }
 
   @ApiBearerAuth()

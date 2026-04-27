@@ -13,6 +13,11 @@ export class UpdateEsimDto extends PartialType(CreateEsimDto) {
   @IsNumber()
   userId?: number | null;
 
+  @ApiPropertyOptional({ type: Number })
+  @IsOptional()
+  @IsNumber()
+  planId?: number | null;
+
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
@@ -62,4 +67,9 @@ export class UpdateEsimDto extends PartialType(CreateEsimDto) {
   @IsOptional()
   @IsString()
   provider?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string | null;
 }

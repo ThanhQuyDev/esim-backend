@@ -18,7 +18,7 @@ export abstract class SupportedDeviceRepository {
     search?: string;
   }): Promise<SupportedDevice[]>;
 
-  abstract findGrouped(): Promise<SupportedDevice[]>;
+  abstract findGrouped(search?: string): Promise<SupportedDevice[]>;
 
   abstract findById(
     id: SupportedDevice['id'],

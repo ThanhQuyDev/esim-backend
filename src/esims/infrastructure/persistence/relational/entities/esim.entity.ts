@@ -12,6 +12,7 @@ import {
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { OrderItemEntity } from '../../../../../order-items/infrastructure/persistence/relational/entities/order-item.entity';
 import { UserEntity } from '../../../../../users/infrastructure/persistence/relational/entities/user.entity';
+import { PlanEntity } from '../../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
 
 @Entity({ name: 'esim' })
 export class EsimEntity extends EntityRelationalHelper {
@@ -32,6 +33,14 @@ export class EsimEntity extends EntityRelationalHelper {
   @ManyToOne(() => UserEntity, { nullable: true })
   @JoinColumn({ name: 'userId' })
   user: UserEntity | null;
+
+  @Index()
+  @Column({ type: Number, nullable: true })
+  planId: number | null;
+
+  @ManyToOne(() => PlanEntity, { nullable: true })
+  @JoinColumn({ name: 'planId' })
+  plan: PlanEntity | null;
 
   @Column({ type: String, unique: true })
   iccid: string;
@@ -81,6 +90,9 @@ export class EsimEntity extends EntityRelationalHelper {
 
   @Column({ type: String, nullable: true })
   provider: string | null;
+
+  @Column({ type: String, nullable: true })
+  phoneNumber: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

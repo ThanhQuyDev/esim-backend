@@ -36,6 +36,7 @@ export class PlanMapper {
     domainEntity.discount = raw.discount;
     domainEntity.vndPrice = Number(raw.vndPrice);
     domainEntity.isKyc = raw.isKyc;
+    domainEntity.isLocalInventory = raw.isLocalInventory;
     domainEntity.apn = raw.apn;
     domainEntity.lastSyncedAt = raw.lastSyncedAt;
     domainEntity.isActive = raw.isActive;
@@ -73,6 +74,7 @@ export class PlanMapper {
     persistenceEntity.discount = domainEntity.discount;
     persistenceEntity.vndPrice = domainEntity.vndPrice;
     persistenceEntity.isKyc = domainEntity.isKyc;
+    persistenceEntity.isLocalInventory = domainEntity.isLocalInventory;
     persistenceEntity.apn = domainEntity.apn;
     persistenceEntity.lastSyncedAt = domainEntity.lastSyncedAt;
     persistenceEntity.isActive = domainEntity.isActive;

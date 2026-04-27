@@ -12,11 +12,18 @@ import {
   HttpCode,
   Request,
   NotFoundException,
+  BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';
+import { ImportEsimsExcelDto } from './dto/import-esims-excel.dto';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiParam,
@@ -33,6 +40,7 @@ import { NullableType } from '../utils/types/nullable.type';
 import { QueryEsimDto } from './dto/query-esim.dto';
 import { Esim } from './domain/esim';
 import { EsimsService } from './esims.service';
+import { EsimsImportService, EsimImportResult } from './esims-import.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { DataUsageResult } from './esims.service';
@@ -43,7 +51,10 @@ import { DataUsageResult } from './esims.service';
 @ApiTags('Esims')
 @Controller({ path: 'esims', version: '1' })
 export class EsimsController {
-  constructor(private readonly esimsService: EsimsService) {}
+  constructor(
+    private readonly esimsService: EsimsService,
+    private readonly esimsImportService: EsimsImportService,
+  ) {}
 
   @Roles(RoleEnum.user, RoleEnum.admin)
   @ApiOkResponse({ type: InfinityPaginationResponse(Esim) })
@@ -150,5 +161,93 @@ export class EsimsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: Esim['id']): Promise<void> {
     return this.esimsService.remove(id);
+  }
+
+  @Post('import-excel')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Upload Excel file with eSIM data',
+    schema: {
+      type: 'object',
+      required: ['file', 'provider', 'countryCode'],
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx, .xls)',
+        },
+        provider: {
+          type: 'string',
+          example: 'esimvn',
+          description: 'Provider name',
+        },
+        countryCode: {
+          type: 'string',
+          example: 'VN',
+          description: 'Country code for the plans',
+        },
+        type: {
+          type: 'string',
+          example: 'data-in-total',
+          description: 'Plan type: data-in-total, daily, unlimited, unlimited-reduce, fixed',
+        },
+        sheet: {
+          type: 'string',
+          description: 'Sheet name or 0-based index. Defaults to first sheet.',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Import result summary',
+    schema: {
+      type: 'object',
+      properties: {
+        total: { type: 'number' },
+        created: { type: 'number' },
+        skipped: { type: 'number' },
+        planCreated: { type: 'number' },
+        errors: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              row: { type: 'number' },
+              iccid: { type: 'string' },
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  async importExcel(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: ImportEsimsExcelDto,
+  ): Promise<EsimImportResult> {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+
+    const allowedMimes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/octet-stream',
+    ];
+    if (!allowedMimes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        'Invalid file type. Only .xlsx and .xls files are allowed.',
+      );
+    }
+
+    return this.esimsImportService.importFromExcel(
+      file.buffer,
+      dto.provider,
+      dto.countryCode,
+      dto.type,
+      dto.sheet,
+    );
   }
 }
