@@ -21,11 +21,16 @@ export abstract class EsimRepository {
 
   abstract findById(id: Esim['id']): Promise<NullableType<Esim>>;
 
+  abstract findByIdWithRelations(id: Esim['id']): Promise<NullableType<Esim>>;
+
   abstract findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>>;
 
   abstract findByOrderItemIds(orderItemIds: number[]): Promise<Esim[]>;
 
-  abstract findAvailableByPlanId(planId: number, limit: number): Promise<Esim[]>;
+  abstract findAvailableByPlanId(
+    planId: number,
+    limit: number,
+  ): Promise<Esim[]>;
 
   abstract update(
     id: Esim['id'],

@@ -4,9 +4,7 @@ export class AddPlanIdToEsim1777500000000 implements MigrationInterface {
   name = 'AddPlanIdToEsim1777500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE "esim" ADD "planId" integer`,
-    );
+    await queryRunner.query(`ALTER TABLE "esim" ADD "planId" integer`);
     await queryRunner.query(
       `ALTER TABLE "esim" ADD CONSTRAINT "FK_esim_plan" FOREIGN KEY ("planId") REFERENCES "plan"("id") ON DELETE SET NULL`,
     );

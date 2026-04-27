@@ -63,7 +63,8 @@ export class EsimsImportService {
     };
 
     // Fetch profit percentage once before processing rows
-    const profitPercentage = await this.profitMarginsService.getActivePercentage();
+    const profitPercentage =
+      await this.profitMarginsService.getActivePercentage();
     const profitMultiplier = 1 + profitPercentage / 100;
 
     // Cache plans created/found during this import to avoid repeated DB calls
@@ -73,7 +74,9 @@ export class EsimsImportService {
       const row = worksheet.getRow(rowNum);
 
       let isEmpty = true;
-      row.eachCell({ includeEmpty: false }, () => { isEmpty = false; });
+      row.eachCell({ includeEmpty: false }, () => {
+        isEmpty = false;
+      });
       if (isEmpty) continue;
 
       result.total++;
@@ -90,24 +93,34 @@ export class EsimsImportService {
         const existing = await this.esimRepository.findByIccid(iccid);
         if (existing) {
           result.skipped++;
-          result.errors.push({ row: rowNum, iccid, error: 'ICCID already exists' });
+          result.errors.push({
+            row: rowNum,
+            iccid,
+            error: 'ICCID already exists',
+          });
           continue;
         }
 
         // Extract plan fields — use fixed column indices to avoid duplicate header issues
-        const providerPlanId = this.cellStr(row.getCell(col('code') ?? 9).value) ?? '';
-        const planName = this.cellStr(row.getCell(col('name') ?? 4).value) ?? '';
+        const providerPlanId =
+          this.cellStr(row.getCell(col('code') ?? 9).value) ?? '';
+        const planName =
+          this.cellStr(row.getCell(col('name') ?? 4).value) ?? '';
         const durationDays = this.cellNum(row.getCell(13).value) ?? 0; // col 13: Days (plan days)
-        const dataRaw = this.cellStr(row.getCell(12).value) ?? '';     // col 12: Data (e.g. "5GB")
+        const dataRaw = this.cellStr(row.getCell(12).value) ?? ''; // col 12: Data (e.g. "5GB")
         const dataMb = this.parseDataToMb(dataRaw);
-        const operatorName = this.cellStr(row.getCell(col('carrier') ?? 14).value);
+        const operatorName = this.cellStr(
+          row.getCell(col('carrier') ?? 14).value,
+        );
         const speed = this.cellStr(row.getCell(col('network') ?? 15).value);
-        const costPrice = this.cellNum(row.getCell(25).value) ?? 0;    // col 25: Cost Price
-        const sellPrice = this.cellNum(row.getCell(26).value) ?? 0;    // col 26: Sell Price
+        const costPrice = this.cellNum(row.getCell(25).value) ?? 0; // col 25: Cost Price
+        const sellPrice = this.cellNum(row.getCell(26).value) ?? 0; // col 26: Sell Price
         const price = Math.round(costPrice * profitMultiplier * 100) / 100;
 
         // Find or create plan
-        const planSlug = `${provider}-${providerPlanId}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+        const planSlug = `${provider}-${providerPlanId}`
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-');
         let planId: number | null = null;
 
         if (providerPlanId) {
@@ -146,9 +159,13 @@ export class EsimsImportService {
         }
 
         // Extract esim fields
-        const phoneNumber = this.cellStr(row.getCell(col('phone number') ?? 3).value);
+        const phoneNumber = this.cellStr(
+          row.getCell(col('phone number') ?? 3).value,
+        );
         const lpa = this.cellStr(row.getCell(col('lpa') ?? 5).value);
-        const smdpAddress = this.cellStr(row.getCell(col('smdp address') ?? 22).value);
+        const smdpAddress = this.cellStr(
+          row.getCell(col('smdp address') ?? 22).value,
+        );
         const apnValue = this.cellStr(row.getCell(col('apn') ?? 23).value);
         const activationCode = this.cellStr(row.getCell(24).value); // col 24: Activation code
 
@@ -178,7 +195,11 @@ export class EsimsImportService {
         result.created++;
       } catch (error: any) {
         result.skipped++;
-        result.errors.push({ row: rowNum, iccid, error: error?.message ?? 'Unknown error' });
+        result.errors.push({
+          row: rowNum,
+          iccid,
+          error: error?.message ?? 'Unknown error',
+        });
         this.logger.warn(`Row ${rowNum} (${iccid}) failed: ${error?.message}`);
       }
     }
@@ -189,7 +210,8 @@ export class EsimsImportService {
   private cellStr(value: any): string | null {
     if (value === null || value === undefined) return null;
     if (typeof value === 'object' && 'text' in value) return value.text;
-    if (typeof value === 'object' && 'result' in value) return String(value.result);
+    if (typeof value === 'object' && 'result' in value)
+      return String(value.result);
     return String(value).trim() || null;
   }
 

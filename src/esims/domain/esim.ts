@@ -1,4 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { User } from '../../users/domain/user';
+import { Plan } from '../../plans/domain/plan';
 
 const idType = Number;
 
@@ -65,6 +67,12 @@ export class Esim {
 
   @ApiPropertyOptional({ type: String })
   phoneNumber: string | null;
+
+  @ApiPropertyOptional({ type: () => User })
+  user?: User | null;
+
+  @ApiPropertyOptional({ type: () => Plan })
+  plan?: Plan | null;
 
   @ApiProperty()
   createdAt: Date;

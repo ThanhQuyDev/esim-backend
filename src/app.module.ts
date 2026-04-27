@@ -55,6 +55,8 @@ import { PaymentModule } from './payment/payment.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CartsModule } from './carts/carts.module';
 import { SupportedDevicesModule } from './supported-devices/supported-devices.module';
+import { EmailTemplatesModule } from './email-templates/email-templates.module';
+import { SeoConfigsModule } from './seo-configs/seo-configs.module';
 
 @Module({
   imports: [
@@ -126,6 +128,8 @@ import { SupportedDevicesModule } from './supported-devices/supported-devices.mo
     PaymentModule,
     CartsModule,
     SupportedDevicesModule,
+    EmailTemplatesModule,
+    SeoConfigsModule,
   ],
 })
 export class AppModule {}

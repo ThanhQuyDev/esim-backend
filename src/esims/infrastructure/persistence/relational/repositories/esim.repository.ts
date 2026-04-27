@@ -67,6 +67,14 @@ export class EsimsRelationalRepository implements EsimRepository {
     return entity ? EsimMapper.toDomain(entity) : null;
   }
 
+  async findByIdWithRelations(id: Esim['id']): Promise<NullableType<Esim>> {
+    const entity = await this.esimsRepository.findOne({
+      where: { id: Number(id) },
+      relations: ['user', 'plan'],
+    });
+    return entity ? EsimMapper.toDomain(entity) : null;
+  }
+
   async findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {
     const entity = await this.esimsRepository.findOne({
       where: { iccid },

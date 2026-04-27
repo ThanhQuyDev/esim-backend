@@ -15,7 +15,10 @@ import {
   BadRequestException,
   UseInterceptors,
   UploadedFile,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
+import * as QRCode from 'qrcode';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';
@@ -44,6 +47,38 @@ import { EsimsImportService, EsimImportResult } from './esims-import.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { DataUsageResult } from './esims.service';
+
+@ApiTags('Esims')
+@Controller({ path: 'esims', version: '1' })
+export class EsimsPublicController {
+  constructor(private readonly esimsService: EsimsService) {}
+
+  @Get(':id/qrcode')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: Number, required: true })
+  @ApiOkResponse({ description: 'QR code PNG image' })
+  async getQrCode(
+    @Param('id') id: number,
+    @Res() res: Response,
+  ): Promise<void> {
+    const esim = await this.esimsService.findById(id);
+    if (!esim || !esim.lpa) {
+      throw new NotFoundException('eSIM or LPA not found');
+    }
+
+    const buffer = await QRCode.toBuffer(esim.lpa, {
+      width: 400,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+    });
+
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    res.send(buffer);
+  }
+}
 
 @ApiBearerAuth()
 @Roles(RoleEnum.admin)
@@ -142,7 +177,7 @@ export class EsimsController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: String, required: true })
   findOne(@Param('id') id: Esim['id']): Promise<NullableType<Esim>> {
-    return this.esimsService.findById(id);
+    return this.esimsService.findByIdWithRelations(id);
   }
 
   @ApiOkResponse({ type: Esim })
@@ -191,7 +226,8 @@ export class EsimsController {
         type: {
           type: 'string',
           example: 'data-in-total',
-          description: 'Plan type: data-in-total, daily, unlimited, unlimited-reduce, fixed',
+          description:
+            'Plan type: data-in-total, daily, unlimited, unlimited-reduce, fixed',
         },
         sheet: {
           type: 'string',

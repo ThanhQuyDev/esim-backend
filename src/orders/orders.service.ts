@@ -24,6 +24,8 @@ import { CouponsService } from '../coupons/coupons.service';
 import { EsimsService } from '../esims/esims.service';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
 import { CartsService } from '../carts/carts.service';
+import { MailService } from '../mail/mail.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class OrdersService {
@@ -41,6 +43,8 @@ export class OrdersService {
     private readonly couponsService: CouponsService,
     private readonly esimsService: EsimsService,
     private readonly cartsService: CartsService,
+    private readonly mailService: MailService,
+    private readonly usersService: UsersService,
   ) {}
 
   create(createOrderDto: CreateOrderDto): Promise<Order> {
@@ -229,6 +233,7 @@ export class OrdersService {
     }
 
     // 8. Local providers (esimvn) — assign available esims from inventory
+    const localOrderItemIds: number[] = [];
     for (const item of localItems) {
       const orderItem = await this.orderItemsService.create({
         orderId: order.id,
@@ -264,6 +269,7 @@ export class OrdersService {
           await this.orderItemsService.update(orderItem.id, {
             status: 'completed',
           });
+          localOrderItemIds.push(orderItem.id);
         }
       } catch (err) {
         this.logger.error(
@@ -278,6 +284,14 @@ export class OrdersService {
     }
 
     await this.cartsService.clearCart(userId);
+
+    // Send esim purchase email for local items
+    await this.sendEsimPurchaseEmails(
+      userId,
+      orderNumber,
+      localOrderItemIds,
+      localItems,
+    );
 
     return order;
   }
@@ -524,6 +538,7 @@ export class OrdersService {
     }
 
     // 8. Local providers (esimvn) — assign available esims from inventory
+    const localOrderItemIds: number[] = [];
     for (const item of localItems) {
       try {
         const availableEsims = await this.esimsService.findAvailableByPlanId(
@@ -545,14 +560,60 @@ export class OrdersService {
           });
         }
 
+        const completed = availableEsims.length >= item.quantity;
         await this.orderItemsService.update(item.id, {
-          status: availableEsims.length >= item.quantity ? 'completed' : 'pending',
+          status: completed ? 'completed' : 'pending',
         });
+        if (completed) localOrderItemIds.push(item.id);
       } catch (err) {
         this.logger.error(
           `Local esim assignment failed for plan ${item.planId}: ${(err as Error).message}`,
         );
       }
+    }
+
+    // Send esim purchase email for local items
+    await this.sendEsimPurchaseEmails(
+      order.userId,
+      order.orderNumber,
+      localOrderItemIds,
+      localItems,
+    );
+  }
+
+  private async sendEsimPurchaseEmails(
+    userId: number,
+    orderNumber: string,
+    orderItemIds: number[],
+    localItems: Array<{ planId: number; plan: { name: string } }>,
+  ): Promise<void> {
+    if (orderItemIds.length === 0) return;
+
+    try {
+      const user = await this.usersService.findById(userId);
+      if (!user?.email) return;
+
+      const esims = await this.esimsService.findByOrderItemIds(orderItemIds);
+
+      for (const esim of esims) {
+        const plan = localItems.find((i) => i.planId === esim.planId);
+        await this.mailService.sendEsimPurchase({
+          to: user.email,
+          esimId: esim.id,
+          iccid: esim.iccid,
+          activationCode: esim.activationCode,
+          lpa: esim.lpa,
+          smdpAddress: esim.smdpAddress,
+          apn: esim.apnValue,
+          phoneNumber: esim.phoneNumber,
+          planName: plan?.plan.name ?? '',
+          orderNumber,
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to send esim purchase email: ${(err as Error).message}`,
+      );
     }
   }
 

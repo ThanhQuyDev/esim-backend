@@ -1,5 +1,7 @@
 import { Esim } from '../../../../domain/esim';
 import { EsimEntity } from '../entities/esim.entity';
+import { UserMapper } from '../../../../../users/infrastructure/persistence/relational/mappers/user.mapper';
+import { PlanMapper } from '../../../../../plans/infrastructure/persistence/relational/mappers/plan.mapper';
 
 export class EsimMapper {
   static toDomain(raw: EsimEntity): Esim {
@@ -28,6 +30,12 @@ export class EsimMapper {
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
+    if (raw.user !== undefined) {
+      domainEntity.user = raw.user ? UserMapper.toDomain(raw.user) : null;
+    }
+    if (raw.plan !== undefined) {
+      domainEntity.plan = raw.plan ? PlanMapper.toDomain(raw.plan) : null;
+    }
     return domainEntity;
   }
 

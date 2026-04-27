@@ -88,6 +88,10 @@ export class EsimsService {
     return this.esimsRepository.findById(id);
   }
 
+  findByIdWithRelations(id: Esim['id']): Promise<NullableType<Esim>> {
+    return this.esimsRepository.findByIdWithRelations(id);
+  }
+
   findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {
     return this.esimsRepository.findByIccid(iccid);
   }

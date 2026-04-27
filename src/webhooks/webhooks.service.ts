@@ -7,6 +7,8 @@ import { OrdersService } from '../orders/orders.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { AllConfigType } from '../config/config.type';
+import { MailService } from '../mail/mail.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class WebhooksService {
@@ -19,6 +21,8 @@ export class WebhooksService {
     private readonly esimAccessService: EsimAccessService,
     private readonly gadgetKoreaService: GadgetKoreaService,
     private readonly configService: ConfigService<AllConfigType>,
+    private readonly mailService: MailService,
+    private readonly usersService: UsersService,
   ) {}
 
   // ─── Airalo ──────────────────────────────────────────────────────────────────
@@ -163,9 +167,10 @@ export class WebhooksService {
         );
       }
     }
-  }
 
-  // ─── EsimAccess ──────────────────────────────────────────────────────────────
+    // Send purchase email for Airalo esims
+    await this.sendPurchaseEmailAfterWebhook(userId, orderItemId, requestId);
+  }
 
   verifyEsimAccessSignature(rawBody: Buffer, signature: string): void {
     const esimAccessConfig = this.configService.get('esimAccess', {
@@ -313,6 +318,9 @@ export class WebhooksService {
         );
       }
     }
+
+    // Send purchase email for EsimAccess esims
+    await this.sendPurchaseEmailAfterWebhook(userId, orderItemId, orderNo);
   }
 
   // ─── Gadget Korea ─────────────────────────────────────────────────────────────
@@ -437,6 +445,50 @@ export class WebhooksService {
       this.logger.error(
         `Failed to upsert eSIM iccid=${iccid}: ${(err as Error).message}`,
         (err as Error).stack,
+      );
+    }
+
+    // Send purchase email for Gadget Korea esim
+    await this.sendPurchaseEmailAfterWebhook(userId, orderItemId, topupId);
+  }
+
+  // ─── Shared ──────────────────────────────────────────────────────────────────
+
+  private async sendPurchaseEmailAfterWebhook(
+    userId: number | null,
+    orderItemId: number | null,
+    orderRef: string | null,
+  ): Promise<void> {
+    if (!userId || !orderItemId) return;
+
+    try {
+      const user = await this.usersService.findById(userId);
+      if (!user?.email) return;
+
+      const orderItem = await this.orderItemsService.findById(orderItemId);
+      if (!orderItem) return;
+
+      const order = await this.ordersService.findById(orderItem.orderId);
+      const esims = await this.esimsService.findByOrderItemIds([orderItemId]);
+      if (!esims.length) return;
+
+      for (const esim of esims) {
+        await this.mailService.sendEsimPurchase({
+          to: user.email,
+          esimId: esim.id,
+          iccid: esim.iccid,
+          activationCode: esim.activationCode,
+          lpa: esim.lpa,
+          smdpAddress: esim.smdpAddress,
+          apn: esim.apnValue,
+          phoneNumber: esim.phoneNumber,
+          planName: orderItem.plan?.name ?? '',
+          orderNumber: order?.orderNumber ?? orderRef ?? '',
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to send esim purchase email (orderItemId=${orderItemId}): ${(err as Error).message}`,
       );
     }
   }

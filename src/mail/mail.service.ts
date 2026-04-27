@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { I18nContext } from 'nestjs-i18n';
 import { MailData } from './interfaces/mail-data.interface';
@@ -7,12 +7,30 @@ import { MaybeType } from '../utils/types/maybe.type';
 import { MailerService } from '../mailer/mailer.service';
 import path from 'path';
 import { AllConfigType } from '../config/config.type';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import Handlebars from 'handlebars';
+
+export interface EsimPurchaseMailData {
+  to: string;
+  esimId: number;
+  iccid: string;
+  activationCode: string | null;
+  lpa: string | null;
+  smdpAddress: string | null;
+  apn: string | null;
+  phoneNumber: string | null;
+  planName: string;
+  orderNumber: string;
+}
 
 @Injectable()
 export class MailService {
+  private readonly logger = new Logger(MailService.name);
+
   constructor(
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService<AllConfigType>,
+    private readonly emailTemplatesService: EmailTemplatesService,
   ) {}
 
   async userSignUp(mailData: MailData<{ hash: string }>): Promise<void> {
@@ -156,6 +174,52 @@ export class MailService {
         text2,
         text3,
       },
+    });
+  }
+
+  async sendEsimPurchase(data: EsimPurchaseMailData): Promise<void> {
+    const template =
+      await this.emailTemplatesService.findByName('esim_purchase');
+    if (!template) {
+      this.logger.warn(
+        'Email template "esim_purchase" not found, skipping email',
+      );
+      return;
+    }
+
+    const appName = this.configService.get('app.name', { infer: true });
+    const backendDomain = this.configService.get('app.backendDomain', {
+      infer: true,
+    });
+    const qrCodeUrl = `${backendDomain}/api/v1/esims/${data.esimId}/qrcode`;
+
+    const context = {
+      iccid: data.iccid,
+      activationCode: data.activationCode ?? '',
+      lpa: data.lpa ?? '',
+      smdpAddress: data.smdpAddress ?? '',
+      apn: data.apn ?? '',
+      phoneNumber: data.phoneNumber ?? '',
+      planName: data.planName,
+      orderNumber: data.orderNumber,
+      qrCodeBase64: qrCodeUrl,
+      logoUrl: `${backendDomain}/files/logo_esimvn.svg`,
+      app_name: appName,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      to: data.to,
+      subject: subjectCompiled,
+      text: `Your eSIM is ready — Order ${data.orderNumber}`,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
     });
   }
 
