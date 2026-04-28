@@ -93,6 +93,14 @@ export class PaymentService {
         paymentMethod: 'onepay',
         paymentId: query['vpc_TransactionNo'] ?? null,
       });
+      if (order.couponCode) {
+        await this.ordersService.applyCouponAndClearCart(
+          order.couponCode,
+          order.userId,
+        );
+      } else {
+        await this.ordersService.clearCartForUser(order.userId);
+      }
       this.logger.log(`OnePay IPN: order ${orderNumber} paid and submitted`);
     } catch (err) {
       this.logger.error(

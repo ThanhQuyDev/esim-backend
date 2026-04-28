@@ -7,7 +7,9 @@
       "Bash(xargs grep:*)",
       "mcp__ide__getDiagnostics",
       "Bash(node *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(PGPASSWORD=secret psql *)",
+      "Bash(npx typeorm *)"
     ]
   }
 }

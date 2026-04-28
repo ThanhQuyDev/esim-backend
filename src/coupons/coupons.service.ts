@@ -73,6 +73,10 @@ export class CouponsService {
     return this.couponRepository.findById(id);
   }
 
+  findByCode(code: string): Promise<NullableType<Coupon>> {
+    return this.couponRepository.findByCode(code.toUpperCase());
+  }
+
   async update(
     id: Coupon['id'],
     updateCouponDto: UpdateCouponDto,
@@ -132,7 +136,7 @@ export class CouponsService {
 
     if (coupon.maxUsagePerUser !== null) {
       const userUsageCount = await this.orderRepo.count({
-        where: { userId, couponCode: coupon.code },
+        where: { userId, couponCode: coupon.code, status: 'paid' },
       });
       if (userUsageCount >= coupon.maxUsagePerUser) {
         throw new BadRequestException(

@@ -5,6 +5,8 @@ import {
   IsOptional,
   IsBoolean,
   IsDate,
+  IsArray,
+  IsNumber,
 } from 'class-validator';
 
 import {
@@ -57,7 +59,7 @@ export class CreateBlogDto {
   })
   @IsOptional()
   @IsString()
-  tags?: string | null;
+  category?: string | null;
 
   @ApiProperty({
     required: false,
@@ -95,6 +97,30 @@ export class CreateBlogDto {
   })
   @IsString()
   title: string;
+
+  @ApiProperty({
+    required: false,
+    type: () => Number,
+  })
+  @IsOptional()
+  @IsNumber()
+  timeRead?: number | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => String,
+  })
+  @IsOptional()
+  @IsString()
+  miniTagId?: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => [Number],
+  })
+  @IsOptional()
+  @IsArray()
+  planIds?: number[];
 
   // Don't forget to use the class-validator decorators in the DTO properties.
 }

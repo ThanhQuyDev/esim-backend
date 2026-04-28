@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, LessThan, Repository } from 'typeorm';
 import { OrderEntity } from '../entities/order.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterOrderDto, SortOrderDto } from '../../../../dto/query-order.dto';
@@ -111,5 +111,14 @@ export class OrdersRelationalRepository implements OrderRepository {
 
   async remove(id: Order['id']): Promise<void> {
     await this.ordersRepository.softDelete(id);
+  }
+
+  async failExpiredPendingOrders(minutesThreshold: number): Promise<number> {
+    const cutoff = new Date(Date.now() - minutesThreshold * 60 * 1000);
+    const result = await this.ordersRepository.update(
+      { status: 'pending', createdAt: LessThan(cutoff) },
+      { status: 'failed' },
+    );
+    return result.affected ?? 0;
   }
 }

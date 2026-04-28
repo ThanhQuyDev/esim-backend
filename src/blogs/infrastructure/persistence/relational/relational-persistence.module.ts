@@ -3,9 +3,11 @@ import { BlogRepository } from '../blog.repository';
 import { BlogRelationalRepository } from './repositories/blog.repository';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BlogEntity } from './entities/blog.entity';
+import { MiniTagEntity } from '../../../../mini-tags/infrastructure/persistence/relational/entities/mini-tag.entity';
+import { PlanEntity } from '../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BlogEntity])],
+  imports: [TypeOrmModule.forFeature([BlogEntity, MiniTagEntity, PlanEntity])],
   providers: [
     {
       provide: BlogRepository,

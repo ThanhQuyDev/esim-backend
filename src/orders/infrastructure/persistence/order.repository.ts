@@ -34,4 +34,6 @@ export abstract class OrderRepository {
   ): Promise<Order | null>;
 
   abstract remove(id: Order['id']): Promise<void>;
+
+  abstract failExpiredPendingOrders(minutesThreshold: number): Promise<number>;
 }

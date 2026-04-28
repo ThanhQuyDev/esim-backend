@@ -5,6 +5,7 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -23,6 +24,7 @@ import { AllConfigType } from '../config/config.type';
 import { CouponsService } from '../coupons/coupons.service';
 import { EsimsService } from '../esims/esims.service';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
+import { AdminOrderDetailDto } from './dto/admin-order-detail.dto';
 import { CartsService } from '../carts/carts.service';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
@@ -334,6 +336,11 @@ export class OrdersService {
       (sum, item) => sum + (item.plan.vndPrice ?? 0) * item.quantity,
       0,
     );
+
+    const discountPercent = totalAmount > 0 ? discountAmount / totalAmount : 0;
+    const vndDiscount = Math.round(totalVndPrice * discountPercent);
+    const finalVndPrice = totalVndPrice - vndDiscount;
+
     const totalVndCostPrice = vndRate
       ? planDetails.reduce(
           (sum, item) =>
@@ -352,7 +359,7 @@ export class OrdersService {
       paymentId: null,
       couponCode,
       discountAmount,
-      vndPrice: totalVndPrice,
+      vndPrice: finalVndPrice,
       vndCostPrice: totalVndCostPrice,
     });
 
@@ -374,12 +381,6 @@ export class OrdersService {
       });
     }
 
-    if (couponCode) {
-      await this.couponsService.applyCoupon(couponCode);
-    }
-
-    await this.cartsService.clearCart(userId);
-
     return order;
   }
 
@@ -398,9 +399,10 @@ export class OrdersService {
     if (!order) return null;
 
     const orderItems = await this.orderItemsService.findByOrderId(order.id);
-    const esims = await this.esimsService.findByOrderItemIds(
-      orderItems.map((i) => i.id),
-    );
+    const [esims, plans] = await Promise.all([
+      this.esimsService.findByOrderItemIds(orderItems.map((i) => i.id)),
+      Promise.all(orderItems.map((i) => this.plansService.findById(i.planId))),
+    ]);
 
     const esimsByOrderItemId = new Map<number, typeof esims>();
     for (const esim of esims) {
@@ -418,15 +420,33 @@ export class OrdersService {
       paymentMethod: order.paymentMethod,
       couponCode: order.couponCode,
       createdAt: order.createdAt,
-      items: orderItems.map((item) => ({
-        id: item.id,
-        planId: item.planId,
-        orderRequestId: item.orderRequestId,
-        status: item.status,
-        vndPrice: item.vndPrice,
-        quantity: item.quantity,
-        esims: esimsByOrderItemId.get(item.id) ?? [],
-      })),
+      items: orderItems.map((item, idx) => {
+        const plan = plans[idx];
+        return {
+          id: item.id,
+          planId: item.planId,
+          plan: plan
+            ? {
+                id: plan.id,
+                name: plan.name,
+                slug: plan.slug,
+                durationDays: plan.durationDays,
+                dataMb: plan.dataMb,
+                price: plan.price,
+                vndPrice: plan.vndPrice,
+                currency: plan.currency,
+                speed: plan.speed,
+                operatorName: plan.operatorName,
+                countryCode: plan.countryCode,
+              }
+            : null,
+          orderRequestId: item.orderRequestId,
+          status: item.status,
+          vndPrice: item.vndPrice,
+          quantity: item.quantity,
+          esims: esimsByOrderItemId.get(item.id) ?? [],
+        };
+      }),
     };
   }
 
@@ -637,6 +657,91 @@ export class OrdersService {
     return this.orderRepository.findById(id);
   }
 
+  async findDetailById(id: Order['id']): Promise<AdminOrderDetailDto | null> {
+    const order = await this.orderRepository.findById(id);
+    if (!order) return null;
+
+    const orderItems = await this.orderItemsService.findByOrderId(order.id);
+
+    const [esims, plans, user, coupon] = await Promise.all([
+      this.esimsService.findByOrderItemIds(orderItems.map((i) => i.id)),
+      Promise.all(orderItems.map((i) => this.plansService.findById(i.planId))),
+      this.usersService.findById(order.userId),
+      order.couponCode
+        ? this.couponsService.findByCode(order.couponCode)
+        : Promise.resolve(null),
+    ]);
+
+    const esimsByOrderItemId = new Map<number, typeof esims>();
+    for (const esim of esims) {
+      if (esim.orderItemId == null) continue;
+      const list = esimsByOrderItemId.get(esim.orderItemId) ?? [];
+      list.push(esim);
+      esimsByOrderItemId.set(esim.orderItemId, list);
+    }
+
+    return {
+      id: order.id,
+      userId: order.userId,
+      user: user
+        ? {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+          }
+        : null,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      currency: order.currency,
+      paymentMethod: order.paymentMethod,
+      paymentId: order.paymentId,
+      couponCode: order.couponCode,
+      discountAmount: order.discountAmount,
+      vndPrice: order.vndPrice,
+      vndCostPrice: order.vndCostPrice,
+      coupon: coupon ?? null,
+      items: orderItems.map((item, idx) => {
+        const plan = plans[idx];
+        return {
+          id: item.id,
+          planId: item.planId,
+          plan: plan
+            ? {
+                id: plan.id,
+                name: plan.name,
+                slug: plan.slug,
+                durationDays: plan.durationDays,
+                dataMb: plan.dataMb,
+                price: plan.price,
+                vndPrice: plan.vndPrice,
+                currency: plan.currency,
+                speed: plan.speed,
+                operatorName: plan.operatorName,
+                countryCode: plan.countryCode,
+                provider: plan.provider,
+              }
+            : null,
+          orderRequestId: item.orderRequestId,
+          providerOrderId: item.providerOrderId,
+          providerOrderCode: item.providerOrderCode,
+          status: item.status,
+          price: item.price,
+          currency: item.currency,
+          quantity: item.quantity,
+          vndPrice: item.vndPrice,
+          vndCostPrice: item.vndCostPrice,
+          esims: esimsByOrderItemId.get(item.id) ?? [],
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        };
+      }),
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    };
+  }
+
   async update(
     id: Order['id'],
     updateOrderDto: UpdateOrderDto,
@@ -668,5 +773,25 @@ export class OrdersService {
 
   async remove(id: Order['id']): Promise<void> {
     await this.orderRepository.remove(id);
+  }
+
+  async applyCouponAndClearCart(
+    couponCode: string,
+    userId: number,
+  ): Promise<void> {
+    await this.couponsService.applyCoupon(couponCode);
+    await this.cartsService.clearCart(userId);
+  }
+
+  async clearCartForUser(userId: number): Promise<void> {
+    await this.cartsService.clearCart(userId);
+  }
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async failExpiredPendingOrders(): Promise<void> {
+    const count = await this.orderRepository.failExpiredPendingOrders(30);
+    if (count > 0) {
+      this.logger.log(`Auto-failed ${count} expired pending orders`);
+    }
   }
 }

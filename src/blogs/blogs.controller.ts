@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Query,
+  NotFoundException,
 } from '@nestjs/common';
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
@@ -20,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Blog } from './domain/blog';
+import { BlogListItem } from './domain/blog-list-item';
 import { AuthGuard } from '@nestjs/passport';
 import {
   InfinityPaginationResponse,
@@ -48,11 +50,11 @@ export class BlogsController {
 
   @Get()
   @ApiOkResponse({
-    type: InfinityPaginationResponse(Blog),
+    type: InfinityPaginationResponse(BlogListItem),
   })
   async findAll(
     @Query() query: FindAllBlogsDto,
-  ): Promise<InfinityPaginationResponseDto<Blog>> {
+  ): Promise<InfinityPaginationResponseDto<BlogListItem>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
     if (limit > 50) {
@@ -65,9 +67,33 @@ export class BlogsController {
           page,
           limit,
         },
+        category: query.category,
       }),
       { page, limit },
     );
+  }
+
+  @Get('categories')
+  @ApiOkResponse({
+    type: [String],
+  })
+  findCategories(): Promise<string[]> {
+    return this.blogsService.findCategories();
+  }
+
+  @Get('by-slug/:slug')
+  @ApiParam({
+    name: 'slug',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: Blog,
+  })
+  async findBySlug(@Param('slug') slug: string) {
+    const blog = await this.blogsService.findBySlug(slug);
+    if (!blog) throw new NotFoundException();
+    return blog;
   }
 
   @Get(':id')

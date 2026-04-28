@@ -10,11 +10,15 @@ export abstract class BlogRepository {
 
   abstract findAllWithPagination({
     paginationOptions,
+    category,
   }: {
     paginationOptions: IPaginationOptions;
+    category?: string;
   }): Promise<Blog[]>;
 
   abstract findById(id: Blog['id']): Promise<NullableType<Blog>>;
+
+  abstract findBySlug(slug: string): Promise<NullableType<Blog>>;
 
   abstract findByIds(ids: Blog['id'][]): Promise<Blog[]>;
 
@@ -24,4 +28,6 @@ export abstract class BlogRepository {
   ): Promise<Blog | null>;
 
   abstract remove(id: Blog['id']): Promise<void>;
+
+  abstract findCategories(): Promise<string[]>;
 }

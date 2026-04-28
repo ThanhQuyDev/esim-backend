@@ -11,6 +11,7 @@ import {
   HttpStatus,
   HttpCode,
   Request,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -52,9 +53,6 @@ export class CouponsController {
     return this.couponsService.create(createCouponDto);
   }
 
-  @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @ApiOkResponse({ type: InfinityPaginationResponse(Coupon) })
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -73,6 +71,17 @@ export class CouponsController {
       }),
       { page, limit },
     );
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOkResponse({ type: Coupon })
+  @Get('code/:code')
+  @HttpCode(HttpStatus.OK)
+  async findByCode(@Param('code') code: string): Promise<Coupon> {
+    const coupon = await this.couponsService.findByCode(code);
+    if (!coupon) throw new NotFoundException('Coupon not found');
+    return coupon;
   }
 
   @ApiBearerAuth()

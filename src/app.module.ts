@@ -57,6 +57,7 @@ import { CartsModule } from './carts/carts.module';
 import { SupportedDevicesModule } from './supported-devices/supported-devices.module';
 import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { SeoConfigsModule } from './seo-configs/seo-configs.module';
+import { MiniTagsModule } from './mini-tags/mini-tags.module';
 
 @Module({
   imports: [
@@ -130,6 +131,7 @@ import { SeoConfigsModule } from './seo-configs/seo-configs.module';
     SupportedDevicesModule,
     EmailTemplatesModule,
     SeoConfigsModule,
+    MiniTagsModule,
   ],
 })
 export class AppModule {}

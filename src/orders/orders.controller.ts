@@ -29,13 +29,13 @@ import {
   InfinityPaginationResponse,
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
-import { NullableType } from '../utils/types/nullable.type';
 import { QueryOrderDto } from './dto/query-order.dto';
 import { Order } from './domain/order';
 import { OrdersService } from './orders.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
+import { AdminOrderDetailDto } from './dto/admin-order-detail.dto';
 
 @ApiBearerAuth()
 @Roles(RoleEnum.admin)
@@ -115,9 +115,14 @@ export class OrdersController {
       limit = 50;
     }
 
+    const filters = { ...query?.filters };
+    if (!filters.status) {
+      filters.status = 'paid';
+    }
+
     return infinityPagination(
       await this.ordersService.findManyWithPagination({
-        filterOptions: query?.filters,
+        filterOptions: filters,
         sortOptions: query?.sort,
         paginationOptions: { page, limit },
       }),
@@ -125,12 +130,12 @@ export class OrdersController {
     );
   }
 
-  @ApiOkResponse({ type: Order })
+  @ApiOkResponse({ type: AdminOrderDetailDto })
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: String, required: true })
-  findOne(@Param('id') id: Order['id']): Promise<NullableType<Order>> {
-    return this.ordersService.findById(id);
+  findOne(@Param('id') id: Order['id']): Promise<AdminOrderDetailDto | null> {
+    return this.ordersService.findDetailById(id);
   }
 
   @ApiOkResponse({ type: Order })
