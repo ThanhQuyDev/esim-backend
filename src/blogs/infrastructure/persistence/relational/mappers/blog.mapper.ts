@@ -10,6 +10,7 @@ export class BlogMapper {
     domainEntity.publishedAt = raw.publishedAt;
     domainEntity.isPublished = raw.isPublished;
     domainEntity.author = raw.author;
+    domainEntity.authorAvatar = raw.authorAvatar;
     domainEntity.category = raw.category;
     domainEntity.coverImage = raw.coverImage;
     domainEntity.excerpt = raw.excerpt;
@@ -33,6 +34,7 @@ export class BlogMapper {
     persistenceEntity.publishedAt = domainEntity.publishedAt;
     persistenceEntity.isPublished = domainEntity.isPublished;
     persistenceEntity.author = domainEntity.author;
+    persistenceEntity.authorAvatar = domainEntity.authorAvatar;
     persistenceEntity.category = domainEntity.category;
     persistenceEntity.coverImage = domainEntity.coverImage;
     persistenceEntity.excerpt = domainEntity.excerpt;

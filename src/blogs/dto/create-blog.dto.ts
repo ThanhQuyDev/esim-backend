@@ -59,6 +59,14 @@ export class CreateBlogDto {
   })
   @IsOptional()
   @IsString()
+  authorAvatar?: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => String,
+  })
+  @IsOptional()
+  @IsString()
   category?: string | null;
 
   @ApiProperty({

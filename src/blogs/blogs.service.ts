@@ -40,6 +40,11 @@ export class BlogsService {
       publishedAt: createBlogDto.publishedAt,
       isPublished: createBlogDto.isPublished,
       author: createBlogDto.author,
+      authorAvatar:
+        createBlogDto.authorAvatar ??
+        (createBlogDto.author
+          ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(createBlogDto.author)}`
+          : null),
       category: createBlogDto.category,
       coverImage: createBlogDto.coverImage,
       excerpt: createBlogDto.excerpt,
@@ -108,6 +113,12 @@ export class BlogsService {
       publishedAt: updateBlogDto.publishedAt,
       isPublished: updateBlogDto.isPublished,
       author: updateBlogDto.author,
+      authorAvatar:
+        updateBlogDto.authorAvatar !== undefined
+          ? updateBlogDto.authorAvatar
+          : updateBlogDto.author
+            ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(updateBlogDto.author)}`
+            : undefined,
       category: updateBlogDto.category,
       coverImage: updateBlogDto.coverImage,
       excerpt: updateBlogDto.excerpt,

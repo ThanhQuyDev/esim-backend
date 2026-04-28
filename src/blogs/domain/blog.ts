@@ -16,6 +16,9 @@ export class Blog {
   author?: string | null;
 
   @ApiProperty({ type: () => String, nullable: true })
+  authorAvatar?: string | null;
+
+  @ApiProperty({ type: () => String, nullable: true })
   category?: string | null;
 
   @ApiProperty({ type: () => String, nullable: true })

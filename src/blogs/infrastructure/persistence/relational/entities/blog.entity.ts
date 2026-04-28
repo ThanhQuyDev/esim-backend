@@ -30,6 +30,9 @@ export class BlogEntity extends EntityRelationalHelper {
   author?: string | null;
 
   @Column({ nullable: true, type: String })
+  authorAvatar?: string | null;
+
+  @Column({ nullable: true, type: String })
   category?: string | null;
 
   @Column({ nullable: true, type: String })
