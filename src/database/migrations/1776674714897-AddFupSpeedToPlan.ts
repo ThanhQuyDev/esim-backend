@@ -4,8 +4,12 @@ export class AddFupSpeedToPlan1776674714897 implements MigrationInterface {
   name = 'AddFupSpeedToPlan1776674714897';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX "public"."IDX_region_isPopular"`);
-    await queryRunner.query(`DROP INDEX "public"."IDX_order_item_status"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "public"."IDX_region_isPopular"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "public"."IDX_order_item_status"`,
+    );
     await queryRunner.query(`ALTER TABLE "region" DROP COLUMN "isPopular"`);
     await queryRunner.query(`ALTER TABLE "plan" DROP COLUMN "sms"`);
     await queryRunner.query(`ALTER TABLE "plan" DROP COLUMN "call"`);
