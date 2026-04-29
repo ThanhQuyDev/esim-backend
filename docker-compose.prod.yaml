@@ -20,7 +20,7 @@ services:
       dockerfile: Dockerfile.prod
     restart: always
     ports:
-      - "${APP_PORT}:${APP_PORT}"
+      - "127.0.0.1:${APP_PORT}:${APP_PORT}"
     env_file:
       - .env.prod
     depends_on:

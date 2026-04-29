@@ -3,7 +3,7 @@ FROM node:24.14.0-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 COPY . .
 RUN npm run build
@@ -15,7 +15,7 @@ RUN apk add --no-cache bash
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/mail/mail-templates ./dist/mail/mail-templates
