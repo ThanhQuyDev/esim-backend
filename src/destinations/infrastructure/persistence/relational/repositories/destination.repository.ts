@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, ILike, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { DestinationEntity } from '../entities/destination.entity';
+import { PlanEntity } from '../../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import {
   FilterDestinationDto,
@@ -36,41 +37,59 @@ export class DestinationsRelationalRepository implements DestinationRepository {
     sortOptions?: SortDestinationDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<Destination[]> {
-    const where: FindOptionsWhere<DestinationEntity>[] = [];
-    const baseWhere: FindOptionsWhere<DestinationEntity> = {};
+    const qb = this.destinationsRepository
+      .createQueryBuilder('destination')
+      .addSelect((subQuery) => {
+        return subQuery
+          .select('MIN(plan."vndPrice")', 'fromPrice')
+          .from(PlanEntity, 'plan')
+          .where('plan."destinationId" = destination.id')
+          .andWhere('plan."isActive" = true')
+          .andWhere('plan."deletedAt" IS NULL');
+      }, 'fromPrice');
 
     if (filterOptions?.isPopular !== undefined) {
-      baseWhere.isPopular = filterOptions.isPopular;
+      qb.andWhere('destination.isPopular = :isPopular', {
+        isPopular: filterOptions.isPopular,
+      });
     }
     if (filterOptions?.isActive !== undefined) {
-      baseWhere.isActive = filterOptions.isActive;
+      qb.andWhere('destination.isActive = :isActive', {
+        isActive: filterOptions.isActive,
+      });
     }
-
     if (filterOptions?.search) {
-      where.push(
-        { ...baseWhere, name: ILike(`%${filterOptions.search}%`) },
-        { ...baseWhere, keySearch: ILike(`%${filterOptions.search}%`) },
+      qb.andWhere(
+        '(destination.name ILIKE :search OR destination.keySearch ILIKE :search)',
+        { search: `%${filterOptions.search}%` },
       );
-    } else {
-      where.push(baseWhere);
     }
 
-    const entities = await this.destinationsRepository.find({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      where,
-      order: sortOptions?.length
-        ? sortOptions.reduce(
-            (accumulator, sort) => ({
-              ...accumulator,
-              [sort.orderBy]: sort.order,
-            }),
-            {},
-          )
-        : { createdAt: 'DESC' },
-    });
+    qb.andWhere('destination.deletedAt IS NULL');
 
-    return entities.map((entity) => DestinationMapper.toDomain(entity));
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(
+          `destination.${sort.orderBy}`,
+          sort.order as 'ASC' | 'DESC',
+        );
+      });
+    } else {
+      qb.addOrderBy('destination.createdAt', 'DESC');
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const raw = await qb.getRawAndEntities();
+
+    return raw.entities.map((entity, index) => {
+      const domain = DestinationMapper.toDomain(entity);
+      domain.fromPrice = raw.raw[index]?.fromPrice
+        ? Number(raw.raw[index].fromPrice)
+        : null;
+      return domain;
+    });
   }
 
   async findById(id: Destination['id']): Promise<NullableType<Destination>> {

@@ -82,6 +82,9 @@ export class Destination {
   @ApiPropertyOptional({ type: () => [RegionRef] })
   regions?: RegionRef[];
 
+  @ApiPropertyOptional({ type: Number, example: 100000 })
+  fromPrice?: number | null;
+
   @ApiProperty()
   createdAt: Date;
 
