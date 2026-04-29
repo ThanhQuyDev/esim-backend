@@ -1,0 +1,27 @@
+FROM node:24.14.0-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+FROM node:24.14.0-alpine
+
+RUN apk add --no-cache bash
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src/mail/mail-templates ./dist/mail/mail-templates
+COPY wait-for-it.sh /opt/wait-for-it.sh
+COPY startup.prod.sh /opt/startup.prod.sh
+RUN chmod +x /opt/wait-for-it.sh /opt/startup.prod.sh
+RUN sed -i 's/\r//g' /opt/wait-for-it.sh /opt/startup.prod.sh
+
+CMD ["/opt/startup.prod.sh"]
