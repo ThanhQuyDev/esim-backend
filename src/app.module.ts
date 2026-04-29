@@ -58,6 +58,7 @@ import { SupportedDevicesModule } from './supported-devices/supported-devices.mo
 import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { SeoConfigsModule } from './seo-configs/seo-configs.module';
 import { MiniTagsModule } from './mini-tags/mini-tags.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -132,6 +133,7 @@ import { MiniTagsModule } from './mini-tags/mini-tags.module';
     EmailTemplatesModule,
     SeoConfigsModule,
     MiniTagsModule,
+    ChatModule,
   ],
 })
 export class AppModule {}
