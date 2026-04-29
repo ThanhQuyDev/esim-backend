@@ -77,6 +77,12 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: String, length: 3, default: 'USD' })
   currency: string;
 
+  @Column({ type: 'int', nullable: true })
+  sms: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  call: number | null;
+
   @Column({ type: String, default: 'data-in-total' })
   type: string;
 

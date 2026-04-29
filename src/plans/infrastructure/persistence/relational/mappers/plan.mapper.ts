@@ -26,6 +26,8 @@ export class PlanMapper {
     domainEntity.price = raw.price;
     domainEntity.retailPrice = raw.retailPrice;
     domainEntity.currency = raw.currency;
+    domainEntity.sms = raw.sms;
+    domainEntity.call = raw.call;
     domainEntity.type = raw.type;
     domainEntity.topUp = raw.topUp;
     domainEntity.speed = raw.speed;
@@ -64,6 +66,8 @@ export class PlanMapper {
     persistenceEntity.price = domainEntity.price;
     persistenceEntity.retailPrice = domainEntity.retailPrice;
     persistenceEntity.currency = domainEntity.currency;
+    persistenceEntity.sms = domainEntity.sms;
+    persistenceEntity.call = domainEntity.call;
     persistenceEntity.type = domainEntity.type;
     persistenceEntity.topUp = domainEntity.topUp;
     persistenceEntity.speed = domainEntity.speed;

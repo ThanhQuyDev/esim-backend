@@ -53,6 +53,12 @@ export class Plan {
   @ApiProperty({ type: String, example: 'USD' })
   currency: string;
 
+  @ApiPropertyOptional({ type: Number, example: 100 })
+  sms: number | null;
+
+  @ApiPropertyOptional({ type: Number, example: 50 })
+  call: number | null;
+
   @ApiProperty({ type: String, example: 'data-in-total' })
   type: string;
 

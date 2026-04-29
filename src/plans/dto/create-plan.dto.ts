@@ -78,6 +78,24 @@ export class CreatePlanDto {
   @IsString()
   type?: string;
 
+  @ApiPropertyOptional({
+    example: 100,
+    type: Number,
+    description: 'Number of SMS included',
+  })
+  @IsOptional()
+  @IsNumber()
+  sms?: number | null;
+
+  @ApiPropertyOptional({
+    example: 50,
+    type: Number,
+    description: 'Call minutes included',
+  })
+  @IsOptional()
+  @IsNumber()
+  call?: number | null;
+
   @ApiPropertyOptional({ example: true, type: Boolean })
   @IsOptional()
   @IsBoolean()
