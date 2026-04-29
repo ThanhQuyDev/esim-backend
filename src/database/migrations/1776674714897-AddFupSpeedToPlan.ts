@@ -10,9 +10,11 @@ export class AddFupSpeedToPlan1776674714897 implements MigrationInterface {
     await queryRunner.query(
       `DROP INDEX IF EXISTS "public"."IDX_order_item_status"`,
     );
-    await queryRunner.query(`ALTER TABLE "region" DROP COLUMN "isPopular"`);
-    await queryRunner.query(`ALTER TABLE "plan" DROP COLUMN "sms"`);
-    await queryRunner.query(`ALTER TABLE "plan" DROP COLUMN "call"`);
+    await queryRunner.query(
+      `ALTER TABLE "region" DROP COLUMN IF EXISTS "isPopular"`,
+    );
+    await queryRunner.query(`ALTER TABLE "plan" DROP COLUMN IF EXISTS "sms"`);
+    await queryRunner.query(`ALTER TABLE "plan" DROP COLUMN IF EXISTS "call"`);
     await queryRunner.query(
       `ALTER TABLE "plan" ADD "fupSpeed" character varying`,
     );
