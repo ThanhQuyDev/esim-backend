@@ -28,6 +28,13 @@ import { AdminOrderDetailDto } from './dto/admin-order-detail.dto';
 import { CartsService } from '../carts/carts.service';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
+import { Plan } from '../plans/domain/plan';
+
+function getDiscountedVndPrice(plan: Plan): number {
+  const vndPrice = plan.vndPrice ?? 0;
+  if (!plan.discount || plan.discount <= 0) return vndPrice;
+  return Math.round(vndPrice * (1 - plan.discount / 100));
+}
 
 @Injectable()
 export class OrdersService {
@@ -132,6 +139,7 @@ export class OrdersService {
           { infer: true },
         );
         const webhookUrl = `${backendDomain}/api/v1/webhooks/airalo`;
+        this.logger.log(`Airalo webhook URL: ${webhookUrl}`);
 
         const result = await this.airaloService.submitOrderAsync({
           packageId: item.plan.providerPlanId,
@@ -333,7 +341,7 @@ export class OrdersService {
     const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
 
     const totalVndPrice = planDetails.reduce(
-      (sum, item) => sum + (item.plan.vndPrice ?? 0) * item.quantity,
+      (sum, item) => sum + getDiscountedVndPrice(item.plan) * item.quantity,
       0,
     );
 
@@ -376,7 +384,7 @@ export class OrdersService {
         price: item.plan.price,
         currency: dto.currency,
         quantity: item.quantity,
-        vndPrice: (item.plan.vndPrice ?? 0) * item.quantity,
+        vndPrice: getDiscountedVndPrice(item.plan) * item.quantity,
         vndCostPrice: itemVndCostPrice,
       });
     }

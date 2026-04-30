@@ -61,6 +61,8 @@ export class PlansService {
       apn: createPlanDto.apn ?? null,
       lastSyncedAt: createPlanDto.lastSyncedAt ?? null,
       isActive: createPlanDto.isActive ?? true,
+      sms: createPlanDto.sms ?? null,
+      call: createPlanDto.call ?? null,
     });
   }
 
