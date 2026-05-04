@@ -194,6 +194,7 @@ export class PlansGadgetkoreaImportService {
     }
 
     await this.plansService.markCheapestPlans();
+    await this.plansService.updateVndPrices();
 
     result.destinationNotFound = [...notFoundNames];
     return result;

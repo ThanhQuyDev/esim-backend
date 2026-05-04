@@ -1,6 +1,7 @@
 import {
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -16,6 +17,8 @@ import { RegionsService } from '../regions/regions.service';
 
 @Injectable()
 export class PlansService {
+  private readonly logger = new Logger(PlansService.name);
+
   constructor(
     private readonly plansRepository: PlanRepository,
     private readonly destinationsService: DestinationsService,
@@ -141,6 +144,28 @@ export class PlansService {
   async recalculatePrices(profitPercentage: number): Promise<void> {
     await this.plansRepository.recalculatePrices(profitPercentage);
     await this.plansRepository.markCheapestPlans();
+  }
+
+  async updateVndPrices(): Promise<void> {
+    try {
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      if (!res.ok) {
+        this.logger.error(`Exchange rate API error: ${res.status}`);
+        return;
+      }
+
+      const data = await res.json();
+      const rate: number = data?.rates?.VND;
+      if (!rate) {
+        this.logger.error('VND rate not found in response');
+        return;
+      }
+
+      await this.plansRepository.updateAllVndPrices(rate);
+      this.logger.log(`Updated vndPrice for all plans (1 USD = ${rate} VND)`);
+    } catch (err) {
+      this.logger.error('Failed to update vndPrice', err);
+    }
   }
 
   async findPlansByDestination(slug: string): Promise<{

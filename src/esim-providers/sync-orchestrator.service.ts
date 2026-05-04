@@ -15,7 +15,7 @@ export class SyncOrchestratorService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    // await this.runFullSync();
+    await this.runFullSync();
   }
 
   @Cron('0 */6 * * *')
@@ -36,6 +36,10 @@ export class SyncOrchestratorService implements OnModuleInit {
 
     this.logger.log('Marking cheapest plans...');
     await this.plansService.markCheapestPlans();
+
+    this.logger.log('Updating VND prices...');
+    await this.plansService.updateVndPrices();
+
     this.logger.log('Full sync completed.');
   }
 }

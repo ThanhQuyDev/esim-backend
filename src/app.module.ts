@@ -60,8 +60,17 @@ import { SeoConfigsModule } from './seo-configs/seo-configs.module';
 import { MiniTagsModule } from './mini-tags/mini-tags.module';
 import { ChatModule } from './chat/chat.module';
 
+import { HeroBannersModule } from './hero-banners/hero-banners.module';
+
+import { FootersModule } from './footers/footers.module';
+
+import { TopBarsModule } from './top-bars/top-bars.module';
+
 @Module({
   imports: [
+    TopBarsModule,
+    FootersModule,
+    HeroBannersModule,
     ScheduleModule.forRoot(),
     BlogsModule,
     HelpCenterModule,

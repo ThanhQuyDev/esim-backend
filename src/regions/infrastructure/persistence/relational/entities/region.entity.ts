@@ -33,6 +33,9 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: true })
   isActive: boolean;
 
+  @Column({ type: String, nullable: true })
+  providers: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
