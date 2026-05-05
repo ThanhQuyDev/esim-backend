@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Query,
+  Headers,
 } from '@nestjs/common';
 import { HeroBannersService } from './hero-banners.service';
 import { CreateHeroBannerDto } from './dto/create-hero-banner.dto';
@@ -18,6 +19,7 @@ import {
   ApiOkResponse,
   ApiParam,
   ApiTags,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { HeroBanner } from './domain/hero-banner';
 import { AuthGuard } from '@nestjs/passport';
@@ -47,11 +49,17 @@ export class HeroBannersController {
   }
 
   @Get()
+  @ApiHeader({
+    name: 'x-custom-lang',
+    required: false,
+    description: 'Language filter: en or vi. If not provided, returns all.',
+  })
   @ApiOkResponse({
     type: InfinityPaginationResponse(HeroBanner),
   })
   async findAll(
     @Query() query: FindAllHeroBannersDto,
+    @Headers('x-custom-lang') lang?: string,
   ): Promise<InfinityPaginationResponseDto<HeroBanner>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
@@ -65,6 +73,7 @@ export class HeroBannersController {
           page,
           limit,
         },
+        lang,
       }),
       { page, limit },
     );

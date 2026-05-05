@@ -3,7 +3,6 @@ import { Workbook } from 'exceljs';
 import { EsimRepository } from './infrastructure/persistence/esim.repository';
 import { PlansService } from '../plans/plans.service';
 import { PlanRepository } from '../plans/infrastructure/persistence/plan.repository';
-import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 
 export interface EsimImportResult {
   total: number;
@@ -21,7 +20,6 @@ export class EsimsImportService {
     private readonly esimRepository: EsimRepository,
     private readonly plansService: PlansService,
     private readonly planRepository: PlanRepository,
-    private readonly profitMarginsService: ProfitMarginsService,
   ) {}
 
   async importFromExcel(
@@ -61,11 +59,6 @@ export class EsimsImportService {
       planCreated: 0,
       errors: [],
     };
-
-    // Fetch profit percentage once before processing rows
-    const profitPercentage =
-      await this.profitMarginsService.getActivePercentage();
-    const profitMultiplier = 1 + profitPercentage / 100;
 
     // Cache plans created/found during this import to avoid repeated DB calls
     const planCache = new Map<string, number>();
@@ -115,7 +108,9 @@ export class EsimsImportService {
         const speed = this.cellStr(row.getCell(col('network') ?? 15).value);
         const costPrice = this.cellNum(row.getCell(25).value) ?? 0; // col 25: Cost Price
         const sellPrice = this.cellNum(row.getCell(26).value) ?? 0; // col 26: Sell Price
-        const price = Math.round(costPrice * profitMultiplier * 100) / 100;
+        // During import, set price = costPrice (no profit).
+        // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
+        const price = costPrice;
 
         // Find or create plan
         const planSlug = `${provider}-${providerPlanId}`

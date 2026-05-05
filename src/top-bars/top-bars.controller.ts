@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Query,
+  Headers,
 } from '@nestjs/common';
 import { TopBarsService } from './top-bars.service';
 import { CreateTopBarDto } from './dto/create-top-bar.dto';
@@ -18,6 +19,7 @@ import {
   ApiOkResponse,
   ApiParam,
   ApiTags,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { TopBar } from './domain/top-bar';
 import { AuthGuard } from '@nestjs/passport';
@@ -47,11 +49,17 @@ export class TopBarsController {
   }
 
   @Get()
+  @ApiHeader({
+    name: 'x-custom-lang',
+    required: false,
+    description: 'Language filter: en or vi. If not provided, returns all.',
+  })
   @ApiOkResponse({
     type: InfinityPaginationResponse(TopBar),
   })
   async findAll(
     @Query() query: FindAllTopBarsDto,
+    @Headers('x-custom-lang') lang?: string,
   ): Promise<InfinityPaginationResponseDto<TopBar>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
@@ -65,6 +73,7 @@ export class TopBarsController {
           page,
           limit,
         },
+        lang,
       }),
       { page, limit },
     );

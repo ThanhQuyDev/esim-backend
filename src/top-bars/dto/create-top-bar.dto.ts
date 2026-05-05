@@ -12,6 +12,7 @@ import {
   IsNotEmptyObject,
   IsOptional,
   IsString,
+  IsIn,
 } from 'class-validator';
 
 import {
@@ -44,9 +45,12 @@ export class CreateTopBarDto {
   @ApiProperty({
     required: true,
     type: () => String,
+    example: 'en',
+    description: 'Language code: en or vi',
   })
   @IsString()
-  titleVi: string;
+  @IsIn(['en', 'vi'])
+  language: string;
 
   @ApiProperty({
     required: false,

@@ -1,60 +1,166 @@
-import { Inject, Injectable, forwardRef } from '@nestjs/common';
-import { UpdateProfitMarginDto } from './dto/update-profit-margin.dto';
+import {
+  HttpStatus,
+  Injectable,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { CreateProfitMarginTierDto } from './dto/create-profit-margin-tier.dto';
+import { UpdateProfitMarginTierDto } from './dto/update-profit-margin-tier.dto';
 import { NullableType } from '../utils/types/nullable.type';
-import { ProfitMarginRepository } from './infrastructure/persistence/profit-margin.repository';
-import { ProfitMargin } from './domain/profit-margin';
+import { ProfitMarginTierRepository } from './infrastructure/persistence/profit-margin-tier.repository';
+import { ProfitMarginTier } from './domain/profit-margin-tier';
 import { PlansService } from '../plans/plans.service';
+import {
+  FilterProfitMarginTierDto,
+  SortProfitMarginTierDto,
+} from './dto/query-profit-margin-tier.dto';
+import { IPaginationOptions } from '../utils/types/pagination-options';
 
 @Injectable()
 export class ProfitMarginsService {
   constructor(
-    private readonly profitMarginRepository: ProfitMarginRepository,
-    @Inject(forwardRef(() => PlansService))
+    private readonly tierRepository: ProfitMarginTierRepository,
     private readonly plansService: PlansService,
   ) {}
 
-  async getSingleton(): Promise<NullableType<ProfitMargin>> {
-    const results = await this.profitMarginRepository.findManyWithPagination({
-      filterOptions: null,
-      sortOptions: null,
-      paginationOptions: { page: 1, limit: 1 },
+  // ── Tier CRUD ──────────────────────────────────────────────
+
+  async createTier(dto: CreateProfitMarginTierDto): Promise<ProfitMarginTier> {
+    await this.validateNoOverlap(dto.minVnd, dto.maxVnd);
+
+    const tier = await this.tierRepository.create({
+      minVnd: dto.minVnd,
+      maxVnd: dto.maxVnd,
+      percentage: dto.percentage,
+      isActive: dto.isActive ?? true,
     });
-    return results[0] ?? null;
+
+    await this.recalculateAllPlanPrices();
+    return tier;
   }
 
-  async upsert(updateDto: UpdateProfitMarginDto): Promise<ProfitMargin> {
-    const existing = await this.getSingleton();
-    const oldPercentage = existing ? Number(existing.percentage) : null;
+  async findManyTiers({
+    filterOptions,
+    sortOptions,
+    paginationOptions,
+  }: {
+    filterOptions?: FilterProfitMarginTierDto | null;
+    sortOptions?: SortProfitMarginTierDto[] | null;
+    paginationOptions: IPaginationOptions;
+  }): Promise<ProfitMarginTier[]> {
+    return this.tierRepository.findManyWithPagination({
+      filterOptions,
+      sortOptions,
+      paginationOptions,
+    });
+  }
 
-    let result: ProfitMargin;
-    if (existing) {
-      result = (await this.profitMarginRepository.update(existing.id, {
-        name: updateDto.name,
-        percentage: updateDto.percentage,
-        isActive: updateDto.isActive,
-      })) as ProfitMargin;
-    } else {
-      result = await this.profitMarginRepository.create({
-        name: updateDto.name ?? 'Default Margin',
-        percentage: updateDto.percentage ?? 0,
-        isActive: updateDto.isActive ?? true,
+  async findAllTiers(): Promise<ProfitMarginTier[]> {
+    return this.tierRepository.findAll();
+  }
+
+  async findTierById(id: number): Promise<NullableType<ProfitMarginTier>> {
+    return this.tierRepository.findById(id);
+  }
+
+  async updateTier(
+    id: number,
+    dto: UpdateProfitMarginTierDto,
+  ): Promise<ProfitMarginTier> {
+    const existing = await this.tierRepository.findById(id);
+    if (!existing) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { id: 'tierNotFound' },
       });
     }
 
-    const newPercentage = Number(result.percentage);
-    if (oldPercentage !== newPercentage) {
-      await this.plansService.recalculatePrices(newPercentage);
-    }
+    const minVnd = dto.minVnd ?? existing.minVnd;
+    const maxVnd = dto.maxVnd ?? existing.maxVnd;
+    await this.validateNoOverlap(minVnd, maxVnd, id);
 
-    return result;
+    const tier = (await this.tierRepository.update(id, {
+      minVnd: dto.minVnd,
+      maxVnd: dto.maxVnd,
+      percentage: dto.percentage,
+      isActive: dto.isActive,
+    })) as ProfitMarginTier;
+
+    await this.recalculateAllPlanPrices();
+    return tier;
   }
 
-  async getActivePercentage(): Promise<number> {
-    const results = await this.profitMarginRepository.findManyWithPagination({
-      filterOptions: { isActive: true },
-      sortOptions: null,
-      paginationOptions: { page: 1, limit: 1 },
-    });
-    return results.length > 0 ? Number(results[0].percentage) : 0;
+  async removeTier(id: number): Promise<void> {
+    await this.tierRepository.remove(id);
+    await this.recalculateAllPlanPrices();
+  }
+
+  // ── Overlap validation ─────────────────────────────────────
+
+  private async validateNoOverlap(
+    minVnd: number,
+    maxVnd: number,
+    excludeId?: number,
+  ): Promise<void> {
+    if (minVnd > maxVnd) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          range: 'minVnd must be less than or equal to maxVnd',
+        },
+      });
+    }
+
+    const overlapping = await this.tierRepository.findOverlapping(
+      minVnd,
+      maxVnd,
+      excludeId,
+    );
+
+    if (overlapping.length > 0) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          range: `Price range overlaps with existing tier(s): ${overlapping.map((t) => `${t.minVnd}-${t.maxVnd}`).join(', ')}`,
+        },
+      });
+    }
+  }
+
+  // ── Price calculation helpers ──────────────────────────────
+
+  /**
+   * Get the profit percentage for a given vndPrice based on active tiers.
+   * Returns 0 if no tier matches.
+   */
+  async getProfitPercentageForVndPrice(vndPrice: number): Promise<number> {
+    const tiers = await this.tierRepository.findAll();
+    for (const tier of tiers) {
+      if (vndPrice >= tier.minVnd && vndPrice <= tier.maxVnd) {
+        return Number(tier.percentage);
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Calculate price from costPrice using tiered profit.
+   * price = costPrice * (1 + matchingTierPercentage / 100)
+   */
+  async calculatePrice(costPrice: number, vndPrice: number): Promise<number> {
+    const percentage = await this.getProfitPercentageForVndPrice(vndPrice);
+    return Math.round(costPrice * (1 + percentage / 100) * 100) / 100;
+  }
+
+  /**
+   * Recalculate price and vndPrice for all plans based on current tiers.
+   */
+  async recalculateAllPlanPrices(): Promise<void> {
+    const tiers = await this.tierRepository.findAll();
+    const tierData = tiers.map((t) => ({
+      minVnd: t.minVnd,
+      maxVnd: t.maxVnd,
+      percentage: Number(t.percentage),
+    }));
+    await this.plansService.recalculatePricesWithTiers(tierData);
   }
 }

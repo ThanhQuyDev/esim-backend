@@ -1,4 +1,3 @@
-import { FileType } from '../../files/domain/file';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class HeroBanner {
@@ -9,10 +8,46 @@ export class HeroBanner {
   active: boolean;
 
   @ApiProperty({
-    type: () => FileType,
-    nullable: true,
+    type: () => String,
+    nullable: false,
   })
-  image?: FileType | null;
+  title: string;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: false,
+  })
+  firstIcon: string;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: false,
+  })
+  firstContent: string;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: false,
+  })
+  secondIcon: string;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: false,
+  })
+  secondContent: string;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: false,
+  })
+  description: string;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: false,
+  })
+  language: string;
 
   @ApiProperty({
     type: String,

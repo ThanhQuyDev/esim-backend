@@ -1,17 +1,9 @@
-import { FileDto } from '../../files/dto/file.dto';
-
-import {
-  // decorators here
-  Type,
-} from 'class-transformer';
-
 import {
   // decorators here
 
-  ValidateNested,
-  IsNotEmptyObject,
-  IsOptional,
   IsBoolean,
+  IsString,
+  IsIn,
 } from 'class-validator';
 
 import {
@@ -28,14 +20,56 @@ export class CreateHeroBannerDto {
   active: boolean;
 
   @ApiProperty({
-    required: false,
-    type: () => FileDto,
+    required: true,
+    type: () => String,
   })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => FileDto)
-  @IsNotEmptyObject()
-  image?: FileDto | null;
+  @IsString()
+  title: string;
+
+  @ApiProperty({
+    required: true,
+    type: () => String,
+  })
+  @IsString()
+  firstIcon: string;
+
+  @ApiProperty({
+    required: true,
+    type: () => String,
+  })
+  @IsString()
+  firstContent: string;
+
+  @ApiProperty({
+    required: true,
+    type: () => String,
+  })
+  @IsString()
+  secondIcon: string;
+
+  @ApiProperty({
+    required: true,
+    type: () => String,
+  })
+  @IsString()
+  secondContent: string;
+
+  @ApiProperty({
+    required: true,
+    type: () => String,
+  })
+  @IsString()
+  description: string;
+
+  @ApiProperty({
+    required: true,
+    type: () => String,
+    example: 'en',
+    description: 'Language code: en or vi',
+  })
+  @IsString()
+  @IsIn(['en', 'vi'])
+  language: string;
 
   // Don't forget to use the class-validator decorators in the DTO properties.
 }

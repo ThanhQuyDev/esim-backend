@@ -24,7 +24,7 @@ export class TopBar {
     type: () => String,
     nullable: false,
   })
-  titleVi: string;
+  language: string;
 
   @ApiProperty({
     type: () => FileType,

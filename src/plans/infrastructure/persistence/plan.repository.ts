@@ -32,11 +32,19 @@ export abstract class PlanRepository {
 
   abstract batchUpdateDiscount(ids: number[], discount: number): Promise<void>;
 
-  abstract recalculatePrices(profitPercentage: number): Promise<void>;
+  abstract recalculatePricesByTiers(
+    tiers: Array<{ minVnd: number; maxVnd: number; percentage: number }>,
+  ): Promise<void>;
 
   abstract updateAllVndPrices(rate: number): Promise<void>;
 
   abstract remove(id: Plan['id']): Promise<void>;
+
+  abstract getDistinctProvidersByDestinationId(
+    destinationId: number,
+  ): Promise<string[]>;
+
+  abstract getDistinctProvidersByRegionId(regionId: number): Promise<string[]>;
 
   abstract deactivateStaleProviderPlans(
     provider: string,

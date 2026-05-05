@@ -89,6 +89,13 @@ export class RegionsService {
     );
   }
 
+  async updateProviders(
+    id: Region['id'],
+    providers: string | null,
+  ): Promise<void> {
+    await this.regionsRepository.update(id, { providers } as any);
+  }
+
   async remove(id: Region['id']): Promise<void> {
     await this.regionsRepository.remove(id);
   }

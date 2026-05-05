@@ -13,7 +13,7 @@ export class TopBarMapper {
 
     domainEntity.title = raw.title;
 
-    domainEntity.titleVi = raw.titleVi;
+    domainEntity.language = raw.language;
 
     if (raw.icon) {
       domainEntity.icon = FileMapper.toDomain(raw.icon);
@@ -36,7 +36,7 @@ export class TopBarMapper {
 
     persistenceEntity.title = domainEntity.title;
 
-    persistenceEntity.titleVi = domainEntity.titleVi;
+    persistenceEntity.language = domainEntity.language;
 
     if (domainEntity.icon) {
       persistenceEntity.icon = FileMapper.toPersistence(domainEntity.icon);

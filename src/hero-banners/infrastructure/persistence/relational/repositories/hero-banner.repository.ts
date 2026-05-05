@@ -25,10 +25,18 @@ export class HeroBannerRelationalRepository implements HeroBannerRepository {
 
   async findAllWithPagination({
     paginationOptions,
+    lang,
   }: {
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }): Promise<HeroBanner[]> {
+    const where: Record<string, unknown> = {};
+    if (lang) {
+      where.language = lang;
+    }
+
     const entities = await this.heroBannerRepository.find({
+      where,
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
     });

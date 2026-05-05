@@ -1,7 +1,5 @@
 import { HeroBanner } from '../../../../domain/hero-banner';
 
-import { FileMapper } from '../../../../../files/infrastructure/persistence/relational/mappers/file.mapper';
-
 import { HeroBannerEntity } from '../entities/hero-banner.entity';
 
 export class HeroBannerMapper {
@@ -9,11 +7,19 @@ export class HeroBannerMapper {
     const domainEntity = new HeroBanner();
     domainEntity.active = raw.active;
 
-    if (raw.image) {
-      domainEntity.image = FileMapper.toDomain(raw.image);
-    } else if (raw.image === null) {
-      domainEntity.image = null;
-    }
+    domainEntity.title = raw.title;
+
+    domainEntity.firstIcon = raw.firstIcon;
+
+    domainEntity.firstContent = raw.firstContent;
+
+    domainEntity.secondIcon = raw.secondIcon;
+
+    domainEntity.secondContent = raw.secondContent;
+
+    domainEntity.description = raw.description;
+
+    domainEntity.language = raw.language;
 
     domainEntity.id = raw.id;
     domainEntity.createdAt = raw.createdAt;
@@ -26,11 +32,19 @@ export class HeroBannerMapper {
     const persistenceEntity = new HeroBannerEntity();
     persistenceEntity.active = domainEntity.active;
 
-    if (domainEntity.image) {
-      persistenceEntity.image = FileMapper.toPersistence(domainEntity.image);
-    } else if (domainEntity.image === null) {
-      persistenceEntity.image = null;
-    }
+    persistenceEntity.title = domainEntity.title;
+
+    persistenceEntity.firstIcon = domainEntity.firstIcon;
+
+    persistenceEntity.firstContent = domainEntity.firstContent;
+
+    persistenceEntity.secondIcon = domainEntity.secondIcon;
+
+    persistenceEntity.secondContent = domainEntity.secondContent;
+
+    persistenceEntity.description = domainEntity.description;
+
+    persistenceEntity.language = domainEntity.language;
 
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;

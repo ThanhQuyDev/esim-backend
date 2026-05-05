@@ -2,7 +2,6 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { Workbook } from 'exceljs';
 import { PlansService } from './plans.service';
 import { DestinationsService } from '../destinations/destinations.service';
-import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 import { ImportResult } from './plans-import.service';
 
 const SHEET_TYPE_MAP: Record<string, string> = {
@@ -35,7 +34,6 @@ export class PlansGadgetkoreaImportService {
   constructor(
     private readonly plansService: PlansService,
     private readonly destinationsService: DestinationsService,
-    private readonly profitMarginsService: ProfitMarginsService,
   ) {}
 
   async importFromExcel(
@@ -57,9 +55,6 @@ export class PlansGadgetkoreaImportService {
       errors: [],
       destinationNotFound: [],
     };
-
-    const profitPercentage =
-      await this.profitMarginsService.getActivePercentage();
 
     const destinationCache = new Map<string, number | null>();
     const notFoundNames = new Set<string>();
@@ -127,8 +122,9 @@ export class PlansGadgetkoreaImportService {
             this.getNumber(row.getCell(COL.B2B_PRICE).value) ?? 0;
           const retailPrice =
             this.getNumber(row.getCell(COL.NORMAL_PRICE).value) ?? 0;
-          const price =
-            Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
+          // During import, set price = costPrice (no profit).
+          // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
+          const price = costPrice;
 
           const speed = this.getString(row.getCell(COL.NETWORK).value) || null;
           const carrier = this.getString(row.getCell(COL.CARRIER).value);

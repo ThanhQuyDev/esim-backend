@@ -1,4 +1,3 @@
-import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { HeroBanner } from '../../domain/hero-banner';
@@ -10,8 +9,10 @@ export abstract class HeroBannerRepository {
 
   abstract findAllWithPagination({
     paginationOptions,
+    lang,
   }: {
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }): Promise<HeroBanner[]>;
 
   abstract findById(id: HeroBanner['id']): Promise<NullableType<HeroBanner>>;
@@ -20,7 +21,7 @@ export abstract class HeroBannerRepository {
 
   abstract update(
     id: HeroBanner['id'],
-    payload: DeepPartial<HeroBanner>,
+    payload: Partial<HeroBanner>,
   ): Promise<HeroBanner | null>;
 
   abstract remove(id: HeroBanner['id']): Promise<void>;

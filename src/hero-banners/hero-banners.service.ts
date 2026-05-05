@@ -1,11 +1,6 @@
-import { FilesService } from '../files/files.service';
-import { FileType } from '../files/domain/file';
-
 import {
   // common
   Injectable,
-  HttpStatus,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { CreateHeroBannerDto } from './dto/create-hero-banner.dto';
 import { UpdateHeroBannerDto } from './dto/update-hero-banner.dto';
@@ -16,8 +11,6 @@ import { HeroBanner } from './domain/hero-banner';
 @Injectable()
 export class HeroBannersService {
   constructor(
-    private readonly fileService: FilesService,
-
     // Dependencies here
     private readonly heroBannerRepository: HeroBannerRepository,
   ) {}
@@ -26,44 +19,40 @@ export class HeroBannersService {
     // Do not remove comment below.
     // <creating-property />
 
-    let image: FileType | null | undefined = undefined;
-
-    if (createHeroBannerDto.image) {
-      const imageObject = await this.fileService.findById(
-        createHeroBannerDto.image.id,
-      );
-      if (!imageObject) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            image: 'notExists',
-          },
-        });
-      }
-      image = imageObject;
-    } else if (createHeroBannerDto.image === null) {
-      image = null;
-    }
-
     return this.heroBannerRepository.create({
       // Do not remove comment below.
       // <creating-property-payload />
       active: createHeroBannerDto.active,
 
-      image,
+      title: createHeroBannerDto.title,
+
+      firstIcon: createHeroBannerDto.firstIcon,
+
+      firstContent: createHeroBannerDto.firstContent,
+
+      secondIcon: createHeroBannerDto.secondIcon,
+
+      secondContent: createHeroBannerDto.secondContent,
+
+      description: createHeroBannerDto.description,
+
+      language: createHeroBannerDto.language,
     });
   }
 
   findAllWithPagination({
     paginationOptions,
+    lang,
   }: {
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }) {
     return this.heroBannerRepository.findAllWithPagination({
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
       },
+      lang,
     });
   }
 
@@ -83,31 +72,24 @@ export class HeroBannersService {
     // Do not remove comment below.
     // <updating-property />
 
-    let image: FileType | null | undefined = undefined;
-
-    if (updateHeroBannerDto.image) {
-      const imageObject = await this.fileService.findById(
-        updateHeroBannerDto.image.id,
-      );
-      if (!imageObject) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            image: 'notExists',
-          },
-        });
-      }
-      image = imageObject;
-    } else if (updateHeroBannerDto.image === null) {
-      image = null;
-    }
-
     return this.heroBannerRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
       active: updateHeroBannerDto.active,
 
-      image,
+      title: updateHeroBannerDto.title,
+
+      firstIcon: updateHeroBannerDto.firstIcon,
+
+      firstContent: updateHeroBannerDto.firstContent,
+
+      secondIcon: updateHeroBannerDto.secondIcon,
+
+      secondContent: updateHeroBannerDto.secondContent,
+
+      description: updateHeroBannerDto.description,
+
+      language: updateHeroBannerDto.language,
     });
   }
 

@@ -120,6 +120,13 @@ export class DestinationsService {
     await this.destinationsRepository.addRegion(destinationId, regionId);
   }
 
+  async updateProviders(
+    id: Destination['id'],
+    providers: string | null,
+  ): Promise<void> {
+    await this.destinationsRepository.update(id, { providers } as any);
+  }
+
   async remove(id: Destination['id']): Promise<void> {
     await this.destinationsRepository.remove(id);
   }

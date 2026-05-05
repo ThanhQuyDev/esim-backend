@@ -36,8 +36,9 @@ export class TopBarEntity extends EntityRelationalHelper {
   @Column({
     nullable: false,
     type: String,
+    default: 'en',
   })
-  titleVi: string;
+  language: string;
 
   @OneToOne(() => FileEntity, { eager: true, nullable: true })
   @JoinColumn()

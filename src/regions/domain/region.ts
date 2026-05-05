@@ -19,6 +19,12 @@ export class Region {
   @ApiPropertyOptional({ type: Number, example: 42 })
   destinationCount?: number;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: 'airalo,esimaccess',
+  })
+  providers?: string | null;
+
   @ApiPropertyOptional({ type: String })
   avatarUrl: string | null;
 

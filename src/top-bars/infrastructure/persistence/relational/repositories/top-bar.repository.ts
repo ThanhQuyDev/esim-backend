@@ -25,10 +25,18 @@ export class TopBarRelationalRepository implements TopBarRepository {
 
   async findAllWithPagination({
     paginationOptions,
+    lang,
   }: {
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }): Promise<TopBar[]> {
+    const where: Record<string, unknown> = {};
+    if (lang) {
+      where.language = lang;
+    }
+
     const entities = await this.topBarRepository.find({
+      where,
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
     });

@@ -193,11 +193,28 @@ export class PlansRelationalRepository implements PlanRepository {
     );
   }
 
-  async recalculatePrices(profitPercentage: number): Promise<void> {
-    const multiplier = 1 + profitPercentage / 100;
+  async recalculatePricesByTiers(
+    tiers: Array<{ minVnd: number; maxVnd: number; percentage: number }>,
+  ): Promise<void> {
+    if (tiers.length === 0) {
+      // No tiers configured — set price = costPrice (no profit)
+      await this.plansRepository.query(
+        `UPDATE "plan" SET "price" = "costPrice" WHERE "deletedAt" IS NULL`,
+      );
+      return;
+    }
+
+    // Build CASE expression for tiered pricing
+    // For each tier: WHEN vndPrice BETWEEN minVnd AND maxVnd THEN costPrice * (1 + percentage/100)
+    let caseExpr = 'CASE ';
+    for (const tier of tiers) {
+      const multiplier = 1 + tier.percentage / 100;
+      caseExpr += `WHEN "vndPrice" >= ${tier.minVnd} AND "vndPrice" <= ${tier.maxVnd} THEN ROUND("costPrice" * ${multiplier} * 100) / 100 `;
+    }
+    caseExpr += 'ELSE "costPrice" END';
+
     await this.plansRepository.query(
-      `UPDATE "plan" SET "price" = ROUND("costPrice" * $1 * 100) / 100 WHERE "deletedAt" IS NULL`,
-      [multiplier],
+      `UPDATE "plan" SET "price" = ${caseExpr} WHERE "deletedAt" IS NULL`,
     );
   }
 
@@ -210,6 +227,24 @@ export class PlansRelationalRepository implements PlanRepository {
 
   async remove(id: Plan['id']): Promise<void> {
     await this.plansRepository.softDelete(id);
+  }
+
+  async getDistinctProvidersByDestinationId(
+    destinationId: number,
+  ): Promise<string[]> {
+    const rows: { provider: string }[] = await this.plansRepository.query(
+      `SELECT DISTINCT "provider" FROM "plan" WHERE "destinationId" = $1 AND "isActive" = true AND "deletedAt" IS NULL ORDER BY "provider"`,
+      [destinationId],
+    );
+    return rows.map((r) => r.provider);
+  }
+
+  async getDistinctProvidersByRegionId(regionId: number): Promise<string[]> {
+    const rows: { provider: string }[] = await this.plansRepository.query(
+      `SELECT DISTINCT "provider" FROM "plan" WHERE "regionId" = $1 AND "isActive" = true AND "deletedAt" IS NULL ORDER BY "provider"`,
+      [regionId],
+    );
+    return rows.map((r) => r.provider);
   }
 
   async deactivateStaleProviderPlans(

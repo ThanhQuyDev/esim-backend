@@ -79,6 +79,12 @@ export class Destination {
   })
   description: string | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: 'airalo,esimaccess',
+  })
+  providers?: string | null;
+
   @ApiPropertyOptional({ type: () => [RegionRef] })
   regions?: RegionRef[];
 

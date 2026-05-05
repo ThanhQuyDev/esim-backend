@@ -46,13 +46,11 @@ export class EsimAccessService {
 
     try {
       const packages = await this.fetchPackages();
-      const profitPercentage =
-        await this.profitMarginsService.getActivePercentage();
       let itemsSynced = 0;
 
       for (const pkg of packages) {
         try {
-          await this.processPackage(pkg, profitPercentage);
+          await this.processPackage(pkg);
           itemsSynced++;
         } catch (error: any) {
           this.logger.error(
@@ -134,19 +132,16 @@ export class EsimAccessService {
     return data.obj.packageList;
   }
 
-  private async processPackage(
-    pkg: EsimAccessPackage,
-    profitPercentage: number,
-  ): Promise<void> {
+  private async processPackage(pkg: EsimAccessPackage): Promise<void> {
     const locationCodes = pkg.location.split(',').map((s) => s.trim());
     const isRegionPackage = locationCodes.length > 1;
 
     if (isRegionPackage) {
       const region = await this.resolveRegion(pkg, locationCodes);
-      await this.upsertPlan(pkg, null, region.id, profitPercentage);
+      await this.upsertPlan(pkg, null, region.id);
     } else {
       const destination = await this.resolveDestination(pkg);
-      await this.upsertPlan(pkg, destination.id, null, profitPercentage);
+      await this.upsertPlan(pkg, destination.id, null);
     }
   }
 
@@ -288,7 +283,6 @@ export class EsimAccessService {
     pkg: EsimAccessPackage,
     destinationId: number | null,
     regionId: number | null,
-    profitPercentage: number,
   ) {
     const dataTypeMap: Record<number, string> = {
       1: 'fixed',
@@ -325,8 +319,9 @@ export class EsimAccessService {
     );
 
     const costPrice = pkg.price / 10000;
-    const price =
-      Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
+    // During sync, set price = costPrice (no profit).
+    // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
+    const price = costPrice;
     const planData = {
       provider: 'esimaccess',
       providerPlanId: pkg.packageCode,

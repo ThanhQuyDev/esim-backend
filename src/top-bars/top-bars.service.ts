@@ -54,7 +54,7 @@ export class TopBarsService {
 
       title: createTopBarDto.title,
 
-      titleVi: createTopBarDto.titleVi,
+      language: createTopBarDto.language,
 
       icon,
     });
@@ -62,14 +62,17 @@ export class TopBarsService {
 
   findAllWithPagination({
     paginationOptions,
+    lang,
   }: {
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }) {
     return this.topBarRepository.findAllWithPagination({
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
       },
+      lang,
     });
   }
 
@@ -117,7 +120,7 @@ export class TopBarsService {
 
       title: updateTopBarDto.title,
 
-      titleVi: updateTopBarDto.titleVi,
+      language: updateTopBarDto.language,
 
       icon,
     });

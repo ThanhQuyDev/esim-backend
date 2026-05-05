@@ -141,8 +141,10 @@ export class PlansService {
     await this.plansRepository.markCheapestPlans();
   }
 
-  async recalculatePrices(profitPercentage: number): Promise<void> {
-    await this.plansRepository.recalculatePrices(profitPercentage);
+  async recalculatePricesWithTiers(
+    tiers: Array<{ minVnd: number; maxVnd: number; percentage: number }>,
+  ): Promise<void> {
+    await this.plansRepository.recalculatePricesByTiers(tiers);
     await this.plansRepository.markCheapestPlans();
   }
 
@@ -236,5 +238,44 @@ export class PlansService {
 
   async deactivateAllProviderPlans(provider: string): Promise<void> {
     await this.plansRepository.deactivateAllProviderPlans(provider);
+  }
+
+  async refreshProviders(): Promise<void> {
+    // Collect all distinct destination IDs and region IDs from active plans
+    const plans = await this.plansRepository.findManyWithPagination({
+      filterOptions: { isActive: true },
+      paginationOptions: { page: 1, limit: 100000 },
+    });
+
+    const destinationIds = [
+      ...new Set(plans.map((p) => p.destinationId).filter(Boolean)),
+    ] as number[];
+    const regionIds = [
+      ...new Set(plans.map((p) => p.regionId).filter(Boolean)),
+    ] as number[];
+
+    // Update providers for each destination
+    for (const destId of destinationIds) {
+      const providers =
+        await this.plansRepository.getDistinctProvidersByDestinationId(destId);
+      await this.destinationsService.updateProviders(
+        destId,
+        providers.length > 0 ? providers.join(',') : null,
+      );
+    }
+
+    // Update providers for each region
+    for (const regionId of regionIds) {
+      const providers =
+        await this.plansRepository.getDistinctProvidersByRegionId(regionId);
+      await this.regionsService.updateProviders(
+        regionId,
+        providers.length > 0 ? providers.join(',') : null,
+      );
+    }
+
+    this.logger.log(
+      `Refreshed providers for ${destinationIds.length} destinations and ${regionIds.length} regions`,
+    );
   }
 }

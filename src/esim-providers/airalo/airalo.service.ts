@@ -48,8 +48,6 @@ export class AiraloService {
     try {
       const token = await this.authenticate();
       const countries = await this.fetchAllPackages(token);
-      const profitPercentage =
-        await this.profitMarginsService.getActivePercentage();
       let itemsSynced = 0;
 
       for (const country of countries) {
@@ -58,12 +56,7 @@ export class AiraloService {
             if (pkg.type === 'topup') continue;
 
             try {
-              await this.processPackage(
-                country,
-                operator,
-                pkg,
-                profitPercentage,
-              );
+              await this.processPackage(country, operator, pkg);
               itemsSynced++;
             } catch (error: any) {
               this.logger.error(
@@ -168,35 +161,20 @@ export class AiraloService {
     country: AiraloCountry,
     operator: AiraloOperator,
     pkg: AiraloPackage,
-    profitPercentage: number,
   ): Promise<void> {
     const operatorCountries = operator.countries ?? [];
     const isRegionPackage = operatorCountries.length > 1;
 
     if (isRegionPackage) {
       const region = await this.resolveRegion(country, operatorCountries);
-      await this.upsertPlan(
-        country,
-        operator,
-        pkg,
-        null,
-        region.id,
-        profitPercentage,
-      );
+      await this.upsertPlan(country, operator, pkg, null, region.id);
     } else {
       const destination = await this.resolveDestination(
         country.country_code,
         country.title,
         country.image?.url || null,
       );
-      await this.upsertPlan(
-        country,
-        operator,
-        pkg,
-        destination.id,
-        null,
-        profitPercentage,
-      );
+      await this.upsertPlan(country, operator, pkg, destination.id, null);
     }
   }
 
@@ -266,7 +244,6 @@ export class AiraloService {
     pkg: AiraloPackage,
     destinationId: number | null,
     regionId: number | null,
-    profitPercentage: number,
   ) {
     const locationName = country.title;
     const planType = pkg.is_unlimited ? 'unlimited-reduce' : 'fixed';
@@ -280,8 +257,9 @@ export class AiraloService {
     const existing = await this.plansService.findBySlug(slug);
 
     const costPrice = pkg.net_price;
-    const price =
-      Math.round(costPrice * (1 + profitPercentage / 100) * 100) / 100;
+    // During sync, set price = costPrice (no profit).
+    // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
+    const price = costPrice;
 
     const dataMb = pkg.is_unlimited ? 3072 : pkg.amount;
 

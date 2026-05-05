@@ -71,6 +71,13 @@ export class PlansImportService {
       }
     }
 
+    // Refresh providers on destinations and regions after import
+    try {
+      await this.plansService.refreshProviders();
+    } catch (error: any) {
+      this.logger.error(`Failed to refresh providers: ${error.message}`);
+    }
+
     return result;
   }
 

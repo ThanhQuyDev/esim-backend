@@ -1,12 +1,8 @@
-import { FileEntity } from '../../../../../files/infrastructure/persistence/relational/entities/file.entity';
-
 import {
   CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
-  JoinColumn,
-  OneToOne,
   Column,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
@@ -21,9 +17,48 @@ export class HeroBannerEntity extends EntityRelationalHelper {
   })
   active: boolean;
 
-  @OneToOne(() => FileEntity, { eager: true, nullable: true })
-  @JoinColumn()
-  image?: FileEntity | null;
+  @Column({
+    nullable: false,
+    type: String,
+  })
+  title: string;
+
+  @Column({
+    nullable: false,
+    type: String,
+  })
+  firstIcon: string;
+
+  @Column({
+    nullable: false,
+    type: String,
+  })
+  firstContent: string;
+
+  @Column({
+    nullable: false,
+    type: String,
+  })
+  secondIcon: string;
+
+  @Column({
+    nullable: false,
+    type: String,
+  })
+  secondContent: string;
+
+  @Column({
+    nullable: false,
+    type: String,
+  })
+  description: string;
+
+  @Column({
+    nullable: false,
+    type: String,
+    default: 'en',
+  })
+  language: string;
 
   @PrimaryGeneratedColumn('uuid')
   id: string;

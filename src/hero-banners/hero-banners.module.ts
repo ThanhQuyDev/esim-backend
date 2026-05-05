@@ -1,4 +1,3 @@
-import { FilesModule } from '../files/files.module';
 import {
   // do not remove this comment
   Module,
@@ -9,8 +8,6 @@ import { RelationalHeroBannerPersistenceModule } from './infrastructure/persiste
 
 @Module({
   imports: [
-    FilesModule,
-
     // do not remove this comment
     RelationalHeroBannerPersistenceModule,
   ],

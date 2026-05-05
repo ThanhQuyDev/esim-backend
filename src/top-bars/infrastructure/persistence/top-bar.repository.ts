@@ -10,8 +10,10 @@ export abstract class TopBarRepository {
 
   abstract findAllWithPagination({
     paginationOptions,
+    lang,
   }: {
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }): Promise<TopBar[]>;
 
   abstract findById(id: TopBar['id']): Promise<NullableType<TopBar>>;
