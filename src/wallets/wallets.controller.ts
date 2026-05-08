@@ -21,6 +21,7 @@ import {
   UpdateWalletStatusDto,
 } from './dto/admin-wallet.dto';
 import {
+  AdminWalletListItemDto,
   ReferralProfileDto,
   WalletMeDto,
   WalletTransactionDto,
@@ -65,9 +66,10 @@ export class WalletsController {
 
   @Roles(RoleEnum.admin)
   @ApiOkResponse({ type: [WalletMeDto] })
+  @ApiOkResponse({ type: [AdminWalletListItemDto] })
   @Get('admin')
   @HttpCode(HttpStatus.OK)
-  listWallets() {
+  listWallets(): Promise<AdminWalletListItemDto[]> {
     return this.walletsService.listWallets();
   }
 
