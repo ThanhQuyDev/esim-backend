@@ -5,12 +5,12 @@ export class Order {
   @ApiProperty({
     type: Number,
   })
-  id: number;
+  id!: number;
 
   @ApiProperty({
     type: Number,
   })
-  userId: number;
+  userId!: number;
 
   @ApiProperty({
     type: () => User,
@@ -21,25 +21,25 @@ export class Order {
     type: String,
     example: 'ORD-20260403-001',
   })
-  orderNumber: string;
+  orderNumber!: string;
 
   @ApiProperty({
     type: String,
     example: 'pending',
   })
-  status: string;
+  status!: string;
 
   @ApiProperty({
     type: Number,
     example: 99.99,
   })
-  totalAmount: number;
+  totalAmount!: number;
 
   @ApiProperty({
     type: String,
     example: 'USD',
   })
-  currency: string;
+  currency!: string;
 
   @ApiPropertyOptional({
     type: String,
@@ -63,24 +63,60 @@ export class Order {
     type: Number,
     example: 0,
   })
-  discountAmount: number;
+  discountAmount!: number;
 
   @ApiProperty({ type: Number, example: 450000, description: 'Total in VND' })
-  vndPrice: number;
+  vndPrice!: number;
 
   @ApiProperty({
     type: Number,
     example: 300000,
     description: 'Cost price in VND at time of purchase',
   })
-  vndCostPrice: number;
+  vndCostPrice!: number;
+
+  @ApiProperty({ type: Number, example: 450000 })
+  subtotalVndPrice!: number;
+
+  @ApiProperty({ type: Number, example: 0 })
+  couponDiscountVndAmount!: number;
+
+  @ApiPropertyOptional({ type: String, example: 'EXU123ABC' })
+  referralCode?: string | null;
+
+  @ApiPropertyOptional({ type: Number })
+  referrerUserId?: number | null;
+
+  @ApiProperty({ type: Number, example: 0 })
+  referralDiscountVndAmount!: number;
+
+  @ApiProperty({ type: Number, example: 0 })
+  walletSpentVndAmount!: number;
+
+  @ApiProperty({ type: Number, example: 450000 })
+  payableVndPrice!: number;
+
+  @ApiProperty({ type: Number, example: 9000 })
+  cashbackAmountVnd!: number;
+
+  @ApiPropertyOptional({ type: Number })
+  cashbackTransactionId?: number | null;
+
+  @ApiPropertyOptional({ type: Date })
+  cashbackReversedAt?: Date | null;
+
+  @ApiPropertyOptional({ type: String })
+  refundStatus?: string | null;
+
+  @ApiProperty({ type: Number, example: 0 })
+  refundedAmountVnd!: number;
 
   @ApiProperty()
-  createdAt: Date;
+  createdAt!: Date;
 
   @ApiProperty()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @ApiProperty()
-  deletedAt: Date;
+  deletedAt!: Date;
 }

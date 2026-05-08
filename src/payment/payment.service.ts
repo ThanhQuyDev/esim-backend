@@ -77,6 +77,7 @@ export class PaymentService {
 
     if (!this.onepayService.isPaymentSuccess(query)) {
       await this.ordersService.update(order.id, { status: 'failed' });
+      await this.ordersService.releaseWalletHoldForOrder(order.id);
       this.logger.log(
         `OnePay IPN: payment failed for ${orderNumber}, code=${query['vpc_TxnResponseCode']}`,
       );
@@ -84,15 +85,12 @@ export class PaymentService {
     }
 
     try {
-      this.logger.log(
-        `OnePay IPN: submitting providers for order ${orderNumber}...`,
-      );
-      await this.ordersService.submitProviders(order.id);
-      await this.ordersService.update(order.id, {
-        status: 'paid',
+      this.logger.log(`OnePay IPN: finalizing paid order ${orderNumber}...`);
+      await this.ordersService.finalizePaidOrder(order.id, {
         paymentMethod: 'onepay',
         paymentId: query['vpc_TransactionNo'] ?? null,
       });
+      await this.ordersService.submitProviders(order.id);
       if (order.couponCode) {
         await this.ordersService.applyCouponAndClearCart(
           order.couponCode,

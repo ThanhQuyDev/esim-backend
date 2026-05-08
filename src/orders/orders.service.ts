@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -29,12 +30,40 @@ import { CartsService } from '../carts/carts.service';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
 import { Plan } from '../plans/domain/plan';
+import { WalletsService } from '../wallets/wallets.service';
+import type { ReferralValidationResult } from '../wallets/wallets.service';
+import { EXU_CASHBACK_PERCENT } from '../wallets/wallets.enum';
+import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
+
+const VND_ROUNDING_UNIT = 1000;
+
+function roundVndToThousands(amount: number): number {
+  return Math.round(amount / VND_ROUNDING_UNIT) * VND_ROUNDING_UNIT;
+}
 
 function getDiscountedVndPrice(plan: Plan): number {
   const vndPrice = plan.vndPrice ?? 0;
   if (!plan.discount || plan.discount <= 0) return vndPrice;
-  return Math.round(vndPrice * (1 - plan.discount / 100));
+  return roundVndToThousands(vndPrice * (1 - plan.discount / 100));
 }
+
+type OrderPlanDetail = SubmitOrderDto['items'][number] & { plan: Plan };
+
+type OrderPricing = {
+  totalAmount: number;
+  discountAmount: number;
+  finalAmount: number;
+  couponCode: string | null;
+  subtotalVndPrice: number;
+  couponDiscountVndAmount: number;
+  referralCode: string | null;
+  referrerUserId: number | null;
+  referralDiscountVndAmount: number;
+  walletSpentVndAmount: number;
+  payableVndPrice: number;
+  cashbackAmountVnd: number;
+  referral?: ReferralValidationResult;
+};
 
 @Injectable()
 export class OrdersService {
@@ -54,6 +83,7 @@ export class OrdersService {
     private readonly cartsService: CartsService,
     private readonly mailService: MailService,
     private readonly usersService: UsersService,
+    private readonly walletsService: WalletsService,
   ) {}
 
   create(createOrderDto: CreateOrderDto): Promise<Order> {
@@ -69,6 +99,18 @@ export class OrdersService {
       discountAmount: 0,
       vndPrice: 0,
       vndCostPrice: 0,
+      subtotalVndPrice: 0,
+      couponDiscountVndAmount: 0,
+      referralCode: null,
+      referrerUserId: null,
+      referralDiscountVndAmount: 0,
+      walletSpentVndAmount: 0,
+      payableVndPrice: 0,
+      cashbackAmountVnd: 0,
+      cashbackTransactionId: null,
+      cashbackReversedAt: null,
+      refundStatus: null,
+      refundedAmountVnd: 0,
     });
   }
 
@@ -84,25 +126,7 @@ export class OrdersService {
       }),
     );
 
-    // 2. Calculate total
-    const totalAmount = planDetails.reduce(
-      (sum, item) => sum + item.plan.price * item.quantity,
-      0,
-    );
-
-    // 2.5 Apply coupon if provided
-    let discountAmount = 0;
-    let couponCode: string | null = null;
-    if (dto.couponCode) {
-      const couponResult = await this.couponsService.validateCoupon(
-        { code: dto.couponCode, orderAmount: totalAmount },
-        userId,
-      );
-      discountAmount = couponResult.discountAmount;
-      couponCode = dto.couponCode.toUpperCase();
-    }
-
-    const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
+    const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
 
     // 3. Create order
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -110,15 +134,43 @@ export class OrdersService {
       userId,
       orderNumber,
       status: 'pending',
-      totalAmount: finalAmount,
+      totalAmount: pricing.finalAmount,
       currency: dto.currency,
       paymentMethod: dto.paymentMethod ?? null,
       paymentId: dto.paymentId ?? null,
-      couponCode,
-      discountAmount,
-      vndPrice: 0,
+      couponCode: pricing.couponCode,
+      discountAmount: pricing.discountAmount,
+      vndPrice: pricing.payableVndPrice,
       vndCostPrice: 0,
+      subtotalVndPrice: pricing.subtotalVndPrice,
+      couponDiscountVndAmount: pricing.couponDiscountVndAmount,
+      referralCode: pricing.referralCode,
+      referrerUserId: pricing.referrerUserId,
+      referralDiscountVndAmount: pricing.referralDiscountVndAmount,
+      walletSpentVndAmount: pricing.walletSpentVndAmount,
+      payableVndPrice: pricing.payableVndPrice,
+      cashbackAmountVnd: pricing.cashbackAmountVnd,
+      cashbackTransactionId: null,
+      cashbackReversedAt: null,
+      refundStatus: null,
+      refundedAmountVnd: 0,
     });
+
+    if (pricing.referral) {
+      await this.walletsService.createOrderReferral(
+        order.id,
+        userId,
+        pricing.referral,
+      );
+    }
+
+    if (pricing.walletSpentVndAmount > 0) {
+      await this.walletsService.createHold(
+        order.id,
+        userId,
+        pricing.walletSpentVndAmount,
+      );
+    }
 
     // 4. Group items by provider
     const airaloItems = planDetails.filter((i) => i.plan.provider === 'airalo');
@@ -289,8 +341,8 @@ export class OrdersService {
     }
 
     // Increment coupon usage after order created
-    if (couponCode) {
-      await this.couponsService.applyCoupon(couponCode);
+    if (pricing.couponCode) {
+      await this.couponsService.applyCoupon(pricing.couponCode);
     }
 
     await this.cartsService.clearCart(userId);
@@ -322,32 +374,7 @@ export class OrdersService {
       }),
     );
 
-    const totalAmount = planDetails.reduce(
-      (sum, item) => sum + item.plan.price * item.quantity,
-      0,
-    );
-
-    let discountAmount = 0;
-    let couponCode: string | null = null;
-    if (dto.couponCode) {
-      const couponResult = await this.couponsService.validateCoupon(
-        { code: dto.couponCode, orderAmount: totalAmount },
-        userId,
-      );
-      discountAmount = couponResult.discountAmount;
-      couponCode = dto.couponCode.toUpperCase();
-    }
-
-    const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
-
-    const totalVndPrice = planDetails.reduce(
-      (sum, item) => sum + getDiscountedVndPrice(item.plan) * item.quantity,
-      0,
-    );
-
-    const discountPercent = totalAmount > 0 ? discountAmount / totalAmount : 0;
-    const vndDiscount = Math.round(totalVndPrice * discountPercent);
-    const finalVndPrice = totalVndPrice - vndDiscount;
+    const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
 
     const totalVndCostPrice = vndRate
       ? planDetails.reduce(
@@ -361,15 +388,43 @@ export class OrdersService {
       userId,
       orderNumber,
       status: 'pending',
-      totalAmount: finalAmount,
+      totalAmount: pricing.finalAmount,
       currency: dto.currency,
       paymentMethod: null,
       paymentId: null,
-      couponCode,
-      discountAmount,
-      vndPrice: finalVndPrice,
+      couponCode: pricing.couponCode,
+      discountAmount: pricing.discountAmount,
+      vndPrice: pricing.payableVndPrice,
       vndCostPrice: totalVndCostPrice,
+      subtotalVndPrice: pricing.subtotalVndPrice,
+      couponDiscountVndAmount: pricing.couponDiscountVndAmount,
+      referralCode: pricing.referralCode,
+      referrerUserId: pricing.referrerUserId,
+      referralDiscountVndAmount: pricing.referralDiscountVndAmount,
+      walletSpentVndAmount: pricing.walletSpentVndAmount,
+      payableVndPrice: pricing.payableVndPrice,
+      cashbackAmountVnd: pricing.cashbackAmountVnd,
+      cashbackTransactionId: null,
+      cashbackReversedAt: null,
+      refundStatus: null,
+      refundedAmountVnd: 0,
     });
+
+    if (pricing.referral) {
+      await this.walletsService.createOrderReferral(
+        order.id,
+        userId,
+        pricing.referral,
+      );
+    }
+
+    if (pricing.walletSpentVndAmount > 0) {
+      await this.walletsService.createHold(
+        order.id,
+        userId,
+        pricing.walletSpentVndAmount,
+      );
+    }
 
     for (const item of planDetails) {
       const itemVndCostPrice = vndRate
@@ -390,6 +445,98 @@ export class OrdersService {
     }
 
     return order;
+  }
+
+  private async calculateOrderPricing(
+    userId: number,
+    dto: SubmitOrderDto,
+    planDetails: OrderPlanDetail[],
+  ): Promise<OrderPricing> {
+    const totalAmount = planDetails.reduce(
+      (sum, item) => sum + item.plan.price * item.quantity,
+      0,
+    );
+    const subtotalVndPrice = planDetails.reduce(
+      (sum, item) => sum + getDiscountedVndPrice(item.plan) * item.quantity,
+      0,
+    );
+
+    let discountAmount = 0;
+    let couponCode: string | null = null;
+    let couponDiscountVndAmount = 0;
+    let referral: ReferralValidationResult | undefined;
+    let referralCode: string | null = null;
+    let referrerUserId: number | null = null;
+    let referralDiscountVndAmount = 0;
+
+    if (dto.couponCode && dto.referralCode) {
+      throw new BadRequestException(
+        'Mã giới thiệu không được áp dụng đồng thời với mã giảm giá khác.',
+      );
+    }
+
+    if (dto.referralCode) {
+      referral = await this.walletsService.validateReferralForOrder(
+        userId,
+        dto.referralCode,
+        subtotalVndPrice,
+        Boolean(dto.couponCode),
+      );
+      referralCode = referral.referralCode;
+      referrerUserId = referral.referrerUserId;
+      referralDiscountVndAmount = referral.buyerDiscountVnd;
+    }
+
+    if (dto.couponCode) {
+      const couponResult = await this.couponsService.validateCoupon(
+        { code: dto.couponCode, orderAmount: totalAmount },
+        userId,
+      );
+      discountAmount = couponResult.discountAmount;
+      couponCode = dto.couponCode.toUpperCase();
+      const discountPercent =
+        totalAmount > 0 ? discountAmount / totalAmount : 0;
+      couponDiscountVndAmount = roundVndToThousands(
+        subtotalVndPrice * discountPercent,
+      );
+    }
+
+    const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
+    const afterCouponAndReferral = Math.max(
+      0,
+      subtotalVndPrice - couponDiscountVndAmount - referralDiscountVndAmount,
+    );
+    const requestedWalletAmount = Math.max(
+      0,
+      Math.round(Number(dto.useWalletAmountVnd ?? 0)),
+    );
+    const walletSpentVndAmount = Math.min(
+      requestedWalletAmount,
+      afterCouponAndReferral,
+    );
+    const payableVndPrice = Math.max(
+      0,
+      afterCouponAndReferral - walletSpentVndAmount,
+    );
+    const cashbackAmountVnd = Math.round(
+      (payableVndPrice * EXU_CASHBACK_PERCENT) / 100,
+    );
+
+    return {
+      totalAmount,
+      discountAmount,
+      finalAmount,
+      couponCode,
+      subtotalVndPrice,
+      couponDiscountVndAmount,
+      referralCode,
+      referrerUserId,
+      referralDiscountVndAmount,
+      walletSpentVndAmount,
+      payableVndPrice,
+      cashbackAmountVnd,
+      referral,
+    };
   }
 
   async findByOrderNumber(orderNumber: string): Promise<NullableType<Order>> {
@@ -752,7 +899,7 @@ export class OrdersService {
 
   async update(
     id: Order['id'],
-    updateOrderDto: UpdateOrderDto,
+    updateOrderDto: Partial<Order> & UpdateOrderDto,
   ): Promise<Order | null> {
     return this.orderRepository.update(id, {
       ...(updateOrderDto.userId !== undefined && {
@@ -776,7 +923,44 @@ export class OrdersService {
       ...(updateOrderDto.paymentId !== undefined && {
         paymentId: updateOrderDto.paymentId,
       }),
+      ...(updateOrderDto.cashbackTransactionId !== undefined && {
+        cashbackTransactionId: updateOrderDto.cashbackTransactionId,
+      }),
+      ...(updateOrderDto.cashbackReversedAt !== undefined && {
+        cashbackReversedAt: updateOrderDto.cashbackReversedAt,
+      }),
+      ...(updateOrderDto.refundStatus !== undefined && {
+        refundStatus: updateOrderDto.refundStatus,
+      }),
+      ...(updateOrderDto.refundedAmountVnd !== undefined && {
+        refundedAmountVnd: updateOrderDto.refundedAmountVnd,
+      }),
     });
+  }
+
+  async finalizePaidOrder(
+    id: Order['id'],
+    payload: { paymentMethod: string; paymentId?: string | null },
+  ): Promise<Order | null> {
+    const updatedOrder = await this.update(id, {
+      status: 'paid',
+      paymentMethod: payload.paymentMethod,
+      paymentId: payload.paymentId ?? null,
+    });
+    if (updatedOrder) {
+      await this.walletsService.completePaidOrderBenefits(updatedOrder);
+    }
+    return updatedOrder;
+  }
+
+  async releaseWalletHoldForOrder(orderId: number): Promise<void> {
+    await this.walletsService.releaseHoldForOrder(orderId);
+  }
+
+  async refundOrder(id: Order['id'], dto: RefundOrderDto, adminId: number) {
+    const order = await this.orderRepository.findById(id);
+    if (!order) throw new NotFoundException(`Order ${id} not found`);
+    return this.walletsService.refundOrder(order, dto, adminId);
   }
 
   async remove(id: Order['id']): Promise<void> {

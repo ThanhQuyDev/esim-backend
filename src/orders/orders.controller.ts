@@ -36,6 +36,7 @@ import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
 import { AdminOrderDetailDto } from './dto/admin-order-detail.dto';
+import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
 
 @ApiBearerAuth()
 @Roles(RoleEnum.admin)
@@ -136,6 +137,17 @@ export class OrdersController {
   @ApiParam({ name: 'id', type: String, required: true })
   findOne(@Param('id') id: Order['id']): Promise<AdminOrderDetailDto | null> {
     return this.ordersService.findDetailById(id);
+  }
+
+  @Post(':id/refund')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: String, required: true })
+  refundOrder(
+    @Param('id') id: Order['id'],
+    @Body() dto: RefundOrderDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.ordersService.refundOrder(id, dto, req.user.id);
   }
 
   @ApiOkResponse({ type: Order })

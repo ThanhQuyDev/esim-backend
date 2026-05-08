@@ -52,6 +52,7 @@ import { HelpCenterModule } from './help-center/help-center.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { CouponsModule } from './coupons/coupons.module';
 import { PaymentModule } from './payment/payment.module';
+import { WalletsModule } from './wallets/wallets.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CartsModule } from './carts/carts.module';
 import { SupportedDevicesModule } from './supported-devices/supported-devices.module';
@@ -65,6 +66,7 @@ import { HeroBannersModule } from './hero-banners/hero-banners.module';
 import { FootersModule } from './footers/footers.module';
 
 import { TopBarsModule } from './top-bars/top-bars.module';
+import { OverviewModule } from './overview/overview.module';
 
 @Module({
   imports: [
@@ -137,12 +139,14 @@ import { TopBarsModule } from './top-bars/top-bars.module';
     ProfitMarginsModule,
     CouponsModule,
     PaymentModule,
+    WalletsModule,
     CartsModule,
     SupportedDevicesModule,
     EmailTemplatesModule,
     SeoConfigsModule,
     MiniTagsModule,
     ChatModule,
+    OverviewModule,
   ],
 })
 export class AppModule {}

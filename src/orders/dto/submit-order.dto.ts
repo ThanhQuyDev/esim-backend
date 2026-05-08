@@ -8,6 +8,7 @@ import {
   ValidateNested,
   Min,
   MaxLength,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -15,12 +16,12 @@ export class SubmitOrderItemDto {
   @ApiProperty({ type: Number, description: 'Plan ID from the plans table' })
   @IsNotEmpty()
   @IsNumber()
-  planId: number;
+  planId!: number;
 
   @ApiProperty({ example: 1 })
   @IsNumber()
   @Min(1)
-  quantity: number;
+  quantity!: number;
 }
 
 export class SubmitOrderDto {
@@ -38,16 +39,27 @@ export class SubmitOrderDto {
   @IsNotEmpty()
   @IsString()
   @MaxLength(3)
-  currency: string;
+  currency!: string;
 
   @ApiProperty({ type: [SubmitOrderItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => SubmitOrderItemDto)
-  items: SubmitOrderItemDto[];
+  items!: SubmitOrderItemDto[];
 
   @ApiPropertyOptional({ type: String, example: 'SUMMER10' })
   @IsOptional()
   @IsString()
   couponCode?: string;
+
+  @ApiPropertyOptional({ type: String, example: 'EXU123ABC' })
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
+
+  @ApiPropertyOptional({ type: Number, example: 20000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  useWalletAmountVnd?: number;
 }

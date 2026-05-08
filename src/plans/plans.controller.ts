@@ -106,6 +106,14 @@ export class PlansController {
           type: 'array',
           items: { $ref: '#/components/schemas/Plan' },
         },
+        localEsim: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        SmsCallEsim: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
       },
     },
   })
@@ -133,6 +141,14 @@ export class PlansController {
           items: { $ref: '#/components/schemas/Plan' },
         },
         dailyUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        localEsim: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        SmsCallEsim: {
           type: 'array',
           items: { $ref: '#/components/schemas/Plan' },
         },

@@ -10,6 +10,7 @@ import { EsimsModule } from '../esims/esims.module';
 import { CartsModule } from '../carts/carts.module';
 import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
+import { WalletsModule } from '../wallets/wallets.module';
 
 const infrastructurePersistenceModule = RelationalOrderPersistenceModule;
 
@@ -24,6 +25,7 @@ const infrastructurePersistenceModule = RelationalOrderPersistenceModule;
     CartsModule,
     MailModule,
     UsersModule,
+    WalletsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

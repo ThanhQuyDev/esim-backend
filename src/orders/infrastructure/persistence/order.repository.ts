@@ -5,9 +5,7 @@ import { Order } from '../../domain/order';
 import { FilterOrderDto, SortOrderDto } from '../../dto/query-order.dto';
 
 export abstract class OrderRepository {
-  abstract create(
-    data: Omit<Order, 'id' | 'createdAt' | 'deletedAt' | 'updatedAt'>,
-  ): Promise<Order>;
+  abstract create(data: Partial<Order>): Promise<Order>;
 
   abstract findManyWithPagination({
     filterOptions,

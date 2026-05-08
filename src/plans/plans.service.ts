@@ -15,6 +15,42 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 import { DestinationsService } from '../destinations/destinations.service';
 import { RegionsService } from '../regions/regions.service';
 
+type PlanGroups = {
+  dataPlans: Plan[];
+  slowUnlimited: Plan[];
+  fastUnlimited: Plan[];
+  dailyUnlimited: Plan[];
+  localEsim: Plan[];
+  SmsCallEsim: Plan[];
+};
+
+function hasPositivePlanValue(value: number | null | undefined): boolean {
+  return Number(value ?? 0) > 0;
+}
+
+function isSmsCallEsimPlan(plan: Plan): boolean {
+  return hasPositivePlanValue(plan.sms) || hasPositivePlanValue(plan.call);
+}
+
+function isStandardEsimPlan(plan: Plan): boolean {
+  return !plan.isLocalInventory && !isSmsCallEsimPlan(plan);
+}
+
+function groupPlansBySimType(plans: Plan[]): PlanGroups {
+  const standardPlans = plans.filter(isStandardEsimPlan);
+
+  return {
+    dataPlans: standardPlans.filter((p) => p.type === 'fixed' && p.isCheapest),
+    slowUnlimited: standardPlans.filter((p) => p.type === 'daily'),
+    fastUnlimited: standardPlans.filter((p) => p.type === 'unlimited-reduce'),
+    dailyUnlimited: standardPlans.filter((p) => p.type === 'unlimited'),
+    localEsim: plans.filter((p) => p.isLocalInventory),
+    SmsCallEsim: plans.filter(
+      (p) => !p.isLocalInventory && isSmsCallEsimPlan(p),
+    ),
+  };
+}
+
 @Injectable()
 export class PlansService {
   private readonly logger = new Logger(PlansService.name);
@@ -131,9 +167,12 @@ export class PlansService {
       isAbleMultidate: updatePlanDto.isAbleMultidate,
       discount: updatePlanDto.discount,
       isKyc: updatePlanDto.isKyc,
+      isLocalInventory: updatePlanDto.isLocalInventory,
       apn: updatePlanDto.apn,
       lastSyncedAt: updatePlanDto.lastSyncedAt,
       isActive: updatePlanDto.isActive,
+      sms: updatePlanDto.sms,
+      call: updatePlanDto.call,
     });
   }
 
@@ -170,12 +209,7 @@ export class PlansService {
     }
   }
 
-  async findPlansByDestination(slug: string): Promise<{
-    dataPlans: Plan[];
-    slowUnlimited: Plan[];
-    fastUnlimited: Plan[];
-    dailyUnlimited: Plan[];
-  }> {
+  async findPlansByDestination(slug: string): Promise<PlanGroups> {
     const destination = await this.destinationsService.findBySlug(slug);
     if (!destination) {
       throw new NotFoundException('Destination not found');
@@ -183,23 +217,14 @@ export class PlansService {
 
     const all = await this.plansRepository.findManyWithPagination({
       filterOptions: { destinationId: destination.id, isActive: true },
+      sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
       paginationOptions: { page: 1, limit: 1000 },
     });
 
-    return {
-      dataPlans: all.filter((p) => p.type === 'fixed' && p.isCheapest),
-      slowUnlimited: all.filter((p) => p.type === 'daily'),
-      fastUnlimited: all.filter((p) => p.type === 'unlimited-reduce'),
-      dailyUnlimited: all.filter((p) => p.type === 'unlimited'),
-    };
+    return groupPlansBySimType(all);
   }
 
-  async findPlansByRegion(slug: string): Promise<{
-    dataPlans: Plan[];
-    slowUnlimited: Plan[];
-    fastUnlimited: Plan[];
-    dailyUnlimited: Plan[];
-  }> {
+  async findPlansByRegion(slug: string): Promise<PlanGroups> {
     const region = await this.regionsService.findBySlug(slug);
     if (!region) {
       throw new NotFoundException('Region not found');
@@ -207,15 +232,11 @@ export class PlansService {
 
     const all = await this.plansRepository.findManyWithPagination({
       filterOptions: { regionId: region.id, isActive: true },
+      sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
       paginationOptions: { page: 1, limit: 1000 },
     });
 
-    return {
-      dataPlans: all.filter((p) => p.type === 'fixed' && p.isCheapest),
-      slowUnlimited: all.filter((p) => p.type === 'daily'),
-      fastUnlimited: all.filter((p) => p.type === 'unlimited-reduce'),
-      dailyUnlimited: all.filter((p) => p.type === 'unlimited'),
-    };
+    return groupPlansBySimType(all);
   }
 
   async batchUpdateDiscount(ids: number[], discount: number): Promise<void> {

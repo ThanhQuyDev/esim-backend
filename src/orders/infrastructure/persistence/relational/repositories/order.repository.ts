@@ -16,7 +16,7 @@ export class OrdersRelationalRepository implements OrderRepository {
     private readonly ordersRepository: Repository<OrderEntity>,
   ) {}
 
-  async create(data: Order): Promise<Order> {
+  async create(data: Partial<Order>): Promise<Order> {
     const persistenceModel = OrderMapper.toPersistence(data);
     const newEntity = await this.ordersRepository.save(
       this.ordersRepository.create(persistenceModel),

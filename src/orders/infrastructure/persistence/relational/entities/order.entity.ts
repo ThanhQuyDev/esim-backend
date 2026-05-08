@@ -17,11 +17,11 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 })
 export class OrderEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Index()
   @Column({ type: Number })
-  userId: number;
+  userId!: number;
 
   @ManyToOne(() => UserEntity, {
     eager: true,
@@ -31,17 +31,17 @@ export class OrderEntity extends EntityRelationalHelper {
 
   @Index()
   @Column({ type: String, unique: true })
-  orderNumber: string;
+  orderNumber!: string;
 
   @Index()
   @Column({ type: String, default: 'pending' })
-  status: string;
+  status!: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
-  totalAmount: number;
+  totalAmount!: number;
 
   @Column({ type: String, length: 3 })
-  currency: string;
+  currency!: string;
 
   @Column({ type: String, nullable: true })
   paymentMethod?: string | null;
@@ -54,20 +54,58 @@ export class OrderEntity extends EntityRelationalHelper {
   couponCode?: string | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
-  discountAmount: number;
+  discountAmount!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 0, default: 0 })
-  vndPrice: number;
+  vndPrice!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 0, default: 0 })
-  vndCostPrice: number;
+  vndCostPrice!: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  subtotalVndPrice!: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  couponDiscountVndAmount!: number;
+
+  @Index()
+  @Column({ type: String, nullable: true })
+  referralCode?: string | null;
+
+  @Index()
+  @Column({ type: Number, nullable: true })
+  referrerUserId?: number | null;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  referralDiscountVndAmount!: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  walletSpentVndAmount!: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  payableVndPrice!: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  cashbackAmountVnd!: number;
+
+  @Column({ type: Number, nullable: true })
+  cashbackTransactionId?: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  cashbackReversedAt?: Date | null;
+
+  @Column({ type: String, nullable: true })
+  refundStatus?: string | null;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  refundedAmountVnd!: number;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @DeleteDateColumn()
-  deletedAt: Date;
+  deletedAt!: Date;
 }
