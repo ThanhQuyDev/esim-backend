@@ -27,6 +27,46 @@ export class WalletTransactionDto {
   createdAt!: Date;
 }
 
+export class AdminWalletUserDto {
+  @ApiProperty({ type: Number })
+  id!: number;
+
+  @ApiProperty({ type: String, nullable: true })
+  email!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  firstName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  lastName!: string | null;
+}
+
+export class AdminWalletListItemDto {
+  @ApiProperty({ type: Number })
+  id!: number;
+
+  @ApiProperty({ type: Number })
+  userId!: number;
+
+  @ApiProperty({ type: () => AdminWalletUserDto, nullable: true })
+  user!: AdminWalletUserDto | null;
+
+  @ApiProperty({ type: Number })
+  balanceVnd!: number;
+
+  @ApiProperty({ enum: WalletStatusEnum })
+  status!: WalletStatusEnum;
+
+  @ApiProperty({ type: Date, nullable: true })
+  expiresAt!: Date | null;
+
+  @ApiProperty()
+  createdAt!: Date;
+
+  @ApiProperty()
+  updatedAt!: Date;
+}
+
 export class WalletMeDto {
   @ApiProperty({ type: Number })
   balanceVnd!: number;

@@ -10,6 +10,7 @@ import { Order } from '../orders/domain/order';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
 import { RefundOrderDto } from './dto/admin-wallet.dto';
 import {
+  AdminWalletListItemDto,
   ReferralProfileDto,
   WalletMeDto,
   WalletTransactionDto,
@@ -117,8 +118,29 @@ export class WalletsService {
     }));
   }
 
-  async listWallets(): Promise<UserWalletEntity[]> {
-    return this.walletRepository.find({ order: { updatedAt: 'DESC' } });
+  async listWallets(): Promise<AdminWalletListItemDto[]> {
+    const wallets = await this.walletRepository.find({
+      relations: ['user'],
+      order: { updatedAt: 'DESC' },
+    });
+
+    return wallets.map((wallet) => ({
+      id: wallet.id,
+      userId: wallet.userId,
+      user: wallet.user
+        ? {
+            id: wallet.user.id,
+            email: wallet.user.email,
+            firstName: wallet.user.firstName,
+            lastName: wallet.user.lastName,
+          }
+        : null,
+      balanceVnd: Number(wallet.balanceVnd),
+      status: wallet.status,
+      expiresAt: wallet.expiresAt,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
+    }));
   }
 
   async getWalletForAdmin(userId: number): Promise<WalletMeDto> {
