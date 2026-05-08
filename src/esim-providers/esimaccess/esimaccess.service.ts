@@ -347,7 +347,7 @@ export class EsimAccessService {
           .filter(Boolean)
           .join(',') || null,
       fupSpeed: pkg.fupPolicy || null,
-      isAbleMultidate: planType === 'unlimited-reduce',
+      isAbleMultidate: pkg.dataType === 2,
       isKyc: false,
       apn: null,
       lastSyncedAt: new Date(),
