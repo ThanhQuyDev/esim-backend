@@ -224,6 +224,41 @@ export class WalletsService {
     };
   }
 
+  async updateReferralCode(
+    userId: number,
+    newCode: string,
+  ): Promise<ReferralProfileDto> {
+    const code = newCode.trim().toUpperCase();
+
+    // Validate: exactly 10 alphanumeric characters
+    if (!/^[A-Z0-9]{10}$/.test(code)) {
+      throw new BadRequestException(
+        'Mã giới thiệu phải đủ 10 ký tự, chỉ gồm chữ hoặc số.',
+      );
+    }
+
+    const profile = await this.getOrCreateReferralProfile(userId);
+
+    // Check uniqueness
+    const existing = await this.referralProfileRepository.findOne({
+      where: { code },
+    });
+    if (existing && existing.userId !== userId) {
+      throw new BadRequestException(
+        'Mã giới thiệu này đã được sử dụng bởi người dùng khác.',
+      );
+    }
+
+    profile.code = code;
+    const saved = await this.referralProfileRepository.save(profile);
+
+    return {
+      userId: saved.userId,
+      code: saved.code,
+      isActive: saved.isActive,
+    };
+  }
+
   async validateReferralForOrder(
     userId: number,
     referralCode: string,

@@ -18,6 +18,7 @@ import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import {
   ManualWalletAdjustDto,
+  UpdateReferralCodeDto,
   UpdateWalletStatusDto,
 } from './dto/admin-wallet.dto';
 import {
@@ -62,6 +63,17 @@ export class WalletsController {
     @Request() req: { user: { id: number } },
   ): Promise<ReferralProfileDto> {
     return this.walletsService.getReferralProfile(req.user.id);
+  }
+
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @ApiOkResponse({ type: ReferralProfileDto })
+  @Patch('me/referral')
+  @HttpCode(HttpStatus.OK)
+  updateMyReferralCode(
+    @Request() req: { user: { id: number } },
+    @Body() dto: UpdateReferralCodeDto,
+  ): Promise<ReferralProfileDto> {
+    return this.walletsService.updateReferralCode(req.user.id, dto.code);
   }
 
   @Roles(RoleEnum.admin)

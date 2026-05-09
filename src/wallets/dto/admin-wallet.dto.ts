@@ -19,6 +19,12 @@ export class UpdateWalletStatusDto {
   status!: WalletStatusEnum;
 }
 
+export class UpdateReferralCodeDto {
+  @ApiProperty({ type: String, example: 'MYCODE1234' })
+  @IsString()
+  code!: string;
+}
+
 export class RefundOrderDto {
   @ApiProperty({ enum: OrderRefundModeEnum })
   @IsEnum(OrderRefundModeEnum)
