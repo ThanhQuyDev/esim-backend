@@ -27,3 +27,17 @@ export interface GadgetKoreaQueryEsimResponse {
   message: string;
   data: GadgetKoreaEsimData;
 }
+
+export interface GadgetKoreaTopupData {
+  topupId: string;
+  createTime: string;
+  expireTime: string;
+  activeTime: string;
+  usage: string;
+}
+
+export interface GadgetKoreaTopupResponse {
+  code: string;
+  message: string;
+  topup: GadgetKoreaTopupData;
+}

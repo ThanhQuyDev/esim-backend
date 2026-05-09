@@ -9,6 +9,8 @@ import {
   GadgetKoreaOrderResponse,
   GadgetKoreaEsimData,
   GadgetKoreaQueryEsimResponse,
+  GadgetKoreaTopupData,
+  GadgetKoreaTopupResponse,
 } from './gadgetkorea-api.types';
 
 @Injectable()
@@ -158,5 +160,51 @@ export class GadgetKoreaService {
     }
 
     return data.data;
+  }
+
+  async getDataUsage(topupId: string): Promise<GadgetKoreaTopupData> {
+    const baseUrl = this.configService.getOrThrow('gadgetKorea.baseUrl', {
+      infer: true,
+    });
+    const accessKey = this.configService.getOrThrow('gadgetKorea.accessKey', {
+      infer: true,
+    });
+    const secretKey = this.configService.getOrThrow('gadgetKorea.secretKey', {
+      infer: true,
+    });
+
+    const timestamp = Date.now();
+    const method = 'GET';
+    const pathAndQuery = '/api/v2/topup';
+    const stringToSign = `${method} ${pathAndQuery}\n${timestamp}\n${accessKey}`;
+
+    const secretKeyBuffer = Buffer.from(secretKey, 'base64');
+    const signature = crypto
+      .createHmac('sha256', secretKeyBuffer)
+      .update(stringToSign)
+      .digest('base64');
+
+    this.logger.log(`Querying Gadget Korea data usage: topupId=${topupId}`);
+
+    const { data } = await firstValueFrom(
+      this.httpService.get<GadgetKoreaTopupResponse>(
+        `${baseUrl}${pathAndQuery}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-gat-timestamp': String(timestamp),
+            'x-gat-access-key': accessKey,
+            'x-gat-signature': signature,
+          },
+          data: { topupId },
+        },
+      ),
+    );
+
+    if (data.code !== '0000') {
+      throw new Error(`Gadget Korea getDataUsage failed: ${data.message}`);
+    }
+
+    return data.topup;
   }
 }

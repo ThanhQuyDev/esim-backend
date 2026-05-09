@@ -13,6 +13,7 @@ import { Esim } from './domain/esim';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
+import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 
 export interface DataUsageResult {
   remaining: number | null;
@@ -30,6 +31,7 @@ export class EsimsService {
     private readonly esimsRepository: EsimRepository,
     private readonly airaloService: AiraloService,
     private readonly esimAccessService: EsimAccessService,
+    private readonly gadgetKoreaService: GadgetKoreaService,
   ) {}
 
   async create(createEsimDto: CreateEsimDto): Promise<Esim> {
@@ -187,6 +189,40 @@ export class EsimsService {
         await this.esimsRepository.update(esim.id, {
           dataUsed: String(result.dataUsed),
           dataTotal: String(result.total),
+        });
+        return result;
+      } catch {
+        return this.fallbackFromDb(esim);
+      }
+    }
+
+    if (esim.provider === 'gadgetkorea') {
+      // For gadgetkorea, the topupId is stored as orderRequestId in order-item
+      // We need to find the order-item associated with this esim
+      const esimWithRelations =
+        await this.esimsRepository.findByIdWithRelations(esim.id);
+      const orderRequestId =
+        (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
+      if (!orderRequestId) {
+        throw new NotFoundException(
+          'orderRequestId (topupId) not found for this eSIM',
+        );
+      }
+      try {
+        const usage =
+          await this.gadgetKoreaService.getDataUsage(orderRequestId);
+        const dataUsedMb = parseFloat(usage.usage) || 0;
+        const result: DataUsageResult = {
+          remaining: null,
+          total: 0,
+          dataUsed: dataUsedMb,
+          expiredAt: usage.expireTime || null,
+          isUnlimited: false,
+          status: usage.activeTime ? 'ACTIVE' : 'INACTIVE',
+          lastUpdateTime: null,
+        };
+        await this.esimsRepository.update(esim.id, {
+          dataUsed: String(result.dataUsed),
         });
         return result;
       } catch {
