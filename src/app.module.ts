@@ -11,6 +11,7 @@ import googleConfig from './auth-google/config/google.config';
 import esimAccessConfig from './esim-providers/config/esimaccess.config';
 import airaloConfig from './esim-providers/config/airalo.config';
 import gadgetKoreaConfig from './esim-providers/config/gadgetkorea.config';
+import japanTravelSimConfig from './esim-providers/config/japantravelsim.config';
 import onepayConfig from './payment/config/onepay.config';
 import path from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -91,6 +92,7 @@ import { OverviewModule } from './overview/overview.module';
         esimAccessConfig,
         airaloConfig,
         gadgetKoreaConfig,
+        japanTravelSimConfig,
         onepayConfig,
       ],
       envFilePath: ['.env'],

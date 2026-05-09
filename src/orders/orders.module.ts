@@ -17,7 +17,7 @@ const infrastructurePersistenceModule = RelationalOrderPersistenceModule;
 @Module({
   imports: [
     infrastructurePersistenceModule,
-    EsimProvidersModule,
+    forwardRef(() => EsimProvidersModule),
     PlansModule,
     OrderItemsModule,
     forwardRef(() => CouponsModule),

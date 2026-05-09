@@ -59,6 +59,10 @@ export class OrderItemsService {
     return this.orderItemsRepository.findByOrderRequestId(orderRequestId);
   }
 
+  findPendingByProvider(provider: string): Promise<OrderItem[]> {
+    return this.orderItemsRepository.findPendingByProvider(provider);
+  }
+
   async update(
     id: OrderItem['id'],
     updateOrderItemDto: UpdateOrderItemDto,

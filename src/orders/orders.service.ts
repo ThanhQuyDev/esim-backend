@@ -21,6 +21,7 @@ import { OrderItemsService } from '../order-items/order-items.service';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
+import { JapanTravelSimService } from '../esim-providers/japantravelsim/japantravelsim.service';
 import { AllConfigType } from '../config/config.type';
 import { CouponsService } from '../coupons/coupons.service';
 import { EsimsService } from '../esims/esims.service';
@@ -76,6 +77,7 @@ export class OrdersService {
     private readonly airaloService: AiraloService,
     private readonly esimAccessService: EsimAccessService,
     private readonly gadgetKoreaService: GadgetKoreaService,
+    private readonly japanTravelSimService: JapanTravelSimService,
     private readonly configService: ConfigService<AllConfigType>,
     @Inject(forwardRef(() => CouponsService))
     private readonly couponsService: CouponsService,
@@ -179,6 +181,9 @@ export class OrdersService {
     );
     const gadgetKoreaItems = planDetails.filter(
       (i) => i.plan.provider === 'gadgetkorea',
+    );
+    const japanTravelSimItems = planDetails.filter(
+      (i) => i.plan.provider === 'japantravelsim',
     );
     const localItems = planDetails.filter((i) => i.plan.isLocalInventory);
 
@@ -296,7 +301,55 @@ export class OrdersService {
       }
     }
 
-    // 8. Local providers (esimvn) — assign available esims from inventory
+    // 8. Call JapanTravelSim API
+    if (japanTravelSimItems.length > 0) {
+      const user = await this.usersService.findById(userId);
+      const userEmail = user?.email ?? 'noreply@esimvn.com';
+      const startDate = new Date().toISOString().split('T')[0]; // today yyyy-mm-dd
+
+      // Batch into groups of 10
+      const channelOrderIdMap = new Map<string, string>();
+      for (let i = 0; i < japanTravelSimItems.length; i += 10) {
+        const batch = japanTravelSimItems.slice(i, i + 10);
+        try {
+          const result = await this.japanTravelSimService.submitOrder({
+            orderId: `${orderNumber}-jts-${i}`,
+            items: batch.map((item, idx) => ({
+              OrderId: `${orderNumber}-jts-${i + idx}`,
+              wrGroup: 'plan',
+              deviceSkuId: item.plan.providerPlanId,
+              days: item.plan.durationDays,
+              startDate,
+              email: userEmail,
+            })),
+          });
+          for (const d of result.data ?? []) {
+            channelOrderIdMap.set(d.OrderId, d.channelOrderId);
+          }
+        } catch (err) {
+          this.logger.error(
+            `JapanTravelSim order failed: ${(err as Error).message}`,
+          );
+        }
+      }
+
+      for (let idx = 0; idx < japanTravelSimItems.length; idx++) {
+        const item = japanTravelSimItems[idx];
+        const itemOrderId = `${orderNumber}-jts-${idx}`;
+        const channelOrderId = channelOrderIdMap.get(itemOrderId) ?? null;
+        await this.orderItemsService.create({
+          orderId: order.id,
+          planId: item.planId,
+          orderRequestId: channelOrderId,
+          status: 'pending',
+          price: item.plan.price,
+          currency: dto.currency,
+          quantity: item.quantity,
+        });
+      }
+    }
+
+    // 9. Local providers (esimvn) — assign available esims from inventory
     const localOrderItemIds: number[] = [];
     for (const item of localItems) {
       const orderItem = await this.orderItemsService.create({
@@ -631,6 +684,9 @@ export class OrdersService {
     const gadgetKoreaItems = itemsWithPlans.filter(
       (i) => i.plan.provider === 'gadgetkorea',
     );
+    const japanTravelSimItems = itemsWithPlans.filter(
+      (i) => i.plan.provider === 'japantravelsim',
+    );
     const localItems = itemsWithPlans.filter((i) => i.plan.isLocalInventory);
 
     for (const item of airaloItems) {
@@ -716,7 +772,50 @@ export class OrdersService {
       }
     }
 
-    // 8. Local providers (esimvn) — assign available esims from inventory
+    // 8. Call JapanTravelSim API
+    if (japanTravelSimItems.length > 0) {
+      const user = await this.usersService.findById(order.userId);
+      const userEmail = user?.email ?? 'noreply@esimvn.com';
+      const startDate = new Date().toISOString().split('T')[0];
+
+      const channelOrderIdMap = new Map<string, string>();
+      for (let i = 0; i < japanTravelSimItems.length; i += 10) {
+        const batch = japanTravelSimItems.slice(i, i + 10);
+        try {
+          const result = await this.japanTravelSimService.submitOrder({
+            orderId: `${order.orderNumber}-jts-${i}`,
+            items: batch.map((item, idx) => ({
+              OrderId: `${order.orderNumber}-jts-${i + idx}`,
+              wrGroup: 'plan',
+              deviceSkuId: item.plan.providerPlanId,
+              days: item.plan.durationDays,
+              startDate,
+              email: userEmail,
+            })),
+          });
+          for (const d of result.data ?? []) {
+            channelOrderIdMap.set(d.OrderId, d.channelOrderId);
+          }
+        } catch (err) {
+          this.logger.error(
+            `JapanTravelSim order failed: ${(err as Error).message}`,
+          );
+        }
+      }
+
+      for (let idx = 0; idx < japanTravelSimItems.length; idx++) {
+        const item = japanTravelSimItems[idx];
+        const itemOrderId = `${order.orderNumber}-jts-${idx}`;
+        const channelOrderId = channelOrderIdMap.get(itemOrderId) ?? null;
+        if (channelOrderId) {
+          await this.orderItemsService.update(item.id, {
+            orderRequestId: channelOrderId,
+          });
+        }
+      }
+    }
+
+    // 9. Local providers (esimvn) — assign available esims from inventory
     const localOrderItemIds: number[] = [];
     for (const item of localItems) {
       try {

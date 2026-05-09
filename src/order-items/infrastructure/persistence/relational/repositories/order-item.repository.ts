@@ -109,6 +109,19 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     return entities.map((e) => OrderItemMapper.toDomain(e));
   }
 
+  async findPendingByProvider(provider: string): Promise<OrderItem[]> {
+    const entities = await this.orderItemsRepository.find({
+      where: {
+        status: 'pending',
+        plan: { provider },
+      },
+      relations: ['plan'],
+      order: { id: 'ASC' },
+      take: 100,
+    });
+    return entities.map((e) => OrderItemMapper.toDomain(e));
+  }
+
   async remove(id: OrderItem['id']): Promise<void> {
     await this.orderItemsRepository.delete(id);
   }

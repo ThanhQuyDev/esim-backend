@@ -28,6 +28,8 @@ export abstract class OrderItemRepository {
 
   abstract findByOrderRequestId(orderRequestId: string): Promise<OrderItem[]>;
 
+  abstract findPendingByProvider(provider: string): Promise<OrderItem[]>;
+
   abstract update(
     id: OrderItem['id'],
     payload: DeepPartial<OrderItem>,

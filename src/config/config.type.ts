@@ -7,6 +7,7 @@ import { MailConfig } from '../mail/config/mail-config.type';
 import { EsimAccessConfig } from '../esim-providers/config/esimaccess-config.type';
 import { AiraloConfig } from '../esim-providers/config/airalo-config.type';
 import { GadgetKoreaConfig } from '../esim-providers/config/gadgetkorea-config.type';
+import { JapanTravelSimConfig } from '../esim-providers/config/japantravelsim-config.type';
 import { OnepayConfig } from '../payment/config/onepay-config.type';
 
 export type AllConfigType = {
@@ -19,5 +20,6 @@ export type AllConfigType = {
   esimAccess: EsimAccessConfig;
   airalo: AiraloConfig;
   gadgetKorea: GadgetKoreaConfig;
+  japanTravelSim: JapanTravelSimConfig;
   onepay: OnepayConfig;
 };

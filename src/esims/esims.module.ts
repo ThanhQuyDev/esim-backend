@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { EsimsController, EsimsPublicController } from './esims.controller';
 import { EsimsService } from './esims.service';
 import { EsimsImportService } from './esims-import.service';
@@ -12,7 +12,7 @@ const infrastructurePersistenceModule = RelationalEsimPersistenceModule;
 @Module({
   imports: [
     infrastructurePersistenceModule,
-    EsimProvidersModule,
+    forwardRef(() => EsimProvidersModule),
     PlansModule,
     ProfitMarginsModule,
   ],
