@@ -65,12 +65,29 @@ export class WalletsController {
   }
 
   @Roles(RoleEnum.admin)
-  @ApiOkResponse({ type: [WalletMeDto] })
   @ApiOkResponse({ type: [AdminWalletListItemDto] })
   @Get('admin')
   @HttpCode(HttpStatus.OK)
-  listWallets(): Promise<AdminWalletListItemDto[]> {
-    return this.walletsService.listWallets();
+  listWallets(
+    @Query('email') email?: string,
+  ): Promise<AdminWalletListItemDto[]> {
+    return this.walletsService.listWallets(email);
+  }
+
+  @Roles(RoleEnum.admin)
+  @ApiOkResponse({ type: [WalletTransactionDto] })
+  @Get('admin/transactions/all')
+  @HttpCode(HttpStatus.OK)
+  getAllTransactions(
+    @Query('limit') limit?: number,
+    @Query('type') type?: string,
+    @Query('email') email?: string,
+  ): Promise<WalletTransactionDto[]> {
+    return this.walletsService.getAllTransactionsForAdmin({
+      limit: Number(limit) || 100,
+      type: type || undefined,
+      email: email || undefined,
+    });
   }
 
   @Roles(RoleEnum.admin)
@@ -79,6 +96,20 @@ export class WalletsController {
   @HttpCode(HttpStatus.OK)
   getWalletForAdmin(@Param('userId') userId: number): Promise<WalletMeDto> {
     return this.walletsService.getWalletForAdmin(Number(userId));
+  }
+
+  @Roles(RoleEnum.admin)
+  @ApiOkResponse({ type: [WalletTransactionDto] })
+  @Get('admin/:userId/transactions')
+  @HttpCode(HttpStatus.OK)
+  getTransactionsForAdmin(
+    @Param('userId') userId: number,
+    @Query('limit') limit?: number,
+  ): Promise<WalletTransactionDto[]> {
+    return this.walletsService.getTransactionsForAdmin(
+      Number(userId),
+      Number(limit) || 100,
+    );
   }
 
   @Roles(RoleEnum.admin)

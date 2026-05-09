@@ -74,6 +74,50 @@ export class GadgetKoreaService {
     return data;
   }
 
+  async cancelOrder(orderRequestId: string): Promise<void> {
+    const baseUrl = this.configService.getOrThrow('gadgetKorea.baseUrl', {
+      infer: true,
+    });
+    const accessKey = this.configService.getOrThrow('gadgetKorea.accessKey', {
+      infer: true,
+    });
+    const secretKey = this.configService.getOrThrow('gadgetKorea.secretKey', {
+      infer: true,
+    });
+
+    const timestamp = Date.now();
+    const method = 'POST';
+    const pathAndQuery = `/api/v2/cancel/${orderRequestId}`;
+    const stringToSign = `${method} ${pathAndQuery}\n${timestamp}\n${accessKey}`;
+
+    const secretKeyBuffer = Buffer.from(secretKey, 'base64');
+    const signature = crypto
+      .createHmac('sha256', secretKeyBuffer)
+      .update(stringToSign)
+      .digest('base64');
+
+    this.logger.log(
+      `Cancelling Gadget Korea order: orderRequestId=${orderRequestId}`,
+    );
+
+    const { data } = await firstValueFrom(
+      this.httpService.post(
+        `${baseUrl}${pathAndQuery}`,
+        {},
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-gat-timestamp': String(timestamp),
+            'x-gat-access-key': accessKey,
+            'x-gat-signature': signature,
+          },
+        },
+      ),
+    );
+
+    this.logger.log(`Gadget Korea cancel response: ${JSON.stringify(data)}`);
+  }
+
   async queryEsim(topupId: string): Promise<GadgetKoreaEsimData> {
     const baseUrl = this.configService.getOrThrow('gadgetKorea.baseUrl', {
       infer: true,

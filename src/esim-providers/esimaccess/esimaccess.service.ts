@@ -447,6 +447,38 @@ export class EsimAccessService {
     return data.obj?.esimList ?? [];
   }
 
+  async cancelEsim(esimTranNo: string): Promise<void> {
+    const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
+      infer: true,
+    });
+    const accessCode = this.configService.getOrThrow('esimAccess.accessCode', {
+      infer: true,
+    });
+
+    this.logger.log(`Cancelling EsimAccess eSIM: esimTranNo=${esimTranNo}`);
+
+    const { data } = await firstValueFrom(
+      this.httpService.post(
+        `${baseUrl}/api/v1/open/esim/cancel`,
+        { esimTranNo },
+        {
+          headers: {
+            'RT-AccessCode': accessCode,
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    if (!data.success) {
+      throw new Error(
+        `EsimAccess cancel failed: ${data.errorCode} - ${data.errorMsg}`,
+      );
+    }
+
+    this.logger.log(`EsimAccess eSIM cancelled: esimTranNo=${esimTranNo}`);
+  }
+
   async getDataUsage(esimTranNo: string): Promise<EsimAccessUsageItem> {
     const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
       infer: true,

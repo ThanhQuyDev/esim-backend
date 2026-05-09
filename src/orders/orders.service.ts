@@ -964,7 +964,66 @@ export class OrdersService {
   async refundOrder(id: Order['id'], dto: RefundOrderDto, adminId: number) {
     const order = await this.orderRepository.findById(id);
     if (!order) throw new NotFoundException(`Order ${id} not found`);
+
+    // Cancel with suppliers before processing refund
+    await this.cancelOrderWithSuppliers(order.id);
+
     return this.walletsService.refundOrder(order, dto, adminId);
+  }
+
+  /**
+   * Cancel order items with their respective suppliers.
+   * - Airalo: skip (no cancel API)
+   * - EsimAccess: call POST /api/v1/open/esim/cancel with esimTranNo from esim table
+   * - Gadget Korea: call POST /api/v2/cancel/{orderRequestId} from order-item
+   * - Viettel (local): clear userId and orderItemId in esim table
+   */
+  private async cancelOrderWithSuppliers(orderId: number): Promise<void> {
+    const orderItems = await this.orderItemsService.findByOrderId(orderId);
+
+    const itemsWithPlans = await Promise.all(
+      orderItems.map(async (oi) => {
+        const plan = await this.plansService.findById(oi.planId);
+        return { ...oi, plan };
+      }),
+    );
+
+    for (const item of itemsWithPlans) {
+      if (!item.plan) continue;
+
+      try {
+        if (item.plan.provider === 'esimaccess') {
+          // Cancel esimaccess: find esims by orderItemId and cancel each by esimTranNo
+          const esims = await this.esimsService.findByOrderItemIds([item.id]);
+          for (const esim of esims) {
+            if (esim.esimTranNo) {
+              await this.esimAccessService.cancelEsim(esim.esimTranNo);
+            }
+          }
+        } else if (item.plan.provider === 'gadgetkorea') {
+          // Cancel gadgetkorea: use orderRequestId from order-item
+          if (item.orderRequestId) {
+            await this.gadgetKoreaService.cancelOrder(item.orderRequestId);
+          }
+        } else if (item.plan.isLocalInventory) {
+          // Viettel (local): clear userId and orderItemId in esim table
+          const esims = await this.esimsService.findByOrderItemIds([item.id]);
+          for (const esim of esims) {
+            await this.esimsService.update(esim.id, {
+              userId: null,
+              orderItemId: null,
+              status: 'available',
+            });
+          }
+        }
+        // Airalo: skip — no cancel API
+      } catch (err) {
+        this.logger.error(
+          `Failed to cancel order item ${item.id} with provider ${item.plan.provider}: ${(err as Error).message}`,
+        );
+        // Continue with refund even if supplier cancellation fails
+      }
+    }
   }
 
   async remove(id: Order['id']): Promise<void> {

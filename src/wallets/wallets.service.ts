@@ -118,11 +118,19 @@ export class WalletsService {
     }));
   }
 
-  async listWallets(): Promise<AdminWalletListItemDto[]> {
-    const wallets = await this.walletRepository.find({
-      relations: ['user'],
-      order: { updatedAt: 'DESC' },
-    });
+  async listWallets(email?: string): Promise<AdminWalletListItemDto[]> {
+    const queryBuilder = this.walletRepository
+      .createQueryBuilder('wallet')
+      .leftJoinAndSelect('wallet.user', 'user')
+      .orderBy('wallet.updatedAt', 'DESC');
+
+    if (email) {
+      queryBuilder.andWhere('user.email ILIKE :email', {
+        email: `%${email}%`,
+      });
+    }
+
+    const wallets = await queryBuilder.getMany();
 
     return wallets.map((wallet) => ({
       id: wallet.id,
@@ -140,6 +148,66 @@ export class WalletsService {
       expiresAt: wallet.expiresAt,
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
+    }));
+  }
+
+  async getTransactionsForAdmin(
+    userId: number,
+    limit = 100,
+  ): Promise<WalletTransactionDto[]> {
+    const take = Math.min(Math.max(Number(limit) || 100, 1), 500);
+    const entities = await this.transactionRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take,
+    });
+
+    return entities.map((entity) => ({
+      id: entity.id,
+      userId: entity.userId,
+      type: entity.type,
+      amountVnd: Number(entity.amountVnd),
+      balanceAfterVnd: Number(entity.balanceAfterVnd),
+      orderId: entity.orderId,
+      reason: entity.reason,
+      createdAt: entity.createdAt,
+    }));
+  }
+
+  async getAllTransactionsForAdmin(params: {
+    limit?: number;
+    type?: string;
+    email?: string;
+  }): Promise<WalletTransactionDto[]> {
+    const take = Math.min(Math.max(Number(params.limit) || 100, 1), 500);
+
+    const queryBuilder = this.transactionRepository
+      .createQueryBuilder('txn')
+      .leftJoinAndSelect('txn.user', 'user')
+      .orderBy('txn.createdAt', 'DESC')
+      .take(take);
+
+    if (params.type) {
+      queryBuilder.andWhere('txn.type = :type', { type: params.type });
+    }
+
+    if (params.email) {
+      queryBuilder.andWhere('user.email ILIKE :email', {
+        email: `%${params.email}%`,
+      });
+    }
+
+    const entities = await queryBuilder.getMany();
+
+    return entities.map((entity) => ({
+      id: entity.id,
+      userId: entity.userId,
+      type: entity.type,
+      amountVnd: Number(entity.amountVnd),
+      balanceAfterVnd: Number(entity.balanceAfterVnd),
+      orderId: entity.orderId,
+      reason: entity.reason,
+      createdAt: entity.createdAt,
     }));
   }
 
