@@ -17,6 +17,7 @@ export class CartMapper {
       domain.plan = rest;
     }
     domain.quantity = raw.quantity;
+    domain.periodNum = raw.periodNum;
     domain.createdAt = raw.createdAt;
     domain.updatedAt = raw.updatedAt;
     return domain;
@@ -30,6 +31,7 @@ export class CartMapper {
     entity.userId = domain.userId;
     entity.planId = domain.planId;
     entity.quantity = domain.quantity;
+    entity.periodNum = domain.periodNum ?? null;
     entity.createdAt = domain.createdAt;
     entity.updatedAt = domain.updatedAt;
     return entity;

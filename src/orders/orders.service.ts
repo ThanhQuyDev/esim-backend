@@ -234,6 +234,7 @@ export class OrdersService {
             packageCode: i.plan.providerPlanId,
             count: i.quantity,
             price: Math.round(i.plan.costPrice * 10000),
+            periodNum: i.periodNum,
           })),
         });
         esimAccessOrderNo = result.orderNo ?? null;
@@ -250,6 +251,7 @@ export class OrdersService {
           price: item.plan.price,
           currency: dto.currency,
           quantity: item.quantity,
+          periodNum: item.periodNum ?? null,
         });
       }
     }
@@ -441,6 +443,7 @@ export class OrdersService {
         quantity: item.quantity,
         vndPrice: getDiscountedVndPrice(item.plan) * item.quantity,
         vndCostPrice: itemVndCostPrice,
+        periodNum: item.periodNum ?? null,
       });
     }
 
@@ -667,6 +670,7 @@ export class OrdersService {
             packageCode: i.plan.providerPlanId,
             count: i.quantity,
             price: Math.round(i.plan.costPrice * 10000),
+            periodNum: i.periodNum,
           })),
         });
         for (const item of esimAccessItems) {

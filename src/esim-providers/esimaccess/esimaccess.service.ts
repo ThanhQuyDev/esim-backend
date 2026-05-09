@@ -367,7 +367,12 @@ export class EsimAccessService {
   async submitOrder(params: {
     transactionId: string;
     amount: number;
-    packageInfoList: { packageCode: string; count: number; price: number }[];
+    packageInfoList: {
+      packageCode: string;
+      count: number;
+      price: number;
+      periodNum?: number | null;
+    }[];
   }): Promise<EsimAccessOrderResponse['obj']> {
     const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
       infer: true,

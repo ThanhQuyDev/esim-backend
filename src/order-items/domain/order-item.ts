@@ -47,6 +47,13 @@ export class OrderItem {
   })
   vndCostPrice: number;
 
+  @ApiPropertyOptional({
+    type: Number,
+    example: 7,
+    description: 'Number of days for multidate plans',
+  })
+  periodNum: number | null;
+
   @ApiProperty()
   createdAt: Date;
 

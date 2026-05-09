@@ -21,6 +21,7 @@ export class CartsService {
     if (existing) {
       const updated = await this.cartRepository.update(existing.id, {
         quantity: existing.quantity + (dto.quantity ?? 1),
+        periodNum: dto.periodNum ?? existing.periodNum,
       });
       return updated!;
     }
@@ -29,6 +30,7 @@ export class CartsService {
       userId,
       planId: dto.planId,
       quantity: dto.quantity ?? 1,
+      periodNum: dto.periodNum ?? null,
     });
   }
 
@@ -43,6 +45,7 @@ export class CartsService {
 
     const updated = await this.cartRepository.update(itemId, {
       quantity: dto.quantity,
+      periodNum: dto.periodNum ?? item.periodNum,
     });
     return updated!;
   }

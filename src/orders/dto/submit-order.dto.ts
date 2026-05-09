@@ -22,6 +22,17 @@ export class SubmitOrderItemDto {
   @IsNumber()
   @Min(1)
   quantity!: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 7,
+    description:
+      'Number of days for multidate plans (only when plan.isAbleMultidate is true)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  periodNum?: number;
 }
 
 export class SubmitOrderDto {

@@ -27,6 +27,7 @@ export class OrderItemsService {
       quantity: createOrderItemDto.quantity ?? 1,
       vndPrice: createOrderItemDto.vndPrice ?? 0,
       vndCostPrice: createOrderItemDto.vndCostPrice ?? 0,
+      periodNum: createOrderItemDto.periodNum ?? null,
     });
   }
 

@@ -1,7 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
   IsArray,
   ValidateNested,
@@ -23,6 +24,15 @@ export class EsimAccessPackageInfoDto {
   @ApiProperty({ example: 15000 })
   @IsNumber()
   price: number;
+
+  @ApiPropertyOptional({
+    example: 7,
+    description: 'Number of days for multidate plans',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  periodNum?: number;
 }
 
 export class SubmitEsimAccessOrderDto {

@@ -63,4 +63,13 @@ export class CreateOrderItemDto {
   @IsOptional()
   @IsNumber()
   vndCostPrice?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 7,
+    description: 'Number of days for multidate plans',
+  })
+  @IsOptional()
+  @IsNumber()
+  periodNum?: number | null;
 }

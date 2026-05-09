@@ -76,6 +76,7 @@ export interface EsimAccessOrderPackageInfo {
   packageCode: string;
   count: number;
   price: number;
+  periodNum?: number | null;
 }
 
 export interface EsimAccessOrderRequest {
