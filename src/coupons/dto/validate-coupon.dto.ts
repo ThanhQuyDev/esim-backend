@@ -7,7 +7,7 @@ export class ValidateCouponDto {
   @IsString()
   code: string;
 
-  @ApiProperty({ type: Number, example: 25.5 })
+  @ApiProperty({ type: Number, example: 170000 })
   @IsNumber()
   @Min(0)
   orderAmount: number;
@@ -20,10 +20,10 @@ export class ValidateCouponResponseDto {
   @ApiProperty({ type: Number, example: 10 })
   discountPercent: number;
 
-  @ApiProperty({ type: Number, example: 2.55 })
+  @ApiProperty({ type: Number, example: 17000 })
   discountAmount: number;
 
-  @ApiProperty({ type: Number, example: 22.95 })
+  @ApiProperty({ type: Number, example: 153000 })
   finalAmount: number;
 
   @ApiProperty({ type: String, required: false })

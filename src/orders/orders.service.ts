@@ -492,16 +492,16 @@ export class OrdersService {
 
     if (dto.couponCode) {
       const couponResult = await this.couponsService.validateCoupon(
-        { code: dto.couponCode, orderAmount: totalAmount },
+        { code: dto.couponCode, orderAmount: subtotalVndPrice },
         userId,
       );
-      discountAmount = couponResult.discountAmount;
       couponCode = dto.couponCode.toUpperCase();
-      const discountPercent =
-        totalAmount > 0 ? discountAmount / totalAmount : 0;
       couponDiscountVndAmount = roundVndToThousands(
-        subtotalVndPrice * discountPercent,
+        couponResult.discountAmount,
       );
+      // Derive USD discount from the same percentage
+      const discountPercent = couponResult.discountPercent / 100;
+      discountAmount = Math.round(totalAmount * discountPercent * 100) / 100;
     }
 
     const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
