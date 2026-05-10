@@ -9,10 +9,12 @@ import { Transform, Type, plainToInstance } from 'class-transformer';
 import { Order } from '../domain/order';
 
 export class FilterOrderDto {
-  @ApiPropertyOptional({ type: String })
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Single status or comma-separated statuses',
+  })
   @IsOptional()
-  @IsString()
-  status?: string;
+  status?: string | string[];
 
   @ApiPropertyOptional({ type: Number })
   @IsOptional()

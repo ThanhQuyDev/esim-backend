@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, LessThan, Repository } from 'typeorm';
+import { FindOptionsWhere, In, LessThan, Repository } from 'typeorm';
 import { OrderEntity } from '../entities/order.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterOrderDto, SortOrderDto } from '../../../../dto/query-order.dto';
@@ -36,7 +36,11 @@ export class OrdersRelationalRepository implements OrderRepository {
     const where: FindOptionsWhere<OrderEntity> = {};
 
     if (filterOptions?.status) {
-      where.status = filterOptions.status;
+      if (Array.isArray(filterOptions.status)) {
+        where.status = In(filterOptions.status);
+      } else {
+        where.status = filterOptions.status;
+      }
     }
 
     if (filterOptions?.userId) {

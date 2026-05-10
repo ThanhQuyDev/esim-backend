@@ -17,6 +17,7 @@ const COL = {
   OPTION_NAME: 5,
   CARRIER: 6,
   NETWORK: 7,
+  QOS: 9,
   APN: 11,
   TOP_UP: 13,
   KYC: 14,
@@ -127,6 +128,7 @@ export class PlansGadgetkoreaImportService {
           const price = costPrice;
 
           const speed = this.getString(row.getCell(COL.NETWORK).value) || null;
+          const fupSpeed = this.getString(row.getCell(COL.QOS).value) || null;
           const carrier = this.getString(row.getCell(COL.CARRIER).value);
           const operatorName = carrier ? carrier.replace(/\//g, ',') : null;
 
@@ -162,6 +164,7 @@ export class PlansGadgetkoreaImportService {
             type: planType,
             topUp,
             speed,
+            fupSpeed,
             operatorName,
             isKyc,
             apn,
