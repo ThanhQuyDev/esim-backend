@@ -118,7 +118,7 @@ export class OrdersController {
 
     const filters = { ...query?.filters };
     if (!filters.status) {
-      filters.status = 'paid';
+      filters.status = ['paid', 'refunded'];
     }
 
     return infinityPagination(
