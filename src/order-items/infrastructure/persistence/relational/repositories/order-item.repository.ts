@@ -110,15 +110,15 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
   }
 
   async findPendingByProvider(provider: string): Promise<OrderItem[]> {
-    const entities = await this.orderItemsRepository.find({
-      where: {
-        status: 'pending',
-        plan: { provider },
-      },
-      relations: ['plan'],
-      order: { id: 'ASC' },
-      take: 100,
-    });
+    const entities = await this.orderItemsRepository
+      .createQueryBuilder('orderItem')
+      .leftJoinAndSelect('orderItem.plan', 'plan')
+      .where('orderItem.status = :status', { status: 'pending' })
+      .andWhere('plan.provider = :provider', { provider })
+      .andWhere('orderItem.orderRequestId IS NOT NULL')
+      .orderBy('orderItem.id', 'ASC')
+      .take(100)
+      .getMany();
     return entities.map((e) => OrderItemMapper.toDomain(e));
   }
 

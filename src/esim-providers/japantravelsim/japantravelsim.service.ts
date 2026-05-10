@@ -46,7 +46,6 @@ export class JapanTravelSimService {
       wrGroup: string;
       deviceSkuId: string;
       days: number;
-      startDate: string;
       email: string;
     }>;
   }): Promise<JapanTravelSimInsertResponse> {
@@ -61,7 +60,7 @@ export class JapanTravelSimService {
         wr_group: item.wrGroup,
         deviceSkuId: item.deviceSkuId,
         days: String(item.days),
-        start_date: item.startDate,
+        start_date: new Date().toISOString().split('T')[0],
         email: item.email,
         language: 'en_US',
       })),
@@ -88,14 +87,83 @@ export class JapanTravelSimService {
     return data;
   }
 
-  // ─── Callback Polling ───────────────────────────────────────────────────────
+  /**
+   * Schedule a callback poll 60 seconds after order submission.
+   * Called from OrdersService after successfully submitting a JapanTravelSim order.
+   */
+  scheduleCallbackAfterSubmit(channelOrderIds: string[]): void {
+    if (channelOrderIds.length === 0) return;
 
-  @Cron('*/2 * * * *')
+    this.logger.log(
+      `[JTS] Scheduling callback poll in 60s for: ${channelOrderIds.join(', ')}`,
+    );
+
+    setTimeout(async () => {
+      try {
+        await this.pollSpecificOrders(channelOrderIds);
+      } catch (err) {
+        this.logger.error(
+          `[JTS] Scheduled callback poll failed: ${(err as Error).message}`,
+        );
+      }
+    }, 60_000);
+  }
+
+  /**
+   * Poll specific channelOrderIds (used after submit with delay).
+   */
+  private async pollSpecificOrders(channelOrderIds: string[]): Promise<void> {
+    const config = this.getConfig();
+
+    const body: JapanTravelSimCallbackRequest = {
+      mb_id: config.mbId,
+      apikey: config.apiKey,
+      apitoken: config.apiToken,
+      data: channelOrderIds.map((channelOrderId) => ({ channelOrderId })),
+    };
+
+    this.logger.log(
+      `[JTS] Polling specific orders: ${channelOrderIds.join(', ')}`,
+    );
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<JapanTravelSimCallbackResponse>(
+        `${config.baseUrl}/api/v2/callback.php`,
+        body,
+        { headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    this.logger.log(`[JTS] Callback response: ${JSON.stringify(data)}`);
+
+    if (data.tradeCode !== '0001' || !data.data) return;
+
+    for (const result of data.data) {
+      if (!result.iccid) continue; // still pending
+
+      // Find the order item by channelOrderId (stored as orderRequestId)
+      const orderItems = await this.orderItemsService.findByOrderRequestId(
+        result.channelOrderId,
+      );
+
+      for (const orderItem of orderItems) {
+        if (orderItem.status !== 'pending') continue;
+        await this.handleOrderComplete(result, orderItem);
+      }
+    }
+  }
+
+  // ─── Cron Fallback Polling ──────────────────────────────────────────────────
+
+  @Cron('*/30 * * * * *')
   async pollPendingCallbacks(): Promise<void> {
     try {
-      // Find pending order items for this provider
       const pendingItems =
         await this.orderItemsService.findPendingByProvider(PROVIDER);
+
+      this.logger.debug(
+        `[JTS Poll] Found ${pendingItems.length} pending items for provider=${PROVIDER}`,
+      );
 
       // Filter items that have orderRequestId (channelOrderId)
       const itemsToCheck = pendingItems.filter(
@@ -105,7 +173,7 @@ export class JapanTravelSimService {
       if (itemsToCheck.length === 0) return;
 
       this.logger.log(
-        `Polling JapanTravelSim callbacks for ${itemsToCheck.length} pending items`,
+        `Polling JapanTravelSim callbacks for ${itemsToCheck.length} pending items: ${itemsToCheck.map((i) => i.orderRequestId).join(', ')}`,
       );
 
       // Batch into groups of 10 (API limit)
@@ -143,12 +211,20 @@ export class JapanTravelSimService {
       data: channelOrderIds.map((channelOrderId) => ({ channelOrderId })),
     };
 
+    this.logger.log(
+      `[JTS Poll] Calling callback API with channelOrderIds: ${channelOrderIds.join(', ')}`,
+    );
+
     const { data } = await firstValueFrom(
       this.httpService.post<JapanTravelSimCallbackResponse>(
         `${config.baseUrl}/api/v2/callback.php`,
         body,
         { headers: { 'Content-Type': 'application/json' } },
       ),
+    );
+
+    this.logger.log(
+      `[JTS Poll] Callback API response: ${JSON.stringify(data)}`,
     );
 
     if (data.tradeCode !== '0001' || !data.data) {
@@ -177,19 +253,11 @@ export class JapanTravelSimService {
     );
     if (!orderItem) return;
 
-    if (result.status === 0) {
-      // Complete — create eSIM record
+    if (result.iccid) {
+      // Has iccid — order complete, create eSIM record
       await this.handleOrderComplete(result, orderItem);
-    } else if (result.status === 2) {
-      // Cancelled
-      await this.orderItemsService.update(orderItem.id, {
-        status: 'failed',
-      });
-      this.logger.log(
-        `JapanTravelSim order cancelled: channelOrderId=${result.channelOrderId}`,
-      );
     }
-    // If uid is empty (pending), do nothing — will retry next poll
+    // If iccid is empty, order is still pending — will retry next poll
   }
 
   private async handleOrderComplete(
@@ -203,17 +271,8 @@ export class JapanTravelSimService {
       providerOrderCode: result.channelOrderId,
     });
 
-    // Parse QR code content for eSIM activation
-    let smdpAddress: string | null = null;
-    let activationCode: string | null = null;
-
-    if (result.qrcodecontent) {
-      const parts = result.qrcodecontent.split('$');
-      if (parts.length >= 2) {
-        smdpAddress = parts[1] ?? null;
-        activationCode = parts[2] ?? null;
-      }
-    }
+    // Get plan for APN and other fields
+    const plan = await this.plansService.findById(orderItem.planId);
 
     // Create eSIM record
     if (result.iccid) {
@@ -223,11 +282,8 @@ export class JapanTravelSimService {
 
       if (existing) {
         await this.esimsService.update(existing.id, {
-          smdpAddress: smdpAddress ?? undefined,
-          activationCode: activationCode ?? undefined,
           lpa: result.qrcodecontent ?? undefined,
-          qrcode: result.qrcodecontent ?? undefined,
-          apnValue: result.apn ?? undefined,
+          apnValue: plan?.apn ?? undefined,
           status: 'available',
           userId: userId ?? undefined,
           orderItemId: orderItem.id,
@@ -236,11 +292,11 @@ export class JapanTravelSimService {
       } else {
         await this.esimsService.create({
           iccid: result.iccid,
-          smdpAddress,
-          activationCode,
+          smdpAddress: null,
+          activationCode: null,
           lpa: result.qrcodecontent ?? null,
-          qrcode: result.qrcodecontent ?? null,
-          apnValue: result.apn ?? null,
+          qrcode: null,
+          apnValue: plan?.apn ?? null,
           status: 'available',
           userId,
           orderItemId: orderItem.id,
@@ -255,7 +311,7 @@ export class JapanTravelSimService {
       );
 
       // Send purchase email
-      await this.sendPurchaseEmail(userId, orderItem, result);
+      await this.sendPurchaseEmail(userId, orderItem, result, plan);
     }
   }
 
@@ -263,6 +319,7 @@ export class JapanTravelSimService {
     userId: number | null,
     orderItem: { id: number; orderId: number; planId: number },
     result: JapanTravelSimCallbackResponseItem,
+    plan: any,
   ): Promise<void> {
     if (!userId) return;
 
@@ -271,26 +328,15 @@ export class JapanTravelSimService {
       if (!user?.email) return;
 
       const order = await this.ordersService.findById(orderItem.orderId);
-      const plan = await this.plansService.findById(orderItem.planId);
-
-      let smdpAddress: string | null = null;
-      let activationCode: string | null = null;
-      if (result.qrcodecontent) {
-        const parts = result.qrcodecontent.split('$');
-        if (parts.length >= 2) {
-          smdpAddress = parts[1] ?? null;
-          activationCode = parts[2] ?? null;
-        }
-      }
 
       await this.mailService.sendEsimPurchase({
         to: user.email,
         esimId: 0,
         iccid: result.iccid,
-        activationCode: activationCode ?? '',
+        activationCode: '',
         lpa: result.qrcodecontent ?? '',
-        smdpAddress: smdpAddress ?? '',
-        apn: result.apn ?? '',
+        smdpAddress: '',
+        apn: plan?.apn ?? '',
         phoneNumber: null,
         planName: plan?.name ?? '',
         orderNumber: order?.orderNumber ?? '',

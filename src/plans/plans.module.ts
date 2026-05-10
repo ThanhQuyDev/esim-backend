@@ -3,6 +3,7 @@ import { PlansController } from './plans.controller';
 import { PlansService } from './plans.service';
 import { PlansImportService } from './plans-import.service';
 import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
+import { PlansJapantravelsimImportService } from './plans-japantravelsim-import.service';
 import { ExchangeRateCronService } from './exchange-rate-cron.service';
 import { RelationalPlanPersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
 import { DestinationsModule } from '../destinations/destinations.module';
@@ -23,6 +24,7 @@ const infrastructurePersistenceModule = RelationalPlanPersistenceModule;
     PlansService,
     PlansImportService,
     PlansGadgetkoreaImportService,
+    PlansJapantravelsimImportService,
     ExchangeRateCronService,
   ],
   exports: [PlansService, infrastructurePersistenceModule],

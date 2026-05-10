@@ -305,7 +305,6 @@ export class OrdersService {
     if (japanTravelSimItems.length > 0) {
       const user = await this.usersService.findById(userId);
       const userEmail = user?.email ?? 'noreply@esimvn.com';
-      const startDate = new Date().toISOString().split('T')[0]; // today yyyy-mm-dd
 
       // Batch into groups of 10
       const channelOrderIdMap = new Map<string, string>();
@@ -314,14 +313,20 @@ export class OrdersService {
         try {
           const result = await this.japanTravelSimService.submitOrder({
             orderId: `${orderNumber}-jts-${i}`,
-            items: batch.map((item, idx) => ({
-              OrderId: `${orderNumber}-jts-${i + idx}`,
-              wrGroup: 'plan',
-              deviceSkuId: item.plan.providerPlanId,
-              days: item.plan.durationDays,
-              startDate,
-              email: userEmail,
-            })),
+            items: batch.map((item, idx) => {
+              const [wrGroup, deviceSkuId] = item.plan.providerPlanId.includes(
+                ':',
+              )
+                ? item.plan.providerPlanId.split(':')
+                : ['plan', item.plan.providerPlanId];
+              return {
+                OrderId: `${orderNumber}-jts-${i + idx}`,
+                wrGroup,
+                deviceSkuId,
+                days: item.plan.durationDays,
+                email: userEmail,
+              };
+            }),
           });
           for (const d of result.data ?? []) {
             channelOrderIdMap.set(d.OrderId, d.channelOrderId);
@@ -347,6 +352,12 @@ export class OrdersService {
           quantity: item.quantity,
         });
       }
+
+      // Schedule callback poll after 60s
+      const allChannelOrderIds = [...channelOrderIdMap.values()];
+      this.japanTravelSimService.scheduleCallbackAfterSubmit(
+        allChannelOrderIds,
+      );
     }
 
     // 9. Local providers (esimvn) — assign available esims from inventory
@@ -776,7 +787,6 @@ export class OrdersService {
     if (japanTravelSimItems.length > 0) {
       const user = await this.usersService.findById(order.userId);
       const userEmail = user?.email ?? 'noreply@esimvn.com';
-      const startDate = new Date().toISOString().split('T')[0];
 
       const channelOrderIdMap = new Map<string, string>();
       for (let i = 0; i < japanTravelSimItems.length; i += 10) {
@@ -784,14 +794,20 @@ export class OrdersService {
         try {
           const result = await this.japanTravelSimService.submitOrder({
             orderId: `${order.orderNumber}-jts-${i}`,
-            items: batch.map((item, idx) => ({
-              OrderId: `${order.orderNumber}-jts-${i + idx}`,
-              wrGroup: 'plan',
-              deviceSkuId: item.plan.providerPlanId,
-              days: item.plan.durationDays,
-              startDate,
-              email: userEmail,
-            })),
+            items: batch.map((item, idx) => {
+              const [wrGroup, deviceSkuId] = item.plan.providerPlanId.includes(
+                ':',
+              )
+                ? item.plan.providerPlanId.split(':')
+                : ['plan', item.plan.providerPlanId];
+              return {
+                OrderId: `${order.orderNumber}-jts-${i + idx}`,
+                wrGroup,
+                deviceSkuId,
+                days: item.plan.durationDays,
+                email: userEmail,
+              };
+            }),
           });
           for (const d of result.data ?? []) {
             channelOrderIdMap.set(d.OrderId, d.channelOrderId);
@@ -813,6 +829,12 @@ export class OrdersService {
           });
         }
       }
+
+      // Schedule callback poll after 60s
+      const allChannelOrderIds = [...channelOrderIdMap.values()];
+      this.japanTravelSimService.scheduleCallbackAfterSubmit(
+        allChannelOrderIds,
+      );
     }
 
     // 9. Local providers (esimvn) — assign available esims from inventory
