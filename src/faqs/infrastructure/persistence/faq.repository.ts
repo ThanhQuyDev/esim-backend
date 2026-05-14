@@ -12,7 +12,7 @@ export abstract class FaqRepository {
     paginationOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<Faq[]>;
+  }): Promise<[Faq[], number]>;
 
   abstract findById(id: Faq['id']): Promise<NullableType<Faq>>;
 

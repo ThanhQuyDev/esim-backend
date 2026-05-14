@@ -68,17 +68,16 @@ export class PlanPricesController {
       limit = 50;
     }
 
-    return infinityPagination(
-      await this.planPricesService.findManyWithPagination({
-        filterOptions: query?.filters,
-        sortOptions: query?.sort,
-        paginationOptions: {
-          page,
-          limit,
-        },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.planPricesService.findManyWithPagination({
+      filterOptions: query?.filters,
+      sortOptions: query?.sort,
+      paginationOptions: {
+        page,
+        limit,
+      },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({

@@ -36,7 +36,7 @@ export class ProviderSyncLogsService {
     filterOptions?: FilterProviderSyncLogDto | null;
     sortOptions?: SortProviderSyncLogDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<ProviderSyncLog[]> {
+  }): Promise<[ProviderSyncLog[], number]> {
     return this.providerSyncLogsRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

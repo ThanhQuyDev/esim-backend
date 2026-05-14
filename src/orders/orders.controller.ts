@@ -94,14 +94,13 @@ export class OrdersController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
-    return infinityPagination(
-      await this.ordersService.findManyWithPagination({
-        filterOptions: { ...query?.filters, userId: req.user.id },
-        sortOptions: query?.sort,
-        paginationOptions: { page, limit },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.ordersService.findManyWithPagination({
+      filterOptions: { ...query?.filters, userId: req.user.id },
+      sortOptions: query?.sort,
+      paginationOptions: { page, limit },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({ type: InfinityPaginationResponse(Order) })
@@ -121,14 +120,13 @@ export class OrdersController {
       filters.status = ['paid', 'refunded'];
     }
 
-    return infinityPagination(
-      await this.ordersService.findManyWithPagination({
-        filterOptions: filters,
-        sortOptions: query?.sort,
-        paginationOptions: { page, limit },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.ordersService.findManyWithPagination({
+      filterOptions: filters,
+      sortOptions: query?.sort,
+      paginationOptions: { page, limit },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({ type: AdminOrderDetailDto })

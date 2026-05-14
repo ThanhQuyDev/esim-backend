@@ -76,17 +76,16 @@ export class UsersController {
       limit = 50;
     }
 
-    return infinityPagination(
-      await this.usersService.findManyWithPagination({
-        filterOptions: query?.filters,
-        sortOptions: query?.sort,
-        paginationOptions: {
-          page,
-          limit,
-        },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.usersService.findManyWithPagination({
+      filterOptions: query?.filters,
+      sortOptions: query?.sort,
+      paginationOptions: {
+        page,
+        limit,
+      },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({

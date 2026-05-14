@@ -27,14 +27,14 @@ export class MiniTagRelationalRepository implements MiniTagRepository {
     paginationOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<MiniTag[]> {
-    const entities = await this.miniTagRepository.find({
+  }): Promise<[MiniTag[], number]> {
+    const [entities, count] = await this.miniTagRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       order: { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => MiniTagMapper.toDomain(entity));
+    return [entities.map((entity) => MiniTagMapper.toDomain(entity)), count];
   }
 
   async findById(id: MiniTag['id']): Promise<NullableType<MiniTag>> {

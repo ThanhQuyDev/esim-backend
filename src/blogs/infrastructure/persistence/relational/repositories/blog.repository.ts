@@ -45,8 +45,8 @@ export class BlogRelationalRepository implements BlogRepository {
   }: {
     paginationOptions: IPaginationOptions;
     category?: string;
-  }): Promise<Blog[]> {
-    const entities = await this.blogRepository.find({
+  }): Promise<[Blog[], number]> {
+    const [entities, count] = await this.blogRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       order: { createdAt: 'DESC' },
@@ -77,11 +77,14 @@ export class BlogRelationalRepository implements BlogRepository {
       }
     }
 
-    return entities.map((entity) => {
-      const blog = BlogMapper.toDomain(entity);
-      blog.planIds = planIdsMap.get(entity.id) ?? [];
-      return blog;
-    });
+    return [
+      entities.map((entity) => {
+        const blog = BlogMapper.toDomain(entity);
+        blog.planIds = planIdsMap.get(entity.id) ?? [];
+        return blog;
+      }),
+      count,
+    ];
   }
 
   async findById(id: Blog['id']): Promise<NullableType<Blog>> {

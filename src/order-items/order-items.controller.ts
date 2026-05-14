@@ -59,14 +59,13 @@ export class OrderItemsController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
-    return infinityPagination(
-      await this.orderItemsService.findManyWithPagination({
-        filterOptions: query?.filters,
-        sortOptions: query?.sort,
-        paginationOptions: { page, limit },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.orderItemsService.findManyWithPagination({
+      filterOptions: query?.filters,
+      sortOptions: query?.sort,
+      paginationOptions: { page, limit },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({ type: OrderItem })

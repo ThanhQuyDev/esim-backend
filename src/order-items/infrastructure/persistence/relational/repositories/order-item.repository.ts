@@ -35,7 +35,7 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     filterOptions?: FilterOrderItemDto | null;
     sortOptions?: SortOrderItemDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<OrderItem[]> {
+  }): Promise<[OrderItem[], number]> {
     const where: FindOptionsWhere<OrderItemEntity> = {};
 
     if (filterOptions?.orderId !== undefined) {
@@ -45,7 +45,7 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
       where.planId = filterOptions.planId;
     }
 
-    const entities = await this.orderItemsRepository.find({
+    const [entities, count] = await this.orderItemsRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
@@ -60,7 +60,7 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => OrderItemMapper.toDomain(entity));
+    return [entities.map((entity) => OrderItemMapper.toDomain(entity)), count];
   }
 
   async findById(id: OrderItem['id']): Promise<NullableType<OrderItem>> {

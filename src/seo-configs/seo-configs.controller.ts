@@ -62,14 +62,13 @@ export class SeoConfigsController {
     let limit = query?.limit ?? 10;
     if (limit > 500) limit = 500;
 
-    return infinityPagination(
-      await this.seoConfigsService.findManyWithPagination({
-        filterOptions: query?.filters,
-        sortOptions: query?.sort,
-        paginationOptions: { page, limit },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.seoConfigsService.findManyWithPagination({
+      filterOptions: query?.filters,
+      sortOptions: query?.sort,
+      paginationOptions: { page, limit },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({ type: SeoConfig })

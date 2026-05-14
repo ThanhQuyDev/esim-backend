@@ -59,15 +59,14 @@ export class MiniTagsController {
       limit = 50;
     }
 
-    return infinityPagination(
-      await this.miniTagsService.findAllWithPagination({
-        paginationOptions: {
-          page,
-          limit,
-        },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.miniTagsService.findAllWithPagination({
+      paginationOptions: {
+        page,
+        limit,
+      },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Get(':id')

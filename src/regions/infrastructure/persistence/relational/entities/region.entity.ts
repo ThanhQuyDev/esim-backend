@@ -29,6 +29,12 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   avatarUrl: string | null;
 
+  @Column({ type: String, nullable: true })
+  description: string | null;
+
+  @Column({ type: String, nullable: true })
+  descriptionVi: string | null;
+
   @Index()
   @Column({ type: Boolean, default: true })
   isActive: boolean;

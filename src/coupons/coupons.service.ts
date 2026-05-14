@@ -61,7 +61,7 @@ export class CouponsService {
     filterOptions?: FilterCouponDto | null;
     sortOptions?: SortCouponDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Coupon[]> {
+  }): Promise<[Coupon[], number]> {
     return this.couponRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

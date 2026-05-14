@@ -39,7 +39,7 @@ export class OrderItemsService {
     filterOptions?: FilterOrderItemDto | null;
     sortOptions?: SortOrderItemDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<OrderItem[]> {
+  }): Promise<[OrderItem[], number]> {
     return this.orderItemsRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

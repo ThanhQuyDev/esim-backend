@@ -67,16 +67,15 @@ export class HeroBannersController {
       limit = 50;
     }
 
-    return infinityPagination(
-      await this.heroBannersService.findAllWithPagination({
-        paginationOptions: {
-          page,
-          limit,
-        },
-        lang,
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.heroBannersService.findAllWithPagination({
+      paginationOptions: {
+        page,
+        limit,
+      },
+      lang,
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Get(':id')

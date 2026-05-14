@@ -17,7 +17,7 @@ export abstract class EsimRepository {
     filterOptions?: FilterEsimDto | null;
     sortOptions?: SortEsimDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Esim[]>;
+  }): Promise<[Esim[], number]>;
 
   abstract findById(id: Esim['id']): Promise<NullableType<Esim>>;
 

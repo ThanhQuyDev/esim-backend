@@ -20,7 +20,7 @@ export abstract class PlanPriceRepository {
     filterOptions?: FilterPlanPriceDto | null;
     sortOptions?: SortPlanPriceDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<PlanPrice[]>;
+  }): Promise<[PlanPrice[], number]>;
 
   abstract findById(id: PlanPrice['id']): Promise<NullableType<PlanPrice>>;
 

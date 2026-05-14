@@ -25,6 +25,22 @@ export class CreateRegionDto {
   @IsString()
   avatarUrl?: string | null;
 
+  @ApiPropertyOptional({
+    example: 'Explore Europe with high-speed data coverage',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'Khám phá Châu Âu với phủ sóng dữ liệu tốc độ cao',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  descriptionVi?: string | null;
+
   @ApiPropertyOptional({ example: true, type: Boolean })
   @IsOptional()
   @IsBoolean()

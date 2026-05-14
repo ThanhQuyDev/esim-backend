@@ -36,18 +36,18 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
     paginationOptions: IPaginationOptions;
     category?: HelpCenterCategory;
     parent?: HelpCenterParent;
-  }): Promise<HelpCenter[]> {
+  }): Promise<[HelpCenter[], number]> {
     const where: Record<string, unknown> = {};
     if (category) where.category = category;
     if (parent) where.parent = parent;
 
-    const entities = await this.repo.find({
+    const [entities, count] = await this.repo.findAndCount({
       where,
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       order: { order: 'ASC' },
     });
-    return entities.map(HelpCenterMapper.toDomain);
+    return [entities.map(HelpCenterMapper.toDomain), count];
   }
 
   async findById(id: HelpCenter['id']): Promise<NullableType<HelpCenter>> {

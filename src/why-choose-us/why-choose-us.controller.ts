@@ -59,15 +59,14 @@ export class WhyChooseUsController {
       limit = 50;
     }
 
-    return infinityPagination(
-      await this.whyChooseUsService.findAllWithPagination({
-        paginationOptions: {
-          page,
-          limit,
-        },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.whyChooseUsService.findAllWithPagination({
+      paginationOptions: {
+        page,
+        limit,
+      },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Get(':id')

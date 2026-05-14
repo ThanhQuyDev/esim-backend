@@ -18,7 +18,7 @@ export abstract class RegionRepository {
     filterOptions?: FilterRegionDto | null;
     sortOptions?: SortRegionDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Region[]>;
+  }): Promise<[Region[], number]>;
 
   abstract findById(id: Region['id']): Promise<NullableType<Region>>;
 

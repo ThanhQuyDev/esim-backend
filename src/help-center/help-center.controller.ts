@@ -53,14 +53,13 @@ export class HelpCenterController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
-    return infinityPagination(
-      await this.helpCenterService.findAllWithPagination({
-        paginationOptions: { page, limit },
-        category: query.category,
-        parent: query.parent,
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.helpCenterService.findAllWithPagination({
+      paginationOptions: { page, limit },
+      category: query.category,
+      parent: query.parent,
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Get(':id')

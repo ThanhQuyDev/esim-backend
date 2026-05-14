@@ -14,7 +14,7 @@ export abstract class TopBarRepository {
   }: {
     paginationOptions: IPaginationOptions;
     lang?: string;
-  }): Promise<TopBar[]>;
+  }): Promise<[TopBar[], number]>;
 
   abstract findById(id: TopBar['id']): Promise<NullableType<TopBar>>;
 

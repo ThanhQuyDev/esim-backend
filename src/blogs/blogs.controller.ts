@@ -61,16 +61,15 @@ export class BlogsController {
       limit = 50;
     }
 
-    return infinityPagination(
-      await this.blogsService.findAllWithPagination({
-        paginationOptions: {
-          page,
-          limit,
-        },
-        category: query.category,
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.blogsService.findAllWithPagination({
+      paginationOptions: {
+        page,
+        limit,
+      },
+      category: query.category,
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Get('categories')

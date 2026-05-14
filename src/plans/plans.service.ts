@@ -113,7 +113,7 @@ export class PlansService {
     filterOptions?: FilterPlanDto | null;
     sortOptions?: SortPlanDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Plan[]> {
+  }): Promise<[Plan[], number]> {
     return this.plansRepository.findManyWithPagination({
       filterOptions,
       sortOptions,
@@ -215,7 +215,7 @@ export class PlansService {
       throw new NotFoundException('Destination not found');
     }
 
-    const all = await this.plansRepository.findManyWithPagination({
+    const [all] = await this.plansRepository.findManyWithPagination({
       filterOptions: { destinationId: destination.id, isActive: true },
       sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
       paginationOptions: { page: 1, limit: 1000 },
@@ -230,7 +230,7 @@ export class PlansService {
       throw new NotFoundException('Region not found');
     }
 
-    const all = await this.plansRepository.findManyWithPagination({
+    const [all] = await this.plansRepository.findManyWithPagination({
       filterOptions: { regionId: region.id, isActive: true },
       sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
       paginationOptions: { page: 1, limit: 1000 },
@@ -263,7 +263,7 @@ export class PlansService {
 
   async refreshProviders(): Promise<void> {
     // Collect all distinct destination IDs and region IDs from active plans
-    const plans = await this.plansRepository.findManyWithPagination({
+    const [plans] = await this.plansRepository.findManyWithPagination({
       filterOptions: { isActive: true },
       paginationOptions: { page: 1, limit: 100000 },
     });

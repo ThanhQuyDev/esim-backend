@@ -29,19 +29,19 @@ export class HeroBannerRelationalRepository implements HeroBannerRepository {
   }: {
     paginationOptions: IPaginationOptions;
     lang?: string;
-  }): Promise<HeroBanner[]> {
+  }): Promise<[HeroBanner[], number]> {
     const where: Record<string, unknown> = {};
     if (lang) {
       where.language = lang;
     }
 
-    const entities = await this.heroBannerRepository.find({
+    const [entities, count] = await this.heroBannerRepository.findAndCount({
       where,
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
     });
 
-    return entities.map((entity) => HeroBannerMapper.toDomain(entity));
+    return [entities.map((entity) => HeroBannerMapper.toDomain(entity)), count];
   }
 
   async findById(id: HeroBanner['id']): Promise<NullableType<HeroBanner>> {

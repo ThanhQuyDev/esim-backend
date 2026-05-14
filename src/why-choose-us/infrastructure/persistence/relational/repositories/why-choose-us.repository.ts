@@ -27,14 +27,17 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
     paginationOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<WhyChooseUs[]> {
-    const entities = await this.whyChooseUsRepository.find({
+  }): Promise<[WhyChooseUs[], number]> {
+    const [entities, count] = await this.whyChooseUsRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       order: { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => WhyChooseUsMapper.toDomain(entity));
+    return [
+      entities.map((entity) => WhyChooseUsMapper.toDomain(entity)),
+      count,
+    ];
   }
 
   async findById(id: WhyChooseUs['id']): Promise<NullableType<WhyChooseUs>> {

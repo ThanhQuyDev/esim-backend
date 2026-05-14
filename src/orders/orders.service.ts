@@ -925,7 +925,7 @@ export class OrdersService {
     filterOptions?: FilterOrderDto | null;
     sortOptions?: SortOrderDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Order[]> {
+  }): Promise<[Order[], number]> {
     return this.orderRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

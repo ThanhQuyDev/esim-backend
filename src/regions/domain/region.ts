@@ -28,6 +28,18 @@ export class Region {
   @ApiPropertyOptional({ type: String })
   avatarUrl: string | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: 'Explore Europe with high-speed data coverage',
+  })
+  description: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'Khám phá Châu Âu với phủ sóng dữ liệu tốc độ cao',
+  })
+  descriptionVi: string | null;
+
   @ApiProperty({ type: Boolean, example: true })
   isActive: boolean;
 

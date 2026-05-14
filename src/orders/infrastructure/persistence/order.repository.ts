@@ -15,7 +15,7 @@ export abstract class OrderRepository {
     filterOptions?: FilterOrderDto | null;
     sortOptions?: SortOrderDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Order[]>;
+  }): Promise<[Order[], number]>;
 
   abstract findById(id: Order['id']): Promise<NullableType<Order>>;
 

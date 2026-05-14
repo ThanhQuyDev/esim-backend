@@ -15,6 +15,8 @@ export class RegionMapper {
       domainEntity.destinationCount = raw.destinations.length;
     }
     domainEntity.avatarUrl = raw.avatarUrl;
+    domainEntity.description = raw.description;
+    domainEntity.descriptionVi = raw.descriptionVi;
     domainEntity.providers = raw.providers ?? null;
     domainEntity.isActive = raw.isActive;
     domainEntity.createdAt = raw.createdAt;
@@ -31,6 +33,8 @@ export class RegionMapper {
     persistenceEntity.name = domainEntity.name;
     persistenceEntity.slug = domainEntity.slug;
     persistenceEntity.avatarUrl = domainEntity.avatarUrl;
+    persistenceEntity.description = domainEntity.description;
+    persistenceEntity.descriptionVi = domainEntity.descriptionVi;
     persistenceEntity.providers = domainEntity.providers ?? null;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.createdAt = domainEntity.createdAt;

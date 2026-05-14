@@ -37,18 +37,18 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
     paginationOptions: IPaginationOptions;
     type?: DeviceType;
     search?: string;
-  }): Promise<SupportedDevice[]> {
+  }): Promise<[SupportedDevice[], number]> {
     const where: Record<string, unknown> = {};
     if (type) where.type = type;
     if (search) where.device = ILike(`%${search}%`);
 
-    const entities = await this.repo.find({
+    const [entities, count] = await this.repo.findAndCount({
       where,
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       order: { type: 'ASC', manufacturer: 'ASC', device: 'ASC' },
     });
-    return entities.map(SupportedDeviceMapper.toDomain);
+    return [entities.map(SupportedDeviceMapper.toDomain), count];
   }
 
   async findGrouped(search?: string): Promise<SupportedDevice[]> {

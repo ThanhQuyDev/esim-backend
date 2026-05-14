@@ -32,7 +32,7 @@ export class PlansRelationalRepository implements PlanRepository {
     filterOptions?: FilterPlanDto | null;
     sortOptions?: SortPlanDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Plan[]> {
+  }): Promise<[Plan[], number]> {
     if (filterOptions?.search) {
       const qb = this.plansRepository
         .createQueryBuilder('plan')
@@ -76,11 +76,13 @@ export class PlansRelationalRepository implements PlanRepository {
         qb.orderBy('plan.createdAt', 'DESC');
       }
 
+      const count = await qb.getCount();
+
       qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
       qb.take(paginationOptions.limit);
 
       const entities = await qb.getMany();
-      return entities.map((entity) => PlanMapper.toDomain(entity));
+      return [entities.map((entity) => PlanMapper.toDomain(entity)), count];
     }
 
     const where: FindOptionsWhere<PlanEntity> = {};
@@ -98,7 +100,7 @@ export class PlansRelationalRepository implements PlanRepository {
       where.regionId = filterOptions.regionId as any;
     }
 
-    const entities = await this.plansRepository.find({
+    const [entities, count] = await this.plansRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
@@ -113,7 +115,7 @@ export class PlansRelationalRepository implements PlanRepository {
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => PlanMapper.toDomain(entity));
+    return [entities.map((entity) => PlanMapper.toDomain(entity)), count];
   }
 
   async findById(id: Plan['id']): Promise<NullableType<Plan>> {

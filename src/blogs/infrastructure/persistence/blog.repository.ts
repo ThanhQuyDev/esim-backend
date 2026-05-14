@@ -14,7 +14,7 @@ export abstract class BlogRepository {
   }: {
     paginationOptions: IPaginationOptions;
     category?: string;
-  }): Promise<Blog[]>;
+  }): Promise<[Blog[], number]>;
 
   abstract findById(id: Blog['id']): Promise<NullableType<Blog>>;
 

@@ -20,7 +20,7 @@ export abstract class HelpCenterRepository {
     paginationOptions: IPaginationOptions;
     category?: HelpCenterCategory;
     parent?: HelpCenterParent;
-  }): Promise<HelpCenter[]>;
+  }): Promise<[HelpCenter[], number]>;
 
   abstract findById(id: HelpCenter['id']): Promise<NullableType<HelpCenter>>;
 

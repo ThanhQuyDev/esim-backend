@@ -20,7 +20,7 @@ export abstract class ProfitMarginRepository {
     filterOptions?: FilterProfitMarginDto | null;
     sortOptions?: SortProfitMarginDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<ProfitMargin[]>;
+  }): Promise<[ProfitMargin[], number]>;
 
   abstract findById(
     id: ProfitMargin['id'],

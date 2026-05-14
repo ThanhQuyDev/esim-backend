@@ -35,7 +35,7 @@ export class PlanPricesRelationalRepository implements PlanPriceRepository {
     filterOptions?: FilterPlanPriceDto | null;
     sortOptions?: SortPlanPriceDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<PlanPrice[]> {
+  }): Promise<[PlanPrice[], number]> {
     const where: FindOptionsWhere<PlanPriceEntity> = {};
 
     if (filterOptions?.isActive !== undefined) {
@@ -45,7 +45,7 @@ export class PlanPricesRelationalRepository implements PlanPriceRepository {
       where.planId = filterOptions.planId;
     }
 
-    const entities = await this.planPricesRepository.find({
+    const [entities, count] = await this.planPricesRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where: where,
@@ -60,7 +60,7 @@ export class PlanPricesRelationalRepository implements PlanPriceRepository {
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => PlanPriceMapper.toDomain(entity));
+    return [entities.map((entity) => PlanPriceMapper.toDomain(entity)), count];
   }
 
   async findById(id: PlanPrice['id']): Promise<NullableType<PlanPrice>> {

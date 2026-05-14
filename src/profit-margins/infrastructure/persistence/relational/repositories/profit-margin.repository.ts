@@ -35,14 +35,14 @@ export class ProfitMarginsRelationalRepository implements ProfitMarginRepository
     filterOptions?: FilterProfitMarginDto | null;
     sortOptions?: SortProfitMarginDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<ProfitMargin[]> {
+  }): Promise<[ProfitMargin[], number]> {
     const where: FindOptionsWhere<ProfitMarginEntity> = {};
 
     if (filterOptions?.isActive !== undefined) {
       where.isActive = filterOptions.isActive;
     }
 
-    const entities = await this.profitMarginsRepository.find({
+    const [entities, count] = await this.profitMarginsRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
@@ -54,7 +54,10 @@ export class ProfitMarginsRelationalRepository implements ProfitMarginRepository
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => ProfitMarginMapper.toDomain(entity));
+    return [
+      entities.map((entity) => ProfitMarginMapper.toDomain(entity)),
+      count,
+    ];
   }
 
   async findById(id: ProfitMargin['id']): Promise<NullableType<ProfitMargin>> {

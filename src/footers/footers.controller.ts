@@ -59,15 +59,14 @@ export class FootersController {
       limit = 50;
     }
 
-    return infinityPagination(
-      await this.footersService.findAllWithPagination({
-        paginationOptions: {
-          page,
-          limit,
-        },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.footersService.findAllWithPagination({
+      paginationOptions: {
+        page,
+        limit,
+      },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Get(':id')

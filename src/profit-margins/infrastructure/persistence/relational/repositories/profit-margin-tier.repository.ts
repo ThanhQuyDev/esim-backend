@@ -35,14 +35,14 @@ export class ProfitMarginTiersRelationalRepository implements ProfitMarginTierRe
     filterOptions?: FilterProfitMarginTierDto | null;
     sortOptions?: SortProfitMarginTierDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<ProfitMarginTier[]> {
+  }): Promise<[ProfitMarginTier[], number]> {
     const where: FindOptionsWhere<ProfitMarginTierEntity> = {};
 
     if (filterOptions?.isActive !== undefined) {
       where.isActive = filterOptions.isActive;
     }
 
-    const entities = await this.tiersRepository.find({
+    const [entities, count] = await this.tiersRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
@@ -54,7 +54,10 @@ export class ProfitMarginTiersRelationalRepository implements ProfitMarginTierRe
         : { minVnd: 'ASC' },
     });
 
-    return entities.map((entity) => ProfitMarginTierMapper.toDomain(entity));
+    return [
+      entities.map((entity) => ProfitMarginTierMapper.toDomain(entity)),
+      count,
+    ];
   }
 
   async findAll(): Promise<ProfitMarginTier[]> {

@@ -44,6 +44,7 @@ export class DestinationsService {
       isPopular: createDestinationDto.isPopular ?? false,
       isActive: createDestinationDto.isActive ?? true,
       description: createDestinationDto.description ?? null,
+      descriptionVi: createDestinationDto.descriptionVi ?? null,
     });
   }
 
@@ -55,7 +56,7 @@ export class DestinationsService {
     filterOptions?: FilterDestinationDto | null;
     sortOptions?: SortDestinationDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Destination[]> {
+  }): Promise<[Destination[], number]> {
     return this.destinationsRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

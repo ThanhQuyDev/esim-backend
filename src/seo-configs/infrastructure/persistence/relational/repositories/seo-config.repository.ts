@@ -35,7 +35,7 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
     filterOptions?: FilterSeoConfigDto | null;
     sortOptions?: SortSeoConfigDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<SeoConfig[]> {
+  }): Promise<[SeoConfig[], number]> {
     const where: FindOptionsWhere<SeoConfigEntity> = {};
 
     if (filterOptions?.isActive !== undefined) {
@@ -51,7 +51,7 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
       where.planId = filterOptions.planId;
     }
 
-    const entities = await this.seoConfigsRepository.find({
+    const [entities, count] = await this.seoConfigsRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
@@ -66,7 +66,7 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => SeoConfigMapper.toDomain(entity));
+    return [entities.map((entity) => SeoConfigMapper.toDomain(entity)), count];
   }
 
   async findById(id: SeoConfig['id']): Promise<NullableType<SeoConfig>> {

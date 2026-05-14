@@ -78,7 +78,7 @@ export class EsimsService {
     filterOptions?: FilterEsimDto | null;
     sortOptions?: SortEsimDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Esim[]> {
+  }): Promise<[Esim[], number]> {
     return this.esimsRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

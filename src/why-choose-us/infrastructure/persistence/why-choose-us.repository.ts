@@ -12,7 +12,7 @@ export abstract class WhyChooseUsRepository {
     paginationOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<WhyChooseUs[]>;
+  }): Promise<[WhyChooseUs[], number]>;
 
   abstract findById(id: WhyChooseUs['id']): Promise<NullableType<WhyChooseUs>>;
 

@@ -27,14 +27,14 @@ export class FaqRelationalRepository implements FaqRepository {
     paginationOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<Faq[]> {
-    const entities = await this.faqRepository.find({
+  }): Promise<[Faq[], number]> {
+    const [entities, count] = await this.faqRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       order: { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => FaqMapper.toDomain(entity));
+    return [entities.map((entity) => FaqMapper.toDomain(entity)), count];
   }
 
   async findById(id: Faq['id']): Promise<NullableType<Faq>> {

@@ -70,17 +70,18 @@ export class DestinationsController {
       limit = 500;
     }
 
-    return infinityPagination(
-      await this.destinationsService.findManyWithPagination({
+    const [data, count] = await this.destinationsService.findManyWithPagination(
+      {
         filterOptions: query?.filters,
         sortOptions: query?.sort,
         paginationOptions: {
           page,
           limit,
         },
-      }),
-      { page, limit },
+      },
     );
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({

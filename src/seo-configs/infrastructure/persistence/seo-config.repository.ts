@@ -20,7 +20,7 @@ export abstract class SeoConfigRepository {
     filterOptions?: FilterSeoConfigDto | null;
     sortOptions?: SortSeoConfigDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<SeoConfig[]>;
+  }): Promise<[SeoConfig[], number]>;
 
   abstract findById(id: SeoConfig['id']): Promise<NullableType<SeoConfig>>;
 

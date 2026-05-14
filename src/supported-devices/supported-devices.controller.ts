@@ -58,14 +58,14 @@ export class SupportedDevicesController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
-    return infinityPagination(
+    const [data, count] =
       await this.supportedDevicesService.findAllWithPagination({
         paginationOptions: { page, limit },
         type: query.type,
         search: query.search,
-      }),
-      { page, limit },
-    );
+      });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Get('grouped')

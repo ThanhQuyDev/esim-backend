@@ -17,7 +17,7 @@ export abstract class PlanRepository {
     filterOptions?: FilterPlanDto | null;
     sortOptions?: SortPlanDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Plan[]>;
+  }): Promise<[Plan[], number]>;
 
   abstract findById(id: Plan['id']): Promise<NullableType<Plan>>;
 

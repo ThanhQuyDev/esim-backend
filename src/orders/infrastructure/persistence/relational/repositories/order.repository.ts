@@ -32,7 +32,7 @@ export class OrdersRelationalRepository implements OrderRepository {
     filterOptions?: FilterOrderDto | null;
     sortOptions?: SortOrderDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Order[]> {
+  }): Promise<[Order[], number]> {
     const where: FindOptionsWhere<OrderEntity> = {};
 
     if (filterOptions?.status) {
@@ -47,7 +47,7 @@ export class OrdersRelationalRepository implements OrderRepository {
       where.userId = filterOptions.userId;
     }
 
-    const entities = await this.ordersRepository.find({
+    const [entities, count] = await this.ordersRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where: where,
@@ -62,7 +62,7 @@ export class OrdersRelationalRepository implements OrderRepository {
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => OrderMapper.toDomain(entity));
+    return [entities.map((entity) => OrderMapper.toDomain(entity)), count];
   }
 
   async findById(id: Order['id']): Promise<NullableType<Order>> {

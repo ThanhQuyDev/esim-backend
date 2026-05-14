@@ -20,7 +20,7 @@ export abstract class DestinationRepository {
     filterOptions?: FilterDestinationDto | null;
     sortOptions?: SortDestinationDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Destination[]>;
+  }): Promise<[Destination[], number]>;
 
   abstract findById(id: Destination['id']): Promise<NullableType<Destination>>;
 

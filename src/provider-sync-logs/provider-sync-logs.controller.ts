@@ -62,14 +62,14 @@ export class ProviderSyncLogsController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
-    return infinityPagination(
+    const [data, count] =
       await this.providerSyncLogsService.findManyWithPagination({
         filterOptions: query?.filters,
         sortOptions: query?.sort,
         paginationOptions: { page, limit },
-      }),
-      { page, limit },
-    );
+      });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({ type: ProviderSyncLog })

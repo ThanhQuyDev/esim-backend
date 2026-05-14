@@ -54,7 +54,7 @@ export class RegionsRelationalRepository implements RegionRepository {
     filterOptions?: FilterRegionDto | null;
     sortOptions?: SortRegionDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Region[]> {
+  }): Promise<[Region[], number]> {
     const qb = this.regionsRepository
       .createQueryBuilder('region')
       .leftJoin('destination_region', 'dr', 'dr."regionId" = region.id')
@@ -86,12 +86,15 @@ export class RegionsRelationalRepository implements RegionRepository {
       qb.orderBy('region.createdAt', 'DESC');
     }
 
+    const countQb = qb.clone();
+    const count = await countQb.getCount();
+
     qb.offset((paginationOptions.page - 1) * paginationOptions.limit);
     qb.limit(paginationOptions.limit);
 
     const rawResults = await qb.getRawAndEntities();
 
-    return rawResults.entities.map((entity, index) => {
+    const data = rawResults.entities.map((entity, index) => {
       const domain = RegionMapper.toDomain(entity);
       domain.destinationCount = parseInt(
         rawResults.raw[index]?.dest_count ?? '0',
@@ -99,6 +102,8 @@ export class RegionsRelationalRepository implements RegionRepository {
       );
       return domain;
     });
+
+    return [data, count];
   }
 
   async findById(id: Region['id']): Promise<NullableType<Region>> {

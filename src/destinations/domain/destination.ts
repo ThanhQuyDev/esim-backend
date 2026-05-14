@@ -81,6 +81,12 @@ export class Destination {
 
   @ApiPropertyOptional({
     type: String,
+    example: 'Phủ sóng 4G/5G tốc độ cao trên toàn Nhật Bản',
+  })
+  descriptionVi: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
     example: 'airalo,esimaccess',
   })
   providers?: string | null;

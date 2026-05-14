@@ -29,19 +29,19 @@ export class TopBarRelationalRepository implements TopBarRepository {
   }: {
     paginationOptions: IPaginationOptions;
     lang?: string;
-  }): Promise<TopBar[]> {
+  }): Promise<[TopBar[], number]> {
     const where: Record<string, unknown> = {};
     if (lang) {
       where.language = lang;
     }
 
-    const entities = await this.topBarRepository.find({
+    const [entities, count] = await this.topBarRepository.findAndCount({
       where,
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
     });
 
-    return entities.map((entity) => TopBarMapper.toDomain(entity));
+    return [entities.map((entity) => TopBarMapper.toDomain(entity)), count];
   }
 
   async findById(id: TopBar['id']): Promise<NullableType<TopBar>> {

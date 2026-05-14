@@ -15,6 +15,7 @@ export class DestinationMapper {
     domainEntity.isPopular = raw.isPopular;
     domainEntity.isActive = raw.isActive;
     domainEntity.description = raw.description;
+    domainEntity.descriptionVi = raw.descriptionVi;
     domainEntity.providers = raw.providers ?? null;
     if (raw.regions) {
       domainEntity.regions = raw.regions.map((r) => {
@@ -47,6 +48,7 @@ export class DestinationMapper {
     persistenceEntity.isPopular = domainEntity.isPopular;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.description = domainEntity.description;
+    persistenceEntity.descriptionVi = domainEntity.descriptionVi;
     persistenceEntity.providers = domainEntity.providers ?? null;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;

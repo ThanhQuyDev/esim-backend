@@ -23,7 +23,7 @@ export abstract class ProfitMarginTierRepository {
     filterOptions?: FilterProfitMarginTierDto | null;
     sortOptions?: SortProfitMarginTierDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<ProfitMarginTier[]>;
+  }): Promise<[ProfitMarginTier[], number]>;
 
   abstract findAll(): Promise<ProfitMarginTier[]>;
 

@@ -13,7 +13,7 @@ export abstract class HeroBannerRepository {
   }: {
     paginationOptions: IPaginationOptions;
     lang?: string;
-  }): Promise<HeroBanner[]>;
+  }): Promise<[HeroBanner[], number]>;
 
   abstract findById(id: HeroBanner['id']): Promise<NullableType<HeroBanner>>;
 

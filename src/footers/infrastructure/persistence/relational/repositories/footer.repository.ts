@@ -27,13 +27,13 @@ export class FooterRelationalRepository implements FooterRepository {
     paginationOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<Footer[]> {
-    const entities = await this.footerRepository.find({
+  }): Promise<[Footer[], number]> {
+    const [entities, count] = await this.footerRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
     });
 
-    return entities.map((entity) => FooterMapper.toDomain(entity));
+    return [entities.map((entity) => FooterMapper.toDomain(entity)), count];
   }
 
   async findById(id: Footer['id']): Promise<NullableType<Footer>> {

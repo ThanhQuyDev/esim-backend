@@ -103,14 +103,13 @@ export class EsimsController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
-    return infinityPagination(
-      await this.esimsService.findManyWithPagination({
-        filterOptions: { ...query?.filters, userId: req.user.id },
-        sortOptions: query?.sort,
-        paginationOptions: { page, limit },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.esimsService.findManyWithPagination({
+      filterOptions: { ...query?.filters, userId: req.user.id },
+      sortOptions: query?.sort,
+      paginationOptions: { page, limit },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Roles(RoleEnum.user, RoleEnum.admin)
@@ -162,14 +161,13 @@ export class EsimsController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
-    return infinityPagination(
-      await this.esimsService.findManyWithPagination({
-        filterOptions: query?.filters,
-        sortOptions: query?.sort,
-        paginationOptions: { page, limit },
-      }),
-      { page, limit },
-    );
+    const [data, count] = await this.esimsService.findManyWithPagination({
+      filterOptions: query?.filters,
+      sortOptions: query?.sort,
+      paginationOptions: { page, limit },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @ApiOkResponse({ type: Esim })

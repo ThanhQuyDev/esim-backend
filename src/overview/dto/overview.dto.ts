@@ -26,6 +26,15 @@ export const COMPLETED_ORDER_STATUSES = ['paid'] as const;
 export const COMPLETED_ORDER_ITEM_STATUSES = ['completed'] as const;
 export const ACTIVE_ESIM_STATUSES = ['assigned', 'available'] as const;
 
+export const OVERVIEW_DATE_PRESETS = [
+  'today',
+  'yesterday',
+  'last7days',
+  'last30days',
+] as const;
+
+export type OverviewDatePreset = (typeof OVERVIEW_DATE_PRESETS)[number];
+
 export const PROVIDER_COMPARISON_METRICS = [
   'orders',
   'revenue',
@@ -40,6 +49,7 @@ export const PROVIDER_COMPARISON_GROUP_BY = [
   'day',
   'week',
   'month',
+  'year',
   'provider',
 ] as const;
 
@@ -50,6 +60,7 @@ export const FINANCIAL_COMPARISON_GROUP_BY = [
   'day',
   'week',
   'month',
+  'year',
   'provider',
   'destination',
 ] as const;
@@ -84,6 +95,17 @@ export class IsOverviewDateRangeValidConstraint implements ValidatorConstraintIn
 }
 
 export class OverviewDateRangeQueryDto {
+  @ApiPropertyOptional({
+    type: String,
+    enum: OVERVIEW_DATE_PRESETS,
+    description:
+      'Preset time filter. Overrides from/to when provided. Values: today, yesterday, last7days, last30days.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(OVERVIEW_DATE_PRESETS)
+  preset?: OverviewDatePreset;
+
   @ApiPropertyOptional({
     type: String,
     example: '2026-01-01T00:00:00.000Z',

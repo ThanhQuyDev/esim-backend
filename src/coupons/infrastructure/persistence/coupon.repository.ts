@@ -11,7 +11,7 @@ export abstract class CouponRepository {
     filterOptions?: FilterCouponDto | null;
     sortOptions?: SortCouponDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Coupon[]>;
+  }): Promise<[Coupon[], number]>;
   abstract findById(id: Coupon['id']): Promise<NullableType<Coupon>>;
   abstract findByCode(code: string): Promise<NullableType<Coupon>>;
   abstract update(id: Coupon['id'], payload: Partial<Coupon>): Promise<Coupon>;

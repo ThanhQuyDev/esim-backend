@@ -12,7 +12,7 @@ export abstract class FooterRepository {
     paginationOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<Footer[]>;
+  }): Promise<[Footer[], number]>;
 
   abstract findById(id: Footer['id']): Promise<NullableType<Footer>>;
 

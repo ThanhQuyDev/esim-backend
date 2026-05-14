@@ -69,4 +69,12 @@ export class CreateDestinationDto {
   @IsOptional()
   @IsString()
   description?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'Phủ sóng 4G/5G tốc độ cao trên toàn Nhật Bản',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  descriptionVi?: string | null;
 }

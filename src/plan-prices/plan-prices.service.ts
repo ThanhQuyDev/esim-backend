@@ -32,7 +32,7 @@ export class PlanPricesService {
     filterOptions?: FilterPlanPriceDto | null;
     sortOptions?: SortPlanPriceDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<PlanPrice[]> {
+  }): Promise<[PlanPrice[], number]> {
     return this.planPriceRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

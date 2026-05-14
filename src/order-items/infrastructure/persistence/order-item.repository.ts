@@ -20,7 +20,7 @@ export abstract class OrderItemRepository {
     filterOptions?: FilterOrderItemDto | null;
     sortOptions?: SortOrderItemDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<OrderItem[]>;
+  }): Promise<[OrderItem[], number]>;
 
   abstract findById(id: OrderItem['id']): Promise<NullableType<OrderItem>>;
 

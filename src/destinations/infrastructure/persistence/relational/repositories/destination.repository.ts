@@ -36,7 +36,7 @@ export class DestinationsRelationalRepository implements DestinationRepository {
     filterOptions?: FilterDestinationDto | null;
     sortOptions?: SortDestinationDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Destination[]> {
+  }): Promise<[Destination[], number]> {
     const qb = this.destinationsRepository
       .createQueryBuilder('destination')
       .addSelect((subQuery) => {
@@ -78,18 +78,22 @@ export class DestinationsRelationalRepository implements DestinationRepository {
       qb.addOrderBy('destination.createdAt', 'DESC');
     }
 
+    const count = await qb.getCount();
+
     qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
     qb.take(paginationOptions.limit);
 
     const raw = await qb.getRawAndEntities();
 
-    return raw.entities.map((entity, index) => {
+    const data = raw.entities.map((entity, index) => {
       const domain = DestinationMapper.toDomain(entity);
       domain.fromPrice = raw.raw[index]?.fromPrice
         ? Number(raw.raw[index].fromPrice)
         : null;
       return domain;
     });
+
+    return [data, count];
   }
 
   async findById(id: Destination['id']): Promise<NullableType<Destination>> {

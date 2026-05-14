@@ -35,7 +35,7 @@ export class ProviderSyncLogsRelationalRepository implements ProviderSyncLogRepo
     filterOptions?: FilterProviderSyncLogDto | null;
     sortOptions?: SortProviderSyncLogDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<ProviderSyncLog[]> {
+  }): Promise<[ProviderSyncLog[], number]> {
     const where: FindOptionsWhere<ProviderSyncLogEntity> = {};
 
     if (filterOptions?.provider) {
@@ -48,22 +48,26 @@ export class ProviderSyncLogsRelationalRepository implements ProviderSyncLogRepo
       where.status = filterOptions.status;
     }
 
-    const entities = await this.providerSyncLogsRepository.find({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      where,
-      order: sortOptions?.length
-        ? sortOptions.reduce(
-            (accumulator, sort) => ({
-              ...accumulator,
-              [sort.orderBy]: sort.order,
-            }),
-            {},
-          )
-        : { createdAt: 'DESC' },
-    });
+    const [entities, count] =
+      await this.providerSyncLogsRepository.findAndCount({
+        skip: (paginationOptions.page - 1) * paginationOptions.limit,
+        take: paginationOptions.limit,
+        where,
+        order: sortOptions?.length
+          ? sortOptions.reduce(
+              (accumulator, sort) => ({
+                ...accumulator,
+                [sort.orderBy]: sort.order,
+              }),
+              {},
+            )
+          : { createdAt: 'DESC' },
+      });
 
-    return entities.map((entity) => ProviderSyncLogMapper.toDomain(entity));
+    return [
+      entities.map((entity) => ProviderSyncLogMapper.toDomain(entity)),
+      count,
+    ];
   }
 
   async findById(

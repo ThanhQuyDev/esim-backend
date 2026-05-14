@@ -46,7 +46,7 @@ export class ProfitMarginsService {
     filterOptions?: FilterProfitMarginTierDto | null;
     sortOptions?: SortProfitMarginTierDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<ProfitMarginTier[]> {
+  }): Promise<[ProfitMarginTier[], number]> {
     return this.tierRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

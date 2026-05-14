@@ -32,7 +32,7 @@ export class EsimsRelationalRepository implements EsimRepository {
     filterOptions?: FilterEsimDto | null;
     sortOptions?: SortEsimDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Esim[]> {
+  }): Promise<[Esim[], number]> {
     const where: FindOptionsWhere<EsimEntity> = {};
 
     if (filterOptions?.status) {
@@ -42,7 +42,7 @@ export class EsimsRelationalRepository implements EsimRepository {
       where.userId = filterOptions.userId;
     }
 
-    const entities = await this.esimsRepository.find({
+    const [entities, count] = await this.esimsRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
@@ -57,7 +57,7 @@ export class EsimsRelationalRepository implements EsimRepository {
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => EsimMapper.toDomain(entity));
+    return [entities.map((entity) => EsimMapper.toDomain(entity)), count];
   }
 
   async findById(id: Esim['id']): Promise<NullableType<Esim>> {

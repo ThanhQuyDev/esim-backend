@@ -68,6 +68,9 @@ export class DestinationEntity extends EntityRelationalHelper {
   description: string | null;
 
   @Column({ type: String, nullable: true })
+  descriptionVi: string | null;
+
+  @Column({ type: String, nullable: true })
   providers: string | null;
 
   @CreateDateColumn()

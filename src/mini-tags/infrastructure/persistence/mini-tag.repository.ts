@@ -12,7 +12,7 @@ export abstract class MiniTagRepository {
     paginationOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<MiniTag[]>;
+  }): Promise<[MiniTag[], number]>;
 
   abstract findById(id: MiniTag['id']): Promise<NullableType<MiniTag>>;
 

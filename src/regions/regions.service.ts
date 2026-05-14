@@ -31,6 +31,8 @@ export class RegionsService {
         name: createRegionDto.name,
         slug: createRegionDto.slug,
         avatarUrl: createRegionDto.avatarUrl ?? null,
+        description: createRegionDto.description ?? null,
+        descriptionVi: createRegionDto.descriptionVi ?? null,
         isActive: createRegionDto.isActive ?? true,
       },
       createRegionDto.destinationIds,
@@ -45,7 +47,7 @@ export class RegionsService {
     filterOptions?: FilterRegionDto | null;
     sortOptions?: SortRegionDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Region[]> {
+  }): Promise<[Region[], number]> {
     return this.regionsRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

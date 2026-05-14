@@ -136,7 +136,7 @@ export class UsersService {
     filterOptions?: FilterUserDto | null;
     sortOptions?: SortUserDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<User[]> {
+  }): Promise<[User[], number]> {
     return this.usersRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

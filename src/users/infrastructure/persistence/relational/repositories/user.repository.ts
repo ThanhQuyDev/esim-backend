@@ -33,7 +33,7 @@ export class UsersRelationalRepository implements UserRepository {
     filterOptions?: FilterUserDto | null;
     sortOptions?: SortUserDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<User[]> {
+  }): Promise<[User[], number]> {
     const where: FindOptionsWhere<UserEntity> = {};
     if (filterOptions?.roles?.length) {
       where.role = filterOptions.roles.map((role) => ({
@@ -41,7 +41,7 @@ export class UsersRelationalRepository implements UserRepository {
       }));
     }
 
-    const entities = await this.usersRepository.find({
+    const [entities, count] = await this.usersRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where: where,
@@ -56,7 +56,7 @@ export class UsersRelationalRepository implements UserRepository {
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((user) => UserMapper.toDomain(user));
+    return [entities.map((user) => UserMapper.toDomain(user)), count];
   }
 
   async findById(id: User['id']): Promise<NullableType<User>> {

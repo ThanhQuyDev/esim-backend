@@ -54,7 +54,7 @@ export class SeoConfigsService {
     filterOptions?: FilterSeoConfigDto | null;
     sortOptions?: SortSeoConfigDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<SeoConfig[]> {
+  }): Promise<[SeoConfig[], number]> {
     return this.seoConfigsRepository.findManyWithPagination({
       filterOptions,
       sortOptions,

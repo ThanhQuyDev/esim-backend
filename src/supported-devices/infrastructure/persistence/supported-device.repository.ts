@@ -16,7 +16,7 @@ export abstract class SupportedDeviceRepository {
     paginationOptions: IPaginationOptions;
     type?: DeviceType;
     search?: string;
-  }): Promise<SupportedDevice[]>;
+  }): Promise<[SupportedDevice[], number]>;
 
   abstract findGrouped(search?: string): Promise<SupportedDevice[]>;
 

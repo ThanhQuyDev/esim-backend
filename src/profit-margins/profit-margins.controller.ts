@@ -45,10 +45,8 @@ export class ProfitMarginsController {
   @ApiOkResponse({ type: [ProfitMarginTier] })
   @Get('tiers')
   @HttpCode(HttpStatus.OK)
-  findManyTiers(
-    @Query() query: QueryProfitMarginTierDto,
-  ): Promise<ProfitMarginTier[]> {
-    return this.profitMarginsService.findManyTiers({
+  async findManyTiers(@Query() query: QueryProfitMarginTierDto) {
+    const [data, count] = await this.profitMarginsService.findManyTiers({
       filterOptions: query.filters,
       sortOptions: query.sort,
       paginationOptions: {
@@ -56,6 +54,8 @@ export class ProfitMarginsController {
         limit: query.limit ?? 100,
       },
     });
+
+    return { data, totalCount: count };
   }
 
   @ApiOkResponse({ type: ProfitMarginTier })

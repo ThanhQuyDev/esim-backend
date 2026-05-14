@@ -20,7 +20,7 @@ export abstract class ProviderSyncLogRepository {
     filterOptions?: FilterProviderSyncLogDto | null;
     sortOptions?: SortProviderSyncLogDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<ProviderSyncLog[]>;
+  }): Promise<[ProviderSyncLog[], number]>;
 
   abstract findById(
     id: ProviderSyncLog['id'],

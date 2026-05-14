@@ -17,6 +17,7 @@ import {
   FinancialComparisonTotalsDto,
   MAX_OVERVIEW_LIMIT,
   OVERVIEW_PROVIDERS,
+  OverviewDatePreset,
   OverviewDateRangeQueryDto,
   OverviewProvider,
   OverviewProviderFilterQueryDto,
@@ -35,7 +36,7 @@ const PLAN_ALIAS = 'plan';
 const UNKNOWN_GROUP = 'Unknown';
 
 type RawValue = string | number | null | undefined;
-type PeriodGroupBy = 'day' | 'week' | 'month';
+type PeriodGroupBy = 'day' | 'week' | 'month' | 'year';
 type OrderItemQuery = SelectQueryBuilder<OrderItemEntity>;
 
 interface ProviderAggregate {
@@ -589,16 +590,84 @@ export class OverviewService {
     alias: string,
     query: OverviewDateRangeQueryDto,
   ): void {
-    if (query.from) {
-      qb.andWhere(`${alias}."createdAt" >= :from`, {
-        from: new Date(query.from),
+    const resolved = this.resolveDateRange(query);
+
+    if (resolved.from) {
+      qb.andWhere(`"${alias}"."createdAt" >= :from`, {
+        from: new Date(resolved.from),
       });
     }
 
-    if (query.to) {
-      qb.andWhere(`${alias}."createdAt" <= :to`, {
-        to: new Date(query.to),
+    if (resolved.to) {
+      qb.andWhere(`"${alias}"."createdAt" <= :to`, {
+        to: new Date(resolved.to),
       });
+    }
+  }
+
+  private resolveDateRange(query: OverviewDateRangeQueryDto): {
+    from?: string;
+    to?: string;
+  } {
+    if (query.preset) {
+      return this.presetToDateRange(query.preset);
+    }
+
+    return { from: query.from, to: query.to };
+  }
+
+  private presetToDateRange(preset: OverviewDatePreset): {
+    from: string;
+    to: string;
+  } {
+    const now = new Date();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const endOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999,
+    );
+
+    switch (preset) {
+      case 'today':
+        return {
+          from: startOfToday.toISOString(),
+          to: endOfToday.toISOString(),
+        };
+      case 'yesterday': {
+        const startOfYesterday = new Date(startOfToday);
+        startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+        const endOfYesterday = new Date(startOfYesterday);
+        endOfYesterday.setHours(23, 59, 59, 999);
+        return {
+          from: startOfYesterday.toISOString(),
+          to: endOfYesterday.toISOString(),
+        };
+      }
+      case 'last7days': {
+        const start = new Date(startOfToday);
+        start.setDate(start.getDate() - 6);
+        return {
+          from: start.toISOString(),
+          to: endOfToday.toISOString(),
+        };
+      }
+      case 'last30days': {
+        const start = new Date(startOfToday);
+        start.setDate(start.getDate() - 29);
+        return {
+          from: start.toISOString(),
+          to: endOfToday.toISOString(),
+        };
+      }
     }
   }
 
@@ -620,6 +689,10 @@ export class OverviewService {
   }
 
   private getDateBucketExpression(groupBy: PeriodGroupBy): string {
+    if (groupBy === 'year') {
+      return `TO_CHAR(DATE_TRUNC('year', ${ORDER_ALIAS}."createdAt"), 'YYYY')`;
+    }
+
     if (groupBy === 'week') {
       return `TO_CHAR(DATE_TRUNC('week', ${ORDER_ALIAS}."createdAt"), 'IYYY-IW')`;
     }
@@ -734,7 +807,12 @@ export class OverviewService {
   private isPeriodGroupBy(
     groupBy: FinancialComparisonGroupBy,
   ): groupBy is PeriodGroupBy {
-    return groupBy === 'day' || groupBy === 'week' || groupBy === 'month';
+    return (
+      groupBy === 'day' ||
+      groupBy === 'week' ||
+      groupBy === 'month' ||
+      groupBy === 'year'
+    );
   }
 
   private toNumber(value: RawValue): number {

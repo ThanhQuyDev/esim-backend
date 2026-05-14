@@ -35,7 +35,7 @@ export class CouponsRelationalRepository implements CouponRepository {
     filterOptions?: FilterCouponDto | null;
     sortOptions?: SortCouponDto[] | null;
     paginationOptions: IPaginationOptions;
-  }): Promise<Coupon[]> {
+  }): Promise<[Coupon[], number]> {
     const where: FindOptionsWhere<CouponEntity> = {};
 
     if (filterOptions?.isActive !== undefined) {
@@ -45,7 +45,7 @@ export class CouponsRelationalRepository implements CouponRepository {
       where.code = ILike(`%${filterOptions.search}%`);
     }
 
-    const entities = await this.couponRepository.find({
+    const [entities, count] = await this.couponRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
@@ -60,7 +60,7 @@ export class CouponsRelationalRepository implements CouponRepository {
         : { createdAt: 'DESC' },
     });
 
-    return entities.map((entity) => CouponMapper.toDomain(entity));
+    return [entities.map((entity) => CouponMapper.toDomain(entity)), count];
   }
 
   async findById(id: Coupon['id']): Promise<NullableType<Coupon>> {
