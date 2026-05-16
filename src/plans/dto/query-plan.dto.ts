@@ -34,6 +34,11 @@ export class FilterPlanDto {
   @IsOptional()
   @IsNumber()
   regionId?: number;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsString({ each: true })
+  provider?: string[];
 }
 
 export class SortPlanDto {

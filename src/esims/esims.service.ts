@@ -1,9 +1,11 @@
 import {
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';
 import { NullableType } from '../utils/types/nullable.type';
@@ -27,6 +29,8 @@ export interface DataUsageResult {
 
 @Injectable()
 export class EsimsService {
+  private readonly logger = new Logger(EsimsService.name);
+
   constructor(
     private readonly esimsRepository: EsimRepository,
     private readonly airaloService: AiraloService,
@@ -245,5 +249,24 @@ export class EsimsService {
       status: esim.status ?? 'UNKNOWN',
       lastUpdateTime: null,
     };
+  }
+
+  /**
+   * Soft-delete sold eSIMs older than 6 months to free resources.
+   * Runs daily at 2:00 AM.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async cleanupSoldEsims(): Promise<void> {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const deleted = await this.esimsRepository.softDeleteByStatusOlderThan(
+      'sold',
+      sixMonthsAgo,
+    );
+
+    if (deleted > 0) {
+      this.logger.log(`Cleaned up ${deleted} sold eSIMs older than 6 months`);
+    }
   }
 }

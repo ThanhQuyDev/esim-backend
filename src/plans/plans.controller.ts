@@ -13,7 +13,9 @@ import {
   HttpStatus,
   HttpCode,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
@@ -43,6 +45,7 @@ import { QueryPlanDto } from './dto/query-plan.dto';
 import { Plan } from './domain/plan';
 import { PlansService } from './plans.service';
 import { PlansImportService, ImportResult } from './plans-import.service';
+import { PlansExportService } from './plans-export.service';
 import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
 import { PlansJapantravelsimImportService } from './plans-japantravelsim-import.service';
 import { RolesGuard } from '../roles/roles.guard';
@@ -54,6 +57,7 @@ export class PlansController {
   constructor(
     private readonly plansService: PlansService,
     private readonly plansImportService: PlansImportService,
+    private readonly plansExportService: PlansExportService,
     private readonly plansGadgetkoreaImportService: PlansGadgetkoreaImportService,
     private readonly plansJapantravelsimImportService: PlansJapantravelsimImportService,
   ) {}
@@ -85,6 +89,29 @@ export class PlansController {
     });
 
     return infinityPagination(data, { page, limit }, count);
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('export-excel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Excel file download' })
+  async exportExcel(
+    @Query() query: QueryPlanDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const buffer = await this.plansExportService.exportToExcel(
+      query?.filters ?? null,
+    );
+
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="plans-export-${Date.now()}.xlsx"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
   }
 
   @ApiOkResponse({

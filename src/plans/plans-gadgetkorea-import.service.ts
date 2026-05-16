@@ -100,6 +100,14 @@ export class PlansGadgetkoreaImportService {
             if (!destinationId) notFoundNames.add(countryName);
           }
 
+          if (!destinationId) {
+            result.skipped++;
+            this.logger.warn(
+              `Sheet "${ws.name}" row ${rowNum}: Skipped - destination not found for "${countryName}"`,
+            );
+            continue;
+          }
+
           const providerPlanId =
             this.getString(row.getCell(COL.OPTION_ID).value) || '';
           if (!providerPlanId) throw new Error('Missing Option ID');

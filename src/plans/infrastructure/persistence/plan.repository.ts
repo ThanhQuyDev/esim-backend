@@ -52,4 +52,8 @@ export abstract class PlanRepository {
   ): Promise<void>;
 
   abstract deactivateAllProviderPlans(provider: string): Promise<void>;
+
+  abstract findAllForExport(
+    filterOptions?: FilterPlanDto | null,
+  ): Promise<Plan[]>;
 }

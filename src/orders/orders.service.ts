@@ -389,7 +389,7 @@ export class OrdersService {
           await this.esimsService.update(esim.id, {
             orderItemId: orderItem.id,
             userId,
-            status: 'assigned',
+            status: 'sold',
           });
         }
 
@@ -641,6 +641,8 @@ export class OrdersService {
       vndPrice: order.vndPrice,
       paymentMethod: order.paymentMethod,
       couponCode: order.couponCode,
+      walletSpentVndAmount: order.walletSpentVndAmount,
+      cashbackAmountVnd: order.cashbackAmountVnd,
       createdAt: order.createdAt,
       items: orderItems.map((item, idx) => {
         const plan = plans[idx];
@@ -856,7 +858,7 @@ export class OrdersService {
           await this.esimsService.update(esim.id, {
             orderItemId: item.id,
             userId: order.userId,
-            status: 'assigned',
+            status: 'sold',
           });
         }
 
@@ -981,6 +983,8 @@ export class OrdersService {
       discountAmount: order.discountAmount,
       vndPrice: order.vndPrice,
       vndCostPrice: order.vndCostPrice,
+      walletSpentVndAmount: order.walletSpentVndAmount,
+      cashbackAmountVnd: order.cashbackAmountVnd,
       coupon: coupon ?? null,
       items: orderItems.map((item, idx) => {
         const plan = plans[idx];
@@ -1127,13 +1131,13 @@ export class OrdersService {
             await this.gadgetKoreaService.cancelOrder(item.orderRequestId);
           }
         } else if (item.plan.isLocalInventory) {
-          // Viettel (local): clear userId and orderItemId in esim table
+          // Viettel (local): mark esim as refunded
           const esims = await this.esimsService.findByOrderItemIds([item.id]);
           for (const esim of esims) {
             await this.esimsService.update(esim.id, {
               userId: null,
               orderItemId: null,
-              status: 'available',
+              status: 'refunded',
             });
           }
         }
@@ -1168,6 +1172,25 @@ export class OrdersService {
     const count = await this.orderRepository.failExpiredPendingOrders(30);
     if (count > 0) {
       this.logger.log(`Auto-failed ${count} expired pending orders`);
+    }
+  }
+
+  /**
+   * Soft-delete failed orders older than 1 week to free resources.
+   * Runs daily at 3:00 AM.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async cleanupFailedOrders(): Promise<void> {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    const deleted = await this.orderRepository.softDeleteByStatusOlderThan(
+      'failed',
+      oneWeekAgo,
+    );
+
+    if (deleted > 0) {
+      this.logger.log(`Cleaned up ${deleted} failed orders older than 1 week`);
     }
   }
 }

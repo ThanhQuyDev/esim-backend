@@ -132,4 +132,42 @@ export class EsimsRelationalRepository implements EsimRepository {
   async remove(id: Esim['id']): Promise<void> {
     await this.esimsRepository.softDelete(id);
   }
+
+  async softDeleteByStatusOlderThan(
+    status: string,
+    olderThan: Date,
+  ): Promise<number> {
+    const result = await this.esimsRepository
+      .createQueryBuilder()
+      .softDelete()
+      .where('status = :status', { status })
+      .andWhere('updatedAt < :olderThan', { olderThan })
+      .andWhere('deletedAt IS NULL')
+      .execute();
+    return result.affected ?? 0;
+  }
+
+  async findAllForExport(
+    filterOptions?: FilterEsimDto | null,
+  ): Promise<Esim[]> {
+    const qb = this.esimsRepository.createQueryBuilder('esim');
+
+    if (filterOptions?.status) {
+      qb.andWhere('esim.status = :status', { status: filterOptions.status });
+    }
+    if (filterOptions?.userId !== undefined) {
+      qb.andWhere('esim.userId = :userId', { userId: filterOptions.userId });
+    }
+    if (filterOptions?.search) {
+      qb.andWhere(
+        '(esim.iccid ILIKE :search OR esim.esimTranNo ILIKE :search)',
+        { search: `%${filterOptions.search}%` },
+      );
+    }
+
+    qb.orderBy('esim.createdAt', 'DESC');
+
+    const entities = await qb.getMany();
+    return entities.map((entity) => EsimMapper.toDomain(entity));
+  }
 }

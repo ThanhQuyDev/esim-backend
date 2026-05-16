@@ -81,6 +81,12 @@ export class UserOrderDetailDto {
   @ApiPropertyOptional({ type: String })
   couponCode?: string | null;
 
+  @ApiProperty({ type: Number, example: 50000 })
+  walletSpentVndAmount: number;
+
+  @ApiProperty({ type: Number, example: 10000 })
+  cashbackAmountVnd: number;
+
   @ApiProperty({ type: () => [UserOrderItemDto] })
   items: UserOrderItemDto[];
 

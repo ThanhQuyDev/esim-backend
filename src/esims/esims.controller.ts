@@ -44,6 +44,7 @@ import { QueryEsimDto } from './dto/query-esim.dto';
 import { Esim } from './domain/esim';
 import { EsimsService } from './esims.service';
 import { EsimsImportService, EsimImportResult } from './esims-import.service';
+import { EsimsExportService } from './esims-export.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { DataUsageResult } from './esims.service';
@@ -89,6 +90,7 @@ export class EsimsController {
   constructor(
     private readonly esimsService: EsimsService,
     private readonly esimsImportService: EsimsImportService,
+    private readonly esimsExportService: EsimsExportService,
   ) {}
 
   @Roles(RoleEnum.user, RoleEnum.admin)
@@ -201,6 +203,29 @@ export class EsimsController {
     return this.esimsService.remove(id);
   }
 
+  @Get('export-excel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Excel file download' })
+  async exportExcel(
+    @Query() query: QueryEsimDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const filterOptions = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+
+    const buffer = await this.esimsExportService.exportToExcel(filterOptions);
+
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="esims-export-${Date.now()}.xlsx"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   @Post('import-excel')
   @HttpCode(HttpStatus.OK)
   @UseInterceptors(FileInterceptor('file'))
@@ -225,12 +250,6 @@ export class EsimsController {
           type: 'string',
           example: 'VN',
           description: 'Country code for the plans',
-        },
-        type: {
-          type: 'string',
-          example: 'data-in-total',
-          description:
-            'Plan type: data-in-total, daily, unlimited, unlimited-reduce, fixed',
         },
         sheet: {
           type: 'string',
@@ -285,7 +304,6 @@ export class EsimsController {
       file.buffer,
       dto.provider,
       dto.countryCode,
-      dto.type,
       dto.sheet,
     );
   }

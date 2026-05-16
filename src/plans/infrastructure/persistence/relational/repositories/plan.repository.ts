@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { PlanEntity } from '../entities/plan.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterPlanDto, SortPlanDto } from '../../../../dto/query-plan.dto';
@@ -64,6 +64,11 @@ export class PlansRelationalRepository implements PlanRepository {
           regionId: filterOptions.regionId,
         });
       }
+      if (filterOptions?.provider?.length) {
+        qb.andWhere('plan."provider" IN (:...providers)', {
+          providers: filterOptions.provider,
+        });
+      }
 
       if (sortOptions?.length) {
         for (const sort of sortOptions) {
@@ -85,7 +90,7 @@ export class PlansRelationalRepository implements PlanRepository {
       return [entities.map((entity) => PlanMapper.toDomain(entity)), count];
     }
 
-    const where: FindOptionsWhere<PlanEntity> = {};
+    const where: any = {};
 
     if (filterOptions?.isCheapest !== undefined) {
       where.isCheapest = filterOptions.isCheapest;
@@ -94,10 +99,13 @@ export class PlansRelationalRepository implements PlanRepository {
       where.isActive = filterOptions.isActive;
     }
     if (filterOptions?.destinationId !== undefined) {
-      where.destinationId = filterOptions.destinationId as any;
+      where.destinationId = filterOptions.destinationId;
     }
     if (filterOptions?.regionId !== undefined) {
-      where.regionId = filterOptions.regionId as any;
+      where.regionId = filterOptions.regionId;
+    }
+    if (filterOptions?.provider?.length) {
+      where.provider = In(filterOptions.provider);
     }
 
     const [entities, count] = await this.plansRepository.findAndCount({
@@ -264,5 +272,31 @@ export class PlansRelationalRepository implements PlanRepository {
       `UPDATE "plan" SET "isActive" = false WHERE "provider" = $1 AND "deletedAt" IS NULL`,
       [provider],
     );
+  }
+
+  async findAllForExport(
+    filterOptions?: FilterPlanDto | null,
+  ): Promise<Plan[]> {
+    const where: any = {};
+
+    if (filterOptions?.isCheapest !== undefined) {
+      where.isCheapest = filterOptions.isCheapest;
+    }
+    if (filterOptions?.isActive !== undefined) {
+      where.isActive = filterOptions.isActive;
+    }
+    if (filterOptions?.destinationId !== undefined) {
+      where.destinationId = filterOptions.destinationId;
+    }
+    if (filterOptions?.regionId !== undefined) {
+      where.regionId = filterOptions.regionId;
+    }
+
+    const entities = await this.plansRepository.find({
+      where,
+      order: { createdAt: 'DESC' },
+    });
+
+    return entities.map((entity) => PlanMapper.toDomain(entity));
   }
 }

@@ -125,4 +125,18 @@ export class OrdersRelationalRepository implements OrderRepository {
     );
     return result.affected ?? 0;
   }
+
+  async softDeleteByStatusOlderThan(
+    status: string,
+    olderThan: Date,
+  ): Promise<number> {
+    const result = await this.ordersRepository
+      .createQueryBuilder()
+      .softDelete()
+      .where('status = :status', { status })
+      .andWhere('"createdAt" < :olderThan', { olderThan })
+      .andWhere('"deletedAt" IS NULL')
+      .execute();
+    return result.affected ?? 0;
+  }
 }

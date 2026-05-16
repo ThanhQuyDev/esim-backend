@@ -12,16 +12,6 @@ export class ImportEsimsExcelDto {
   @IsString()
   countryCode: string;
 
-  @ApiProperty({
-    type: String,
-    example: 'data-in-total',
-    description:
-      'Plan type: data-in-total, daily, unlimited, unlimited-reduce, fixed',
-  })
-  @IsNotEmpty()
-  @IsString()
-  type: string;
-
   @ApiPropertyOptional({
     type: String,
     description: 'Sheet name or 0-based index',

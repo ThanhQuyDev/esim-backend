@@ -141,6 +141,12 @@ export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   vndCostPrice: number;
 
+  @ApiProperty({ type: Number, example: 50000 })
+  walletSpentVndAmount: number;
+
+  @ApiProperty({ type: Number, example: 10000 })
+  cashbackAmountVnd: number;
+
   @ApiPropertyOptional({ type: () => Coupon })
   coupon?: Coupon | null;
 

@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { PlansController } from './plans.controller';
 import { PlansService } from './plans.service';
 import { PlansImportService } from './plans-import.service';
+import { PlansExportService } from './plans-export.service';
 import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
 import { PlansJapantravelsimImportService } from './plans-japantravelsim-import.service';
 import { ExchangeRateCronService } from './exchange-rate-cron.service';
@@ -23,6 +24,7 @@ const infrastructurePersistenceModule = RelationalPlanPersistenceModule;
   providers: [
     PlansService,
     PlansImportService,
+    PlansExportService,
     PlansGadgetkoreaImportService,
     PlansJapantravelsimImportService,
     ExchangeRateCronService,

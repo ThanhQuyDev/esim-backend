@@ -154,9 +154,15 @@ export class PlansImportService {
 
     const providerPlanId = this.getCellString(getValue('providerPlanId')) || '';
     const name = this.getCellString(getValue('name')) || '';
-    const slug =
+    const baseSlug =
       this.getCellString(getValue('slug')) ||
       `${provider}-${providerPlanId}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    // Append providerPlanId to slug to avoid duplicates (e.g. Japan unlimited plans)
+    const slug = baseSlug.endsWith(providerPlanId.toLowerCase())
+      ? baseSlug
+      : `${baseSlug}-${providerPlanId}`
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-');
 
     const durationDays = this.getCellNumber(getValue('durationDays')) ?? 0;
     const dataMb = this.getCellNumber(getValue('dataMb')) ?? 0;

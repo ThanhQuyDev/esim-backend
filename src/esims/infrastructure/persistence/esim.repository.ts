@@ -38,4 +38,13 @@ export abstract class EsimRepository {
   ): Promise<Esim | null>;
 
   abstract remove(id: Esim['id']): Promise<void>;
+
+  abstract softDeleteByStatusOlderThan(
+    status: string,
+    olderThan: Date,
+  ): Promise<number>;
+
+  abstract findAllForExport(
+    filterOptions?: FilterEsimDto | null,
+  ): Promise<Esim[]>;
 }

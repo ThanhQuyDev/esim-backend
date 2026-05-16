@@ -105,7 +105,7 @@ export class PlansService {
     });
   }
 
-  findManyWithPagination({
+  async findManyWithPagination({
     filterOptions,
     sortOptions,
     paginationOptions,
@@ -114,11 +114,39 @@ export class PlansService {
     sortOptions?: SortPlanDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Plan[], number]> {
-    return this.plansRepository.findManyWithPagination({
+    const [plans, count] = await this.plansRepository.findManyWithPagination({
       filterOptions,
       sortOptions,
       paginationOptions,
     });
+
+    await this.enrichPlansWithRegionDestinations(plans);
+    return [plans, count];
+  }
+
+  private async enrichPlansWithRegionDestinations(
+    plans: Plan[],
+  ): Promise<void> {
+    const regionIds = [
+      ...new Set(
+        plans.filter((p) => p.regionId).map((p) => p.regionId as number),
+      ),
+    ];
+    if (!regionIds.length) return;
+
+    const regionMap = new Map<number, any>();
+    for (const regionId of regionIds) {
+      const region = await this.regionsService.findById(regionId);
+      if (region) {
+        regionMap.set(regionId, region);
+      }
+    }
+
+    for (const plan of plans) {
+      if (plan.regionId && regionMap.has(plan.regionId)) {
+        plan.region = regionMap.get(plan.regionId);
+      }
+    }
   }
 
   findById(id: Plan['id']): Promise<NullableType<Plan>> {

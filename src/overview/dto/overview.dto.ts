@@ -24,7 +24,7 @@ export type OverviewProvider = (typeof OVERVIEW_PROVIDERS)[number];
 
 export const COMPLETED_ORDER_STATUSES = ['paid'] as const;
 export const COMPLETED_ORDER_ITEM_STATUSES = ['completed'] as const;
-export const ACTIVE_ESIM_STATUSES = ['assigned', 'available'] as const;
+export const ACTIVE_ESIM_STATUSES = ['sold', 'available'] as const;
 
 export const OVERVIEW_DATE_PRESETS = [
   'today',

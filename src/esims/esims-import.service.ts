@@ -3,6 +3,7 @@ import { Workbook } from 'exceljs';
 import { EsimRepository } from './infrastructure/persistence/esim.repository';
 import { PlansService } from '../plans/plans.service';
 import { PlanRepository } from '../plans/infrastructure/persistence/plan.repository';
+import { DestinationsService } from '../destinations/destinations.service';
 
 export interface EsimImportResult {
   total: number;
@@ -20,13 +21,13 @@ export class EsimsImportService {
     private readonly esimRepository: EsimRepository,
     private readonly plansService: PlansService,
     private readonly planRepository: PlanRepository,
+    private readonly destinationsService: DestinationsService,
   ) {}
 
   async importFromExcel(
     fileBuffer: Buffer,
     provider: string,
     countryCode: string,
-    type: string,
     sheetIdentifier?: string,
   ): Promise<EsimImportResult> {
     const workbook = new Workbook();
@@ -59,6 +60,14 @@ export class EsimsImportService {
       planCreated: 0,
       errors: [],
     };
+
+    // Resolve destinationId from countryCode
+    let destinationId: number | null = null;
+    const destination =
+      await this.destinationsService.findByCountryCode(countryCode);
+    if (destination) {
+      destinationId = destination.id;
+    }
 
     // Cache plans created/found during this import to avoid repeated DB calls
     const planCache = new Map<string, number>();
@@ -93,6 +102,14 @@ export class EsimsImportService {
           });
           continue;
         }
+
+        // Extract type from Excel column
+        const type =
+          this.cellStr(row.getCell(col('type') ?? 8).value) ?? 'data-in-total';
+
+        // Extract expiredTime from Excel column
+        const expiredTimeRaw = row.getCell(col('expried time') ?? 6).value;
+        const expiresAt = this.parseDate(expiredTimeRaw);
 
         // Extract plan fields — use fixed column indices to avoid duplicate header issues
         const providerPlanId =
@@ -133,6 +150,7 @@ export class EsimsImportService {
                 name: planName,
                 slug: planSlug,
                 countryCode,
+                destinationId,
                 durationDays,
                 dataMb,
                 costPrice,
@@ -182,7 +200,7 @@ export class EsimsImportService {
           status: 'available',
           dataUsed: null,
           dataTotal: dataMb ? String(dataMb) : null,
-          expiresAt: null,
+          expiresAt: expiresAt,
           activatedAt: null,
           esimTranNo: null,
         });
@@ -223,5 +241,26 @@ export class EsimsImportService {
     if (!match) return 0;
     const num = parseFloat(match[1]);
     return match[2] === 'gb' ? Math.round(num * 1024) : Math.round(num);
+  }
+
+  private parseDate(value: any): Date | null {
+    if (value === null || value === undefined) return null;
+    // ExcelJS may return a Date object directly
+    if (value instanceof Date) return value;
+    // Handle Excel serial number (days since 1899-12-30)
+    if (typeof value === 'number') {
+      // Convert Excel serial date to JS Date
+      // Excel epoch is 1899-12-30, Unix epoch is 1970-01-01 = 25569 days difference
+      const msPerDay = 86400 * 1000;
+      return new Date((value - 25569) * msPerDay);
+    }
+    // Handle string dates like "2026-11-06"
+    const str =
+      typeof value === 'object' && 'text' in value
+        ? value.text
+        : String(value).trim();
+    if (!str) return null;
+    const parsed = new Date(str);
+    return isNaN(parsed.getTime()) ? null : parsed;
   }
 }
