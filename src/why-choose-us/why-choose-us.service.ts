@@ -7,6 +7,10 @@ import { UpdateWhyChooseUsDto } from './dto/update-why-choose-us.dto';
 import { WhyChooseUsRepository } from './infrastructure/persistence/why-choose-us.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { WhyChooseUs } from './domain/why-choose-us';
+import {
+  FilterWhyChooseUsDto,
+  SortWhyChooseUsDto,
+} from './dto/find-all-why-choose-us.dto';
 
 @Injectable()
 export class WhyChooseUsService {
@@ -37,11 +41,17 @@ export class WhyChooseUsService {
   }
 
   findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
   }: {
+    filterOptions?: FilterWhyChooseUsDto | null;
+    sortOptions?: SortWhyChooseUsDto[] | null;
     paginationOptions: IPaginationOptions;
   }) {
     return this.whyChooseUsRepository.findAllWithPagination({
+      filterOptions,
+      sortOptions,
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,

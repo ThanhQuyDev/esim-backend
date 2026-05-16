@@ -31,9 +31,11 @@ export class RegionsService {
         name: createRegionDto.name,
         slug: createRegionDto.slug,
         avatarUrl: createRegionDto.avatarUrl ?? null,
+        iconUrl: createRegionDto.iconUrl ?? null,
         description: createRegionDto.description ?? null,
         descriptionVi: createRegionDto.descriptionVi ?? null,
         isActive: createRegionDto.isActive ?? true,
+        isPopular: createRegionDto.isPopular ?? false,
       },
       createRegionDto.destinationIds,
     );
@@ -85,7 +87,11 @@ export class RegionsService {
         name: updateRegionDto.name,
         slug: updateRegionDto.slug,
         avatarUrl: updateRegionDto.avatarUrl,
+        iconUrl: updateRegionDto.iconUrl,
+        description: updateRegionDto.description,
+        descriptionVi: updateRegionDto.descriptionVi,
         isActive: updateRegionDto.isActive,
+        isPopular: updateRegionDto.isPopular,
       },
       updateRegionDto.destinationIds,
     );

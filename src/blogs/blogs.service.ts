@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
+import { FilterBlogDto, SortBlogDto } from './dto/find-all-blogs.dto';
 import { BlogRepository } from './infrastructure/persistence/blog.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { Blog } from './domain/blog';
@@ -58,18 +59,21 @@ export class BlogsService {
   }
 
   findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
-    category,
   }: {
+    filterOptions?: FilterBlogDto | null;
+    sortOptions?: SortBlogDto[] | null;
     paginationOptions: IPaginationOptions;
-    category?: string;
   }) {
     return this.blogRepository.findAllWithPagination({
+      filterOptions,
+      sortOptions,
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
       },
-      category,
     });
   }
 

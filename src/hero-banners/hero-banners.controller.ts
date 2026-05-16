@@ -28,7 +28,7 @@ import {
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
-import { FindAllHeroBannersDto } from './dto/find-all-hero-banners.dto';
+import { QueryHeroBannerDto } from './dto/find-all-hero-banners.dto';
 
 @ApiTags('Herobanners')
 @Controller({
@@ -58,7 +58,7 @@ export class HeroBannersController {
     type: InfinityPaginationResponse(HeroBanner),
   })
   async findAll(
-    @Query() query: FindAllHeroBannersDto,
+    @Query() query: QueryHeroBannerDto,
     @Headers('x-custom-lang') lang?: string,
   ): Promise<InfinityPaginationResponseDto<HeroBanner>> {
     const page = query?.page ?? 1;
@@ -67,7 +67,14 @@ export class HeroBannersController {
       limit = 50;
     }
 
+    const filterOptions = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+
     const [data, count] = await this.heroBannersService.findAllWithPagination({
+      filterOptions,
+      sortOptions: query?.sort,
       paginationOptions: {
         page,
         limit,

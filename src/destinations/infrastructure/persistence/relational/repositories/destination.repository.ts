@@ -60,7 +60,7 @@ export class DestinationsRelationalRepository implements DestinationRepository {
     }
     if (filterOptions?.search) {
       qb.andWhere(
-        '(destination.name ILIKE :search OR destination.keySearch ILIKE :search)',
+        '(destination.name ILIKE :search OR destination.keySearch ILIKE :search OR destination.countryCode ILIKE :search)',
         { search: `%${filterOptions.search}%` },
       );
     }

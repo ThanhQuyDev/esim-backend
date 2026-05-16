@@ -2,6 +2,7 @@ import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { Footer } from '../../domain/footer';
+import { FilterFooterDto, SortFooterDto } from '../../dto/find-all-footers.dto';
 
 export abstract class FooterRepository {
   abstract create(
@@ -9,8 +10,12 @@ export abstract class FooterRepository {
   ): Promise<Footer>;
 
   abstract findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
   }: {
+    filterOptions?: FilterFooterDto | null;
+    sortOptions?: SortFooterDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Footer[], number]>;
 

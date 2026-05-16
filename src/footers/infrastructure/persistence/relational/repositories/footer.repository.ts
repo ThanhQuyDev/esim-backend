@@ -7,6 +7,10 @@ import { Footer } from '../../../../domain/footer';
 import { FooterRepository } from '../../footer.repository';
 import { FooterMapper } from '../mappers/footer.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import {
+  FilterFooterDto,
+  SortFooterDto,
+} from '../../../../dto/find-all-footers.dto';
 
 @Injectable()
 export class FooterRelationalRepository implements FooterRepository {
@@ -24,14 +28,35 @@ export class FooterRelationalRepository implements FooterRepository {
   }
 
   async findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
   }: {
+    filterOptions?: FilterFooterDto | null;
+    sortOptions?: SortFooterDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Footer[], number]> {
-    const [entities, count] = await this.footerRepository.findAndCount({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-    });
+    const qb = this.footerRepository.createQueryBuilder('footer');
+
+    if (filterOptions?.search) {
+      qb.andWhere(
+        '(footer.title ILIKE :search OR footer.titleVi ILIKE :search)',
+        { search: `%${filterOptions.search}%` },
+      );
+    }
+
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(`footer.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
+      });
+    } else {
+      qb.orderBy('footer.createdAt', 'DESC');
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const [entities, count] = await qb.getManyAndCount();
 
     return [entities.map((entity) => FooterMapper.toDomain(entity)), count];
   }

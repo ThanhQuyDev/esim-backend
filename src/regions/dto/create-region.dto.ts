@@ -25,6 +25,11 @@ export class CreateRegionDto {
   @IsString()
   avatarUrl?: string | null;
 
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  iconUrl?: string | null;
+
   @ApiPropertyOptional({
     example: 'Explore Europe with high-speed data coverage',
     type: String,
@@ -45,6 +50,11 @@ export class CreateRegionDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ example: false, type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isPopular?: boolean;
 
   @ApiPropertyOptional({
     type: [Number],

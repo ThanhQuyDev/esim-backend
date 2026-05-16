@@ -9,6 +9,11 @@ import { Transform, Type, plainToInstance } from 'class-transformer';
 import { OrderItem } from '../domain/order-item';
 
 export class FilterOrderItemDto {
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
   @ApiPropertyOptional({ type: Number })
   @IsOptional()
   @IsNumber()
@@ -43,6 +48,14 @@ export class QueryOrderItemDto {
   @IsNumber()
   @IsOptional()
   limit?: number;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Search by orderRequestId',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()

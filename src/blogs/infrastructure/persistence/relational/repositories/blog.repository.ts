@@ -6,6 +6,7 @@ import { MiniTagEntity } from '../../../../../mini-tags/infrastructure/persisten
 import { PlanEntity } from '../../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { Blog } from '../../../../domain/blog';
+import { FilterBlogDto, SortBlogDto } from '../../../../dto/find-all-blogs.dto';
 import { BlogRepository } from '../../blog.repository';
 import { BlogMapper } from '../mappers/blog.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
@@ -40,19 +41,42 @@ export class BlogRelationalRepository implements BlogRepository {
   }
 
   async findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
-    category,
   }: {
+    filterOptions?: FilterBlogDto | null;
+    sortOptions?: SortBlogDto[] | null;
     paginationOptions: IPaginationOptions;
-    category?: string;
   }): Promise<[Blog[], number]> {
-    const [entities, count] = await this.blogRepository.findAndCount({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      order: { createdAt: 'DESC' },
-      relations: { miniTag: true },
-      where: category ? { category } : {},
-    });
+    const qb = this.blogRepository
+      .createQueryBuilder('blog')
+      .leftJoinAndSelect('blog.miniTag', 'miniTag');
+
+    if (filterOptions?.category) {
+      qb.andWhere('blog.category = :category', {
+        category: filterOptions.category,
+      });
+    }
+
+    if (filterOptions?.search) {
+      qb.andWhere('blog.title ILIKE :search', {
+        search: `%${filterOptions.search}%`,
+      });
+    }
+
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(`blog.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
+      });
+    } else {
+      qb.orderBy('blog.createdAt', 'DESC');
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const [entities, count] = await qb.getManyAndCount();
 
     const blogIds = entities.map((e) => e.id);
     const planIdsMap = new Map<string, number[]>();

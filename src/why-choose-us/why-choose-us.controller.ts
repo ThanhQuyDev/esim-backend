@@ -26,7 +26,7 @@ import {
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
-import { FindAllWhyChooseUsDto } from './dto/find-all-why-choose-us.dto';
+import { QueryWhyChooseUsDto } from './dto/find-all-why-choose-us.dto';
 
 @ApiTags('Whychooseus')
 @Controller({
@@ -51,7 +51,7 @@ export class WhyChooseUsController {
     type: InfinityPaginationResponse(WhyChooseUs),
   })
   async findAll(
-    @Query() query: FindAllWhyChooseUsDto,
+    @Query() query: QueryWhyChooseUsDto,
   ): Promise<InfinityPaginationResponseDto<WhyChooseUs>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
@@ -59,7 +59,14 @@ export class WhyChooseUsController {
       limit = 50;
     }
 
+    const filterOptions = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+
     const [data, count] = await this.whyChooseUsService.findAllWithPagination({
+      filterOptions,
+      sortOptions: query?.sort,
       paginationOptions: {
         page,
         limit,

@@ -26,7 +26,7 @@ import {
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
-import { FindAllFootersDto } from './dto/find-all-footers.dto';
+import { QueryFooterDto } from './dto/find-all-footers.dto';
 
 @ApiTags('Footers')
 @Controller({
@@ -51,7 +51,7 @@ export class FootersController {
     type: InfinityPaginationResponse(Footer),
   })
   async findAll(
-    @Query() query: FindAllFootersDto,
+    @Query() query: QueryFooterDto,
   ): Promise<InfinityPaginationResponseDto<Footer>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
@@ -59,7 +59,14 @@ export class FootersController {
       limit = 50;
     }
 
+    const filterOptions = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+
     const [data, count] = await this.footersService.findAllWithPagination({
+      filterOptions,
+      sortOptions: query?.sort,
       paginationOptions: {
         page,
         limit,

@@ -12,7 +12,7 @@ import {
 import { HelpCenterService } from './help-center.service';
 import { CreateHelpCenterDto } from './dto/create-help-center.dto';
 import { UpdateHelpCenterDto } from './dto/update-help-center.dto';
-import { FindAllHelpCenterDto } from './dto/find-all-help-center.dto';
+import { QueryHelpCenterDto } from './dto/find-all-help-center.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -47,16 +47,21 @@ export class HelpCenterController {
   @Get()
   @ApiOkResponse({ type: InfinityPaginationResponse(HelpCenter) })
   async findAll(
-    @Query() query: FindAllHelpCenterDto,
+    @Query() query: QueryHelpCenterDto,
   ): Promise<InfinityPaginationResponseDto<HelpCenter>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
+    const filterOptions = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+
     const [data, count] = await this.helpCenterService.findAllWithPagination({
+      filterOptions,
+      sortOptions: query?.sort,
       paginationOptions: { page, limit },
-      category: query.category,
-      parent: query.parent,
     });
 
     return infinityPagination(data, { page, limit }, count);

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { EsimEntity } from '../entities/esim.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterEsimDto, SortEsimDto } from '../../../../dto/query-esim.dto';
@@ -33,29 +33,33 @@ export class EsimsRelationalRepository implements EsimRepository {
     sortOptions?: SortEsimDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Esim[], number]> {
-    const where: FindOptionsWhere<EsimEntity> = {};
+    const qb = this.esimsRepository.createQueryBuilder('esim');
 
     if (filterOptions?.status) {
-      where.status = filterOptions.status;
+      qb.andWhere('esim.status = :status', { status: filterOptions.status });
     }
     if (filterOptions?.userId !== undefined) {
-      where.userId = filterOptions.userId;
+      qb.andWhere('esim.userId = :userId', { userId: filterOptions.userId });
+    }
+    if (filterOptions?.search) {
+      qb.andWhere(
+        '(esim.iccid ILIKE :search OR esim.esimTranNo ILIKE :search)',
+        { search: `%${filterOptions.search}%` },
+      );
     }
 
-    const [entities, count] = await this.esimsRepository.findAndCount({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      where,
-      order: sortOptions?.length
-        ? sortOptions.reduce(
-            (accumulator, sort) => ({
-              ...accumulator,
-              [sort.orderBy]: sort.order,
-            }),
-            {},
-          )
-        : { createdAt: 'DESC' },
-    });
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(`esim.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
+      });
+    } else {
+      qb.orderBy('esim.createdAt', 'DESC');
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const [entities, count] = await qb.getManyAndCount();
 
     return [entities.map((entity) => EsimMapper.toDomain(entity)), count];
   }

@@ -7,6 +7,10 @@ import { WhyChooseUs } from '../../../../domain/why-choose-us';
 import { WhyChooseUsRepository } from '../../why-choose-us.repository';
 import { WhyChooseUsMapper } from '../mappers/why-choose-us.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import {
+  FilterWhyChooseUsDto,
+  SortWhyChooseUsDto,
+} from '../../../../dto/find-all-why-choose-us.dto';
 
 @Injectable()
 export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
@@ -24,15 +28,38 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
   }
 
   async findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
   }: {
+    filterOptions?: FilterWhyChooseUsDto | null;
+    sortOptions?: SortWhyChooseUsDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[WhyChooseUs[], number]> {
-    const [entities, count] = await this.whyChooseUsRepository.findAndCount({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      order: { createdAt: 'DESC' },
-    });
+    const qb = this.whyChooseUsRepository.createQueryBuilder('whyChooseUs');
+
+    if (filterOptions?.search) {
+      qb.andWhere(
+        '(whyChooseUs.title ILIKE :search OR whyChooseUs.description ILIKE :search)',
+        { search: `%${filterOptions.search}%` },
+      );
+    }
+
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(
+          `whyChooseUs.${sort.orderBy}`,
+          sort.order as 'ASC' | 'DESC',
+        );
+      });
+    } else {
+      qb.orderBy('whyChooseUs.createdAt', 'DESC');
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const [entities, count] = await qb.getManyAndCount();
 
     return [
       entities.map((entity) => WhyChooseUsMapper.toDomain(entity)),

@@ -28,7 +28,7 @@ import {
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
-import { FindAllBlogsDto } from './dto/find-all-blogs.dto';
+import { QueryBlogDto } from './dto/find-all-blogs.dto';
 
 @ApiTags('Blogs')
 @Controller({
@@ -53,7 +53,7 @@ export class BlogsController {
     type: InfinityPaginationResponse(BlogListItem),
   })
   async findAll(
-    @Query() query: FindAllBlogsDto,
+    @Query() query: QueryBlogDto,
   ): Promise<InfinityPaginationResponseDto<BlogListItem>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
@@ -61,12 +61,18 @@ export class BlogsController {
       limit = 50;
     }
 
+    const filterOptions = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+
     const [data, count] = await this.blogsService.findAllWithPagination({
+      filterOptions,
+      sortOptions: query?.sort,
       paginationOptions: {
         page,
         limit,
       },
-      category: query.category,
     });
 
     return infinityPagination(data, { page, limit }, count);

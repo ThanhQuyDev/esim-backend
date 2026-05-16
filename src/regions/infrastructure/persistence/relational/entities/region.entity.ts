@@ -30,6 +30,9 @@ export class RegionEntity extends EntityRelationalHelper {
   avatarUrl: string | null;
 
   @Column({ type: String, nullable: true })
+  iconUrl: string | null;
+
+  @Column({ type: String, nullable: true })
   description: string | null;
 
   @Column({ type: String, nullable: true })
@@ -38,6 +41,10 @@ export class RegionEntity extends EntityRelationalHelper {
   @Index()
   @Column({ type: Boolean, default: true })
   isActive: boolean;
+
+  @Index()
+  @Column({ type: Boolean, default: false })
+  isPopular: boolean;
 
   @Column({ type: String, nullable: true })
   providers: string | null;

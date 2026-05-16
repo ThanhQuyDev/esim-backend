@@ -2,6 +2,7 @@ import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { Blog } from '../../domain/blog';
+import { FilterBlogDto, SortBlogDto } from '../../dto/find-all-blogs.dto';
 
 export abstract class BlogRepository {
   abstract create(
@@ -9,11 +10,13 @@ export abstract class BlogRepository {
   ): Promise<Blog>;
 
   abstract findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
-    category,
   }: {
+    filterOptions?: FilterBlogDto | null;
+    sortOptions?: SortBlogDto[] | null;
     paginationOptions: IPaginationOptions;
-    category?: string;
   }): Promise<[Blog[], number]>;
 
   abstract findById(id: Blog['id']): Promise<NullableType<Blog>>;

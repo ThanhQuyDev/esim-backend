@@ -1,11 +1,11 @@
 import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
+import { HelpCenter } from '../../domain/help-center';
 import {
-  HelpCenter,
-  HelpCenterCategory,
-  HelpCenterParent,
-} from '../../domain/help-center';
+  FilterHelpCenterDto,
+  SortHelpCenterDto,
+} from '../../dto/find-all-help-center.dto';
 
 export abstract class HelpCenterRepository {
   abstract create(
@@ -13,13 +13,13 @@ export abstract class HelpCenterRepository {
   ): Promise<HelpCenter>;
 
   abstract findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
-    category,
-    parent,
   }: {
+    filterOptions?: FilterHelpCenterDto | null;
+    sortOptions?: SortHelpCenterDto[] | null;
     paginationOptions: IPaginationOptions;
-    category?: HelpCenterCategory;
-    parent?: HelpCenterParent;
   }): Promise<[HelpCenter[], number]>;
 
   abstract findById(id: HelpCenter['id']): Promise<NullableType<HelpCenter>>;

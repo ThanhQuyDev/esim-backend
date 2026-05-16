@@ -3,11 +3,11 @@ import { CreateHelpCenterDto } from './dto/create-help-center.dto';
 import { UpdateHelpCenterDto } from './dto/update-help-center.dto';
 import { HelpCenterRepository } from './infrastructure/persistence/help-center.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
+import { HelpCenter } from './domain/help-center';
 import {
-  HelpCenter,
-  HelpCenterCategory,
-  HelpCenterParent,
-} from './domain/help-center';
+  FilterHelpCenterDto,
+  SortHelpCenterDto,
+} from './dto/find-all-help-center.dto';
 
 @Injectable()
 export class HelpCenterService {
@@ -24,18 +24,18 @@ export class HelpCenterService {
   }
 
   findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
-    category,
-    parent,
   }: {
+    filterOptions?: FilterHelpCenterDto | null;
+    sortOptions?: SortHelpCenterDto[] | null;
     paginationOptions: IPaginationOptions;
-    category?: HelpCenterCategory;
-    parent?: HelpCenterParent;
   }) {
     return this.helpCenterRepository.findAllWithPagination({
+      filterOptions,
+      sortOptions,
       paginationOptions,
-      category,
-      parent,
     });
   }
 

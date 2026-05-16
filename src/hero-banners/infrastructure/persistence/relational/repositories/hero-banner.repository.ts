@@ -7,6 +7,10 @@ import { HeroBanner } from '../../../../domain/hero-banner';
 import { HeroBannerRepository } from '../../hero-banner.repository';
 import { HeroBannerMapper } from '../mappers/hero-banner.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import {
+  FilterHeroBannerDto,
+  SortHeroBannerDto,
+} from '../../../../dto/find-all-hero-banners.dto';
 
 @Injectable()
 export class HeroBannerRelationalRepository implements HeroBannerRepository {
@@ -24,22 +28,42 @@ export class HeroBannerRelationalRepository implements HeroBannerRepository {
   }
 
   async findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
     lang,
   }: {
+    filterOptions?: FilterHeroBannerDto | null;
+    sortOptions?: SortHeroBannerDto[] | null;
     paginationOptions: IPaginationOptions;
     lang?: string;
   }): Promise<[HeroBanner[], number]> {
-    const where: Record<string, unknown> = {};
+    const qb = this.heroBannerRepository.createQueryBuilder('heroBanner');
+
     if (lang) {
-      where.language = lang;
+      qb.andWhere('heroBanner.language = :lang', { lang });
     }
 
-    const [entities, count] = await this.heroBannerRepository.findAndCount({
-      where,
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-    });
+    if (filterOptions?.search) {
+      qb.andWhere(
+        '(heroBanner.title ILIKE :search OR heroBanner.description ILIKE :search)',
+        { search: `%${filterOptions.search}%` },
+      );
+    }
+
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(
+          `heroBanner.${sort.orderBy}`,
+          sort.order as 'ASC' | 'DESC',
+        );
+      });
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const [entities, count] = await qb.getManyAndCount();
 
     return [entities.map((entity) => HeroBannerMapper.toDomain(entity)), count];
   }

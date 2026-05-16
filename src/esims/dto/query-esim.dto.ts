@@ -12,6 +12,11 @@ export class FilterEsimDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
   status?: string;
 
   @ApiPropertyOptional({ type: Number })
@@ -43,6 +48,14 @@ export class QueryEsimDto {
   @IsNumber()
   @IsOptional()
   limit?: number;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Search by iccid or esimTranNo',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()

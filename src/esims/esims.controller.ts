@@ -161,8 +161,13 @@ export class EsimsController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
+    const filterOptions = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+
     const [data, count] = await this.esimsService.findManyWithPagination({
-      filterOptions: query?.filters,
+      filterOptions,
       sortOptions: query?.sort,
       paginationOptions: { page, limit },
     });

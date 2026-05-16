@@ -28,6 +28,9 @@ export class Region {
   @ApiPropertyOptional({ type: String })
   avatarUrl: string | null;
 
+  @ApiPropertyOptional({ type: String })
+  iconUrl: string | null;
+
   @ApiPropertyOptional({
     type: String,
     example: 'Explore Europe with high-speed data coverage',
@@ -42,6 +45,9 @@ export class Region {
 
   @ApiProperty({ type: Boolean, example: true })
   isActive: boolean;
+
+  @ApiProperty({ type: Boolean, example: false })
+  isPopular: boolean;
 
   @ApiProperty()
   createdAt: Date;

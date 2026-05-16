@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { OrderItemEntity } from '../entities/order-item.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import {
@@ -36,29 +36,39 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     sortOptions?: SortOrderItemDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[OrderItem[], number]> {
-    const where: FindOptionsWhere<OrderItemEntity> = {};
+    const qb = this.orderItemsRepository.createQueryBuilder('orderItem');
 
     if (filterOptions?.orderId !== undefined) {
-      where.orderId = filterOptions.orderId;
+      qb.andWhere('orderItem.orderId = :orderId', {
+        orderId: filterOptions.orderId,
+      });
     }
     if (filterOptions?.planId !== undefined) {
-      where.planId = filterOptions.planId;
+      qb.andWhere('orderItem.planId = :planId', {
+        planId: filterOptions.planId,
+      });
+    }
+    if (filterOptions?.search) {
+      qb.andWhere('orderItem.orderRequestId ILIKE :search', {
+        search: `%${filterOptions.search}%`,
+      });
     }
 
-    const [entities, count] = await this.orderItemsRepository.findAndCount({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      where,
-      order: sortOptions?.length
-        ? sortOptions.reduce(
-            (accumulator, sort) => ({
-              ...accumulator,
-              [sort.orderBy]: sort.order,
-            }),
-            {},
-          )
-        : { createdAt: 'DESC' },
-    });
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(
+          `orderItem.${sort.orderBy}`,
+          sort.order as 'ASC' | 'DESC',
+        );
+      });
+    } else {
+      qb.orderBy('orderItem.createdAt', 'DESC');
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const [entities, count] = await qb.getManyAndCount();
 
     return [entities.map((entity) => OrderItemMapper.toDomain(entity)), count];
   }

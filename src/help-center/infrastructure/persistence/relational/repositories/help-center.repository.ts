@@ -2,15 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { HelpCenterEntity } from '../entities/help-center.entity';
-import {
-  HelpCenter,
-  HelpCenterCategory,
-  HelpCenterParent,
-} from '../../../../domain/help-center';
+import { HelpCenter } from '../../../../domain/help-center';
 import { HelpCenterRepository } from '../../help-center.repository';
 import { HelpCenterMapper } from '../mappers/help-center.mapper';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import {
+  FilterHelpCenterDto,
+  SortHelpCenterDto,
+} from '../../../../dto/find-all-help-center.dto';
 
 @Injectable()
 export class HelpCenterRelationalRepository implements HelpCenterRepository {
@@ -29,24 +29,47 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
   }
 
   async findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
-    category,
-    parent,
   }: {
+    filterOptions?: FilterHelpCenterDto | null;
+    sortOptions?: SortHelpCenterDto[] | null;
     paginationOptions: IPaginationOptions;
-    category?: HelpCenterCategory;
-    parent?: HelpCenterParent;
   }): Promise<[HelpCenter[], number]> {
-    const where: Record<string, unknown> = {};
-    if (category) where.category = category;
-    if (parent) where.parent = parent;
+    const qb = this.repo.createQueryBuilder('helpCenter');
 
-    const [entities, count] = await this.repo.findAndCount({
-      where,
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      order: { order: 'ASC' },
-    });
+    if (filterOptions?.category) {
+      qb.andWhere('helpCenter.category = :category', {
+        category: filterOptions.category,
+      });
+    }
+    if (filterOptions?.parent) {
+      qb.andWhere('helpCenter.parent = :parent', {
+        parent: filterOptions.parent,
+      });
+    }
+    if (filterOptions?.search) {
+      qb.andWhere('helpCenter.title ILIKE :search', {
+        search: `%${filterOptions.search}%`,
+      });
+    }
+
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(
+          `helpCenter.${sort.orderBy}`,
+          sort.order as 'ASC' | 'DESC',
+        );
+      });
+    } else {
+      qb.orderBy('helpCenter.order', 'ASC');
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const [entities, count] = await qb.getManyAndCount();
     return [entities.map(HelpCenterMapper.toDomain), count];
   }
 

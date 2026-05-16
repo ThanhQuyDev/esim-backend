@@ -1,9 +1,43 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNumber, IsOptional } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { Transform, Type, plainToInstance } from 'class-transformer';
 import { HelpCenterCategory, HelpCenterParent } from '../domain/help-center';
 
-export class FindAllHelpCenterDto {
+export class FilterHelpCenterDto {
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ enum: HelpCenterCategory })
+  @IsOptional()
+  @IsEnum(HelpCenterCategory)
+  category?: HelpCenterCategory;
+
+  @ApiPropertyOptional({ enum: HelpCenterParent })
+  @IsOptional()
+  @IsEnum(HelpCenterParent)
+  parent?: HelpCenterParent;
+}
+
+export class SortHelpCenterDto {
+  @ApiProperty()
+  @Type(() => String)
+  @IsString()
+  orderBy: string;
+
+  @ApiProperty()
+  @IsString()
+  order: string;
+}
+
+export class QueryHelpCenterDto {
   @ApiPropertyOptional()
   @Transform(({ value }) => (value ? Number(value) : 1))
   @IsNumber()
@@ -16,13 +50,26 @@ export class FindAllHelpCenterDto {
   @IsOptional()
   limit?: number;
 
-  @ApiPropertyOptional({ enum: HelpCenterCategory })
+  @ApiPropertyOptional({ type: String, description: 'Search by title' })
   @IsOptional()
-  @IsEnum(HelpCenterCategory)
-  category?: HelpCenterCategory;
+  @IsString()
+  search?: string;
 
-  @ApiPropertyOptional({ enum: HelpCenterParent })
+  @ApiPropertyOptional({ type: String })
   @IsOptional()
-  @IsEnum(HelpCenterParent)
-  parent?: HelpCenterParent;
+  @Transform(({ value }) =>
+    value ? plainToInstance(FilterHelpCenterDto, JSON.parse(value)) : undefined,
+  )
+  @ValidateNested()
+  @Type(() => FilterHelpCenterDto)
+  filters?: FilterHelpCenterDto | null;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value ? plainToInstance(SortHelpCenterDto, JSON.parse(value)) : undefined,
+  )
+  @ValidateNested({ each: true })
+  @Type(() => SortHelpCenterDto)
+  sort?: SortHelpCenterDto[] | null;
 }

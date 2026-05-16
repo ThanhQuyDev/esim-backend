@@ -7,6 +7,7 @@ import { UpdateFooterDto } from './dto/update-footer.dto';
 import { FooterRepository } from './infrastructure/persistence/footer.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { Footer } from './domain/footer';
+import { FilterFooterDto, SortFooterDto } from './dto/find-all-footers.dto';
 
 @Injectable()
 export class FootersService {
@@ -33,11 +34,17 @@ export class FootersService {
   }
 
   findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
   }: {
+    filterOptions?: FilterFooterDto | null;
+    sortOptions?: SortFooterDto[] | null;
     paginationOptions: IPaginationOptions;
   }) {
     return this.footerRepository.findAllWithPagination({
+      filterOptions,
+      sortOptions,
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,

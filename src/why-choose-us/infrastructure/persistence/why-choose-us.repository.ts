@@ -2,6 +2,10 @@ import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { WhyChooseUs } from '../../domain/why-choose-us';
+import {
+  FilterWhyChooseUsDto,
+  SortWhyChooseUsDto,
+} from '../../dto/find-all-why-choose-us.dto';
 
 export abstract class WhyChooseUsRepository {
   abstract create(
@@ -9,8 +13,12 @@ export abstract class WhyChooseUsRepository {
   ): Promise<WhyChooseUs>;
 
   abstract findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
   }: {
+    filterOptions?: FilterWhyChooseUsDto | null;
+    sortOptions?: SortWhyChooseUsDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[WhyChooseUs[], number]>;
 

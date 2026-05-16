@@ -1,6 +1,10 @@
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { HeroBanner } from '../../domain/hero-banner';
+import {
+  FilterHeroBannerDto,
+  SortHeroBannerDto,
+} from '../../dto/find-all-hero-banners.dto';
 
 export abstract class HeroBannerRepository {
   abstract create(
@@ -8,9 +12,13 @@ export abstract class HeroBannerRepository {
   ): Promise<HeroBanner>;
 
   abstract findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
     lang,
   }: {
+    filterOptions?: FilterHeroBannerDto | null;
+    sortOptions?: SortHeroBannerDto[] | null;
     paginationOptions: IPaginationOptions;
     lang?: string;
   }): Promise<[HeroBanner[], number]>;

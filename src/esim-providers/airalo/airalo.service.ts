@@ -220,7 +220,7 @@ export class AiraloService {
       region = await this.regionsService.create({
         name: country.title,
         slug: regionSlug,
-        avatarUrl: country.image?.url || null,
+        iconUrl: country.image?.url || null,
         isActive: true,
       });
     }

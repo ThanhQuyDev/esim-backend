@@ -7,6 +7,10 @@ import { UpdateHeroBannerDto } from './dto/update-hero-banner.dto';
 import { HeroBannerRepository } from './infrastructure/persistence/hero-banner.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { HeroBanner } from './domain/hero-banner';
+import {
+  FilterHeroBannerDto,
+  SortHeroBannerDto,
+} from './dto/find-all-hero-banners.dto';
 
 @Injectable()
 export class HeroBannersService {
@@ -41,13 +45,19 @@ export class HeroBannersService {
   }
 
   findAllWithPagination({
+    filterOptions,
+    sortOptions,
     paginationOptions,
     lang,
   }: {
+    filterOptions?: FilterHeroBannerDto | null;
+    sortOptions?: SortHeroBannerDto[] | null;
     paginationOptions: IPaginationOptions;
     lang?: string;
   }) {
     return this.heroBannerRepository.findAllWithPagination({
+      filterOptions,
+      sortOptions,
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
