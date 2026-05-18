@@ -15,6 +15,8 @@ export class HelpCenterService {
 
   create(createDto: CreateHelpCenterDto) {
     return this.helpCenterRepository.create({
+      slug: createDto.slug,
+      language: createDto.language,
       title: createDto.title,
       content: createDto.content,
       order: createDto.order ?? 0,
@@ -43,8 +45,14 @@ export class HelpCenterService {
     return this.helpCenterRepository.findById(id);
   }
 
+  findBySlug(slug: string) {
+    return this.helpCenterRepository.findBySlug(slug);
+  }
+
   update(id: HelpCenter['id'], updateDto: UpdateHelpCenterDto) {
     return this.helpCenterRepository.update(id, {
+      slug: updateDto.slug,
+      language: updateDto.language,
       title: updateDto.title,
       content: updateDto.content,
       order: updateDto.order,

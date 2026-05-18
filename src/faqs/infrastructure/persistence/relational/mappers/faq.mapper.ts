@@ -5,6 +5,7 @@ import { FaqEntity } from '../entities/faq.entity';
 export class FaqMapper {
   static toDomain(raw: FaqEntity): Faq {
     const domainEntity = new Faq();
+    domainEntity.url = raw.url;
     domainEntity.language = raw.language;
 
     domainEntity.isActive = raw.isActive;
@@ -24,6 +25,7 @@ export class FaqMapper {
 
   static toPersistence(domainEntity: Faq): FaqEntity {
     const persistenceEntity = new FaqEntity();
+    persistenceEntity.url = domainEntity.url;
     persistenceEntity.language = domainEntity.language;
 
     persistenceEntity.isActive = domainEntity.isActive;

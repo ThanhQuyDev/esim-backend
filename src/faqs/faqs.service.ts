@@ -22,6 +22,8 @@ export class FaqsService {
     return this.faqRepository.create({
       // Do not remove comment below.
       // <creating-property-payload />
+      url: createFaqDto.url,
+
       language: createFaqDto.language,
 
       isActive: createFaqDto.isActive,
@@ -66,6 +68,8 @@ export class FaqsService {
     return this.faqRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
+      url: updateFaqDto.url,
+
       language: updateFaqDto.language,
 
       isActive: updateFaqDto.isActive,
@@ -76,6 +80,15 @@ export class FaqsService {
 
       question: updateFaqDto.question,
     });
+  }
+
+  findByUrlOrBlogId(options: {
+    url?: string;
+    blogId?: string;
+    language?: string;
+    limit?: number;
+  }) {
+    return this.faqRepository.findByUrlOrBlogId(options);
   }
 
   remove(id: Faq['id']) {

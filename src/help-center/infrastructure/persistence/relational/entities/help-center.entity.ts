@@ -16,6 +16,12 @@ export class HelpCenterEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ nullable: true, type: String })
+  slug?: string | null;
+
+  @Column({ nullable: true, type: String })
+  language?: string | null;
+
   @Column({ nullable: false, type: String })
   title: string;
 

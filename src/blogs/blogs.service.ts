@@ -10,6 +10,7 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 import { Blog } from './domain/blog';
 import { MiniTagsService } from '../mini-tags/mini-tags.service';
 import { Plan } from '../plans/domain/plan';
+import { Faq } from '../faqs/domain/faq';
 
 @Injectable()
 export class BlogsService {
@@ -34,6 +35,14 @@ export class BlogsService {
         })
       : [];
 
+    const faqs = createBlogDto.faqIds?.length
+      ? createBlogDto.faqIds.map((id) => {
+          const f = new Faq();
+          f.id = id;
+          return f;
+        })
+      : [];
+
     return this.blogRepository.create({
       // Do not remove comment below.
       // <creating-property-payload />
@@ -55,6 +64,7 @@ export class BlogsService {
       timeRead: createBlogDto.timeRead,
       miniTag,
       plans,
+      faqs,
     });
   }
 
@@ -110,6 +120,16 @@ export class BlogsService {
         ? []
         : undefined;
 
+    const faqs = updateBlogDto.faqIds?.length
+      ? updateBlogDto.faqIds.map((id) => {
+          const f = new Faq();
+          f.id = id;
+          return f;
+        })
+      : updateBlogDto.faqIds === null
+        ? []
+        : undefined;
+
     return this.blogRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
@@ -132,6 +152,7 @@ export class BlogsService {
       timeRead: updateBlogDto.timeRead,
       miniTag,
       plans,
+      faqs,
     });
   }
 

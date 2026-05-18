@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { BlogEntity } from '../entities/blog.entity';
 import { MiniTagEntity } from '../../../../../mini-tags/infrastructure/persistence/relational/entities/mini-tag.entity';
 import { PlanEntity } from '../../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
+import { FaqEntity } from '../../../../../faqs/infrastructure/persistence/relational/entities/faq.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { Blog } from '../../../../domain/blog';
 import { FilterBlogDto, SortBlogDto } from '../../../../dto/find-all-blogs.dto';
@@ -20,6 +21,8 @@ export class BlogRelationalRepository implements BlogRepository {
     private readonly miniTagRepository: Repository<MiniTagEntity>,
     @InjectRepository(PlanEntity)
     private readonly planRepository: Repository<PlanEntity>,
+    @InjectRepository(FaqEntity)
+    private readonly faqRepository: Repository<FaqEntity>,
   ) {}
 
   async create(data: Blog): Promise<Blog> {
@@ -32,6 +35,11 @@ export class BlogRelationalRepository implements BlogRepository {
     if (data.plans?.length) {
       persistenceModel.plans = await this.planRepository.findBy({
         id: In(data.plans.map((p) => p.id)),
+      });
+    }
+    if (data.faqs?.length) {
+      persistenceModel.faqs = await this.faqRepository.findBy({
+        id: In(data.faqs.map((f) => f.id)),
       });
     }
     const newEntity = await this.blogRepository.save(
@@ -80,6 +88,7 @@ export class BlogRelationalRepository implements BlogRepository {
 
     const blogIds = entities.map((e) => e.id);
     const planIdsMap = new Map<string, number[]>();
+    const faqIdsMap = new Map<string, string[]>();
 
     if (blogIds.length) {
       const rawPlanIds = await this.blogRepository
@@ -99,12 +108,31 @@ export class BlogRelationalRepository implements BlogRepository {
           planIdsMap.get(blogId)!.push(Number(planId));
         }
       }
+
+      const rawFaqIds = await this.blogRepository
+        .createQueryBuilder('blog')
+        .leftJoin('blog.faqs', 'faq')
+        .select(['blog.id', 'faq.id'])
+        .where('blog.id IN (:...blogIds)', { blogIds })
+        .getRawMany();
+
+      for (const row of rawFaqIds) {
+        const blogId = row.blog_id;
+        const faqId = row.faq_id;
+        if (faqId) {
+          if (!faqIdsMap.has(blogId)) {
+            faqIdsMap.set(blogId, []);
+          }
+          faqIdsMap.get(blogId)!.push(String(faqId));
+        }
+      }
     }
 
     return [
       entities.map((entity) => {
         const blog = BlogMapper.toDomain(entity);
         blog.planIds = planIdsMap.get(entity.id) ?? [];
+        blog.faqIds = faqIdsMap.get(entity.id) ?? [];
         return blog;
       }),
       count,
@@ -114,7 +142,7 @@ export class BlogRelationalRepository implements BlogRepository {
   async findById(id: Blog['id']): Promise<NullableType<Blog>> {
     const entity = await this.blogRepository.findOne({
       where: { id },
-      relations: { miniTag: true, plans: true },
+      relations: { miniTag: true, plans: true, faqs: true },
     });
 
     return entity ? BlogMapper.toDomain(entity) : null;
@@ -124,7 +152,7 @@ export class BlogRelationalRepository implements BlogRepository {
     const normalized = slug.startsWith('/') ? slug : `/${slug}`;
     const entity = await this.blogRepository.findOne({
       where: { slug: normalized, isPublished: true },
-      relations: { miniTag: true, plans: true },
+      relations: { miniTag: true, plans: true, faqs: true },
     });
 
     return entity ? BlogMapper.toDomain(entity) : null;
@@ -133,7 +161,7 @@ export class BlogRelationalRepository implements BlogRepository {
   async findByIds(ids: Blog['id'][]): Promise<Blog[]> {
     const entities = await this.blogRepository.find({
       where: { id: In(ids) },
-      relations: { miniTag: true, plans: true },
+      relations: { miniTag: true, plans: true, faqs: true },
     });
 
     return entities.map((entity) => BlogMapper.toDomain(entity));
@@ -142,7 +170,7 @@ export class BlogRelationalRepository implements BlogRepository {
   async update(id: Blog['id'], payload: Partial<Blog>): Promise<Blog> {
     const entity = await this.blogRepository.findOne({
       where: { id },
-      relations: { miniTag: true, plans: true },
+      relations: { miniTag: true, plans: true, faqs: true },
     });
 
     if (!entity) {
@@ -166,6 +194,14 @@ export class BlogRelationalRepository implements BlogRepository {
       merged.plans = payload.plans?.length
         ? await this.planRepository.findBy({
             id: In(payload.plans.map((p) => p.id)),
+          })
+        : [];
+    }
+
+    if (payload.faqs !== undefined) {
+      merged.faqs = payload.faqs?.length
+        ? await this.faqRepository.findBy({
+            id: In(payload.faqs.map((f) => f.id)),
           })
         : [];
     }

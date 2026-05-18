@@ -3,6 +3,12 @@ import { ApiProperty } from '@nestjs/swagger';
 export class Faq {
   @ApiProperty({
     type: () => String,
+    nullable: true,
+  })
+  url?: string | null;
+
+  @ApiProperty({
+    type: () => String,
     nullable: false,
   })
   language: string;

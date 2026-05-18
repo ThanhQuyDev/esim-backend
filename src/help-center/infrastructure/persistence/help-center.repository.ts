@@ -24,6 +24,8 @@ export abstract class HelpCenterRepository {
 
   abstract findById(id: HelpCenter['id']): Promise<NullableType<HelpCenter>>;
 
+  abstract findBySlug(slug: string): Promise<NullableType<HelpCenter>>;
+
   abstract findByIds(ids: HelpCenter['id'][]): Promise<HelpCenter[]>;
 
   abstract update(

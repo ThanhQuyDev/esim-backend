@@ -24,6 +24,11 @@ export class FilterHelpCenterDto {
   @IsOptional()
   @IsEnum(HelpCenterParent)
   parent?: HelpCenterParent;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  language?: string;
 }
 
 export class SortHelpCenterDto {

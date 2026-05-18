@@ -130,5 +130,14 @@ export class CreateBlogDto {
   @IsArray()
   planIds?: number[];
 
+  @ApiProperty({
+    required: false,
+    type: () => [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  faqIds?: string[];
+
   // Don't forget to use the class-validator decorators in the DTO properties.
 }

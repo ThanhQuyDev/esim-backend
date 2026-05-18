@@ -12,6 +12,12 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 })
 export class FaqEntity extends EntityRelationalHelper {
   @Column({
+    nullable: true,
+    type: String,
+  })
+  url?: string | null;
+
+  @Column({
     nullable: false,
     type: String,
   })

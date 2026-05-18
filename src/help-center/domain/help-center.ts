@@ -27,6 +27,12 @@ export class HelpCenter {
   @ApiProperty({ type: String })
   id: string;
 
+  @ApiProperty({ type: String, nullable: true })
+  slug?: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  language?: string | null;
+
   @ApiProperty({ type: String })
   title: string;
 

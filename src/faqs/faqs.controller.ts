@@ -46,6 +46,26 @@ export class FaqsController {
     return this.faqsService.create(createFaqDto);
   }
 
+  @Get('by-context')
+  @ApiOkResponse({
+    type: [Faq],
+    description:
+      'Get FAQs by url or blogId. Auto-fills to 6 items with random FAQs if not enough.',
+  })
+  async findByContext(
+    @Query('url') url?: string,
+    @Query('blogId') blogId?: string,
+    @Query('language') language?: string,
+    @Query('limit') limit?: string,
+  ): Promise<Faq[]> {
+    return this.faqsService.findByUrlOrBlogId({
+      url,
+      blogId,
+      language,
+      limit: limit ? Number(limit) : 6,
+    });
+  }
+
   @Get()
   @ApiOkResponse({
     type: InfinityPaginationResponse(Faq),

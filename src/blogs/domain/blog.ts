@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { MiniTag } from '../../mini-tags/domain/mini-tag';
 import { Plan } from '../../plans/domain/plan';
+import { Faq } from '../../faqs/domain/faq';
 
 export class Blog {
   @ApiProperty({ type: () => String, nullable: false })
@@ -56,4 +57,10 @@ export class Blog {
 
   @ApiProperty({ type: () => [Number], nullable: true })
   planIds?: number[];
+
+  @ApiProperty({ type: () => [Faq], nullable: true })
+  faqs?: Faq[];
+
+  @ApiProperty({ type: () => [String], nullable: true })
+  faqIds?: string[];
 }

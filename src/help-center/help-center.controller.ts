@@ -8,6 +8,8 @@ import {
   Delete,
   UseGuards,
   Query,
+  Headers,
+  NotFoundException,
 } from '@nestjs/common';
 import { HelpCenterService } from './help-center.service';
 import { CreateHelpCenterDto } from './dto/create-help-center.dto';
@@ -48,6 +50,7 @@ export class HelpCenterController {
   @ApiOkResponse({ type: InfinityPaginationResponse(HelpCenter) })
   async findAll(
     @Query() query: QueryHelpCenterDto,
+    @Headers('x-custom-lang') lang?: string,
   ): Promise<InfinityPaginationResponseDto<HelpCenter>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
@@ -56,6 +59,7 @@ export class HelpCenterController {
     const filterOptions = {
       ...query?.filters,
       search: query?.search || query?.filters?.search,
+      language: lang || query?.filters?.language,
     };
 
     const [data, count] = await this.helpCenterService.findAllWithPagination({
@@ -65,6 +69,15 @@ export class HelpCenterController {
     });
 
     return infinityPagination(data, { page, limit }, count);
+  }
+
+  @Get('by-slug/:slug')
+  @ApiParam({ name: 'slug', type: String, required: true })
+  @ApiOkResponse({ type: HelpCenter })
+  async findBySlug(@Param('slug') slug: string) {
+    const item = await this.helpCenterService.findBySlug(slug);
+    if (!item) throw new NotFoundException();
+    return item;
   }
 
   @Get(':id')

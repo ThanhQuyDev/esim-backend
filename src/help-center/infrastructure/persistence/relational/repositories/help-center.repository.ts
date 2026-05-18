@@ -39,6 +39,11 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
   }): Promise<[HelpCenter[], number]> {
     const qb = this.repo.createQueryBuilder('helpCenter');
 
+    if (filterOptions?.language) {
+      qb.andWhere('helpCenter.language = :language', {
+        language: filterOptions.language,
+      });
+    }
     if (filterOptions?.category) {
       qb.andWhere('helpCenter.category = :category', {
         category: filterOptions.category,
@@ -75,6 +80,11 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
 
   async findById(id: HelpCenter['id']): Promise<NullableType<HelpCenter>> {
     const entity = await this.repo.findOne({ where: { id } });
+    return entity ? HelpCenterMapper.toDomain(entity) : null;
+  }
+
+  async findBySlug(slug: string): Promise<NullableType<HelpCenter>> {
+    const entity = await this.repo.findOne({ where: { slug } });
     return entity ? HelpCenterMapper.toDomain(entity) : null;
   }
 

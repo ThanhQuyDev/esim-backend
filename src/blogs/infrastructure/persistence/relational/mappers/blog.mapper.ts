@@ -2,6 +2,7 @@ import { Blog } from '../../../../domain/blog';
 import { BlogEntity } from '../entities/blog.entity';
 import { MiniTagMapper } from '../../../../../mini-tags/infrastructure/persistence/relational/mappers/mini-tag.mapper';
 import { PlanMapper } from '../../../../../plans/infrastructure/persistence/relational/mappers/plan.mapper';
+import { FaqMapper } from '../../../../../faqs/infrastructure/persistence/relational/mappers/faq.mapper';
 
 export class BlogMapper {
   static toDomain(raw: BlogEntity): Blog {
@@ -25,6 +26,7 @@ export class BlogMapper {
       ? MiniTagMapper.toDomain(raw.miniTag)
       : null;
     domainEntity.plans = raw.plans?.map((plan) => PlanMapper.toDomain(plan));
+    domainEntity.faqs = raw.faqs?.map((faq) => FaqMapper.toDomain(faq));
     return domainEntity;
   }
 
@@ -52,6 +54,9 @@ export class BlogMapper {
       : null;
     persistenceEntity.plans = domainEntity.plans?.map((plan) =>
       PlanMapper.toPersistence(plan),
+    );
+    persistenceEntity.faqs = domainEntity.faqs?.map((faq) =>
+      FaqMapper.toPersistence(faq),
     );
     return persistenceEntity;
   }

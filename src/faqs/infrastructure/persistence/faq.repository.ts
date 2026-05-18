@@ -18,6 +18,13 @@ export abstract class FaqRepository {
 
   abstract findByIds(ids: Faq['id'][]): Promise<Faq[]>;
 
+  abstract findByUrlOrBlogId(options: {
+    url?: string;
+    blogId?: string;
+    language?: string;
+    limit?: number;
+  }): Promise<Faq[]>;
+
   abstract update(
     id: Faq['id'],
     payload: DeepPartial<Faq>,

@@ -3,6 +3,16 @@ import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
 import { HelpCenterCategory, HelpCenterParent } from '../domain/help-center';
 
 export class CreateHelpCenterDto {
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  slug?: string | null;
+
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  language?: string | null;
+
   @ApiProperty({ required: true, type: () => String })
   @IsString()
   title: string;

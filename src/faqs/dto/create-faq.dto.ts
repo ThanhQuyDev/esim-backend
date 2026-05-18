@@ -14,6 +14,14 @@ import {
 
 export class CreateFaqDto {
   @ApiProperty({
+    required: false,
+    type: () => String,
+  })
+  @IsOptional()
+  @IsString()
+  url?: string | null;
+
+  @ApiProperty({
     required: true,
     type: () => String,
   })
