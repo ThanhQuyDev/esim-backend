@@ -68,6 +68,7 @@ export class WebhooksService {
     // 1. Find order items by request_id to get userId and orderItemId
     let userId: number | null = null;
     let orderItemId: number | null = null;
+    let planId: number | null = null;
 
     let dataTotal: string | null = null;
     if (requestId) {
@@ -89,6 +90,7 @@ export class WebhooksService {
       // Get userId from the first order item's order
       if (orderItems.length > 0) {
         orderItemId = orderItems[0].id;
+        planId = orderItems[0].planId ?? null;
         const order = await this.ordersService.findById(orderItems[0].orderId);
         userId = order?.userId ?? null;
         const dataMb = orderItems[0].plan?.dataMb;
@@ -134,6 +136,7 @@ export class WebhooksService {
             status: 'available',
             userId: userId ?? existing.userId ?? undefined,
             orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
+            planId: planId ?? existing.planId ?? undefined,
             provider: 'airalo',
             dataUsed: existing.dataUsed ?? '0',
             dataTotal: dataTotal ?? existing.dataTotal ?? undefined,
@@ -154,6 +157,7 @@ export class WebhooksService {
             status: 'available',
             userId,
             orderItemId,
+            planId,
             provider: 'airalo',
             dataUsed: '0',
             dataTotal,
@@ -220,6 +224,7 @@ export class WebhooksService {
     // 1. Find order items by orderNo (stored as orderRequestId)
     let userId: number | null = null;
     let orderItemId: number | null = null;
+    let planId: number | null = null;
 
     const orderItems =
       await this.orderItemsService.findByOrderRequestId(orderNo);
@@ -238,6 +243,7 @@ export class WebhooksService {
     let dataTotal: string | null = null;
     if (orderItems.length > 0) {
       orderItemId = orderItems[0].id;
+      planId = orderItems[0].planId ?? null;
       const order = await this.ordersService.findById(orderItems[0].orderId);
       userId = order?.userId ?? null;
       const dataMb = orderItems[0].plan?.dataMb;
@@ -287,6 +293,7 @@ export class WebhooksService {
             status: 'available',
             userId: userId ?? existing.userId ?? undefined,
             orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
+            planId: planId ?? existing.planId ?? undefined,
             esimTranNo: esim.esimTranNo ?? existing.esimTranNo ?? undefined,
             provider: 'esimaccess',
             dataUsed: existing.dataUsed ?? '0',
@@ -304,6 +311,7 @@ export class WebhooksService {
             status: 'available',
             userId,
             orderItemId,
+            planId,
             esimTranNo: esim.esimTranNo ?? null,
             provider: 'esimaccess',
             dataUsed: '0',
@@ -370,6 +378,7 @@ export class WebhooksService {
     // 1. Find order items by topupId (stored as orderRequestId)
     let userId: number | null = null;
     let orderItemId: number | null = null;
+    let planId: number | null = null;
 
     const orderItems =
       await this.orderItemsService.findByOrderRequestId(topupId);
@@ -384,6 +393,7 @@ export class WebhooksService {
 
     if (orderItems.length > 0) {
       orderItemId = orderItems[0].id;
+      planId = orderItems[0].planId ?? null;
       const order = await this.ordersService.findById(orderItems[0].orderId);
       userId = order?.userId ?? null;
       this.logger.log(
@@ -426,6 +436,8 @@ export class WebhooksService {
           status: 'available',
           userId: userId ?? existing.userId ?? undefined,
           orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
+          planId: planId ?? existing.planId ?? undefined,
+          provider: 'gadgetkorea',
         });
         this.logger.log(`Updated eSIM iccid=${iccid} (Gadget Korea)`);
       } else {
@@ -438,6 +450,8 @@ export class WebhooksService {
           status: 'available',
           userId,
           orderItemId,
+          planId,
+          provider: 'gadgetkorea',
         });
         this.logger.log(`Created eSIM iccid=${iccid} (Gadget Korea)`);
       }

@@ -46,7 +46,9 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
     }
 
     if (filterOptions?.type) {
-      qb.andWhere('whyChooseUs.type = :type', { type: filterOptions.type });
+      qb.andWhere('LOWER(TRIM(whyChooseUs.type)) = LOWER(:type)', {
+        type: filterOptions.type.trim(),
+      });
     }
 
     if (sortOptions?.length) {
