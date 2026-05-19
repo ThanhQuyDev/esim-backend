@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
-import { HelpCenterCategory, HelpCenterParent } from '../domain/help-center';
+import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class CreateHelpCenterDto {
   @ApiProperty({ required: false, type: () => String })
@@ -26,11 +25,21 @@ export class CreateHelpCenterDto {
   @IsNumber()
   order?: number;
 
-  @ApiProperty({ required: true, enum: HelpCenterCategory })
-  @IsEnum(HelpCenterCategory)
-  category: HelpCenterCategory;
+  @ApiProperty({ required: true, type: () => String })
+  @IsString()
+  category: string;
 
-  @ApiProperty({ required: true, enum: HelpCenterParent })
-  @IsEnum(HelpCenterParent)
-  parent: HelpCenterParent;
+  @ApiProperty({ required: true, type: () => String })
+  @IsString()
+  parent: string;
+
+  @ApiProperty({ required: false, type: () => Boolean, default: false })
+  @IsOptional()
+  @IsBoolean()
+  isPopular?: boolean;
+
+  @ApiProperty({ required: false, type: () => Boolean, default: true })
+  @IsOptional()
+  @IsBoolean()
+  isPublished?: boolean;
 }

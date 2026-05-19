@@ -39,6 +39,7 @@ export class TopBarRelationalRepository implements TopBarRepository {
       where,
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
+      order: { createdAt: 'DESC', id: 'ASC' },
     });
 
     return [entities.map((entity) => TopBarMapper.toDomain(entity)), count];

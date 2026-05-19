@@ -1,12 +1,4 @@
-import { FilesService } from '../files/files.service';
-import { FileType } from '../files/domain/file';
-
-import {
-  // common
-  Injectable,
-  HttpStatus,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { CreateTopBarDto } from './dto/create-top-bar.dto';
 import { UpdateTopBarDto } from './dto/update-top-bar.dto';
 import { TopBarRepository } from './infrastructure/persistence/top-bar.repository';
@@ -16,8 +8,6 @@ import { TopBar } from './domain/top-bar';
 @Injectable()
 export class TopBarsService {
   constructor(
-    private readonly fileService: FilesService,
-
     // Dependencies here
     private readonly topBarRepository: TopBarRepository,
   ) {}
@@ -25,25 +15,6 @@ export class TopBarsService {
   async create(createTopBarDto: CreateTopBarDto) {
     // Do not remove comment below.
     // <creating-property />
-
-    let icon: FileType | null | undefined = undefined;
-
-    if (createTopBarDto.icon) {
-      const iconObject = await this.fileService.findById(
-        createTopBarDto.icon.id,
-      );
-      if (!iconObject) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            icon: 'notExists',
-          },
-        });
-      }
-      icon = iconObject;
-    } else if (createTopBarDto.icon === null) {
-      icon = null;
-    }
 
     return this.topBarRepository.create({
       // Do not remove comment below.
@@ -56,7 +27,7 @@ export class TopBarsService {
 
       language: createTopBarDto.language,
 
-      icon,
+      icon: createTopBarDto.icon ?? null,
     });
   }
 
@@ -92,25 +63,6 @@ export class TopBarsService {
     // Do not remove comment below.
     // <updating-property />
 
-    let icon: FileType | null | undefined = undefined;
-
-    if (updateTopBarDto.icon) {
-      const iconObject = await this.fileService.findById(
-        updateTopBarDto.icon.id,
-      );
-      if (!iconObject) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            icon: 'notExists',
-          },
-        });
-      }
-      icon = iconObject;
-    } else if (updateTopBarDto.icon === null) {
-      icon = null;
-    }
-
     return this.topBarRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
@@ -122,7 +74,7 @@ export class TopBarsService {
 
       language: updateTopBarDto.language,
 
-      icon,
+      icon: updateTopBarDto.icon,
     });
   }
 

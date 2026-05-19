@@ -1,12 +1,8 @@
-import { FileEntity } from '../../../../../files/infrastructure/persistence/relational/entities/file.entity';
-
 import {
   CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
-  JoinColumn,
-  OneToOne,
   Column,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
@@ -40,9 +36,11 @@ export class TopBarEntity extends EntityRelationalHelper {
   })
   language: string;
 
-  @OneToOne(() => FileEntity, { eager: true, nullable: true })
-  @JoinColumn()
-  icon?: FileEntity | null;
+  @Column({
+    nullable: true,
+    type: String,
+  })
+  icon?: string | null;
 
   @PrimaryGeneratedColumn('uuid')
   id: string;

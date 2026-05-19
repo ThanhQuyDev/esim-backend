@@ -1,13 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsEnum,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type, plainToInstance } from 'class-transformer';
-import { HelpCenterCategory, HelpCenterParent } from '../domain/help-center';
 
 export class FilterHelpCenterDto {
   @ApiPropertyOptional({ type: String })
@@ -15,20 +14,36 @@ export class FilterHelpCenterDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ enum: HelpCenterCategory })
+  @ApiPropertyOptional({ type: String })
   @IsOptional()
-  @IsEnum(HelpCenterCategory)
-  category?: HelpCenterCategory;
+  @IsString()
+  category?: string;
 
-  @ApiPropertyOptional({ enum: HelpCenterParent })
+  @ApiPropertyOptional({ type: String })
   @IsOptional()
-  @IsEnum(HelpCenterParent)
-  parent?: HelpCenterParent;
+  @IsString()
+  parent?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
   language?: string;
+
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  isPopular?: boolean;
+
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  isPublished?: boolean;
 }
 
 export class SortHelpCenterDto {
@@ -55,10 +70,47 @@ export class QueryHelpCenterDto {
   @IsOptional()
   limit?: number;
 
-  @ApiPropertyOptional({ type: String, description: 'Search by title' })
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Search by title, category or parent',
+  })
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({ type: String, description: 'Filter by category' })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @ApiPropertyOptional({ type: String, description: 'Filter by parent' })
+  @IsOptional()
+  @IsString()
+  parent?: string;
+
+  @ApiPropertyOptional({ type: String, description: 'Filter by language' })
+  @IsOptional()
+  @IsString()
+  language?: string;
+
+  @ApiPropertyOptional({ type: Boolean, description: 'Filter by popular flag' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  isPopular?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Filter by published flag',
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  isPublished?: boolean;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()

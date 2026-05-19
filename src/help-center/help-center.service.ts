@@ -22,6 +22,8 @@ export class HelpCenterService {
       order: createDto.order ?? 0,
       category: createDto.category,
       parent: createDto.parent,
+      isPopular: createDto.isPopular ?? false,
+      isPublished: createDto.isPublished ?? true,
     });
   }
 
@@ -37,6 +39,22 @@ export class HelpCenterService {
     return this.helpCenterRepository.findAllWithPagination({
       filterOptions,
       sortOptions,
+      paginationOptions,
+    });
+  }
+
+  searchForUser({
+    keyword,
+    language,
+    paginationOptions,
+  }: {
+    keyword: string;
+    language?: string;
+    paginationOptions: IPaginationOptions;
+  }) {
+    return this.helpCenterRepository.searchForUser({
+      keyword,
+      language,
       paginationOptions,
     });
   }
@@ -58,6 +76,8 @@ export class HelpCenterService {
       order: updateDto.order,
       category: updateDto.category,
       parent: updateDto.parent,
+      isPopular: updateDto.isPopular,
+      isPublished: updateDto.isPublished,
     });
   }
 

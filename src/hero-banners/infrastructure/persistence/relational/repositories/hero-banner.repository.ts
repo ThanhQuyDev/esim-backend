@@ -58,6 +58,9 @@ export class HeroBannerRelationalRepository implements HeroBannerRepository {
           sort.order as 'ASC' | 'DESC',
         );
       });
+    } else {
+      qb.orderBy('heroBanner.createdAt', 'DESC');
+      qb.addOrderBy('heroBanner.id', 'ASC');
     }
 
     qb.skip((paginationOptions.page - 1) * paginationOptions.limit);

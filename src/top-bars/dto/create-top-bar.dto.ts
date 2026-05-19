@@ -1,17 +1,8 @@
-import { FileDto } from '../../files/dto/file.dto';
-
-import {
-  // decorators here
-  Type,
-} from 'class-transformer';
-
 import {
   // decorators here
 
-  ValidateNested,
-  IsNotEmptyObject,
-  IsOptional,
   IsString,
+  IsOptional,
   IsIn,
 } from 'class-validator';
 
@@ -54,13 +45,12 @@ export class CreateTopBarDto {
 
   @ApiProperty({
     required: false,
-    type: () => FileDto,
+    type: () => String,
+    description: 'Icon URL',
   })
   @IsOptional()
-  @ValidateNested()
-  @Type(() => FileDto)
-  @IsNotEmptyObject()
-  icon?: FileDto | null;
+  @IsString()
+  icon?: string | null;
 
   // Don't forget to use the class-validator decorators in the DTO properties.
 }

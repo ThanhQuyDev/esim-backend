@@ -15,6 +15,7 @@ import { HelpCenterService } from './help-center.service';
 import { CreateHelpCenterDto } from './dto/create-help-center.dto';
 import { UpdateHelpCenterDto } from './dto/update-help-center.dto';
 import { QueryHelpCenterDto } from './dto/find-all-help-center.dto';
+import { SearchHelpCenterDto } from './dto/search-help-center.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -56,15 +57,49 @@ export class HelpCenterController {
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
+    const explicitIsPublished =
+      query?.isPublished !== undefined
+        ? query.isPublished
+        : query?.filters?.isPublished;
+
     const filterOptions = {
       ...query?.filters,
       search: query?.search || query?.filters?.search,
-      language: lang || query?.filters?.language,
+      category: query?.category || query?.filters?.category,
+      parent: query?.parent || query?.filters?.parent,
+      language: lang || query?.language || query?.filters?.language,
+      isPopular:
+        query?.isPopular !== undefined
+          ? query.isPopular
+          : query?.filters?.isPopular,
+      // Default to published-only when client doesn't explicitly pass the
+      // filter. Admin clients can opt-in to drafts via `isPublished=false`.
+      isPublished:
+        explicitIsPublished !== undefined ? explicitIsPublished : true,
     };
 
     const [data, count] = await this.helpCenterService.findAllWithPagination({
       filterOptions,
       sortOptions: query?.sort,
+      paginationOptions: { page, limit },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
+  }
+
+  @Get('search')
+  @ApiOkResponse({ type: InfinityPaginationResponse(HelpCenter) })
+  async search(
+    @Query() query: SearchHelpCenterDto,
+    @Headers('x-custom-lang') lang?: string,
+  ): Promise<InfinityPaginationResponseDto<HelpCenter>> {
+    const page = query?.page ?? 1;
+    let limit = query?.limit ?? 10;
+    if (limit > 50) limit = 50;
+
+    const [data, count] = await this.helpCenterService.searchForUser({
+      keyword: query.q,
+      language: lang || query.language,
       paginationOptions: { page, limit },
     });
 

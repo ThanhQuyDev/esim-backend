@@ -6,10 +6,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
-import {
-  HelpCenterCategory,
-  HelpCenterParent,
-} from '../../../../domain/help-center';
 
 @Entity({ name: 'help_center' })
 export class HelpCenterEntity extends EntityRelationalHelper {
@@ -31,11 +27,17 @@ export class HelpCenterEntity extends EntityRelationalHelper {
   @Column({ nullable: false, type: 'integer', default: 0 })
   order: number;
 
-  @Column({ nullable: false, type: 'enum', enum: HelpCenterCategory })
-  category: HelpCenterCategory;
+  @Column({ nullable: false, type: String })
+  category: string;
 
-  @Column({ nullable: false, type: 'enum', enum: HelpCenterParent })
-  parent: HelpCenterParent;
+  @Column({ nullable: false, type: String })
+  parent: string;
+
+  @Column({ nullable: false, type: Boolean, default: false })
+  isPopular: boolean;
+
+  @Column({ nullable: false, type: Boolean, default: true })
+  isPublished: boolean;
 
   @CreateDateColumn()
   createdAt: Date;

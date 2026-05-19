@@ -58,6 +58,7 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
       });
     } else {
       qb.orderBy('whyChooseUs.createdAt', 'DESC');
+      qb.addOrderBy('whyChooseUs.id', 'ASC');
     }
 
     qb.skip((paginationOptions.page - 1) * paginationOptions.limit);

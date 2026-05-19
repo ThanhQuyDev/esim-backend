@@ -12,6 +12,8 @@ export class HelpCenterMapper {
     domain.order = raw.order;
     domain.category = raw.category;
     domain.parent = raw.parent;
+    domain.isPopular = raw.isPopular;
+    domain.isPublished = raw.isPublished;
     domain.createdAt = raw.createdAt;
     domain.updatedAt = raw.updatedAt;
     return domain;
@@ -27,6 +29,8 @@ export class HelpCenterMapper {
     entity.order = domain.order;
     entity.category = domain.category;
     entity.parent = domain.parent;
+    entity.isPopular = domain.isPopular;
+    entity.isPublished = domain.isPublished;
     entity.createdAt = domain.createdAt;
     entity.updatedAt = domain.updatedAt;
     return entity;

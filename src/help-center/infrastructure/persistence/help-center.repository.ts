@@ -22,6 +22,16 @@ export abstract class HelpCenterRepository {
     paginationOptions: IPaginationOptions;
   }): Promise<[HelpCenter[], number]>;
 
+  abstract searchForUser({
+    keyword,
+    language,
+    paginationOptions,
+  }: {
+    keyword: string;
+    language?: string;
+    paginationOptions: IPaginationOptions;
+  }): Promise<[HelpCenter[], number]>;
+
   abstract findById(id: HelpCenter['id']): Promise<NullableType<HelpCenter>>;
 
   abstract findBySlug(slug: string): Promise<NullableType<HelpCenter>>;

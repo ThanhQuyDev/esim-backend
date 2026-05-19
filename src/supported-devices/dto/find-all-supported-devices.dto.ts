@@ -1,19 +1,28 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { DeviceType } from '../domain/supported-device';
 
+const toPositiveInt = (value: unknown, fallback: number): number => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  if (Number.isNaN(n) || n < 1) return fallback;
+  return Math.floor(n);
+};
+
 export class FindAllSupportedDevicesDto {
-  @ApiPropertyOptional()
-  @Transform(({ value }) => (value ? Number(value) : 1))
-  @IsNumber()
+  @ApiPropertyOptional({ default: 1 })
+  @Transform(({ value }) => toPositiveInt(value, 1))
   @IsOptional()
+  @IsInt()
+  @Min(1)
   page?: number;
 
-  @ApiPropertyOptional()
-  @Transform(({ value }) => (value ? Number(value) : 10))
-  @IsNumber()
+  @ApiPropertyOptional({ default: 10 })
+  @Transform(({ value }) => toPositiveInt(value, 10))
   @IsOptional()
+  @IsInt()
+  @Min(1)
   limit?: number;
 
   @ApiPropertyOptional({ enum: DeviceType })

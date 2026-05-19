@@ -1,7 +1,5 @@
 import { TopBar } from '../../../../domain/top-bar';
 
-import { FileMapper } from '../../../../../files/infrastructure/persistence/relational/mappers/file.mapper';
-
 import { TopBarEntity } from '../entities/top-bar.entity';
 
 export class TopBarMapper {
@@ -15,11 +13,7 @@ export class TopBarMapper {
 
     domainEntity.language = raw.language;
 
-    if (raw.icon) {
-      domainEntity.icon = FileMapper.toDomain(raw.icon);
-    } else if (raw.icon === null) {
-      domainEntity.icon = null;
-    }
+    domainEntity.icon = raw.icon ?? null;
 
     domainEntity.id = raw.id;
     domainEntity.createdAt = raw.createdAt;
@@ -38,11 +32,7 @@ export class TopBarMapper {
 
     persistenceEntity.language = domainEntity.language;
 
-    if (domainEntity.icon) {
-      persistenceEntity.icon = FileMapper.toPersistence(domainEntity.icon);
-    } else if (domainEntity.icon === null) {
-      persistenceEntity.icon = null;
-    }
+    persistenceEntity.icon = domainEntity.icon ?? null;
 
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;

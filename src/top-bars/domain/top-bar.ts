@@ -1,4 +1,3 @@
-import { FileType } from '../../files/domain/file';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class TopBar {
@@ -27,10 +26,10 @@ export class TopBar {
   language: string;
 
   @ApiProperty({
-    type: () => FileType,
+    type: () => String,
     nullable: true,
   })
-  icon?: FileType | null;
+  icon?: string | null;
 
   @ApiProperty({
     type: String,

@@ -51,11 +51,15 @@ export class SupportedDevicesController {
   @UseGuards(AuthGuard('jwt'))
   @Get()
   @ApiOkResponse({ type: InfinityPaginationResponse(SupportedDevice) })
-  async findAll(
-    @Query() query: FindAllSupportedDevicesDto,
-  ): Promise<InfinityPaginationResponseDto<SupportedDevice>> {
-    const page = query?.page ?? 1;
-    let limit = query?.limit ?? 10;
+  async findAll(@Query() query: FindAllSupportedDevicesDto): Promise<
+    InfinityPaginationResponseDto<SupportedDevice> & {
+      page: number;
+      limit: number;
+      totalPages: number;
+    }
+  > {
+    const page = Number(query?.page) > 0 ? Number(query.page) : 1;
+    let limit = Number(query?.limit) > 0 ? Number(query.limit) : 10;
     if (limit > 50) limit = 50;
 
     const [data, count] =
@@ -65,7 +69,13 @@ export class SupportedDevicesController {
         search: query.search,
       });
 
-    return infinityPagination(data, { page, limit }, count);
+    const base = infinityPagination(data, { page, limit }, count);
+    return {
+      ...base,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(count / limit)),
+    };
   }
 
   @Get('grouped')

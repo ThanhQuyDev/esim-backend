@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Brackets, Repository, In } from 'typeorm';
 import { BlogEntity } from '../entities/blog.entity';
 import { MiniTagEntity } from '../../../../../mini-tags/infrastructure/persistence/relational/entities/mini-tag.entity';
 import { PlanEntity } from '../../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
@@ -68,9 +68,17 @@ export class BlogRelationalRepository implements BlogRepository {
     }
 
     if (filterOptions?.search) {
-      qb.andWhere('blog.title ILIKE :search', {
-        search: `%${filterOptions.search}%`,
-      });
+      qb.andWhere(
+        new Brackets((sub) => {
+          sub
+            .where('blog.title ILIKE :search', {
+              search: `%${filterOptions.search}%`,
+            })
+            .orWhere('blog.category ILIKE :search', {
+              search: `%${filterOptions.search}%`,
+            });
+        }),
+      );
     }
 
     if (sortOptions?.length) {
@@ -79,6 +87,7 @@ export class BlogRelationalRepository implements BlogRepository {
       });
     } else {
       qb.orderBy('blog.createdAt', 'DESC');
+      qb.addOrderBy('blog.id', 'ASC');
     }
 
     qb.skip((paginationOptions.page - 1) * paginationOptions.limit);

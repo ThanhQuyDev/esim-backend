@@ -51,6 +51,7 @@ export class FooterRelationalRepository implements FooterRepository {
       });
     } else {
       qb.orderBy('footer.createdAt', 'DESC');
+      qb.addOrderBy('footer.id', 'ASC');
     }
 
     qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
