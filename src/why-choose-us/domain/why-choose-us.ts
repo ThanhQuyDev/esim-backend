@@ -3,6 +3,13 @@ import { ApiProperty } from '@nestjs/swagger';
 export class WhyChooseUs {
   @ApiProperty({
     type: () => String,
+    nullable: true,
+    description: 'Type classification for display sections',
+  })
+  type?: string | null;
+
+  @ApiProperty({
+    type: () => String,
     nullable: false,
   })
   language: string;

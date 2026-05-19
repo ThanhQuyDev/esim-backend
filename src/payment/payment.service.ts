@@ -4,6 +4,8 @@ import { OnepayService } from './onepay.service';
 import { OrdersService } from '../orders/orders.service';
 import { AllConfigType } from '../config/config.type';
 import { SubmitOrderDto } from '../orders/dto/submit-order.dto';
+import { CustomPaymentLinksService } from '../custom-payment-links/custom-payment-links.service';
+import { CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX } from '../custom-payment-links/custom-payment-links.enum';
 
 @Injectable()
 export class PaymentService {
@@ -13,6 +15,7 @@ export class PaymentService {
     private readonly onepayService: OnepayService,
     private readonly ordersService: OrdersService,
     private readonly configService: ConfigService<AllConfigType>,
+    private readonly customPaymentLinksService: CustomPaymentLinksService,
   ) {}
 
   async createCheckout(
@@ -57,6 +60,30 @@ export class PaymentService {
     );
 
     if (!orderNumber) return { code: '01' };
+
+    // Custom Payment Links use a dedicated VORD- prefix; route those to the
+    // custom-payment-links service instead of the standard order flow.
+    if (orderNumber.startsWith(CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX)) {
+      const link =
+        await this.customPaymentLinksService.findByVirtualOrderId(orderNumber);
+      if (!link) {
+        this.logger.warn(
+          `OnePay IPN: custom payment link not found ${orderNumber}`,
+        );
+        return { code: '01' };
+      }
+      const isSuccess = this.onepayService.isPaymentSuccess(query);
+      await this.customPaymentLinksService.finalizeFromIpn(orderNumber, {
+        isSuccess,
+        paymentId: query['vpc_TransactionNo'] ?? null,
+      });
+      this.logger.log(
+        `OnePay IPN: custom payment link ${orderNumber} finalized as ${
+          isSuccess ? 'PAID' : 'FAILED'
+        }`,
+      );
+      return { code: '00' };
+    }
 
     const order = await this.ordersService.findByOrderNumber(orderNumber);
     if (!order) {

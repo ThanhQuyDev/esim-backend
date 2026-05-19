@@ -62,6 +62,7 @@ export class WhyChooseUsController {
     const filterOptions = {
       ...query?.filters,
       search: query?.search || query?.filters?.search,
+      type: query?.type || query?.filters?.type,
     };
 
     const [data, count] = await this.whyChooseUsService.findAllWithPagination({

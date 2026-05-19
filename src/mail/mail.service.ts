@@ -23,6 +23,15 @@ export interface EsimPurchaseMailData {
   orderNumber: string;
 }
 
+export interface InvoiceIssuedMailData {
+  to: string;
+  orderNumber: string;
+  companyName: string;
+  taxCode: string;
+  address: string;
+  totalAmountVnd: number;
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -217,6 +226,52 @@ export class MailService {
       to: data.to,
       subject: subjectCompiled,
       text: `Your eSIM is ready — Order ${data.orderNumber}`,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
+    });
+  }
+
+  /**
+   * Send the invoice confirmation email to the customer's `invoiceEmail`
+   * once the order is paid. The PDF e-invoice itself is delivered separately
+   * by the accounting team — this email simply confirms the request was
+   * received and the order was paid successfully.
+   */
+  async sendInvoiceIssued(data: InvoiceIssuedMailData): Promise<void> {
+    const template =
+      await this.emailTemplatesService.findByName('invoice_issued');
+    if (!template) {
+      this.logger.warn(
+        'Email template "invoice_issued" not found, skipping invoice email',
+      );
+      return;
+    }
+
+    const appName = this.configService.get('app.name', { infer: true });
+    const totalAmountFormatted = new Intl.NumberFormat('vi-VN').format(
+      Math.round(data.totalAmountVnd),
+    );
+
+    const context = {
+      orderNumber: data.orderNumber,
+      companyName: data.companyName,
+      taxCode: data.taxCode,
+      address: data.address,
+      totalAmountFormatted,
+      app_name: appName,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      to: data.to,
+      subject: subjectCompiled,
+      text: `Invoice request received for order ${data.orderNumber}`,
       templatePath: '',
       context: {},
       html: htmlCompiled,

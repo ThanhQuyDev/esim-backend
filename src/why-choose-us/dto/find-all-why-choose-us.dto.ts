@@ -12,6 +12,11 @@ export class FilterWhyChooseUsDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({ type: String, description: 'Filter by type' })
+  @IsOptional()
+  @IsString()
+  type?: string;
 }
 
 export class SortWhyChooseUsDto {
@@ -45,6 +50,14 @@ export class QueryWhyChooseUsDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Filter by type classification',
+  })
+  @IsOptional()
+  @IsString()
+  type?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()

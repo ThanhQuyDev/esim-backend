@@ -35,6 +35,8 @@ import { WalletsService } from '../wallets/wallets.service';
 import type { ReferralValidationResult } from '../wallets/wallets.service';
 import { EXU_CASHBACK_PERCENT } from '../wallets/wallets.enum';
 import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
+import { InvoiceRepository } from '../invoices/infrastructure/persistence/invoice.repository';
+import { InvoiceStatus } from '../invoices/invoices.enum';
 
 const VND_ROUNDING_UNIT = 1000;
 
@@ -86,7 +88,38 @@ export class OrdersService {
     private readonly mailService: MailService,
     private readonly usersService: UsersService,
     private readonly walletsService: WalletsService,
+    private readonly invoiceRepository: InvoiceRepository,
   ) {}
+
+  /**
+   * Persist the optional invoice request that comes alongside a checkout payload.
+   * Errors are logged but never propagate — invoice creation must not block
+   * order placement / payment.
+   */
+  private async createInvoiceForCheckoutIfRequested(
+    order: Order,
+    invoiceDto: SubmitOrderDto['invoice'],
+  ): Promise<void> {
+    if (!invoiceDto) return;
+    try {
+      await this.invoiceRepository.create({
+        status: InvoiceStatus.PENDING,
+        companyName: invoiceDto.companyName,
+        taxCode: invoiceDto.taxCode,
+        address: invoiceDto.address,
+        invoiceEmail: invoiceDto.invoiceEmail,
+        orderId: order.id,
+        order,
+      });
+      this.logger.log(
+        `Invoice request stored for order ${order.orderNumber} (id=${order.id})`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed to create invoice for order ${order.orderNumber}: ${(err as Error).message}`,
+      );
+    }
+  }
 
   create(createOrderDto: CreateOrderDto): Promise<Order> {
     return this.orderRepository.create({
@@ -421,6 +454,9 @@ export class OrdersService {
       localItems,
     );
 
+    // Persist optional invoice request (customer ticked "Xuất hóa đơn" at checkout)
+    await this.createInvoiceForCheckoutIfRequested(order, dto.invoice);
+
     return order;
   }
 
@@ -510,6 +546,9 @@ export class OrdersService {
         periodNum: item.periodNum ?? null,
       });
     }
+
+    // Persist optional invoice request (customer ticked "Xuất hóa đơn" at checkout)
+    await this.createInvoiceForCheckoutIfRequested(order, dto.invoice);
 
     return order;
   }
@@ -674,7 +713,10 @@ export class OrdersService {
     };
   }
 
-  async submitProviders(orderId: number): Promise<void> {
+  async submitProviders(
+    orderId: number,
+    options: { mutedEmail?: boolean } = {},
+  ): Promise<void> {
     const order = await this.orderRepository.findById(orderId);
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
@@ -874,13 +916,195 @@ export class OrdersService {
       }
     }
 
-    // Send esim purchase email for local items
-    await this.sendEsimPurchaseEmails(
-      order.userId,
-      order.orderNumber,
-      localOrderItemIds,
-      localItems,
+    // Send esim purchase email for local items (skip when muted, e.g. admin manual orders)
+    if (!options.mutedEmail) {
+      await this.sendEsimPurchaseEmails(
+        order.userId,
+        order.orderNumber,
+        localOrderItemIds,
+        localItems,
+      );
+    } else {
+      this.logger.log(
+        `submitProviders: muted email for order ${order.orderNumber}`,
+      );
+    }
+  }
+
+  /**
+   * Admin "đặt đơn hộ" — bypass OnePay/QR generation, mark order PAID immediately,
+   * provision eSIMs via providers, and never auto-send the eSIM email.
+   * The admin will trigger {@link resendEsimEmail} manually after verifying
+   * the offline payment.
+   */
+  async submitManualOrder(
+    adminUserId: number,
+    dto: { email: string; packageCode: string; slug: string; quantity: number },
+  ): Promise<Order> {
+    // 1. Resolve buyer by email
+    const buyer = await this.usersService.findByEmail(dto.email);
+    if (!buyer) {
+      throw new NotFoundException(
+        `Buyer with email ${dto.email} not found. Please ensure the user account exists.`,
+      );
+    }
+
+    // 2. Resolve plan by slug (primary) and verify packageCode
+    const plan = await this.plansService.findBySlug(dto.slug);
+    if (!plan) {
+      throw new NotFoundException(`Plan slug ${dto.slug} not found`);
+    }
+    if (plan.providerPlanId !== dto.packageCode) {
+      throw new BadRequestException(
+        `Plan slug ${dto.slug} does not match packageCode ${dto.packageCode} (expected ${plan.providerPlanId})`,
+      );
+    }
+
+    // 3. Build a SubmitOrderDto-compatible payload (no coupon/wallet/referral for manual orders)
+    const submitDto: SubmitOrderDto = {
+      currency: plan.currency,
+      items: [{ planId: plan.id, quantity: dto.quantity }],
+      paymentMethod: 'admin_manual',
+    };
+
+    // 4. Create pending order at VND rate (use 1 to avoid hitting the FX API; cost figures
+    // are not critical for an admin-bypassed order, the payable VND price is still correct).
+    const orderNumber = `MAN-${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase()}`;
+    const order = await this.createPendingOrder(
+      Number(buyer.id),
+      submitDto,
+      orderNumber,
     );
+
+    this.logger.log(
+      `Admin ${adminUserId} created manual order ${orderNumber} for buyer ${buyer.id} (${dto.email}) — plan ${plan.slug} x${dto.quantity}`,
+    );
+
+    // 5. Mark as PAID via internal admin approval (no OnePay).
+    // Mute auto invoice email — admin manually triggers it after verifying
+    // the offline payment using `resendEsimEmail`.
+    await this.finalizePaidOrder(order.id, {
+      paymentMethod: 'admin_manual',
+      paymentId: `ADMIN-${adminUserId}`,
+      mutedEmail: true,
+    });
+
+    // 6. Provision with providers but mute the auto email
+    try {
+      await this.submitProviders(order.id, { mutedEmail: true });
+    } catch (err) {
+      this.logger.error(
+        `submitManualOrder: provider submission failed for ${orderNumber}: ${(err as Error).message}`,
+      );
+    }
+
+    const finalOrder = await this.orderRepository.findById(order.id);
+    return finalOrder ?? order;
+  }
+
+  /**
+   * Resend the eSIM activation email for an existing paid order. Looks up the
+   * eSIMs already stored against the order's items and reuses the same mail
+   * template as the initial purchase flow.
+   */
+  async resendEsimEmail(orderId: number): Promise<{
+    sent: number;
+    invoiceSent: boolean;
+    skippedReason?: string;
+  }> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+
+    const buyer = await this.usersService.findById(order.userId);
+    if (!buyer?.email) {
+      return {
+        sent: 0,
+        invoiceSent: false,
+        skippedReason: 'buyer-has-no-email',
+      };
+    }
+
+    const orderItems = await this.orderItemsService.findByOrderId(orderId);
+    if (!orderItems.length) {
+      return { sent: 0, invoiceSent: false, skippedReason: 'no-order-items' };
+    }
+
+    const esims = await this.esimsService.findByOrderItemIds(
+      orderItems.map((i) => i.id),
+    );
+
+    let sent = 0;
+    if (esims.length === 0) {
+      this.logger.warn(
+        `resendEsimEmail: no esims provisioned yet for order ${orderId}`,
+      );
+    } else {
+      const plansById = new Map<number, Plan>();
+      for (const item of orderItems) {
+        if (!plansById.has(item.planId)) {
+          const plan = await this.plansService.findById(item.planId);
+          if (plan) plansById.set(item.planId, plan);
+        }
+      }
+
+      for (const esim of esims) {
+        const plan =
+          esim.planId != null ? plansById.get(esim.planId) : undefined;
+        try {
+          await this.mailService.sendEsimPurchase({
+            to: buyer.email,
+            esimId: esim.id,
+            iccid: esim.iccid,
+            activationCode: esim.activationCode,
+            lpa: esim.lpa,
+            smdpAddress: esim.smdpAddress,
+            apn: esim.apnValue,
+            phoneNumber: esim.phoneNumber,
+            planName: plan?.name ?? '',
+            orderNumber: order.orderNumber,
+          });
+          sent += 1;
+        } catch (err) {
+          this.logger.error(
+            `resendEsimEmail: failed to send for esim ${esim.id} of order ${orderId}: ${(err as Error).message}`,
+          );
+        }
+      }
+    }
+
+    // Always attempt to resend the invoice email as well — admins use this
+    // endpoint as the single "deliver everything" trigger for manual orders.
+    let invoiceSent = false;
+    try {
+      const invoice = await this.invoiceRepository.findByOrderId(orderId);
+      if (invoice) {
+        await this.mailService.sendInvoiceIssued({
+          to: invoice.invoiceEmail,
+          orderNumber: order.orderNumber,
+          companyName: invoice.companyName,
+          taxCode: invoice.taxCode,
+          address: invoice.address,
+          totalAmountVnd: order.payableVndPrice ?? order.vndPrice ?? 0,
+        });
+        invoiceSent = true;
+      }
+    } catch (err) {
+      this.logger.error(
+        `resendEsimEmail: failed to send invoice email for order ${orderId}: ${(err as Error).message}`,
+      );
+    }
+
+    if (sent === 0 && !invoiceSent) {
+      return {
+        sent: 0,
+        invoiceSent: false,
+        skippedReason: 'no-esims-provisioned-yet',
+      };
+    }
+    return { sent, invoiceSent };
   }
 
   private async sendEsimPurchaseEmails(
@@ -1069,7 +1293,11 @@ export class OrdersService {
 
   async finalizePaidOrder(
     id: Order['id'],
-    payload: { paymentMethod: string; paymentId?: string | null },
+    payload: {
+      paymentMethod: string;
+      paymentId?: string | null;
+      mutedEmail?: boolean;
+    },
   ): Promise<Order | null> {
     const updatedOrder = await this.update(id, {
       status: 'paid',
@@ -1078,8 +1306,44 @@ export class OrdersService {
     });
     if (updatedOrder) {
       await this.walletsService.completePaidOrderBenefits(updatedOrder);
+      // Auto-send the invoice confirmation email when an invoice request was
+      // attached to the order at checkout. Skip when explicitly muted, e.g.
+      // admin "đặt đơn hộ" (the admin will trigger this manually after
+      // verifying the offline payment).
+      if (!payload.mutedEmail) {
+        await this.sendInvoiceEmailIfRequested(updatedOrder);
+      }
     }
     return updatedOrder;
+  }
+
+  /**
+   * Look up the optional invoice request attached to an order and send the
+   * invoice-issued email to the customer's `invoiceEmail`. Errors are logged
+   * but never propagated — the email is a side-effect of paid-order
+   * finalization and must not break that flow.
+   */
+  private async sendInvoiceEmailIfRequested(order: Order): Promise<void> {
+    try {
+      const invoice = await this.invoiceRepository.findByOrderId(order.id);
+      if (!invoice) return;
+
+      await this.mailService.sendInvoiceIssued({
+        to: invoice.invoiceEmail,
+        orderNumber: order.orderNumber,
+        companyName: invoice.companyName,
+        taxCode: invoice.taxCode,
+        address: invoice.address,
+        totalAmountVnd: order.payableVndPrice ?? order.vndPrice ?? 0,
+      });
+      this.logger.log(
+        `Invoice email sent for order ${order.orderNumber} to ${invoice.invoiceEmail}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed to send invoice email for order ${order.orderNumber}: ${(err as Error).message}`,
+      );
+    }
   }
 
   async releaseWalletHoldForOrder(orderId: number): Promise<void> {

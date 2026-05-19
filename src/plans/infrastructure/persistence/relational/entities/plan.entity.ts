@@ -116,6 +116,9 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isLocalInventory: boolean;
 
+  @Column({ type: 'jsonb', nullable: true })
+  tags: string[] | null;
+
   @Column({ type: String, nullable: true })
   apn: string | null;
 

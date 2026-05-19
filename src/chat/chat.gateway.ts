@@ -83,7 +83,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { chatRoomId: number; message: string },
+    @MessageBody()
+    data: {
+      chatRoomId: number;
+      message: string;
+      fileUrl?: string;
+      fileName?: string;
+      fileType?: string;
+      fileSize?: number;
+    },
   ) {
     if (!data?.chatRoomId || !data?.message) {
       client.emit('error', { message: 'chatRoomId and message are required' });
@@ -103,10 +111,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    const attachment = data.fileUrl
+      ? {
+          fileUrl: data.fileUrl,
+          fileName: data.fileName,
+          fileType: data.fileType,
+          fileSize: data.fileSize,
+        }
+      : undefined;
+
     const message = await this.chatService.sendMessage(
       data.chatRoomId,
       client.data.userId,
       data.message,
+      attachment,
     );
 
     const roomName = `chat_room_${data.chatRoomId}`;

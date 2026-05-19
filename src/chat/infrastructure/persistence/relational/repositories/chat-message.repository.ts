@@ -19,6 +19,10 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
       chatRoomId: data.chatRoomId,
       senderId: data.senderId,
       message: data.message,
+      fileUrl: data.fileUrl ?? null,
+      fileName: data.fileName ?? null,
+      fileType: data.fileType ?? null,
+      fileSize: data.fileSize ?? null,
       isRead: false,
     });
     const saved = await this.repo.save(entity);

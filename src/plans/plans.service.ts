@@ -97,6 +97,7 @@ export class PlansService {
       vndPrice: createPlanDto.vndPrice ?? 0,
       isKyc: createPlanDto.isKyc ?? false,
       isLocalInventory: createPlanDto.isLocalInventory ?? false,
+      tags: createPlanDto.tags ?? null,
       apn: createPlanDto.apn ?? null,
       lastSyncedAt: createPlanDto.lastSyncedAt ?? null,
       isActive: createPlanDto.isActive ?? true,

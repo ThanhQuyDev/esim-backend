@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsEmail,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -11,6 +12,34 @@ import {
   IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class SubmitOrderInvoiceDto {
+  @ApiProperty({ example: 'Công ty TNHH ABC', maxLength: 255 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  companyName!: string;
+
+  @ApiProperty({ example: '0312345678', maxLength: 32 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(32)
+  taxCode!: string;
+
+  @ApiProperty({
+    example: '123 Nguyen Hue, District 1, Ho Chi Minh City',
+    maxLength: 500,
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  address!: string;
+
+  @ApiProperty({ example: 'finance@example.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  invoiceEmail!: string;
+}
 
 export class SubmitOrderItemDto {
   @ApiProperty({ type: Number, description: 'Plan ID from the plans table' })
@@ -73,4 +102,14 @@ export class SubmitOrderDto {
   @IsInt()
   @Min(0)
   useWalletAmountVnd?: number;
+
+  @ApiPropertyOptional({
+    type: () => SubmitOrderInvoiceDto,
+    description:
+      'Optional financial invoice details. When provided, the system will create a PENDING invoice linked 1:1 with the order. Customers tick "Xuất hóa đơn" at checkout to populate this.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SubmitOrderInvoiceDto)
+  invoice?: SubmitOrderInvoiceDto;
 }

@@ -26,6 +26,8 @@ export class WhyChooseUsService {
     return this.whyChooseUsRepository.create({
       // Do not remove comment below.
       // <creating-property-payload />
+      type: createWhyChooseUsDto.type ?? null,
+
       language: createWhyChooseUsDto.language,
 
       isActive: createWhyChooseUsDto.isActive,
@@ -78,6 +80,8 @@ export class WhyChooseUsService {
     return this.whyChooseUsRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
+      type: updateWhyChooseUsDto.type,
+
       language: updateWhyChooseUsDto.language,
 
       isActive: updateWhyChooseUsDto.isActive,

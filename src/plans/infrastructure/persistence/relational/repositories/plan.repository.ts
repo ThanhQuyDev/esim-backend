@@ -69,6 +69,27 @@ export class PlansRelationalRepository implements PlanRepository {
           providers: filterOptions.provider,
         });
       }
+      if (filterOptions?.duration !== undefined) {
+        qb.andWhere('plan."durationDays" = :duration', {
+          duration: filterOptions.duration,
+        });
+      }
+      if (filterOptions?.type) {
+        qb.andWhere('plan."type" = :planType', {
+          planType: filterOptions.type,
+        });
+      }
+      if (filterOptions?.data) {
+        const dataMb = this.parseDataToMb(filterOptions.data);
+        if (dataMb > 0) {
+          qb.andWhere('plan."dataMb" = :dataMb', { dataMb });
+        }
+      }
+      if (filterOptions?.tags?.length) {
+        qb.andWhere('plan."tags" @> :tags', {
+          tags: JSON.stringify(filterOptions.tags),
+        });
+      }
 
       if (sortOptions?.length) {
         for (const sort of sortOptions) {
@@ -106,6 +127,82 @@ export class PlansRelationalRepository implements PlanRepository {
     }
     if (filterOptions?.provider?.length) {
       where.provider = In(filterOptions.provider);
+    }
+
+    // For duration, type, data, tags filters we need query builder
+    if (
+      filterOptions?.duration !== undefined ||
+      filterOptions?.type ||
+      filterOptions?.data ||
+      filterOptions?.tags?.length
+    ) {
+      const qb = this.plansRepository.createQueryBuilder('plan');
+      qb.leftJoinAndSelect('plan.destination', 'dest');
+      qb.leftJoinAndSelect('plan.region', 'region');
+
+      if (filterOptions?.isCheapest !== undefined) {
+        qb.andWhere('plan."isCheapest" = :isCheapest', {
+          isCheapest: filterOptions.isCheapest,
+        });
+      }
+      if (filterOptions?.isActive !== undefined) {
+        qb.andWhere('plan."isActive" = :isActive', {
+          isActive: filterOptions.isActive,
+        });
+      }
+      if (filterOptions?.destinationId !== undefined) {
+        qb.andWhere('plan."destinationId" = :destinationId', {
+          destinationId: filterOptions.destinationId,
+        });
+      }
+      if (filterOptions?.regionId !== undefined) {
+        qb.andWhere('plan."regionId" = :regionId', {
+          regionId: filterOptions.regionId,
+        });
+      }
+      if (filterOptions?.provider?.length) {
+        qb.andWhere('plan."provider" IN (:...providers)', {
+          providers: filterOptions.provider,
+        });
+      }
+      if (filterOptions.duration !== undefined) {
+        qb.andWhere('plan."durationDays" = :duration', {
+          duration: filterOptions.duration,
+        });
+      }
+      if (filterOptions.type) {
+        qb.andWhere('plan."type" = :planType', {
+          planType: filterOptions.type,
+        });
+      }
+      if (filterOptions.data) {
+        const dataMb = this.parseDataToMb(filterOptions.data);
+        if (dataMb > 0) {
+          qb.andWhere('plan."dataMb" = :dataMb', { dataMb });
+        }
+      }
+      if (filterOptions.tags?.length) {
+        qb.andWhere('plan."tags" @> :tags', {
+          tags: JSON.stringify(filterOptions.tags),
+        });
+      }
+
+      if (sortOptions?.length) {
+        for (const sort of sortOptions) {
+          qb.addOrderBy(
+            `plan.${String(sort.orderBy)}`,
+            sort.order as 'ASC' | 'DESC',
+          );
+        }
+      } else {
+        qb.orderBy('plan.createdAt', 'DESC');
+      }
+
+      qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+      qb.take(paginationOptions.limit);
+
+      const [entities, count] = await qb.getManyAndCount();
+      return [entities.map((entity) => PlanMapper.toDomain(entity)), count];
     }
 
     const [entities, count] = await this.plansRepository.findAndCount({
@@ -298,5 +395,22 @@ export class PlansRelationalRepository implements PlanRepository {
     });
 
     return entities.map((entity) => PlanMapper.toDomain(entity));
+  }
+
+  private parseDataToMb(dataStr: string): number {
+    const match = dataStr.match(/^(\d+(?:\.\d+)?)\s*(GB|MB|TB)$/i);
+    if (!match) return 0;
+    const value = parseFloat(match[1]);
+    const unit = match[2].toUpperCase();
+    switch (unit) {
+      case 'TB':
+        return value * 1024 * 1024;
+      case 'GB':
+        return value * 1024;
+      case 'MB':
+        return value;
+      default:
+        return 0;
+    }
   }
 }

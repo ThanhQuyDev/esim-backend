@@ -8,6 +8,10 @@ export class ChatMessageMapper {
     domain.chatRoomId = entity.chatRoomId;
     domain.senderId = entity.senderId;
     domain.message = entity.message;
+    domain.fileUrl = entity.fileUrl ?? null;
+    domain.fileName = entity.fileName ?? null;
+    domain.fileType = entity.fileType ?? null;
+    domain.fileSize = entity.fileSize ?? null;
     domain.isRead = entity.isRead;
     domain.createdAt = entity.createdAt;
     domain.updatedAt = entity.updatedAt;
@@ -20,6 +24,10 @@ export class ChatMessageMapper {
     entity.chatRoomId = domain.chatRoomId;
     entity.senderId = domain.senderId;
     entity.message = domain.message;
+    entity.fileUrl = domain.fileUrl ?? null;
+    entity.fileName = domain.fileName ?? null;
+    entity.fileType = domain.fileType ?? null;
+    entity.fileSize = domain.fileSize ?? null;
     entity.isRead = domain.isRead ?? false;
     return entity;
   }

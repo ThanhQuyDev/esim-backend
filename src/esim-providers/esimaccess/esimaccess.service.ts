@@ -46,9 +46,10 @@ export class EsimAccessService {
 
     try {
       const packages = await this.fetchPackages();
+      const filteredPackages = this.filterPreferNonhkip(packages);
       let itemsSynced = 0;
 
-      for (const pkg of packages) {
+      for (const pkg of filteredPackages) {
         try {
           await this.processPackage(pkg);
           itemsSynced++;
@@ -308,6 +309,7 @@ export class EsimAccessService {
       pkg.duration,
       'esimaccess',
       planType,
+      pkg,
     );
     const existing = await this.plansService.findBySlug(slug);
 
@@ -514,24 +516,90 @@ export class EsimAccessService {
     return item;
   }
 
+  /**
+   * Filters duplicate packages preferring nonhkip variants.
+   * When two packages share the same specs (location, volume, duration, dataType)
+   * but one has "nonhkip" in its name/slug, prefer that one and discard the other.
+   */
+  private filterPreferNonhkip(
+    packages: EsimAccessPackage[],
+  ): EsimAccessPackage[] {
+    const groupKey = (pkg: EsimAccessPackage) =>
+      `${pkg.locationCode}_${pkg.volume}_${pkg.duration}_${pkg.dataType}`;
+
+    const grouped = new Map<string, EsimAccessPackage[]>();
+    for (const pkg of packages) {
+      const key = groupKey(pkg);
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(pkg);
+    }
+
+    const result: EsimAccessPackage[] = [];
+    for (const [, group] of grouped) {
+      if (group.length === 1) {
+        result.push(group[0]);
+      } else {
+        // If any package in the group has "nonhkip", prefer it
+        const nonhkip = group.find(
+          (p) =>
+            p.name.toLowerCase().includes('nonhkip') ||
+            (p.slug && p.slug.toLowerCase().includes('nonhkip')),
+        );
+        result.push(nonhkip || group[0]);
+      }
+    }
+
+    this.logger.log(
+      `Filtered packages: ${packages.length} -> ${result.length} (nonhkip preference applied)`,
+    );
+    return result;
+  }
+
   private buildPlanSlug(
     locationName: string,
     dataMb: number,
     days: number,
     provider: string,
     type: string,
+    pkg?: EsimAccessPackage,
   ): string {
+    const prefix = provider.substring(0, 2).toLowerCase();
+    const dataLabel =
+      dataMb > 0
+        ? `-${this.formatDataSize(dataMb * 1024 * 1024).toLowerCase()}`
+        : '';
+
+    // Bug 4.1 fix: Use locationCode to differentiate Destination vs Region plans
+    // Region plans have locationCode like "CN-3", "EU", "ASIA" (contains dash or multiple chars)
+    // Destination plans have simple ISO codes like "CN", "US", "JP"
+    if (pkg) {
+      const locationCodes = pkg.location.split(',').map((s) => s.trim());
+      const isRegionPackage = locationCodes.length > 1;
+
+      if (isRegionPackage) {
+        // Region plan: use locationCode directly (e.g., CN-3, EU, ASIA)
+        const regionCode = pkg.locationCode
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '');
+        return `${regionCode}${dataLabel}-${days}days-${type}-${prefix}`;
+      } else {
+        // Destination plan: use the simple country code
+        const countryCode = pkg.locationCode
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '');
+        return `${countryCode}${dataLabel}-${days}days-${type}-${prefix}`;
+      }
+    }
+
+    // Fallback for legacy calls without pkg
     const name = locationName
       .toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '')
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
       .trim();
-    const prefix = provider.substring(0, 2).toLowerCase();
-    const dataLabel =
-      dataMb > 0
-        ? `-${this.formatDataSize(dataMb * 1024 * 1024).toLowerCase()}`
-        : '';
     return `${name}${dataLabel}-${days}days-${type}-${prefix}`;
   }
 

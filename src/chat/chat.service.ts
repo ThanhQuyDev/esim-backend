@@ -56,8 +56,22 @@ export class ChatService {
     chatRoomId: number,
     senderId: number,
     message: string,
+    attachment?: {
+      fileUrl?: string;
+      fileName?: string;
+      fileType?: string;
+      fileSize?: number;
+    },
   ): Promise<ChatMessage> {
-    return this.chatMessageRepository.create({ chatRoomId, senderId, message });
+    return this.chatMessageRepository.create({
+      chatRoomId,
+      senderId,
+      message,
+      fileUrl: attachment?.fileUrl,
+      fileName: attachment?.fileName,
+      fileType: attachment?.fileType,
+      fileSize: attachment?.fileSize,
+    });
   }
 
   async markAsRead(chatRoomId: number, readerId: number): Promise<void> {

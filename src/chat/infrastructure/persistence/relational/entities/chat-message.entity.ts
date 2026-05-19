@@ -36,6 +36,18 @@ export class ChatMessageEntity extends EntityRelationalHelper {
   @Column({ type: 'text' })
   message: string;
 
+  @Column({ type: String, nullable: true })
+  fileUrl?: string | null;
+
+  @Column({ type: String, nullable: true })
+  fileName?: string | null;
+
+  @Column({ type: String, nullable: true })
+  fileType?: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  fileSize?: number | null;
+
   @Column({ type: Boolean, default: false })
   isRead: boolean;
 

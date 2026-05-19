@@ -5,6 +5,7 @@ import { WhyChooseUsEntity } from '../entities/why-choose-us.entity';
 export class WhyChooseUsMapper {
   static toDomain(raw: WhyChooseUsEntity): WhyChooseUs {
     const domainEntity = new WhyChooseUs();
+    domainEntity.type = raw.type ?? null;
     domainEntity.language = raw.language;
 
     domainEntity.isActive = raw.isActive;
@@ -26,6 +27,7 @@ export class WhyChooseUsMapper {
 
   static toPersistence(domainEntity: WhyChooseUs): WhyChooseUsEntity {
     const persistenceEntity = new WhyChooseUsEntity();
+    persistenceEntity.type = domainEntity.type ?? null;
     persistenceEntity.language = domainEntity.language;
 
     persistenceEntity.isActive = domainEntity.isActive;

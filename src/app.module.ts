@@ -61,6 +61,7 @@ import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { SeoConfigsModule } from './seo-configs/seo-configs.module';
 import { MiniTagsModule } from './mini-tags/mini-tags.module';
 import { ChatModule } from './chat/chat.module';
+import { TicketsModule } from './tickets/tickets.module';
 
 import { HeroBannersModule } from './hero-banners/hero-banners.module';
 
@@ -69,8 +70,14 @@ import { FootersModule } from './footers/footers.module';
 import { TopBarsModule } from './top-bars/top-bars.module';
 import { OverviewModule } from './overview/overview.module';
 
+import { InvoicesModule } from './invoices/invoices.module';
+
+import { CustomPaymentLinksModule } from './custom-payment-links/custom-payment-links.module';
+
 @Module({
   imports: [
+    CustomPaymentLinksModule,
+    InvoicesModule,
     TopBarsModule,
     FootersModule,
     HeroBannersModule,
@@ -149,6 +156,7 @@ import { OverviewModule } from './overview/overview.module';
     MiniTagsModule,
     ChatModule,
     OverviewModule,
+    TicketsModule,
   ],
 })
 export class AppModule {}

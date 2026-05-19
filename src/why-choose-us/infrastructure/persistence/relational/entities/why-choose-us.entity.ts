@@ -12,6 +12,12 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 })
 export class WhyChooseUsEntity extends EntityRelationalHelper {
   @Column({
+    nullable: true,
+    type: String,
+  })
+  type?: string | null;
+
+  @Column({
     nullable: false,
     type: String,
   })

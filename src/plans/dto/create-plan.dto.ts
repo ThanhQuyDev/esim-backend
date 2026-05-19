@@ -166,4 +166,12 @@ export class CreatePlanDto {
   @ApiPropertyOptional({ type: Date })
   @IsOptional()
   lastSyncedAt?: Date | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['popular', 'best seller'],
+    description: 'Tags: popular, best seller, new, hot deal',
+  })
+  @IsOptional()
+  tags?: string[] | null;
 }

@@ -107,6 +107,13 @@ export class Plan {
   @ApiPropertyOptional()
   lastSyncedAt: Date | null;
 
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['popular', 'best seller'],
+    description: 'Tags: popular, best seller, new, hot deal',
+  })
+  tags: string[] | null;
+
   @ApiProperty({ type: Boolean, example: true })
   isActive: boolean;
 

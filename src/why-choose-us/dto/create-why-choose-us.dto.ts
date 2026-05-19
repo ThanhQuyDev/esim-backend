@@ -57,5 +57,14 @@ export class CreateWhyChooseUsDto {
   @IsString()
   title: string;
 
+  @ApiProperty({
+    required: false,
+    type: () => String,
+    description: 'Type classification for display sections',
+  })
+  @IsOptional()
+  @IsString()
+  type?: string | null;
+
   // Don't forget to use the class-validator decorators in the DTO properties.
 }

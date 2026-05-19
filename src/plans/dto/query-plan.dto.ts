@@ -39,6 +39,38 @@ export class FilterPlanDto {
   @IsOptional()
   @IsString({ each: true })
   provider?: string[];
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Filter by duration in days',
+  })
+  @IsOptional()
+  @IsNumber()
+  duration?: number;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Filter by plan type (fixed, unlimited, daily, etc.)',
+  })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Filter by data amount (e.g. 1GB, 50GB)',
+  })
+  @IsOptional()
+  @IsString()
+  data?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Filter by tags (popular, best seller, new, hot deal)',
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  tags?: string[];
 }
 
 export class SortPlanDto {

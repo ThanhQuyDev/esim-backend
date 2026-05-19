@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { PaymentController } from './payment.controller';
 import { PaymentService } from './payment.service';
-import { OnepayService } from './onepay.service';
+import { OnepayModule } from './onepay.module';
 import { OrdersModule } from '../orders/orders.module';
+import { CustomPaymentLinksModule } from '../custom-payment-links/custom-payment-links.module';
 
 @Module({
-  imports: [OrdersModule],
+  imports: [OrdersModule, OnepayModule, CustomPaymentLinksModule],
   controllers: [PaymentController],
-  providers: [PaymentService, OnepayService],
+  providers: [PaymentService],
 })
 export class PaymentModule {}
