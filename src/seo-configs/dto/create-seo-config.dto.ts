@@ -43,6 +43,20 @@ export class CreateSeoConfigDto {
   @IsString()
   ogDescription?: string;
 
+  /**
+   * Feature 4.1 — Free-form scripts (JSON-LD / GA / 3rd-party tracking).
+   * Length is unbounded server-side; the frontend will inject this verbatim
+   * into the page <head> after the <meta /> tags.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Raw <script> / JSON-LD blocks rendered verbatim inside <head> after the meta tags',
+  })
+  @IsOptional()
+  @IsString()
+  structuredData?: string;
+
   @ApiPropertyOptional({ type: Number })
   @IsOptional()
   @IsNumber()

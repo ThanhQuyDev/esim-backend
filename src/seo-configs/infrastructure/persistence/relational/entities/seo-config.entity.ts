@@ -41,6 +41,14 @@ export class SeoConfigEntity extends EntityRelationalHelper {
   @Column({ type: 'text', nullable: true })
   ogDescription: string | null;
 
+  /**
+   * Feature 4.1 — JSON-LD / GA / third-party scripts injected verbatim into
+   * the page <head>, AFTER the standard <meta /> tags. Stored as `text` to
+   * accept large blobs (Schema.org, Tag Manager, Hotjar, etc.).
+   */
+  @Column({ type: 'text', nullable: true })
+  structuredData: string | null;
+
   @Column({ type: Number, nullable: true })
   destinationId: number | null;
 

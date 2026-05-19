@@ -202,6 +202,12 @@ export class PlansService {
       isActive: updatePlanDto.isActive,
       sms: updatePlanDto.sms,
       call: updatePlanDto.call,
+      // Bug fix — tags / vndPrice were missing from the update payload, so
+      // edits from the admin grid silently dropped the new tag list and the
+      // VND override. They're inherited from `PartialType(CreatePlanDto)` on
+      // the DTO side, just need to be forwarded to the repository.
+      tags: updatePlanDto.tags,
+      vndPrice: updatePlanDto.vndPrice,
     });
   }
 

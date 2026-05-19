@@ -1,6 +1,24 @@
 import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { CreatePlanDto } from './create-plan.dto';
 import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+
+/**
+ * Coerce stringified numbers ("0.4000", "12.50") into real numbers.
+ * Mirrors the helper in create-plan.dto.ts so the admin grid and Excel
+ * imports can post decimal-string fields without tripping @IsNumber.
+ */
+const toNumber = ({ value }: { value: unknown }): unknown => {
+  if (value === null || value === undefined || value === '') return value;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return value;
+    const n = Number(trimmed);
+    return Number.isNaN(n) ? value : n;
+  }
+  return value;
+};
 
 export class UpdatePlanDto extends PartialType(CreatePlanDto) {
   @ApiPropertyOptional({ example: 'esimaccess', type: String })
@@ -29,36 +47,43 @@ export class UpdatePlanDto extends PartialType(CreatePlanDto) {
   countryCode?: string | null;
 
   @ApiPropertyOptional({ example: 1, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   destinationId?: number | null;
 
   @ApiPropertyOptional({ example: 1, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   regionId?: number | null;
 
   @ApiPropertyOptional({ example: 30, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   durationDays?: number;
 
   @ApiPropertyOptional({ example: 3072, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   dataMb?: number;
 
   @ApiPropertyOptional({ example: 1.1, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   costPrice?: number;
 
   @ApiPropertyOptional({ example: 1.43, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   price?: number;
 
   @ApiPropertyOptional({ example: 4.5, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   retailPrice?: number;

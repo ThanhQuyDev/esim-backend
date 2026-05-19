@@ -24,8 +24,25 @@ export class ChatRoomRelationalRepository implements ChatRoomRepository {
     return entity ? ChatRoomMapper.toDomain(entity) : null;
   }
 
-  async findAllWithLastMessage(): Promise<ChatRoom[]> {
-    const entities = await this.repo.find({ order: { updatedAt: 'DESC' } });
+  async findAllWithLastMessage(filter?: {
+    email?: string;
+  }): Promise<ChatRoom[]> {
+    // Feature 5.1 — pull the user inline (eager join) so the admin grid can
+    // show the customer's email/name without a second round-trip. When the
+    // admin types in the email filter we ILIKE against `user.email` so a
+    // partial address still matches.
+    const qb = this.repo
+      .createQueryBuilder('room')
+      .leftJoinAndSelect('room.user', 'user')
+      .orderBy('room.updatedAt', 'DESC');
+
+    if (filter?.email && filter.email.trim().length > 0) {
+      qb.andWhere('user.email ILIKE :email', {
+        email: `%${filter.email.trim()}%`,
+      });
+    }
+
+    const entities = await qb.getMany();
     return entities.map(ChatRoomMapper.toDomain);
   }
 

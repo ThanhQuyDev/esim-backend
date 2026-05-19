@@ -107,6 +107,17 @@ export class CouponsRelationalRepository implements CouponRepository {
       .execute();
   }
 
+  async decrementUsage(id: Coupon['id']): Promise<void> {
+    // Feature 3.1 — restore the coupon to "available" state when an order is
+    // cancelled. Clamped at 0 to defend against double-cancels / cron races.
+    await this.couponRepository
+      .createQueryBuilder()
+      .update(CouponEntity)
+      .set({ usageCount: () => 'GREATEST("usageCount" - 1, 0)' })
+      .where('id = :id', { id })
+      .execute();
+  }
+
   async remove(id: Coupon['id']): Promise<void> {
     await this.couponRepository.softDelete(id);
   }

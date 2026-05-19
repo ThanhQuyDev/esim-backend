@@ -22,12 +22,16 @@ export class ChatService {
     return this.chatRoomRepository.findById(id);
   }
 
-  async getAllRooms(): Promise<
+  async getAllRooms(filter?: {
+    email?: string;
+  }): Promise<
     Array<
       ChatRoom & { lastMessage: NullableType<ChatMessage>; unreadCount: number }
     >
   > {
-    const rooms = await this.chatRoomRepository.findAllWithLastMessage();
+    // Feature 5.1 — pass the optional email filter down to the repository so
+    // a partial-email match returns only the matching conversations.
+    const rooms = await this.chatRoomRepository.findAllWithLastMessage(filter);
     return Promise.all(
       rooms.map(async (room) => {
         const lastMessage = await this.chatMessageRepository.findLastByRoomId(

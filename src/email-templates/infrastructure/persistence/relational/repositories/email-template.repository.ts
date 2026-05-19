@@ -44,17 +44,26 @@ export class EmailTemplatesRelationalRepository implements EmailTemplateReposito
     id: number,
     payload: Partial<EmailTemplate>,
   ): Promise<EmailTemplate> {
+    // Bug 2.3 fix — persist the admin's edits with a direct, partial UPDATE
+    // statement (no merge of stale `createdAt`/`updatedAt`, no full re-save of
+    // the entity). Only fields explicitly present in the payload are written,
+    // so a CMS edit of `htmlBody` or `subject` is guaranteed to land in the DB.
     const entity = await this.repo.findOne({ where: { id } });
     if (!entity) throw new Error('EmailTemplate not found');
-    const updated = await this.repo.save(
-      this.repo.create(
-        EmailTemplateMapper.toPersistence({
-          ...EmailTemplateMapper.toDomain(entity),
-          ...payload,
-        }),
-      ),
-    );
-    return EmailTemplateMapper.toDomain(updated);
+
+    const partial: Partial<EmailTemplateEntity> = {};
+    if (payload.name !== undefined) partial.name = payload.name;
+    if (payload.subject !== undefined) partial.subject = payload.subject;
+    if (payload.htmlBody !== undefined) partial.htmlBody = payload.htmlBody;
+    if (payload.isActive !== undefined) partial.isActive = payload.isActive;
+
+    if (Object.keys(partial).length > 0) {
+      await this.repo.update({ id }, partial);
+    }
+
+    const fresh = await this.repo.findOne({ where: { id } });
+    if (!fresh) throw new Error('EmailTemplate not found after update');
+    return EmailTemplateMapper.toDomain(fresh);
   }
 
   async remove(id: number): Promise<void> {

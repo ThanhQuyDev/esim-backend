@@ -422,6 +422,22 @@ export class WalletsService {
     await this.holdRepository.save(hold);
   }
 
+  /**
+   * Feature 3.1 — Cancel a pending referral attached to an order. Used when
+   * the buyer cancels the order before payment so the referral code can be
+   * re-applied to a future order. Safe to call multiple times: only PENDING
+   * referrals are flipped to REVERSED, anything else is a no-op.
+   */
+  async reversePendingReferralForOrder(orderId: number): Promise<void> {
+    const referral = await this.orderReferralRepository.findOne({
+      where: { orderId },
+    });
+    if (!referral) return;
+    if (referral.status !== OrderReferralStatusEnum.PENDING) return;
+    referral.status = OrderReferralStatusEnum.REVERSED;
+    await this.orderReferralRepository.save(referral);
+  }
+
   async completePaidOrderBenefits(order: Order): Promise<void> {
     if (order.walletSpentVndAmount > 0) {
       await this.captureHoldForOrder(order.id);

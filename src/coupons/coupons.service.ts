@@ -176,6 +176,17 @@ export class CouponsService {
     }
   }
 
+  async releaseCoupon(couponCode: string): Promise<void> {
+    // Feature 3.1 — counterpart of applyCoupon. Used when an order is
+    // cancelled before payment so the buyer can re-use the same code.
+    const coupon = await this.couponRepository.findByCode(
+      couponCode.toUpperCase(),
+    );
+    if (coupon) {
+      await this.couponRepository.decrementUsage(coupon.id);
+    }
+  }
+
   async remove(id: Coupon['id']): Promise<void> {
     await this.couponRepository.remove(id);
   }

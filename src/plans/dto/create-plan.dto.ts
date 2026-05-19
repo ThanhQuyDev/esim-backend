@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsNotEmpty,
@@ -6,6 +7,24 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
+
+/**
+ * Coerce stringified numbers (e.g. "0.4000", "12.50") into real numbers so
+ * the @IsNumber validator passes. Empty / null / undefined values are passed
+ * through untouched. Anything that fails Number() coercion is also passed
+ * through so @IsNumber surfaces a meaningful "must be a number" error.
+ */
+const toNumber = ({ value }: { value: unknown }): unknown => {
+  if (value === null || value === undefined || value === '') return value;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return value;
+    const n = Number(trimmed);
+    return Number.isNaN(n) ? value : n;
+  }
+  return value;
+};
 
 export class CreatePlanDto {
   @ApiProperty({ example: 'esimaccess', type: String })
@@ -34,36 +53,43 @@ export class CreatePlanDto {
   countryCode?: string | null;
 
   @ApiPropertyOptional({ example: 1, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   destinationId?: number | null;
 
   @ApiPropertyOptional({ example: 1, type: Number })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   regionId?: number | null;
 
   @ApiProperty({ example: 30, type: Number })
+  @Transform(toNumber)
   @IsNotEmpty()
   @IsNumber()
   durationDays: number;
 
   @ApiProperty({ example: 3072, type: Number })
+  @Transform(toNumber)
   @IsNotEmpty()
   @IsNumber()
   dataMb: number;
 
   @ApiProperty({ example: 1.1, type: Number })
+  @Transform(toNumber)
   @IsNotEmpty()
   @IsNumber()
   costPrice: number;
 
   @ApiProperty({ example: 1.43, type: Number })
+  @Transform(toNumber)
   @IsNotEmpty()
   @IsNumber()
   price: number;
 
   @ApiProperty({ example: 4.5, type: Number })
+  @Transform(toNumber)
   @IsNotEmpty()
   @IsNumber()
   retailPrice: number;
@@ -83,6 +109,7 @@ export class CreatePlanDto {
     type: Number,
     description: 'Number of SMS included',
   })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   sms?: number | null;
@@ -92,6 +119,7 @@ export class CreatePlanDto {
     type: Number,
     description: 'Call minutes included',
   })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   call?: number | null;
@@ -131,6 +159,7 @@ export class CreatePlanDto {
     type: Number,
     description: 'Discount percentage (0-100)',
   })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   discount?: number;
@@ -159,6 +188,7 @@ export class CreatePlanDto {
     type: Number,
     description: 'Price in VND (set directly for VND currency plans)',
   })
+  @Transform(toNumber)
   @IsOptional()
   @IsNumber()
   vndPrice?: number;

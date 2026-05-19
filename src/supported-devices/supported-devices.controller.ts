@@ -58,9 +58,12 @@ export class SupportedDevicesController {
       totalPages: number;
     }
   > {
+    // Bug 1.1 fix — make pagination fully dynamic from request, never hardcoded.
+    // page defaults to 1, limit defaults to 10 and is capped at 100 to keep the
+    // admin grid responsive while still allowing realistic page sizes (25/50/100).
     const page = Number(query?.page) > 0 ? Number(query.page) : 1;
     let limit = Number(query?.limit) > 0 ? Number(query.limit) : 10;
-    if (limit > 50) limit = 50;
+    if (limit > 100) limit = 100;
 
     const [data, count] =
       await this.supportedDevicesService.findAllWithPagination({

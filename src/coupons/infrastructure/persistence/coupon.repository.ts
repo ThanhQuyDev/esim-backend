@@ -16,5 +16,6 @@ export abstract class CouponRepository {
   abstract findByCode(code: string): Promise<NullableType<Coupon>>;
   abstract update(id: Coupon['id'], payload: Partial<Coupon>): Promise<Coupon>;
   abstract incrementUsage(id: Coupon['id']): Promise<void>;
+  abstract decrementUsage(id: Coupon['id']): Promise<void>;
   abstract remove(id: Coupon['id']): Promise<void>;
 }

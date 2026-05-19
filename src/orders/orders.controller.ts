@@ -148,6 +148,29 @@ export class OrdersController {
     return this.ordersService.refundOrder(id, dto, req.user.id);
   }
 
+  /**
+   * Feature 3.1 — User-facing instant cancel for a PENDING order. Releases
+   * the wallet hold, decrements the coupon usage counter and reverses any
+   * pending referral so the buyer can re-use those resources straight away
+   * instead of waiting for the 30-minute timeout cron.
+   */
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @ApiOkResponse({ type: Order })
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: String, required: true })
+  cancelOrder(
+    @Param('id') id: Order['id'],
+    @Request() req: { user: { id: number; role?: { id: number } } },
+  ): Promise<Order> {
+    // Admins can cancel any order; regular users only their own.
+    const isAdmin = req.user?.role?.id === 1;
+    return this.ordersService.cancelOrder(
+      Number(id),
+      isAdmin ? undefined : req.user.id,
+    );
+  }
+
   @ApiOkResponse({ type: Order })
   @Patch(':id')
   @HttpCode(HttpStatus.OK)

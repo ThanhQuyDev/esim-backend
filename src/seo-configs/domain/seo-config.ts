@@ -34,6 +34,21 @@ export class SeoConfig {
   @ApiPropertyOptional({ type: String, example: 'Best Japan eSIM plans.' })
   ogDescription: string | null;
 
+  /**
+   * Feature 4.1 — Raw scripts / JSON-LD injected at the bottom of the page
+   * <head> (after the meta tags). Free-form text, may contain `<script>`
+   * tags so the frontend must render with `dangerouslySetInnerHTML` (or
+   * the SSR equivalent) and never sanitize away the script payloads.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'JSON-LD, Google Analytics or arbitrary 3rd-party <script> blocks. Rendered verbatim inside <head> after the <meta/> tags.',
+    example:
+      '<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"eSIM.vn"}</script>',
+  })
+  structuredData: string | null;
+
   // Link to destination (optional)
   @ApiPropertyOptional({ type: Number, example: 1 })
   destinationId: number | null;

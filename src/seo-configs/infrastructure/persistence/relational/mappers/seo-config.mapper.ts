@@ -12,6 +12,7 @@ export class SeoConfigMapper {
     domainEntity.ogImage = raw.ogImage;
     domainEntity.ogTitle = raw.ogTitle;
     domainEntity.ogDescription = raw.ogDescription;
+    domainEntity.structuredData = raw.structuredData ?? null;
     domainEntity.destinationId = raw.destinationId;
     domainEntity.regionId = raw.regionId;
     domainEntity.planId = raw.planId;
@@ -34,6 +35,7 @@ export class SeoConfigMapper {
     persistenceEntity.ogImage = domainEntity.ogImage;
     persistenceEntity.ogTitle = domainEntity.ogTitle;
     persistenceEntity.ogDescription = domainEntity.ogDescription;
+    persistenceEntity.structuredData = domainEntity.structuredData ?? null;
     persistenceEntity.destinationId = domainEntity.destinationId;
     persistenceEntity.regionId = domainEntity.regionId;
     persistenceEntity.planId = domainEntity.planId;

@@ -1419,6 +1419,90 @@ export class OrdersService {
     await this.orderRepository.remove(id);
   }
 
+  /**
+   * Feature 3.1 — Instant cancel for a PENDING order.
+   *
+   * Mirrors the resource-rollback contract that the cron-job @ {@link failExpiredPendingOrders}
+   * was indirectly applying after 30 minutes, except the cancel happens
+   * immediately so the buyer can re-use coupons / referral codes / wallet
+   * eXu balance for a new order without waiting.
+   *
+   * Strict guards:
+   *   • only the order's owner (or an admin via {@link cancelOrder}) can
+   *     cancel — the user check is enforced at the controller level.
+   *   • only orders in PENDING status are cancellable. Orders that are
+   *     already paid, refunded, failed or topup-related must go through
+   *     the refund workflow instead.
+   *
+   * Resource rollback (best effort, errors logged but never propagated):
+   *   1. status → FAILED (matches the cron job's terminology + downstream
+   *      reporting).
+   *   2. release the wallet hold so the eXu balance becomes immediately
+   *      available again.
+   *   3. decrement the coupon `usageCount` so it can be re-applied.
+   *   4. reverse any pending referral so the referral code is freed up.
+   */
+  async cancelOrder(orderId: number, userId?: number): Promise<Order> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+
+    if (userId !== undefined && order.userId !== userId) {
+      throw new BadRequestException('Bạn không có quyền hủy đơn hàng này.');
+    }
+
+    if (order.status !== 'pending') {
+      throw new BadRequestException(
+        `Chỉ có thể hủy đơn đang chờ thanh toán. Trạng thái hiện tại: ${order.status}`,
+      );
+    }
+
+    // 1. Move the order to FAILED — this matches the cron-job terminology
+    // and removes the order from the buyer's "đang chờ thanh toán" list.
+    const updated = await this.orderRepository.update(order.id, {
+      status: 'failed',
+    });
+    if (!updated) {
+      throw new NotFoundException(`Order ${orderId} not found after update`);
+    }
+
+    // 2-4. Release wallet hold, decrement coupon usage, reverse pending
+    //      referral. Each step is independent so a failure in one does not
+    //      block the others — the order has already been moved to FAILED.
+    try {
+      await this.walletsService.releaseHoldForOrder(order.id);
+    } catch (err) {
+      this.logger.error(
+        `cancelOrder: failed to release wallet hold for order ${order.id}: ${(err as Error).message}`,
+      );
+    }
+
+    if (order.couponCode) {
+      try {
+        await this.couponsService.releaseCoupon(order.couponCode);
+      } catch (err) {
+        this.logger.error(
+          `cancelOrder: failed to release coupon ${order.couponCode} for order ${order.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    try {
+      await this.walletsService.reversePendingReferralForOrder(order.id);
+    } catch (err) {
+      this.logger.error(
+        `cancelOrder: failed to reverse pending referral for order ${order.id}: ${(err as Error).message}`,
+      );
+    }
+
+    this.logger.log(
+      `cancelOrder: order ${order.orderNumber} (id=${order.id}) cancelled by ${
+        userId !== undefined ? `user ${userId}` : 'admin'
+      } — coupon=${order.couponCode ?? '-'}, referral=${order.referralCode ?? '-'}, walletHold=${order.walletSpentVndAmount}`,
+    );
+
+    return updated;
+  }
+
   async applyCouponAndClearCart(
     couponCode: string,
     userId: number,
