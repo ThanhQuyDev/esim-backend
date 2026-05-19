@@ -17,6 +17,8 @@ import {
   EsimAccessQueryEsimItem,
   EsimAccessUsageResponse,
   EsimAccessUsageItem,
+  EsimAccessTopupRequest,
+  EsimAccessTopupResponse,
 } from './esimaccess-api.types';
 
 @Injectable()
@@ -514,6 +516,104 @@ export class EsimAccessService {
     }
 
     return item;
+  }
+
+  /**
+   * Fetch the list of topup packages eligible for a specific iccid.
+   *
+   * EsimAccess returns the global package catalogue when called with an
+   * `iccid`; the partner side filters server-side to packages compatible
+   * with that SIM (matching `supportTopUpType=2` and matching location).
+   */
+  async listTopupPackagesByIccid(iccid: string): Promise<EsimAccessPackage[]> {
+    const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
+      infer: true,
+    });
+    const accessCode = this.configService.getOrThrow('esimAccess.accessCode', {
+      infer: true,
+    });
+
+    this.logger.log(`Fetching EsimAccess topup packages for iccid=${iccid}`);
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<EsimAccessApiResponse>(
+        `${baseUrl}/api/v1/open/package/list`,
+        {
+          locationCode: '',
+          type: '',
+          packageCode: '',
+          iccid,
+        },
+        {
+          headers: {
+            'RT-AccessCode': accessCode,
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    if (!data.success) {
+      throw new Error(
+        `EsimAccess topup list failed: ${data.errorCode} - ${data.errorMsg}`,
+      );
+    }
+
+    return (data.obj?.packageList ?? []).filter(
+      (p) => p.supportTopUpType === 2,
+    );
+  }
+
+  /**
+   * Submit a topup for an existing EsimAccess SIM.
+   * @see EsimAccess docs: POST /api/v1/open/esim/topup
+   */
+  async submitTopup(params: {
+    iccid: string;
+    packageCode: string;
+    transactionId: string;
+  }): Promise<EsimAccessTopupResponse['obj']> {
+    const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
+      infer: true,
+    });
+    const accessCode = this.configService.getOrThrow('esimAccess.accessCode', {
+      infer: true,
+    });
+
+    const body: EsimAccessTopupRequest = {
+      iccid: params.iccid,
+      packageCode: params.packageCode,
+      transactionId: params.transactionId,
+    };
+
+    this.logger.log(
+      `Submitting EsimAccess topup: iccid=${params.iccid}, packageCode=${params.packageCode}, txn=${params.transactionId}`,
+    );
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<EsimAccessTopupResponse>(
+        `${baseUrl}/api/v1/open/esim/topup`,
+        body,
+        {
+          headers: {
+            'RT-AccessCode': accessCode,
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    if (!data.success) {
+      throw new Error(
+        `EsimAccess topup failed: ${data.errorCode} - ${data.errorMsg}`,
+      );
+    }
+
+    this.logger.log(
+      `EsimAccess topup submitted: orderNo=${data.obj?.orderNo ?? '-'}`,
+    );
+
+    return data.obj ?? {};
   }
 
   /**

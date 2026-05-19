@@ -6,6 +6,11 @@ import { AllConfigType } from '../config/config.type';
 import { SubmitOrderDto } from '../orders/dto/submit-order.dto';
 import { CustomPaymentLinksService } from '../custom-payment-links/custom-payment-links.service';
 import { CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX } from '../custom-payment-links/custom-payment-links.enum';
+import { TopupService } from '../topup/topup.service';
+import {
+  TOPUP_ORDER_NUMBER_PREFIX,
+  TOPUP_ORDER_STATUS,
+} from '../topup/topup.constants';
 
 @Injectable()
 export class PaymentService {
@@ -16,6 +21,7 @@ export class PaymentService {
     private readonly ordersService: OrdersService,
     private readonly configService: ConfigService<AllConfigType>,
     private readonly customPaymentLinksService: CustomPaymentLinksService,
+    private readonly topupService: TopupService,
   ) {}
 
   async createCheckout(
@@ -60,6 +66,14 @@ export class PaymentService {
     );
 
     if (!orderNumber) return { code: '01' };
+
+    // Topup orders use the dedicated TOPUP- prefix. After the cash arrives
+    // we mark the order PAID then fire-and-forget the provider submission.
+    // We do NOT wait for the provider here — bus timeouts otherwise back
+    // up to OnePay and the customer-facing return page.
+    if (orderNumber.startsWith(`${TOPUP_ORDER_NUMBER_PREFIX}-`)) {
+      return this.handleTopupIpn(query, orderNumber);
+    }
 
     // Custom Payment Links use a dedicated VORD- prefix; route those to the
     // custom-payment-links service instead of the standard order flow.
@@ -133,6 +147,61 @@ export class PaymentService {
       );
     }
 
+    return { code: '00' };
+  }
+
+  /**
+   * Handle the IPN for a TOPUP order. Reuses 80% of the BUY_NEW logic but
+   * delegates the post-payment provider call to {@link TopupService}.
+   */
+  private async handleTopupIpn(
+    query: Record<string, string>,
+    orderNumber: string,
+  ): Promise<{ code: string }> {
+    const order = await this.ordersService.findByOrderNumber(orderNumber);
+    if (!order) {
+      this.logger.warn(`OnePay IPN (topup): order not found ${orderNumber}`);
+      return { code: '01' };
+    }
+
+    if (order.status !== TOPUP_ORDER_STATUS.PENDING) {
+      this.logger.log(
+        `OnePay IPN (topup): order ${orderNumber} already processed (status=${order.status})`,
+      );
+      return { code: '00' };
+    }
+
+    if (!this.onepayService.isPaymentSuccess(query)) {
+      await this.ordersService.update(order.id, {
+        status: TOPUP_ORDER_STATUS.FAILED,
+      });
+      this.logger.log(
+        `OnePay IPN (topup): payment failed for ${orderNumber}, code=${query['vpc_TxnResponseCode']}`,
+      );
+      return { code: '00' };
+    }
+
+    // Mark PAID immediately, then trigger provider submission asynchronously.
+    await this.ordersService.update(order.id, {
+      status: TOPUP_ORDER_STATUS.PAID,
+      paymentMethod: 'onepay',
+      paymentId: query['vpc_TransactionNo'] ?? null,
+    });
+
+    // Fire-and-forget — do not await. The provider call may be slow and we
+    // must not hold the IPN response. Errors are caught inside executeTopup
+    // and reflected as MANUAL_INTERVENTION.
+    void this.topupService
+      .executeTopup(orderNumber)
+      .catch((err) =>
+        this.logger.error(
+          `Async executeTopup crashed for ${orderNumber}: ${(err as Error).message}`,
+        ),
+      );
+
+    this.logger.log(
+      `OnePay IPN (topup): order ${orderNumber} marked PAID, provider submission scheduled`,
+    );
     return { code: '00' };
   }
 

@@ -30,6 +30,32 @@ export class Order {
   status!: string;
 
   @ApiProperty({
+    type: String,
+    example: 'BUY_NEW',
+    enum: ['BUY_NEW', 'TOPUP'],
+  })
+  orderType!: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '89852245280001354019',
+    description: 'For TOPUP orders, the iccid being topped up',
+  })
+  targetIccid?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'AIRALO',
+  })
+  topupProvider?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'bonbon-mobile-30days-3gb-topup',
+  })
+  topupPackageId?: string | null;
+
+  @ApiProperty({
     type: Number,
     example: 99.99,
   })

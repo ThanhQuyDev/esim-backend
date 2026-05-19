@@ -41,3 +41,18 @@ export interface GadgetKoreaTopupResponse {
   message: string;
   topup: GadgetKoreaTopupData;
 }
+
+export interface GadgetKoreaExtendRequest {
+  topupId: string;
+  optionId: string;
+}
+
+export interface GadgetKoreaExtendResponse {
+  code: string;
+  message: string;
+  data?: {
+    topupId?: string;
+    optionId?: string;
+    extendedAt?: string;
+  };
+}

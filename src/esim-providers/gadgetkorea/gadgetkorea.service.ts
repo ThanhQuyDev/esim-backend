@@ -11,6 +11,8 @@ import {
   GadgetKoreaQueryEsimResponse,
   GadgetKoreaTopupData,
   GadgetKoreaTopupResponse,
+  GadgetKoreaExtendRequest,
+  GadgetKoreaExtendResponse,
 } from './gadgetkorea-api.types';
 
 @Injectable()
@@ -206,5 +208,67 @@ export class GadgetKoreaService {
     }
 
     return data.topup;
+  }
+
+  /**
+   * Submit an extend (topup) request to Gadget Korea.
+   * @see Gadget Korea docs: POST /api/v2/extend
+   */
+  async submitTopup(params: {
+    topupId: string;
+    optionId: string;
+  }): Promise<GadgetKoreaExtendResponse> {
+    const baseUrl = this.configService.getOrThrow('gadgetKorea.baseUrl', {
+      infer: true,
+    });
+    const accessKey = this.configService.getOrThrow('gadgetKorea.accessKey', {
+      infer: true,
+    });
+    const secretKey = this.configService.getOrThrow('gadgetKorea.secretKey', {
+      infer: true,
+    });
+
+    const timestamp = Date.now();
+    const method = 'POST';
+    const pathAndQuery = '/api/v2/extend';
+    const stringToSign = `${method} ${pathAndQuery}\n${timestamp}\n${accessKey}`;
+
+    const secretKeyBuffer = Buffer.from(secretKey, 'base64');
+    const signature = crypto
+      .createHmac('sha256', secretKeyBuffer)
+      .update(stringToSign)
+      .digest('base64');
+
+    const body: GadgetKoreaExtendRequest = {
+      topupId: params.topupId,
+      optionId: params.optionId,
+    };
+
+    this.logger.log(
+      `Submitting Gadget Korea extend: topupId=${params.topupId}, optionId=${params.optionId}`,
+    );
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<GadgetKoreaExtendResponse>(
+        `${baseUrl}${pathAndQuery}`,
+        body,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-gat-timestamp': String(timestamp),
+            'x-gat-access-key': accessKey,
+            'x-gat-signature': signature,
+          },
+        },
+      ),
+    );
+
+    if (data.code !== '0000') {
+      throw new Error(`Gadget Korea extend failed: ${data.message}`);
+    }
+
+    this.logger.log(`Gadget Korea extend submitted: topupId=${params.topupId}`);
+
+    return data;
   }
 }

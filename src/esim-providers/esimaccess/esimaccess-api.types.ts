@@ -103,6 +103,22 @@ export interface EsimAccessOrderResponse {
   };
 }
 
+export interface EsimAccessTopupRequest {
+  iccid: string;
+  packageCode: string;
+  transactionId: string;
+}
+
+export interface EsimAccessTopupResponse {
+  errorCode: string | null;
+  errorMsg: string | null;
+  success: boolean;
+  obj: {
+    orderNo?: string;
+    transactionId?: string;
+  };
+}
+
 export interface EsimAccessUsageItem {
   esimTranNo: string;
   dataUsage: number;

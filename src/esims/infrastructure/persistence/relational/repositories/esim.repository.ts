@@ -33,10 +33,21 @@ export class EsimsRelationalRepository implements EsimRepository {
     sortOptions?: SortEsimDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Esim[], number]> {
-    const qb = this.esimsRepository.createQueryBuilder('esim');
+    const qb = this.esimsRepository
+      .createQueryBuilder('esim')
+      .leftJoinAndSelect('esim.plan', 'plan')
+      .leftJoinAndSelect('plan.destination', 'destination')
+      .leftJoinAndSelect('plan.region', 'region');
 
     if (filterOptions?.status) {
       qb.andWhere('esim.status = :status', { status: filterOptions.status });
+    } else {
+      // By default hide refunded eSIMs from listing — they belong to refunded
+      // orders and should not appear in user-facing /my/list. Callers that
+      // really want them must filter `status = 'refunded'` explicitly.
+      qb.andWhere('esim.status != :refundedStatus', {
+        refundedStatus: 'refunded',
+      });
     }
     if (filterOptions?.userId !== undefined) {
       qb.andWhere('esim.userId = :userId', { userId: filterOptions.userId });
@@ -92,6 +103,24 @@ export class EsimsRelationalRepository implements EsimRepository {
       where: orderItemIds.map((id) => ({ orderItemId: id })),
     });
     return entities.map(EsimMapper.toDomain);
+  }
+
+  /**
+   * Mark all eSIMs belonging to a given order (via their order items) as
+   * refunded. Used when an admin refunds the order — keeps eSIMs auditable
+   * but flips their status so they no longer appear in user listings.
+   */
+  async markRefundedByOrderId(orderId: number): Promise<number> {
+    const result = await this.esimsRepository
+      .createQueryBuilder()
+      .update()
+      .set({ status: 'refunded' })
+      .where(
+        'orderItemId IN (SELECT id FROM order_item WHERE "orderId" = :orderId)',
+        { orderId },
+      )
+      .execute();
+    return result.affected ?? 0;
   }
 
   async findAvailableByPlanId(planId: number, limit: number): Promise<Esim[]> {

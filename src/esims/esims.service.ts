@@ -148,6 +148,14 @@ export class EsimsService {
     await this.esimsRepository.remove(id);
   }
 
+  /**
+   * Bulk-mark every eSIM tied to the given order's items as `refunded`.
+   * Returns the number of rows updated.
+   */
+  markRefundedByOrderId(orderId: number): Promise<number> {
+    return this.esimsRepository.markRefundedByOrderId(orderId);
+  }
+
   async getDataUsage(esim: Esim): Promise<DataUsageResult> {
     if (esim.provider === 'airalo') {
       try {

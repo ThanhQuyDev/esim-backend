@@ -37,6 +37,20 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: String, default: 'pending' })
   status!: string;
 
+  @Index()
+  @Column({ type: String, default: 'BUY_NEW' })
+  orderType!: string;
+
+  @Index()
+  @Column({ type: String, nullable: true })
+  targetIccid?: string | null;
+
+  @Column({ type: String, nullable: true })
+  topupProvider?: string | null;
+
+  @Column({ type: String, nullable: true })
+  topupPackageId?: string | null;
+
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   totalAmount!: number;
 

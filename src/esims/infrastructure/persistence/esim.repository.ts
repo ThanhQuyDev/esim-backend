@@ -39,6 +39,8 @@ export abstract class EsimRepository {
 
   abstract remove(id: Esim['id']): Promise<void>;
 
+  abstract markRefundedByOrderId(orderId: number): Promise<number>;
+
   abstract softDeleteByStatusOlderThan(
     status: string,
     olderThan: Date,

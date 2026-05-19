@@ -13,6 +13,10 @@ export class OrderMapper {
     }
     domainEntity.orderNumber = raw.orderNumber;
     domainEntity.status = raw.status;
+    domainEntity.orderType = raw.orderType ?? 'BUY_NEW';
+    domainEntity.targetIccid = raw.targetIccid ?? null;
+    domainEntity.topupProvider = raw.topupProvider ?? null;
+    domainEntity.topupPackageId = raw.topupPackageId ?? null;
     domainEntity.totalAmount = Number(raw.totalAmount);
     domainEntity.currency = raw.currency;
     domainEntity.paymentMethod = raw.paymentMethod;
@@ -59,6 +63,18 @@ export class OrderMapper {
     }
     if (domainEntity.status !== undefined) {
       persistenceEntity.status = domainEntity.status;
+    }
+    if (domainEntity.orderType !== undefined) {
+      persistenceEntity.orderType = domainEntity.orderType;
+    }
+    if (domainEntity.targetIccid !== undefined) {
+      persistenceEntity.targetIccid = domainEntity.targetIccid;
+    }
+    if (domainEntity.topupProvider !== undefined) {
+      persistenceEntity.topupProvider = domainEntity.topupProvider;
+    }
+    if (domainEntity.topupPackageId !== undefined) {
+      persistenceEntity.topupPackageId = domainEntity.topupPackageId;
     }
     if (domainEntity.totalAmount !== undefined) {
       persistenceEntity.totalAmount = domainEntity.totalAmount;

@@ -74,8 +74,11 @@ import { InvoicesModule } from './invoices/invoices.module';
 
 import { CustomPaymentLinksModule } from './custom-payment-links/custom-payment-links.module';
 
+import { TopupModule } from './topup/topup.module';
+
 @Module({
   imports: [
+    TopupModule,
     CustomPaymentLinksModule,
     InvoicesModule,
     TopBarsModule,

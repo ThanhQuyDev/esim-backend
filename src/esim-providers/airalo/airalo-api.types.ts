@@ -76,6 +76,44 @@ export interface AiraloOrderAsyncRequest {
   webhook_url?: string;
 }
 
+export interface AiraloTopupPackage {
+  id: string;
+  type: string;
+  price: number;
+  amount: number;
+  day: number;
+  is_unlimited: boolean;
+  title: string;
+  data: string;
+  short_info?: string | null;
+  voice?: number | null;
+  text?: number | null;
+  net_price: number;
+}
+
+export interface AiraloTopupListResponse {
+  data: AiraloTopupPackage[];
+  meta: { message: string };
+}
+
+export interface AiraloTopupOrderRequest {
+  package_id: string;
+  iccid: string;
+  description?: string;
+}
+
+export interface AiraloTopupOrderResponse {
+  data: {
+    id: number;
+    code: string;
+    package_id: string;
+    iccid: string;
+    description?: string;
+    created_at?: string;
+  };
+  meta: { message: string };
+}
+
 export interface AiraloOrderAsyncResponse {
   data: {
     request_id: string;

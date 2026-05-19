@@ -1,11 +1,15 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
+import { EsimsService } from '../esims/esims.service';
 import { Order } from '../orders/domain/order';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
 import { RefundOrderDto } from './dto/admin-wallet.dto';
@@ -57,6 +61,8 @@ type WalletTransactionInput = {
 
 @Injectable()
 export class WalletsService {
+  private readonly logger = new Logger(WalletsService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(UserWalletEntity)
@@ -73,6 +79,8 @@ export class WalletsService {
     private readonly orderRefundRepository: Repository<OrderRefundEntity>,
     @InjectRepository(OrderEntity)
     private readonly orderRepository: Repository<OrderEntity>,
+    @Inject(forwardRef(() => EsimsService))
+    private readonly esimsService: EsimsService,
   ) {}
 
   async getWalletSummary(userId: number): Promise<WalletMeDto> {
@@ -633,6 +641,20 @@ export class WalletsService {
       refundStatus: OrderRefundStatusEnum.COMPLETED,
       refundedAmountVnd,
     });
+
+    // Mark all eSIMs tied to this order as `refunded` so they no longer
+    // appear in the user's /my/list. Failure here must NOT block the refund —
+    // the wallet/order side is already committed.
+    try {
+      const affected = await this.esimsService.markRefundedByOrderId(order.id);
+      this.logger.log(
+        `Marked ${affected} eSIM(s) as refunded for order ${order.id}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed to mark eSIMs as refunded for order ${order.id}: ${(err as Error).message}`,
+      );
+    }
 
     return refund;
   }

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
 import { WalletsController } from './wallets.controller';
@@ -9,6 +9,7 @@ import { UserReferralProfileEntity } from './infrastructure/persistence/relation
 import { UserWalletEntity } from './infrastructure/persistence/relational/entities/user-wallet.entity';
 import { WalletHoldEntity } from './infrastructure/persistence/relational/entities/wallet-hold.entity';
 import { WalletTransactionEntity } from './infrastructure/persistence/relational/entities/wallet-transaction.entity';
+import { EsimsModule } from '../esims/esims.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { WalletTransactionEntity } from './infrastructure/persistence/relational
       OrderRefundEntity,
       OrderEntity,
     ]),
+    forwardRef(() => EsimsModule),
   ],
   controllers: [WalletsController],
   providers: [WalletsService],

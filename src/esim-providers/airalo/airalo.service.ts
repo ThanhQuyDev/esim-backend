@@ -18,6 +18,10 @@ import {
   AiraloOrderAsyncRequest,
   AiraloOrderAsyncResponse,
   AiraloUsageResponse,
+  AiraloTopupPackage,
+  AiraloTopupListResponse,
+  AiraloTopupOrderRequest,
+  AiraloTopupOrderResponse,
 } from './airalo-api.types';
 
 @Injectable()
@@ -360,6 +364,77 @@ export class AiraloService {
 
     this.logger.log(
       `Airalo async order submitted: request_id=${data.data.request_id}, accepted_at=${data.data.accepted_at}`,
+    );
+
+    return data.data;
+  }
+
+  /**
+   * Fetch the available topup packages for a given Airalo SIM.
+   * @see Airalo API docs: GET /v2/sims/{iccid}/topups
+   */
+  async listTopupPackages(iccid: string): Promise<AiraloTopupPackage[]> {
+    const token = await this.authenticate();
+    const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
+      infer: true,
+    });
+
+    this.logger.log(`Fetching Airalo topup packages for iccid=${iccid}`);
+
+    const { data } = await firstValueFrom(
+      this.httpService.get<AiraloTopupListResponse>(
+        `${baseUrl}/v2/sims/${iccid}/topups`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        },
+      ),
+    );
+
+    return data.data ?? [];
+  }
+
+  /**
+   * Submit a topup order on Airalo.
+   * @see Airalo API docs: POST /v2/orders/topups
+   */
+  async submitTopup(params: {
+    packageId: string;
+    iccid: string;
+    description?: string;
+  }): Promise<AiraloTopupOrderResponse['data']> {
+    const token = await this.authenticate();
+    const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
+      infer: true,
+    });
+
+    const body: AiraloTopupOrderRequest = {
+      package_id: params.packageId,
+      iccid: params.iccid,
+      description: params.description,
+    };
+
+    this.logger.log(
+      `Submitting Airalo topup: package_id=${params.packageId}, iccid=${params.iccid}`,
+    );
+
+    const { data } = await firstValueFrom(
+      this.httpService.post<AiraloTopupOrderResponse>(
+        `${baseUrl}/v2/orders/topups`,
+        body,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        },
+      ),
+    );
+
+    this.logger.log(
+      `Airalo topup submitted: id=${data.data.id}, code=${data.data.code}`,
     );
 
     return data.data;
