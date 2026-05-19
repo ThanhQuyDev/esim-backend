@@ -77,28 +77,35 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
   }): Promise<[HelpCenter[], number]> {
     const qb = this.repo.createQueryBuilder('helpCenter');
 
+    // Bug fix — Postgres folds unquoted identifiers to lowercase, but TypeORM
+    // emits the FROM alias as the quoted "helpCenter" (case-preserved). Mixing
+    // `helpCenter.column` (unquoted, → "helpcenter") with `"helpCenter"."col"`
+    // (quoted, → "helpCenter") inside the same query produced a "missing
+    // FROM-clause entry for table helpcenter" error. All raw fragments below
+    // now use the fully-quoted `"helpCenter"."col"` form so Postgres can
+    // resolve them against the quoted FROM alias.
     if (filterOptions?.language) {
-      qb.andWhere('helpCenter.language = :language', {
+      qb.andWhere('"helpCenter"."language" = :language', {
         language: filterOptions.language,
       });
     }
     if (filterOptions?.category) {
-      qb.andWhere('helpCenter.category = :category', {
+      qb.andWhere('"helpCenter"."category" = :category', {
         category: filterOptions.category,
       });
     }
     if (filterOptions?.parent) {
-      qb.andWhere('helpCenter.parent = :parent', {
+      qb.andWhere('"helpCenter"."parent" = :parent', {
         parent: filterOptions.parent,
       });
     }
     if (typeof filterOptions?.isPopular === 'boolean') {
-      qb.andWhere('helpCenter."isPopular" = :isPopular', {
+      qb.andWhere('"helpCenter"."isPopular" = :isPopular', {
         isPopular: filterOptions.isPopular,
       });
     }
     if (typeof filterOptions?.isPublished === 'boolean') {
-      qb.andWhere('helpCenter."isPublished" = :isPublished', {
+      qb.andWhere('"helpCenter"."isPublished" = :isPublished', {
         isPublished: filterOptions.isPublished,
       });
     }
@@ -106,13 +113,13 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
       qb.andWhere(
         new Brackets((sub) => {
           sub
-            .where('helpCenter.title ILIKE :search', {
+            .where('"helpCenter"."title" ILIKE :search', {
               search: `%${filterOptions.search}%`,
             })
-            .orWhere('helpCenter.category ILIKE :search', {
+            .orWhere('"helpCenter"."category" ILIKE :search', {
               search: `%${filterOptions.search}%`,
             })
-            .orWhere('helpCenter.parent ILIKE :search', {
+            .orWhere('"helpCenter"."parent" ILIKE :search', {
               search: `%${filterOptions.search}%`,
             });
         }),
@@ -121,16 +128,18 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
 
     if (sortOptions?.length) {
       sortOptions.forEach((sort) => {
+        // Quote both the alias and the column name (the column may be
+        // camelCase too, e.g. "isPublished").
         qb.addOrderBy(
-          `helpCenter.${sort.orderBy}`,
+          `"helpCenter"."${sort.orderBy}"`,
           sort.order as 'ASC' | 'DESC',
         );
       });
     } else {
       qb.orderBy(HELP_CENTER_CATEGORY_RANK_SQL, 'ASC');
-      qb.addOrderBy('helpCenter.order', 'ASC');
-      qb.addOrderBy('helpCenter.createdAt', 'DESC');
-      qb.addOrderBy('helpCenter.id', 'ASC');
+      qb.addOrderBy('"helpCenter"."order"', 'ASC');
+      qb.addOrderBy('"helpCenter"."createdAt"', 'DESC');
+      qb.addOrderBy('"helpCenter"."id"', 'ASC');
     }
 
     qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
@@ -151,31 +160,31 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
   }): Promise<[HelpCenter[], number]> {
     const qb = this.repo.createQueryBuilder('helpCenter');
 
-    qb.andWhere('helpCenter."isPublished" = :isPublished', {
+    qb.andWhere('"helpCenter"."isPublished" = :isPublished', {
       isPublished: true,
     });
 
     if (language) {
-      qb.andWhere('helpCenter.language = :language', { language });
+      qb.andWhere('"helpCenter"."language" = :language', { language });
     }
 
     qb.andWhere(
       new Brackets((sub) => {
         sub
-          .where('helpCenter.title ILIKE :search', {
+          .where('"helpCenter"."title" ILIKE :search', {
             search: `%${keyword}%`,
           })
-          .orWhere('helpCenter.content ILIKE :search', {
+          .orWhere('"helpCenter"."content" ILIKE :search', {
             search: `%${keyword}%`,
           });
       }),
     );
 
-    qb.orderBy('helpCenter."isPopular"', 'DESC');
+    qb.orderBy('"helpCenter"."isPopular"', 'DESC');
     qb.addOrderBy(HELP_CENTER_CATEGORY_RANK_SQL, 'ASC');
-    qb.addOrderBy('helpCenter.order', 'ASC');
-    qb.addOrderBy('helpCenter.createdAt', 'DESC');
-    qb.addOrderBy('helpCenter.id', 'ASC');
+    qb.addOrderBy('"helpCenter"."order"', 'ASC');
+    qb.addOrderBy('"helpCenter"."createdAt"', 'DESC');
+    qb.addOrderBy('"helpCenter"."id"', 'ASC');
 
     qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
     qb.take(paginationOptions.limit);
