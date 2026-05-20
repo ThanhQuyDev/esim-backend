@@ -4,11 +4,16 @@ import { AdminChatRoomsController } from './admin-chat-rooms.controller';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { RelationalChatPersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
+import { ChatAutomationsModule } from '../chat-automations/chat-automations.module';
 
 const infrastructurePersistenceModule = RelationalChatPersistenceModule;
 
 @Module({
-  imports: [infrastructurePersistenceModule, JwtModule.register({})],
+  imports: [
+    infrastructurePersistenceModule,
+    JwtModule.register({}),
+    ChatAutomationsModule,
+  ],
   controllers: [AdminChatRoomsController],
   providers: [ChatGateway, ChatService],
   exports: [ChatService],

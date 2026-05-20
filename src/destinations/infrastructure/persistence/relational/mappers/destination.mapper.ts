@@ -17,6 +17,8 @@ export class DestinationMapper {
     domainEntity.description = raw.description;
     domainEntity.descriptionVi = raw.descriptionVi;
     domainEntity.providers = raw.providers ?? null;
+    domainEntity.title = raw.title ?? null;
+    domainEntity.titleVi = raw.titleVi ?? null;
     if (raw.regions) {
       domainEntity.regions = raw.regions.map((r) => {
         const ref = new RegionRef();
@@ -50,6 +52,8 @@ export class DestinationMapper {
     persistenceEntity.description = domainEntity.description;
     persistenceEntity.descriptionVi = domainEntity.descriptionVi;
     persistenceEntity.providers = domainEntity.providers ?? null;
+    persistenceEntity.title = domainEntity.title ?? null;
+    persistenceEntity.titleVi = domainEntity.titleVi ?? null;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     persistenceEntity.deletedAt = domainEntity.deletedAt;

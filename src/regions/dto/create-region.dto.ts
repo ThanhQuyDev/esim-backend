@@ -46,6 +46,22 @@ export class CreateRegionDto {
   @IsString()
   descriptionVi?: string | null;
 
+  @ApiPropertyOptional({
+    example: 'eSIM Europe - High Speed Data Coverage',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  title?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'eSIM Châu Âu - Phủ Sóng Tốc Độ Cao',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  titleVi?: string | null;
+
   @ApiPropertyOptional({ example: true, type: Boolean })
   @IsOptional()
   @IsBoolean()

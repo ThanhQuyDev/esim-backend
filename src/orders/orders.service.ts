@@ -701,6 +701,7 @@ export class OrdersService {
                 speed: plan.speed,
                 operatorName: plan.operatorName,
                 countryCode: plan.countryCode,
+                locationInfo: this.buildLocationInfo(plan),
               }
             : null,
           orderRequestId: item.orderRequestId,
@@ -1229,6 +1230,7 @@ export class OrdersService {
                 operatorName: plan.operatorName,
                 countryCode: plan.countryCode,
                 provider: plan.provider,
+                locationInfo: this.buildLocationInfo(plan),
               }
             : null,
           orderRequestId: item.orderRequestId,
@@ -1540,5 +1542,43 @@ export class OrdersService {
     if (deleted > 0) {
       this.logger.log(`Cleaned up ${deleted} failed orders older than 1 week`);
     }
+  }
+
+  /**
+   * Part 12 Feature 3.1 — Build locationInfo from plan's destination or region.
+   * Returns null if neither destination nor region is populated.
+   */
+  private buildLocationInfo(plan: Plan): {
+    type: string;
+    locationCode: string | null;
+    slug: string;
+    title: string | null;
+    titleVi: string | null;
+    thumbnailUrl: string | null;
+  } | null {
+    if (plan.destination) {
+      return {
+        type: 'DESTINATION',
+        locationCode: plan.destination.countryCode ?? null,
+        slug: plan.destination.slug,
+        title: plan.destination.title ?? null,
+        titleVi: plan.destination.titleVi ?? null,
+        thumbnailUrl:
+          plan.destination.avatarUrl ?? plan.destination.flagUrl ?? null,
+      };
+    }
+
+    if (plan.region) {
+      return {
+        type: 'REGION',
+        locationCode: null,
+        slug: plan.region.slug,
+        title: plan.region.title ?? null,
+        titleVi: plan.region.titleVi ?? null,
+        thumbnailUrl: plan.region.avatarUrl ?? null,
+      };
+    }
+
+    return null;
   }
 }

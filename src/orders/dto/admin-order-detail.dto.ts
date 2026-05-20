@@ -16,6 +16,36 @@ export class AdminOrderUserDto {
   lastName: string | null;
 }
 
+export class AdminPlanLocationInfoDto {
+  @ApiProperty({
+    type: String,
+    example: 'DESTINATION',
+    enum: ['DESTINATION', 'REGION'],
+  })
+  type: string;
+
+  @ApiPropertyOptional({ type: String, example: 'CN' })
+  locationCode: string | null;
+
+  @ApiProperty({ type: String, example: 'china' })
+  slug: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'eSIM China - High Speed Mobile Network',
+  })
+  title: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'eSIM Trung Quốc (Mainland) - Tốc độ cao',
+  })
+  titleVi: string | null;
+
+  @ApiPropertyOptional({ type: String, example: '/img/destinations/china.jpg' })
+  thumbnailUrl: string | null;
+}
+
 export class AdminOrderItemPlanDto {
   @ApiProperty({ type: Number })
   id: number;
@@ -52,6 +82,9 @@ export class AdminOrderItemPlanDto {
 
   @ApiPropertyOptional({ type: String })
   provider: string | null;
+
+  @ApiPropertyOptional({ type: () => AdminPlanLocationInfoDto })
+  locationInfo?: AdminPlanLocationInfoDto | null;
 }
 
 export class AdminOrderItemDto {

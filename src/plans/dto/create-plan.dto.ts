@@ -184,6 +184,24 @@ export class CreatePlanDto {
   apn?: string | null;
 
   @ApiPropertyOptional({
+    example: true,
+    type: Boolean,
+    description: 'Hotspot supported',
+  })
+  @IsOptional()
+  @IsBoolean()
+  hotSpot?: boolean;
+
+  @ApiPropertyOptional({
+    example: '5GB',
+    type: String,
+    description: 'Hotspot data allowance (e.g. "5GB", "2GB")',
+  })
+  @IsOptional()
+  @IsString()
+  hotSpotAllow?: string | null;
+
+  @ApiPropertyOptional({
     example: 45000,
     type: Number,
     description: 'Price in VND (set directly for VND currency plans)',

@@ -20,6 +20,23 @@ export class FilterOrderDto {
   @IsOptional()
   @IsNumber()
   userId?: number;
+
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Filter by eSIM ICCID (exact match on targetIccid or order-item iccid)',
+  })
+  @IsOptional()
+  @IsString()
+  iccid?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Filter by plan name (partial match)',
+  })
+  @IsOptional()
+  @IsString()
+  planName?: string;
 }
 
 export class SortOrderDto {

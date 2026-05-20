@@ -19,6 +19,8 @@ export class RegionMapper {
     domainEntity.description = raw.description;
     domainEntity.descriptionVi = raw.descriptionVi;
     domainEntity.providers = raw.providers ?? null;
+    domainEntity.title = raw.title ?? null;
+    domainEntity.titleVi = raw.titleVi ?? null;
     domainEntity.isActive = raw.isActive;
     domainEntity.isPopular = raw.isPopular;
     domainEntity.createdAt = raw.createdAt;
@@ -39,6 +41,8 @@ export class RegionMapper {
     persistenceEntity.description = domainEntity.description;
     persistenceEntity.descriptionVi = domainEntity.descriptionVi;
     persistenceEntity.providers = domainEntity.providers ?? null;
+    persistenceEntity.title = domainEntity.title ?? null;
+    persistenceEntity.titleVi = domainEntity.titleVi ?? null;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.isPopular = domainEntity.isPopular;
     persistenceEntity.createdAt = domainEntity.createdAt;

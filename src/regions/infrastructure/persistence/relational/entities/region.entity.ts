@@ -49,6 +49,12 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   providers: string | null;
 
+  @Column({ type: String, nullable: true })
+  title: string | null;
+
+  @Column({ type: String, nullable: true })
+  titleVi: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -41,6 +41,8 @@ export class PlanMapper {
     domainEntity.isLocalInventory = raw.isLocalInventory;
     domainEntity.tags = raw.tags ?? null;
     domainEntity.apn = raw.apn;
+    domainEntity.hotSpot = raw.hotSpot;
+    domainEntity.hotSpotAllow = raw.hotSpotAllow;
     domainEntity.lastSyncedAt = raw.lastSyncedAt;
     domainEntity.isActive = raw.isActive;
     domainEntity.createdAt = raw.createdAt;
@@ -82,6 +84,8 @@ export class PlanMapper {
     persistenceEntity.isLocalInventory = domainEntity.isLocalInventory;
     persistenceEntity.tags = domainEntity.tags ?? null;
     persistenceEntity.apn = domainEntity.apn;
+    persistenceEntity.hotSpot = domainEntity.hotSpot;
+    persistenceEntity.hotSpotAllow = domainEntity.hotSpotAllow;
     persistenceEntity.lastSyncedAt = domainEntity.lastSyncedAt;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.createdAt = domainEntity.createdAt;

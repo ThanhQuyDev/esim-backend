@@ -16,6 +16,7 @@ import { InvoiceRepository } from './infrastructure/persistence/invoice.reposito
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { Invoice } from './domain/invoice';
 import { InvoiceStatus } from './invoices.enum';
+import { MailService } from '../mail/mail.service';
 
 export interface CreateInvoiceForOrderInput {
   companyName: string;
@@ -33,6 +34,7 @@ export class InvoicesService {
 
     // Dependencies here
     private readonly invoiceRepository: InvoiceRepository,
+    private readonly mailService: MailService,
   ) {}
 
   async create(createInvoiceDto: CreateInvoiceDto) {
@@ -116,7 +118,13 @@ export class InvoicesService {
       order = orderObject;
     }
 
-    return this.invoiceRepository.update(id, {
+    // Check if status is transitioning to ISSUED — trigger email delivery
+    const previousInvoice = await this.invoiceRepository.findById(id);
+    const isTransitioningToIssued =
+      updateInvoiceDto.status === InvoiceStatus.ISSUED &&
+      previousInvoice?.status !== InvoiceStatus.ISSUED;
+
+    const updated = await this.invoiceRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
       status: updateInvoiceDto.status,
@@ -131,6 +139,48 @@ export class InvoicesService {
 
       order,
     });
+
+    // Part 12 Feature 1.1: Auto-send invoice email when status changes to ISSUED
+    if (isTransitioningToIssued && updated) {
+      void this.sendInvoiceIssuedEmail(updated);
+    }
+
+    return updated;
+  }
+
+  /**
+   * Part 12 Feature 1.1 — Send invoice confirmation email to the customer's
+   * invoiceEmail when the invoice status transitions to ISSUED.
+   */
+  private async sendInvoiceIssuedEmail(invoice: Invoice): Promise<void> {
+    try {
+      const order =
+        invoice.order ?? (await this.orderService.findById(invoice.orderId));
+      if (!order) {
+        this.logger.warn(
+          `Cannot send invoice email: order ${invoice.orderId} not found`,
+        );
+        return;
+      }
+
+      await this.mailService.sendInvoiceIssued({
+        to: invoice.invoiceEmail,
+        orderNumber: order.orderNumber,
+        companyName: invoice.companyName,
+        taxCode: invoice.taxCode,
+        address: invoice.address,
+        totalAmountVnd:
+          Number(order.vndPrice) || Number(order.payableVndPrice) || 0,
+      });
+
+      this.logger.log(
+        `Invoice ISSUED email sent to ${invoice.invoiceEmail} for order ${order.orderNumber}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed to send invoice ISSUED email for invoice ${invoice.id}: ${(err as Error).message}`,
+      );
+    }
   }
 
   remove(id: Invoice['id']) {

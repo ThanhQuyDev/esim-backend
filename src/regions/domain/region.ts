@@ -25,6 +25,18 @@ export class Region {
   })
   providers?: string | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: 'eSIM Europe - High Speed Data Coverage',
+  })
+  title: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'eSIM Châu Âu - Phủ Sóng Tốc Độ Cao',
+  })
+  titleVi: string | null;
+
   @ApiPropertyOptional({ type: String })
   avatarUrl: string | null;
 

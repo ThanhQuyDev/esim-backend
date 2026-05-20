@@ -76,6 +76,8 @@ import { CustomPaymentLinksModule } from './custom-payment-links/custom-payment-
 
 import { TopupModule } from './topup/topup.module';
 
+import { ChatAutomationsModule } from './chat-automations/chat-automations.module';
+
 @Module({
   imports: [
     TopupModule,
@@ -158,6 +160,7 @@ import { TopupModule } from './topup/topup.module';
     SeoConfigsModule,
     MiniTagsModule,
     ChatModule,
+    ChatAutomationsModule,
     OverviewModule,
     TicketsModule,
   ],

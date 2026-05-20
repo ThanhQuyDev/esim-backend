@@ -7,8 +7,8 @@ import { ImportResult } from './plans-import.service';
 
 const PROVIDER = 'japantravelsim';
 
-// Column indices (1-based) matching the Japan.xlsx header:
-// Group | deviceSkuId | Plan | Days | CostPrice | Data | Type | Operator | APN | APN User | APN Password | Activation Deadline | Throttled Speed | Package
+// Column indices (1-based) matching the new import-excel-Japan-new.xlsx header:
+// Group | deviceSkuId | Plan | Days | CostPrice | Data | Type | Operator | APN | APN User | APN Password | Hot-Spot Allow | Hot-Spot | Activation Deadline | Throttled Speed | Package
 const COL = {
   GROUP: 1,
   DEVICE_SKU_ID: 2,
@@ -21,9 +21,11 @@ const COL = {
   APN: 9,
   // APN_USER: 10,       // skipped
   // APN_PASSWORD: 11,   // skipped
-  // ACTIVATION: 12,     // skipped
-  THROTTLED_SPEED: 13,
-  PACKAGE: 14,
+  HOT_SPOT_ALLOW: 12,
+  HOT_SPOT: 13,
+  ACTIVATION_DEADLINE: 14,
+  THROTTLED_SPEED: 15,
+  PACKAGE: 16,
 };
 
 @Injectable()
@@ -84,6 +86,12 @@ export class PlansJapantravelsimImportService {
           row.getCell(COL.THROTTLED_SPEED).value,
         );
 
+        // Hot-Spot fields
+        const hotSpotRaw = this.getString(row.getCell(COL.HOT_SPOT).value);
+        const hotSpot = this.parseYesNo(hotSpotRaw);
+        const hotSpotAllow =
+          this.getString(row.getCell(COL.HOT_SPOT_ALLOW).value) || null;
+
         if (!group) throw new Error('Missing Group');
         if (!deviceSkuId) throw new Error('Missing deviceSkuId');
         if (!planName) throw new Error('Missing Plan name');
@@ -117,6 +125,8 @@ export class PlansJapantravelsimImportService {
           fupSpeed,
           isKyc: false,
           apn: apn || null,
+          hotSpot,
+          hotSpotAllow,
           isActive: true,
         };
 
@@ -177,6 +187,17 @@ export class PlansJapantravelsimImportService {
   private parseFupSpeed(speed: string | null): string | null {
     if (!speed) return null;
     return speed; // e.g. "max speed", "128Kbps", "10 Mbps"
+  }
+
+  /**
+   * Parse Yes/No boolean values from Excel
+   */
+  private parseYesNo(value: string | null): boolean {
+    if (!value) return false;
+    const lower = value.trim().toLowerCase();
+    return (
+      lower === 'yes' || lower === 'o' || lower === 'true' || lower === '1'
+    );
   }
 
   private buildPlanSlug(dataMb: number, days: number, type: string): string {

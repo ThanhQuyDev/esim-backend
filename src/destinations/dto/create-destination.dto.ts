@@ -77,4 +77,20 @@ export class CreateDestinationDto {
   @IsOptional()
   @IsString()
   descriptionVi?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'eSIM Japan - Fast Mobile Data Plans',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  title?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'eSIM Nhật Bản - Gói Data Tốc Độ Cao Giá Rẻ',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  titleVi?: string | null;
 }

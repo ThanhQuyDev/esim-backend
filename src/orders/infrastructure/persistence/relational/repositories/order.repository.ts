@@ -33,6 +33,15 @@ export class OrdersRelationalRepository implements OrderRepository {
     sortOptions?: SortOrderDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Order[], number]> {
+    // Use QueryBuilder when advanced filters (iccid, planName) are present
+    if (filterOptions?.iccid || filterOptions?.planName) {
+      return this.findManyWithAdvancedFilters(
+        filterOptions,
+        sortOptions,
+        paginationOptions,
+      );
+    }
+
     const where: FindOptionsWhere<OrderEntity> = {};
 
     if (filterOptions?.status) {
@@ -62,6 +71,84 @@ export class OrdersRelationalRepository implements OrderRepository {
         : { createdAt: 'DESC' },
     });
 
+    return [entities.map((entity) => OrderMapper.toDomain(entity)), count];
+  }
+
+  /**
+   * Part 12 Feature 2.1 — Advanced filters using QueryBuilder for iccid/planName.
+   */
+  private async findManyWithAdvancedFilters(
+    filterOptions: FilterOrderDto,
+    sortOptions?: SortOrderDto[] | null,
+    paginationOptions?: IPaginationOptions,
+  ): Promise<[Order[], number]> {
+    const qb = this.ordersRepository
+      .createQueryBuilder('order')
+      .where('"order"."deletedAt" IS NULL');
+
+    if (filterOptions.status) {
+      if (Array.isArray(filterOptions.status)) {
+        qb.andWhere('"order"."status" IN (:...statuses)', {
+          statuses: filterOptions.status,
+        });
+      } else {
+        qb.andWhere('"order"."status" = :status', {
+          status: filterOptions.status,
+        });
+      }
+    }
+
+    if (filterOptions.userId) {
+      qb.andWhere('"order"."userId" = :userId', {
+        userId: filterOptions.userId,
+      });
+    }
+
+    // Filter by iccid: match on order.targetIccid OR on order_item.iccid
+    if (filterOptions.iccid) {
+      qb.andWhere(
+        `(
+          "order"."targetIccid" = :iccid
+          OR "order"."id" IN (
+            SELECT "oi"."orderId" FROM "order_item" "oi"
+            WHERE "oi"."iccid" = :iccid AND "oi"."deletedAt" IS NULL
+          )
+        )`,
+        { iccid: filterOptions.iccid },
+      );
+    }
+
+    // Filter by planName: partial match via order_item -> plan.name
+    if (filterOptions.planName) {
+      qb.andWhere(
+        `"order"."id" IN (
+          SELECT "oi"."orderId" FROM "order_item" "oi"
+          INNER JOIN "plan" "p" ON "p"."id" = "oi"."planId"
+          WHERE "p"."name" ILIKE :planName AND "oi"."deletedAt" IS NULL
+        )`,
+        { planName: `%${filterOptions.planName}%` },
+      );
+    }
+
+    // Sorting
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(
+          `"order"."${sort.orderBy}"`,
+          sort.order as 'ASC' | 'DESC',
+        );
+      });
+    } else {
+      qb.addOrderBy('"order"."createdAt"', 'DESC');
+    }
+
+    // Pagination
+    if (paginationOptions) {
+      qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+      qb.take(paginationOptions.limit);
+    }
+
+    const [entities, count] = await qb.getManyAndCount();
     return [entities.map((entity) => OrderMapper.toDomain(entity)), count];
   }
 

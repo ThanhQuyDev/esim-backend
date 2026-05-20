@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { AllConfigType } from '../config/config.type';
 import { ChatService } from './chat.service';
+import { ChatAutomationsService } from '../chat-automations/chat-automations.service';
 
 interface AuthenticatedSocket extends Socket {
   data: {
@@ -30,6 +31,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly chatService: ChatService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService<AllConfigType>,
+    private readonly chatAutomationsService: ChatAutomationsService,
   ) {}
 
   handleConnection(client: AuthenticatedSocket) {
@@ -78,6 +80,33 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     void this.chatService.markAsRead(room.id, client.data.userId);
 
     client.emit('joinedRoom', { roomId: room.id, userId: targetUserId });
+
+    // Trigger 1: Send welcome message when a non-admin user joins a room
+    if (!isAdmin) {
+      void this.sendWelcomeMessage(room.id, roomName);
+    }
+  }
+
+  /**
+   * Trigger Logic 1: Send automated welcome message on user join.
+   */
+  private async sendWelcomeMessage(
+    chatRoomId: number,
+    roomName: string,
+  ): Promise<void> {
+    try {
+      const welcomeMsg = await this.chatAutomationsService.getWelcomeMessage();
+      if (!welcomeMsg) return;
+
+      const botMessage = await this.chatService.sendMessage(
+        chatRoomId,
+        0, // senderId=0 represents the system/bot
+        welcomeMsg,
+      );
+      this.server.to(roomName).emit('newMessage', botMessage);
+    } catch {
+      // Silently ignore automation failures
+    }
   }
 
   @SubscribeMessage('sendMessage')
@@ -129,6 +158,47 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const roomName = `chat_room_${data.chatRoomId}`;
     this.server.to(roomName).emit('newMessage', message);
+
+    // Trigger 2: Send first-response message when user sends their first message
+    if (!isAdmin) {
+      void this.sendFirstResponseIfApplicable(
+        data.chatRoomId,
+        roomName,
+        client.data.userId,
+      );
+    }
+  }
+
+  /**
+   * Trigger Logic 2: Send automated first-response message after user's first message.
+   * Checks if this is the first user message in the room (excluding bot messages).
+   */
+  private async sendFirstResponseIfApplicable(
+    chatRoomId: number,
+    roomName: string,
+    userId: number,
+  ): Promise<void> {
+    try {
+      // Get messages in the room — if only 1 user message exists, it's the first
+      const messages = await this.chatService.getMessages(chatRoomId, 1, 10);
+      const userMessages = messages.filter((m) => m.senderId === userId);
+
+      // Only trigger if this is the very first user message
+      if (userMessages.length !== 1) return;
+
+      const firstResponseMsg =
+        await this.chatAutomationsService.getFirstResponseMessage();
+      if (!firstResponseMsg) return;
+
+      const botMessage = await this.chatService.sendMessage(
+        chatRoomId,
+        0, // senderId=0 represents the system/bot
+        firstResponseMsg,
+      );
+      this.server.to(roomName).emit('newMessage', botMessage);
+    } catch {
+      // Silently ignore automation failures
+    }
   }
 
   @SubscribeMessage('getMessages')

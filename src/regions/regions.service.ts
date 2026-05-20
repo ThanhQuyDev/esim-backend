@@ -34,6 +34,8 @@ export class RegionsService {
         iconUrl: createRegionDto.iconUrl ?? null,
         description: createRegionDto.description ?? null,
         descriptionVi: createRegionDto.descriptionVi ?? null,
+        title: createRegionDto.title ?? null,
+        titleVi: createRegionDto.titleVi ?? null,
         isActive: createRegionDto.isActive ?? true,
         isPopular: createRegionDto.isPopular ?? false,
       },

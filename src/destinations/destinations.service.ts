@@ -45,6 +45,8 @@ export class DestinationsService {
       isActive: createDestinationDto.isActive ?? true,
       description: createDestinationDto.description ?? null,
       descriptionVi: createDestinationDto.descriptionVi ?? null,
+      title: createDestinationDto.title ?? null,
+      titleVi: createDestinationDto.titleVi ?? null,
     });
   }
 

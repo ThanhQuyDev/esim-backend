@@ -99,6 +99,8 @@ export class PlansService {
       isLocalInventory: createPlanDto.isLocalInventory ?? false,
       tags: createPlanDto.tags ?? null,
       apn: createPlanDto.apn ?? null,
+      hotSpot: createPlanDto.hotSpot ?? false,
+      hotSpotAllow: createPlanDto.hotSpotAllow ?? null,
       lastSyncedAt: createPlanDto.lastSyncedAt ?? null,
       isActive: createPlanDto.isActive ?? true,
       sms: createPlanDto.sms ?? null,
@@ -208,6 +210,8 @@ export class PlansService {
       // the DTO side, just need to be forwarded to the repository.
       tags: updatePlanDto.tags,
       vndPrice: updatePlanDto.vndPrice,
+      hotSpot: updatePlanDto.hotSpot,
+      hotSpotAllow: updatePlanDto.hotSpotAllow,
     });
   }
 

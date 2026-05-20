@@ -1,6 +1,36 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Esim } from '../../esims/domain/esim';
 
+export class PlanLocationInfoDto {
+  @ApiProperty({
+    type: String,
+    example: 'DESTINATION',
+    enum: ['DESTINATION', 'REGION'],
+  })
+  type: string;
+
+  @ApiPropertyOptional({ type: String, example: 'CN' })
+  locationCode: string | null;
+
+  @ApiProperty({ type: String, example: 'china' })
+  slug: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'eSIM China - High Speed Mobile Network',
+  })
+  title: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'eSIM Trung Quốc (Mainland) - Tốc độ cao',
+  })
+  titleVi: string | null;
+
+  @ApiPropertyOptional({ type: String, example: '/img/destinations/china.jpg' })
+  thumbnailUrl: string | null;
+}
+
 export class UserOrderItemPlanDto {
   @ApiProperty({ type: Number })
   id: number;
@@ -34,6 +64,9 @@ export class UserOrderItemPlanDto {
 
   @ApiPropertyOptional({ type: String })
   countryCode: string | null;
+
+  @ApiPropertyOptional({ type: () => PlanLocationInfoDto })
+  locationInfo?: PlanLocationInfoDto | null;
 }
 
 export class UserOrderItemDto {

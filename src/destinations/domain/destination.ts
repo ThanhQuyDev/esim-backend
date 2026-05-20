@@ -91,6 +91,18 @@ export class Destination {
   })
   providers?: string | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: 'eSIM Japan - Fast Mobile Data Plans',
+  })
+  title: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'eSIM Nhật Bản - Gói Data Tốc Độ Cao Giá Rẻ',
+  })
+  titleVi: string | null;
+
   @ApiPropertyOptional({ type: () => [RegionRef] })
   regions?: RegionRef[];
 

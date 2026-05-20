@@ -122,6 +122,12 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   apn: string | null;
 
+  @Column({ type: Boolean, default: false })
+  hotSpot: boolean;
+
+  @Column({ type: String, nullable: true })
+  hotSpotAllow: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   lastSyncedAt: Date | null;
 

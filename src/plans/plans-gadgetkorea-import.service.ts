@@ -10,19 +10,31 @@ const SHEET_TYPE_MAP: Record<string, string> = {
   'Real Unlimited': 'unlimited',
 };
 
+// Column indices (1-based) matching the new gadget-korea.xlsx header:
+// 1:SIM Type | 2:Plan | 3:Day | 4:Data | 5:Option Name | 6:Carrier | 7:Network |
+// 8:Access Type | 9:QOS | 10:Validity | 11:APN | 12:PreInstallation |
+// 13:Top-up | 14:KYC | 15:Hot-Spot | 16:Initialize policy |
+// 17:Option ID (For API) | 18:Normal Price | 19:Min.Sell Price | 20:B2B Price
 const COL = {
+  SIM_TYPE: 1,
   PLAN: 2,
   DAY: 3,
   DATA: 4,
   OPTION_NAME: 5,
   CARRIER: 6,
   NETWORK: 7,
+  ACCESS_TYPE: 8,
   QOS: 9,
+  VALIDITY: 10,
   APN: 11,
+  PRE_INSTALLATION: 12,
   TOP_UP: 13,
   KYC: 14,
+  HOT_SPOT: 15,
+  INITIALIZE_POLICY: 16,
   OPTION_ID: 17,
   NORMAL_PRICE: 18, // retail_price
+  MIN_SELL_PRICE: 19,
   B2B_PRICE: 20, // cost_price
 };
 
@@ -127,6 +139,10 @@ export class PlansGadgetkoreaImportService {
           );
           const apn = this.getString(row.getCell(COL.APN).value) || null;
 
+          // Hot-Spot field
+          const hotSpotRaw = this.getString(row.getCell(COL.HOT_SPOT).value);
+          const hotSpot = this.parseOX(hotSpotRaw);
+
           const costPrice =
             this.getNumber(row.getCell(COL.B2B_PRICE).value) ?? 0;
           const retailPrice =
@@ -176,6 +192,8 @@ export class PlansGadgetkoreaImportService {
             operatorName,
             isKyc,
             apn,
+            hotSpot,
+            hotSpotAllow: null as string | null,
             isActive: true,
           };
 

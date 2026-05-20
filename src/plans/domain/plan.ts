@@ -104,6 +104,20 @@ export class Plan {
   @ApiPropertyOptional({ type: String, example: 'internet' })
   apn: string | null;
 
+  @ApiProperty({
+    type: Boolean,
+    example: true,
+    description: 'Hotspot supported',
+  })
+  hotSpot: boolean;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '5GB',
+    description: 'Hotspot data allowance (e.g. "5GB", "2GB")',
+  })
+  hotSpotAllow: string | null;
+
   @ApiPropertyOptional()
   lastSyncedAt: Date | null;
 

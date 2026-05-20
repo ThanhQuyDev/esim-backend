@@ -83,7 +83,7 @@ export class EsimsImportService {
 
       result.total++;
 
-      const iccid = this.cellStr(row.getCell(col('iccid') ?? 2).value) ?? '';
+      const iccid = this.cellStr(row.getCell(col('iccid') ?? 20).value) ?? '';
       if (!iccid) {
         result.skipped++;
         result.errors.push({ row: rowNum, iccid: '', error: 'ICCID is empty' });
@@ -103,28 +103,61 @@ export class EsimsImportService {
           continue;
         }
 
-        // Extract type from Excel column
-        const type =
-          this.cellStr(row.getCell(col('type') ?? 8).value) ?? 'data-in-total';
-
-        // Extract expiredTime from Excel column
-        const expiredTimeRaw = row.getCell(col('expried time') ?? 6).value;
-        const expiresAt = this.parseDate(expiredTimeRaw);
-
-        // Extract plan fields — use fixed column indices to avoid duplicate header issues
+        // Extract plan fields from new column structure
+        // 1:Country, 2:Country Code, 3:Plan ID, 4:Name, 5:Data, 6:Days, 7:Type,
+        // 8:Expried Time, 9:Carrier, 10:Network, 11:Throttled Speed, 12:APN,
+        // 13:Topup, 14:eKYC, 15:Hot-Spot, 16:Hot-Spot Allow, 17:Support Phone Number,
+        // 18:Call, 19:SMS, 20:ICCID, 21:Phone Number, 22:LPA,
+        // 23:SMDP Address, 24:Activation code, 25:Cost Price, 26:Sell Price
+        const rowCountryCode =
+          this.cellStr(row.getCell(col('country code') ?? 2).value) ??
+          countryCode;
         const providerPlanId =
-          this.cellStr(row.getCell(col('code') ?? 9).value) ?? '';
+          this.cellStr(row.getCell(col('plan id') ?? 3).value) ?? '';
         const planName =
           this.cellStr(row.getCell(col('name') ?? 4).value) ?? '';
-        const durationDays = this.cellNum(row.getCell(13).value) ?? 0; // col 13: Days (plan days)
-        const dataRaw = this.cellStr(row.getCell(12).value) ?? ''; // col 12: Data (e.g. "5GB")
+        const dataRaw = this.cellStr(row.getCell(col('data') ?? 5).value) ?? '';
         const dataMb = this.parseDataToMb(dataRaw);
+        const durationDays =
+          this.cellNum(row.getCell(col('days') ?? 6).value) ?? 0;
+        const type =
+          this.cellStr(row.getCell(col('type') ?? 7).value) ?? 'daily';
+
+        // Expired time
+        const expiredTimeRaw = row.getCell(col('expried time') ?? 8).value;
+        const expiresAt = this.parseDate(expiredTimeRaw);
+
         const operatorName = this.cellStr(
-          row.getCell(col('carrier') ?? 14).value,
+          row.getCell(col('carrier') ?? 9).value,
         );
-        const speed = this.cellStr(row.getCell(col('network') ?? 15).value);
-        const costPrice = this.cellNum(row.getCell(25).value) ?? 0; // col 25: Cost Price
-        const sellPrice = this.cellNum(row.getCell(26).value) ?? 0; // col 26: Sell Price
+        const speed = this.cellStr(row.getCell(col('network') ?? 10).value);
+        const fupSpeed = this.cellStr(
+          row.getCell(col('throttled speed') ?? 11).value,
+        );
+        const apnValue = this.cellStr(row.getCell(col('apn') ?? 12).value);
+        const topUpRaw = this.cellStr(row.getCell(col('topup') ?? 13).value);
+        const topUp = this.parseVietnameseBoolean(topUpRaw);
+        const isKycRaw = this.cellStr(row.getCell(col('ekyc') ?? 14).value);
+        const isKyc = this.parseVietnameseBoolean(isKycRaw);
+
+        // Hot-Spot fields
+        const hotSpotRaw = this.cellStr(
+          row.getCell(col('hot-spot') ?? 15).value,
+        );
+        const hotSpot = this.parseVietnameseBoolean(hotSpotRaw);
+        const hotSpotAllow =
+          this.cellStr(row.getCell(col('hot-spot allow') ?? 16).value) ?? null;
+
+        // Support Phone Number, Call, SMS
+        const callRaw = this.cellStr(row.getCell(col('call') ?? 18).value);
+        const call = this.parseVietnameseBoolean(callRaw) ? 1 : null;
+        const smsRaw = this.cellStr(row.getCell(col('sms') ?? 19).value);
+        const sms = this.parseVietnameseBoolean(smsRaw) ? 1 : null;
+
+        const costPrice =
+          this.cellNum(row.getCell(col('cost price') ?? 25).value) ?? 0;
+        const sellPrice =
+          this.cellNum(row.getCell(col('sell price') ?? 26).value) ?? 0;
         // During import, set price = costPrice (no profit).
         // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
         const price = costPrice;
@@ -149,7 +182,7 @@ export class EsimsImportService {
                 providerPlanId,
                 name: planName,
                 slug: planSlug,
-                countryCode,
+                countryCode: rowCountryCode,
                 destinationId,
                 durationDays,
                 dataMb,
@@ -157,9 +190,17 @@ export class EsimsImportService {
                 price,
                 retailPrice: sellPrice,
                 currency: 'VND',
-                type,
+                type: type.toLowerCase(),
                 operatorName: operatorName ?? undefined,
                 speed: speed ?? undefined,
+                fupSpeed: fupSpeed ?? undefined,
+                apn: apnValue ?? undefined,
+                topUp,
+                isKyc,
+                hotSpot,
+                hotSpotAllow,
+                sms,
+                call,
                 isActive: true,
                 isLocalInventory: true,
                 vndPrice: price,
@@ -173,21 +214,28 @@ export class EsimsImportService {
 
         // Extract esim fields
         const phoneNumber = this.cellStr(
-          row.getCell(col('phone number') ?? 3).value,
+          row.getCell(col('phone number') ?? 21).value,
         );
-        const lpa = this.cellStr(row.getCell(col('lpa') ?? 5).value);
-        const smdpAddress = this.cellStr(
-          row.getCell(col('smdp address') ?? 22).value,
-        );
-        const apnValue = this.cellStr(row.getCell(col('apn') ?? 23).value);
-        const activationCode = this.cellStr(row.getCell(24).value); // col 24: Activation code
+        const lpa = this.cellStr(row.getCell(col('lpa') ?? 22).value);
+
+        // Auto-extract SMDP Address and Activation Code from LPA
+        // LPA format: LPA:1$<smdpAddress>$<activationCode>
+        // SMDP Address = value between the first $ and second $ in LPA
+        // Activation Code = value after the last $ in LPA
+        let smdpAddress: string | null = null;
+        let activationCode: string | null = null;
+
+        if (lpa) {
+          smdpAddress = this.extractSmdpFromLpa(lpa);
+          activationCode = this.extractActivationCodeFromLpa(lpa);
+        }
 
         await this.esimRepository.create({
           iccid,
           phoneNumber: phoneNumber ?? null,
           lpa: lpa ?? null,
-          smdpAddress: smdpAddress ?? null,
-          activationCode: activationCode ?? null,
+          smdpAddress,
+          activationCode,
           provider,
           planId: planId ?? null,
           orderItemId: null,
@@ -218,6 +266,48 @@ export class EsimsImportService {
     }
 
     return result;
+  }
+
+  /**
+   * Extract SMDP Address from LPA code.
+   * LPA format: LPA:1$<smdpAddress>$<activationCode>
+   * Returns the value between the first $_$ (i.e. between first and second $).
+   */
+  private extractSmdpFromLpa(lpa: string): string | null {
+    const parts = lpa.split('$');
+    // parts[0] = "LPA:1", parts[1] = smdpAddress, parts[2] = activationCode
+    if (parts.length >= 2 && parts[1]) {
+      return parts[1];
+    }
+    return null;
+  }
+
+  /**
+   * Extract Activation Code from LPA code.
+   * Returns the value after the last $ in the LPA string.
+   */
+  private extractActivationCodeFromLpa(lpa: string): string | null {
+    const lastDollarIndex = lpa.lastIndexOf('$');
+    if (lastDollarIndex >= 0 && lastDollarIndex < lpa.length - 1) {
+      return lpa.substring(lastDollarIndex + 1);
+    }
+    return null;
+  }
+
+  /**
+   * Parse Vietnamese boolean values: "Có" = true, "Không" = false, "O" = true, "X" = false
+   */
+  private parseVietnameseBoolean(value: string | null): boolean {
+    if (!value) return false;
+    const lower = value.trim().toLowerCase();
+    return (
+      lower === 'có' ||
+      lower === 'co' ||
+      lower === 'yes' ||
+      lower === 'true' ||
+      lower === '1' ||
+      lower === 'o'
+    );
   }
 
   private cellStr(value: any): string | null {

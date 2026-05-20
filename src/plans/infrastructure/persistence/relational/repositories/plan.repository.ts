@@ -374,26 +374,68 @@ export class PlansRelationalRepository implements PlanRepository {
   async findAllForExport(
     filterOptions?: FilterPlanDto | null,
   ): Promise<Plan[]> {
-    const where: any = {};
+    const qb = this.plansRepository
+      .createQueryBuilder('plan')
+      .leftJoinAndSelect('plan.destination', 'dest');
+
+    if (filterOptions?.search) {
+      qb.leftJoin('destination', 'child', 'child."parentId" = dest.id');
+      qb.where(
+        '(plan.name ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search)',
+        { search: `%${filterOptions.search}%` },
+      );
+    }
 
     if (filterOptions?.isCheapest !== undefined) {
-      where.isCheapest = filterOptions.isCheapest;
+      qb.andWhere('plan."isCheapest" = :isCheapest', {
+        isCheapest: filterOptions.isCheapest,
+      });
     }
     if (filterOptions?.isActive !== undefined) {
-      where.isActive = filterOptions.isActive;
+      qb.andWhere('plan."isActive" = :isActive', {
+        isActive: filterOptions.isActive,
+      });
     }
     if (filterOptions?.destinationId !== undefined) {
-      where.destinationId = filterOptions.destinationId;
+      qb.andWhere('plan."destinationId" = :destinationId', {
+        destinationId: filterOptions.destinationId,
+      });
     }
     if (filterOptions?.regionId !== undefined) {
-      where.regionId = filterOptions.regionId;
+      qb.andWhere('plan."regionId" = :regionId', {
+        regionId: filterOptions.regionId,
+      });
+    }
+    if (filterOptions?.provider?.length) {
+      qb.andWhere('plan."provider" IN (:...providers)', {
+        providers: filterOptions.provider,
+      });
+    }
+    if (filterOptions?.duration !== undefined) {
+      qb.andWhere('plan."durationDays" = :duration', {
+        duration: filterOptions.duration,
+      });
+    }
+    if (filterOptions?.type) {
+      qb.andWhere('plan."type" = :planType', {
+        planType: filterOptions.type,
+      });
+    }
+    if (filterOptions?.data) {
+      const dataMb = this.parseDataToMb(filterOptions.data);
+      if (dataMb > 0) {
+        qb.andWhere('plan."dataMb" = :dataMb', { dataMb });
+      }
+    }
+    if (filterOptions?.tags?.length) {
+      qb.andWhere('plan."tags" @> :tags', {
+        tags: JSON.stringify(filterOptions.tags),
+      });
     }
 
-    const entities = await this.plansRepository.find({
-      where,
-      order: { createdAt: 'DESC' },
-    });
+    qb.orderBy('plan.createdAt', 'DESC');
 
+    const entities = await qb.getMany();
     return entities.map((entity) => PlanMapper.toDomain(entity));
   }
 
