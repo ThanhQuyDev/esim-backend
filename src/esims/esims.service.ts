@@ -118,7 +118,7 @@ export class EsimsService {
       const existingByIccid = await this.esimsRepository.findByIccid(
         updateEsimDto.iccid,
       );
-      if (existingByIccid && existingByIccid.id !== id) {
+      if (existingByIccid && existingByIccid.id !== Number(id)) {
         throw new UnprocessableEntityException({
           status: HttpStatus.UNPROCESSABLE_ENTITY,
           errors: { iccid: 'iccidAlreadyExists' },

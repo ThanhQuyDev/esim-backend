@@ -177,6 +177,29 @@ export class EsimsController {
     return infinityPagination(data, { page, limit }, count);
   }
 
+  @Get('export-excel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Excel file download' })
+  async exportExcel(
+    @Query() query: QueryEsimDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const filterOptions = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+
+    const buffer = await this.esimsExportService.exportToExcel(filterOptions);
+
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="esims-export-${Date.now()}.xlsx"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   @ApiOkResponse({ type: Esim })
   @Get(':id')
   @HttpCode(HttpStatus.OK)
@@ -201,29 +224,6 @@ export class EsimsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: Esim['id']): Promise<void> {
     return this.esimsService.remove(id);
-  }
-
-  @Get('export-excel')
-  @HttpCode(HttpStatus.OK)
-  @ApiOkResponse({ description: 'Excel file download' })
-  async exportExcel(
-    @Query() query: QueryEsimDto,
-    @Res() res: Response,
-  ): Promise<void> {
-    const filterOptions = {
-      ...query?.filters,
-      search: query?.search || query?.filters?.search,
-    };
-
-    const buffer = await this.esimsExportService.exportToExcel(filterOptions);
-
-    res.set({
-      'Content-Type':
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="esims-export-${Date.now()}.xlsx"`,
-      'Content-Length': buffer.length.toString(),
-    });
-    res.end(buffer);
   }
 
   @Post('import-excel')

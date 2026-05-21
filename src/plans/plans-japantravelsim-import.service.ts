@@ -99,8 +99,8 @@ export class PlansJapantravelsimImportService {
 
         const providerPlanId = `${group}:${deviceSkuId}`;
         const dataMb = this.parseDataMb(dataStr);
-        const slug = this.buildPlanSlug(dataMb, days!, type);
         const fupSpeed = this.parseFupSpeed(throttledSpeed);
+        const slug = this.buildPlanSlug(dataMb, days!, type, fupSpeed);
 
         const planData = {
           provider: PROVIDER,
@@ -200,11 +200,19 @@ export class PlansJapantravelsimImportService {
     );
   }
 
-  private buildPlanSlug(dataMb: number, days: number, type: string): string {
+  private buildPlanSlug(
+    dataMb: number,
+    days: number,
+    type: string,
+    fupSpeed: string | null,
+  ): string {
     const prefix = PROVIDER.substring(0, 2).toLowerCase(); // "ja"
     const dataLabel = dataMb >= 1024 ? `${dataMb / 1024}gb` : `${dataMb}mb`;
     const dataPart = dataMb > 0 ? `-${dataLabel}` : '';
-    return `japan${dataPart}-${days}days-${type.toLowerCase()}-${prefix}`;
+    const speedPart = fupSpeed
+      ? `-${fupSpeed.replace(/\s+/g, '').toLowerCase()}`
+      : '';
+    return `japan${dataPart}-${days}days-${type.toLowerCase()}${speedPart}-${prefix}`;
   }
 
   private getString(value: any): string | null {
