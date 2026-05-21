@@ -2,6 +2,7 @@ import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { Faq } from '../../domain/faq';
+import { FilterFaqDto } from '../../dto/find-all-faqs.dto';
 
 export abstract class FaqRepository {
   abstract create(
@@ -10,8 +11,10 @@ export abstract class FaqRepository {
 
   abstract findAllWithPagination({
     paginationOptions,
+    filterOptions,
   }: {
     paginationOptions: IPaginationOptions;
+    filterOptions?: FilterFaqDto | null;
   }): Promise<[Faq[], number]>;
 
   abstract findById(id: Faq['id']): Promise<NullableType<Faq>>;

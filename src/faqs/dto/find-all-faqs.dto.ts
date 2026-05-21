@@ -1,6 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional } from 'class-validator';
-import { Transform } from 'class-transformer';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { Transform, Type, plainToInstance } from 'class-transformer';
+
+export class FilterFaqDto {
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
 
 export class FindAllFaqsDto {
   @ApiPropertyOptional()
@@ -14,4 +26,13 @@ export class FindAllFaqsDto {
   @IsNumber()
   @IsOptional()
   limit?: number;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value ? plainToInstance(FilterFaqDto, JSON.parse(value)) : undefined,
+  )
+  @ValidateNested()
+  @Type(() => FilterFaqDto)
+  filters?: FilterFaqDto;
 }

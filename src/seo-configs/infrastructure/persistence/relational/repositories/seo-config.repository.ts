@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, ILike, Repository } from 'typeorm';
 import { SeoConfigEntity } from '../entities/seo-config.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import {
@@ -38,6 +38,9 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
   }): Promise<[SeoConfig[], number]> {
     const where: FindOptionsWhere<SeoConfigEntity> = {};
 
+    if (filterOptions?.search) {
+      where.url = ILike(`%${filterOptions.search}%`);
+    }
     if (filterOptions?.isActive !== undefined) {
       where.isActive = filterOptions.isActive;
     }
@@ -56,13 +59,13 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
       take: paginationOptions.limit,
       where,
       order: sortOptions?.length
-        ? (sortOptions.reduce(
+        ? sortOptions.reduce(
             (accumulator, sort) => ({
               ...accumulator,
-              [sort.orderBy as string]: sort.order,
+              ...(sort.orderBy ? { [sort.orderBy]: sort.order ?? 'ASC' } : {}),
             }),
             {} as Record<string, string>,
-          ) as any)
+          )
         : { createdAt: 'DESC' },
     });
 

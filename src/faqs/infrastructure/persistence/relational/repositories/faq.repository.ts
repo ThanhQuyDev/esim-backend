@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, ILike } from 'typeorm';
 import { FaqEntity } from '../entities/faq.entity';
 import { BlogEntity } from '../../../../../blogs/infrastructure/persistence/relational/entities/blog.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
@@ -8,6 +8,7 @@ import { Faq } from '../../../../domain/faq';
 import { FaqRepository } from '../../faq.repository';
 import { FaqMapper } from '../mappers/faq.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { FilterFaqDto } from '../../../../dto/find-all-faqs.dto';
 
 @Injectable()
 export class FaqRelationalRepository implements FaqRepository {
@@ -28,12 +29,21 @@ export class FaqRelationalRepository implements FaqRepository {
 
   async findAllWithPagination({
     paginationOptions,
+    filterOptions,
   }: {
     paginationOptions: IPaginationOptions;
+    filterOptions?: FilterFaqDto | null;
   }): Promise<[Faq[], number]> {
+    const where: any = {};
+
+    if (filterOptions?.search) {
+      where.question = ILike(`%${filterOptions.search}%`);
+    }
+
     const [entities, count] = await this.faqRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
+      where,
       order: { createdAt: 'DESC' },
     });
 

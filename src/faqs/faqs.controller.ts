@@ -84,6 +84,7 @@ export class FaqsController {
         page,
         limit,
       },
+      filterOptions: query?.filters,
     });
 
     return infinityPagination(data, { page, limit }, count);

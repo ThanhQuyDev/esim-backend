@@ -1,6 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional } from 'class-validator';
-import { Transform } from 'class-transformer';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { Transform, Type, plainToInstance } from 'class-transformer';
+
+export class FilterMiniTagDto {
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
 
 export class FindAllMiniTagsDto {
   @ApiPropertyOptional()
@@ -14,4 +26,13 @@ export class FindAllMiniTagsDto {
   @IsNumber()
   @IsOptional()
   limit?: number;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value ? plainToInstance(FilterMiniTagDto, JSON.parse(value)) : undefined,
+  )
+  @ValidateNested()
+  @Type(() => FilterMiniTagDto)
+  filters?: FilterMiniTagDto;
 }

@@ -2,6 +2,7 @@ import { DeepPartial } from '../../../utils/types/deep-partial.type';
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { MiniTag } from '../../domain/mini-tag';
+import { FilterMiniTagDto } from '../../dto/find-all-mini-tags.dto';
 
 export abstract class MiniTagRepository {
   abstract create(
@@ -10,8 +11,10 @@ export abstract class MiniTagRepository {
 
   abstract findAllWithPagination({
     paginationOptions,
+    filterOptions,
   }: {
     paginationOptions: IPaginationOptions;
+    filterOptions?: FilterMiniTagDto | null;
   }): Promise<[MiniTag[], number]>;
 
   abstract findById(id: MiniTag['id']): Promise<NullableType<MiniTag>>;

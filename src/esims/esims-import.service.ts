@@ -26,8 +26,8 @@ export class EsimsImportService {
 
   async importFromExcel(
     fileBuffer: Buffer,
-    provider: string,
-    countryCode: string,
+    provider?: string,
+    countryCode?: string,
     sheetIdentifier?: string,
   ): Promise<EsimImportResult> {
     const workbook = new Workbook();
@@ -61,16 +61,10 @@ export class EsimsImportService {
       errors: [],
     };
 
-    // Resolve destinationId from countryCode
-    let destinationId: number | null = null;
-    const destination =
-      await this.destinationsService.findByCountryCode(countryCode);
-    if (destination) {
-      destinationId = destination.id;
-    }
-
     // Cache plans created/found during this import to avoid repeated DB calls
     const planCache = new Map<string, number>();
+    // Cache destinationId lookups by country code to avoid repeated DB calls
+    const destinationCache = new Map<string, number | null>();
 
     for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
       const row = worksheet.getRow(rowNum);
@@ -109,9 +103,46 @@ export class EsimsImportService {
         // 13:Topup, 14:eKYC, 15:Hot-Spot, 16:Hot-Spot Allow, 17:Support Phone Number,
         // 18:Call, 19:SMS, 20:ICCID, 21:Phone Number, 22:LPA,
         // 23:SMDP Address, 24:Activation code, 25:Cost Price, 26:Sell Price
+
+        // Resolve country code (Country Code column overrides DTO override)
         const rowCountryCode =
           this.cellStr(row.getCell(col('country code') ?? 2).value) ??
-          countryCode;
+          countryCode ??
+          '';
+        if (!rowCountryCode) {
+          result.skipped++;
+          result.errors.push({
+            row: rowNum,
+            iccid,
+            error: 'Country Code is empty',
+          });
+          continue;
+        }
+
+        // Resolve provider from Carrier column (DTO `provider` is a fallback only)
+        const carrier = this.cellStr(row.getCell(col('carrier') ?? 9).value);
+        const rowProvider = this.normalizeProvider(carrier ?? provider ?? '');
+        if (!rowProvider) {
+          result.skipped++;
+          result.errors.push({
+            row: rowNum,
+            iccid,
+            error: 'Carrier is empty',
+          });
+          continue;
+        }
+
+        // Resolve destinationId from per-row country code (with cache)
+        let destinationId: number | null;
+        if (destinationCache.has(rowCountryCode)) {
+          destinationId = destinationCache.get(rowCountryCode) ?? null;
+        } else {
+          const destination =
+            await this.destinationsService.findByCountryCode(rowCountryCode);
+          destinationId = destination?.id ?? null;
+          destinationCache.set(rowCountryCode, destinationId);
+        }
+
         const providerPlanId =
           this.cellStr(row.getCell(col('plan id') ?? 3).value) ?? '';
         const planName =
@@ -163,7 +194,7 @@ export class EsimsImportService {
         const price = costPrice;
 
         // Find or create plan
-        const planSlug = `${provider}-${providerPlanId}`
+        const planSlug = `${rowProvider}-${providerPlanId}`
           .toLowerCase()
           .replace(/[^a-z0-9-]/g, '-');
         let planId: number | null = null;
@@ -178,7 +209,7 @@ export class EsimsImportService {
               planCache.set(planSlug, planId);
             } else {
               const newPlan = await this.plansService.create({
-                provider,
+                provider: rowProvider,
                 providerPlanId,
                 name: planName,
                 slug: planSlug,
@@ -236,7 +267,7 @@ export class EsimsImportService {
           lpa: lpa ?? null,
           smdpAddress,
           activationCode,
-          provider,
+          provider: rowProvider,
           planId: planId ?? null,
           orderItemId: null,
           userId: null,
@@ -352,5 +383,16 @@ export class EsimsImportService {
     if (!str) return null;
     const parsed = new Date(str);
     return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  /**
+   * Normalize carrier name to a slug-friendly provider string.
+   * e.g. "Viettel" → "viettel", "eSIMvn" → "esimvn"
+   */
+  private normalizeProvider(carrier: string): string {
+    return carrier
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
   }
 }

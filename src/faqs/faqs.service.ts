@@ -7,6 +7,7 @@ import { UpdateFaqDto } from './dto/update-faq.dto';
 import { FaqRepository } from './infrastructure/persistence/faq.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { Faq } from './domain/faq';
+import { FilterFaqDto } from './dto/find-all-faqs.dto';
 
 @Injectable()
 export class FaqsService {
@@ -38,14 +39,17 @@ export class FaqsService {
 
   findAllWithPagination({
     paginationOptions,
+    filterOptions,
   }: {
     paginationOptions: IPaginationOptions;
+    filterOptions?: FilterFaqDto | null;
   }) {
     return this.faqRepository.findAllWithPagination({
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
       },
+      filterOptions,
     });
   }
 

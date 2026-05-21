@@ -234,7 +234,7 @@ export class EsimsController {
     description: 'Upload Excel file with eSIM data',
     schema: {
       type: 'object',
-      required: ['file', 'provider', 'countryCode'],
+      required: ['file'],
       properties: {
         file: {
           type: 'string',
@@ -244,12 +244,14 @@ export class EsimsController {
         provider: {
           type: 'string',
           example: 'esimvn',
-          description: 'Provider name',
+          description:
+            'Optional provider name override. If omitted, read from the "Carrier" column of each row.',
         },
         countryCode: {
           type: 'string',
           example: 'VN',
-          description: 'Country code for the plans',
+          description:
+            'Optional country code override. If omitted, read from the "Country Code" column of each row.',
         },
         sheet: {
           type: 'string',

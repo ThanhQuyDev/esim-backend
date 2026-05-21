@@ -10,6 +10,10 @@ import { User } from '../domain/user';
 import { RoleDto } from '../../roles/dto/role.dto';
 
 export class FilterUserDto {
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  search?: string;
+
   @ApiPropertyOptional({ type: RoleDto })
   @IsOptional()
   @ValidateNested({ each: true })

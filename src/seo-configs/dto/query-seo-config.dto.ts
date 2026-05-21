@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Transform, Type, plainToInstance } from 'class-transformer';
 import {
   IsBoolean,
   IsNumber,
@@ -14,6 +14,11 @@ export class FilterSeoConfigDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   isActive?: boolean;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  search?: string;
 
   @ApiPropertyOptional({ type: Number })
   @IsOptional()
@@ -47,26 +52,34 @@ export class SortSeoConfigDto {
 }
 
 export class QuerySeoConfigDto {
-  @ApiPropertyOptional({ type: Number, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
+  @ApiPropertyOptional()
+  @Transform(({ value }) => (value ? Number(value) : 1))
   @IsNumber()
+  @IsOptional()
   page?: number;
 
-  @ApiPropertyOptional({ type: Number, default: 10 })
-  @IsOptional()
-  @Type(() => Number)
+  @ApiPropertyOptional()
+  @Transform(({ value }) => (value ? Number(value) : 10))
   @IsNumber()
+  @IsOptional()
   limit?: number;
 
-  @ApiPropertyOptional({ type: () => FilterSeoConfigDto })
+  @ApiPropertyOptional({ type: String })
   @IsOptional()
+  @Transform(({ value }) =>
+    value ? plainToInstance(FilterSeoConfigDto, JSON.parse(value)) : undefined,
+  )
   @ValidateNested()
   @Type(() => FilterSeoConfigDto)
   filters?: FilterSeoConfigDto;
 
-  @ApiPropertyOptional({ type: () => [SortSeoConfigDto] })
+  @ApiPropertyOptional({ type: String })
   @IsOptional()
+  @Transform(({ value }) => {
+    return value
+      ? plainToInstance(SortSeoConfigDto, JSON.parse(value))
+      : undefined;
+  })
   @ValidateNested({ each: true })
   @Type(() => SortSeoConfigDto)
   sort?: SortSeoConfigDto[];

@@ -1,16 +1,26 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
 
 export class ImportEsimsExcelDto {
-  @ApiProperty({ type: String, example: 'esimvn' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({
+    type: String,
+    example: 'esimvn',
+    description:
+      'Provider name. If omitted, read from "Carrier" column in Excel.',
+  })
+  @IsOptional()
   @IsString()
-  provider: string;
+  provider?: string;
 
-  @ApiProperty({ type: String, example: 'VN' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({
+    type: String,
+    example: 'VN',
+    description:
+      'Country code. If omitted, read from "Country Code" column in Excel.',
+  })
+  @IsOptional()
   @IsString()
-  countryCode: string;
+  countryCode?: string;
 
   @ApiPropertyOptional({
     type: String,

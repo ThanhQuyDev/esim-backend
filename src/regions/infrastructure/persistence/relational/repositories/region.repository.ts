@@ -67,6 +67,12 @@ export class RegionsRelationalRepository implements RegionRepository {
       });
     }
 
+    if (filterOptions?.isPopular !== undefined) {
+      qb.andWhere('region."isPopular" = :isPopular', {
+        isPopular: filterOptions.isPopular,
+      });
+    }
+
     if (filterOptions?.search) {
       qb.andWhere('(region.name ILIKE :search OR dest.name ILIKE :search)', {
         search: `%${filterOptions.search}%`,

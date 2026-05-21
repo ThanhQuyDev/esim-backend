@@ -126,21 +126,37 @@ export class WalletsService {
     }));
   }
 
-  async listWallets(email?: string): Promise<AdminWalletListItemDto[]> {
+  async listWallets(options: {
+    page?: number;
+    limit?: number;
+    email?: string;
+  }): Promise<{
+    data: AdminWalletListItemDto[];
+    hasNextPage: boolean;
+    totalCount: number;
+  }> {
+    const page = options.page || 1;
+    const limit = Math.min(options.limit || 10, 50);
+
     const queryBuilder = this.walletRepository
       .createQueryBuilder('wallet')
-      .leftJoinAndSelect('wallet.user', 'user')
-      .orderBy('wallet.updatedAt', 'DESC');
+      .leftJoinAndSelect('wallet.user', 'u');
 
-    if (email) {
-      queryBuilder.andWhere('user.email ILIKE :email', {
-        email: `%${email}%`,
+    if (options.email) {
+      queryBuilder.andWhere('u.email ILIKE :email', {
+        email: `%${options.email}%`,
       });
     }
 
+    queryBuilder.orderBy('wallet.updatedAt', 'DESC');
+
+    const totalCount = await queryBuilder.getCount();
+
+    queryBuilder.skip((page - 1) * limit).take(limit);
+
     const wallets = await queryBuilder.getMany();
 
-    return wallets.map((wallet) => ({
+    const data = wallets.map((wallet) => ({
       id: wallet.id,
       userId: wallet.userId,
       user: wallet.user
@@ -157,6 +173,12 @@ export class WalletsService {
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
     }));
+
+    return {
+      data,
+      hasNextPage: page * limit < totalCount,
+      totalCount,
+    };
   }
 
   async getTransactionsForAdmin(

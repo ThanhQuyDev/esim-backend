@@ -19,6 +19,11 @@ export class FilterRegionDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isPopular?: boolean;
 }
 
 export class SortRegionDto {

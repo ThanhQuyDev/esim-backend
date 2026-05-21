@@ -1,6 +1,33 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+import { Transform } from 'class-transformer';
 import { OrderRefundModeEnum, WalletStatusEnum } from '../wallets.enum';
+
+export class AdminWalletQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => (value ? Number(value) : 1))
+  @IsNumber()
+  page?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => (value ? Number(value) : 10))
+  @IsNumber()
+  limit?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  email?: string;
+}
 
 export class ManualWalletAdjustDto {
   @ApiProperty({ type: Number, example: 10000 })

@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, ILike } from 'typeorm';
 import { MiniTagEntity } from '../entities/mini-tag.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { MiniTag } from '../../../../domain/mini-tag';
 import { MiniTagRepository } from '../../mini-tag.repository';
 import { MiniTagMapper } from '../mappers/mini-tag.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { FilterMiniTagDto } from '../../../../dto/find-all-mini-tags.dto';
 
 @Injectable()
 export class MiniTagRelationalRepository implements MiniTagRepository {
@@ -25,12 +26,21 @@ export class MiniTagRelationalRepository implements MiniTagRepository {
 
   async findAllWithPagination({
     paginationOptions,
+    filterOptions,
   }: {
     paginationOptions: IPaginationOptions;
+    filterOptions?: FilterMiniTagDto | null;
   }): Promise<[MiniTag[], number]> {
+    const where: any = {};
+
+    if (filterOptions?.search) {
+      where.title = ILike(`%${filterOptions.search}%`);
+    }
+
     const [entities, count] = await this.miniTagRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
+      where,
       order: { createdAt: 'DESC' },
     });
 

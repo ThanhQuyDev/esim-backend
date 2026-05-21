@@ -4,6 +4,7 @@ import { UpdateMiniTagDto } from './dto/update-mini-tag.dto';
 import { MiniTagRepository } from './infrastructure/persistence/mini-tag.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { MiniTag } from './domain/mini-tag';
+import { FilterMiniTagDto } from './dto/find-all-mini-tags.dto';
 
 @Injectable()
 export class MiniTagsService {
@@ -21,14 +22,17 @@ export class MiniTagsService {
 
   findAllWithPagination({
     paginationOptions,
+    filterOptions,
   }: {
     paginationOptions: IPaginationOptions;
+    filterOptions?: FilterMiniTagDto | null;
   }) {
     return this.miniTagRepository.findAllWithPagination({
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
       },
+      filterOptions,
     });
   }
 

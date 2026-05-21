@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { FindOptionsWhere, Repository, In } from 'typeorm';
+import { FindOptionsWhere, Repository, In, ILike } from 'typeorm';
 import { UserEntity } from '../entities/user.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterUserDto, SortUserDto } from '../../../../dto/query-user.dto';
@@ -34,17 +34,30 @@ export class UsersRelationalRepository implements UserRepository {
     sortOptions?: SortUserDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[User[], number]> {
-    const where: FindOptionsWhere<UserEntity> = {};
+    const where: FindOptionsWhere<UserEntity>[] = [];
+
+    const baseWhere: FindOptionsWhere<UserEntity> = {};
     if (filterOptions?.roles?.length) {
-      where.role = filterOptions.roles.map((role) => ({
-        id: Number(role.id),
-      }));
+      baseWhere.role = {
+        id: In(filterOptions.roles.map((role) => Number(role.id))),
+      };
+    }
+
+    if (filterOptions?.search) {
+      // Search across email, firstName, lastName with OR
+      where.push(
+        { ...baseWhere, email: ILike(`%${filterOptions.search}%`) },
+        { ...baseWhere, firstName: ILike(`%${filterOptions.search}%`) },
+        { ...baseWhere, lastName: ILike(`%${filterOptions.search}%`) },
+      );
+    } else {
+      where.push(baseWhere);
     }
 
     const [entities, count] = await this.usersRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
-      where: where,
+      where,
       order: sortOptions?.length
         ? sortOptions.reduce(
             (accumulator, sort) => ({

@@ -80,10 +80,20 @@ export class WalletsController {
   @ApiOkResponse({ type: [AdminWalletListItemDto] })
   @Get('admin')
   @HttpCode(HttpStatus.OK)
-  listWallets(
+  async listWallets(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('email') email?: string,
-  ): Promise<AdminWalletListItemDto[]> {
-    return this.walletsService.listWallets(email);
+  ): Promise<{
+    data: AdminWalletListItemDto[];
+    hasNextPage: boolean;
+    totalCount: number;
+  }> {
+    return this.walletsService.listWallets({
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 10,
+      email: email || undefined,
+    });
   }
 
   @Roles(RoleEnum.admin)
