@@ -25,6 +25,10 @@ export abstract class EsimRepository {
 
   abstract findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>>;
 
+  abstract findByIccidWithDeleted(
+    iccid: Esim['iccid'],
+  ): Promise<NullableType<Esim>>;
+
   abstract findByOrderItemIds(orderItemIds: number[]): Promise<Esim[]>;
 
   abstract findAvailableByPlanId(
@@ -38,6 +42,8 @@ export abstract class EsimRepository {
   ): Promise<Esim | null>;
 
   abstract remove(id: Esim['id']): Promise<void>;
+
+  abstract restore(id: Esim['id']): Promise<void>;
 
   abstract markRefundedByOrderId(orderId: number): Promise<number>;
 

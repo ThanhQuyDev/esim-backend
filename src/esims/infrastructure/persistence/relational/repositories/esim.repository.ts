@@ -97,6 +97,16 @@ export class EsimsRelationalRepository implements EsimRepository {
     return entity ? EsimMapper.toDomain(entity) : null;
   }
 
+  async findByIccidWithDeleted(
+    iccid: Esim['iccid'],
+  ): Promise<NullableType<Esim>> {
+    const entity = await this.esimsRepository.findOne({
+      where: { iccid },
+      withDeleted: true,
+    });
+    return entity ? EsimMapper.toDomain(entity) : null;
+  }
+
   async findByOrderItemIds(orderItemIds: number[]): Promise<Esim[]> {
     if (!orderItemIds.length) return [];
     const entities = await this.esimsRepository.find({
@@ -160,6 +170,10 @@ export class EsimsRelationalRepository implements EsimRepository {
 
   async remove(id: Esim['id']): Promise<void> {
     await this.esimsRepository.softDelete(id);
+  }
+
+  async restore(id: Esim['id']): Promise<void> {
+    await this.esimsRepository.restore(id);
   }
 
   async softDeleteByStatusOlderThan(

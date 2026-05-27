@@ -92,6 +92,8 @@ export class RegionsService {
         iconUrl: updateRegionDto.iconUrl,
         description: updateRegionDto.description,
         descriptionVi: updateRegionDto.descriptionVi,
+        title: updateRegionDto.title,
+        titleVi: updateRegionDto.titleVi,
         isActive: updateRegionDto.isActive,
         isPopular: updateRegionDto.isPopular,
       },

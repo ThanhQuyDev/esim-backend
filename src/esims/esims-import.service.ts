@@ -85,9 +85,11 @@ export class EsimsImportService {
       }
 
       try {
-        // Check duplicate iccid
-        const existing = await this.esimRepository.findByIccid(iccid);
-        if (existing) {
+        // Check duplicate iccid (including soft-deleted records)
+        const existing =
+          await this.esimRepository.findByIccidWithDeleted(iccid);
+        if (existing && !existing.deletedAt) {
+          // Active record exists — skip
           result.skipped++;
           result.errors.push({
             row: rowNum,
@@ -96,6 +98,9 @@ export class EsimsImportService {
           });
           continue;
         }
+
+        // If a soft-deleted record exists, restore it and update with new data
+        const shouldRestore = existing && existing.deletedAt;
 
         // Extract plan fields from new column structure
         // 1:Country, 2:Country Code, 3:Plan ID, 4:Name, 5:Data, 6:Days, 7:Type,
@@ -261,28 +266,54 @@ export class EsimsImportService {
           activationCode = this.extractActivationCodeFromLpa(lpa);
         }
 
-        await this.esimRepository.create({
-          iccid,
-          phoneNumber: phoneNumber ?? null,
-          lpa: lpa ?? null,
-          smdpAddress,
-          activationCode,
-          provider: rowProvider,
-          planId: planId ?? null,
-          orderItemId: null,
-          userId: null,
-          matchId: null,
-          qrcode: null,
-          directAppleInstallationUrl: null,
-          apnValue: apnValue ?? null,
-          isRoaming: null,
-          status: 'available',
-          dataUsed: null,
-          dataTotal: dataMb ? String(dataMb) : null,
-          expiresAt: expiresAt,
-          activatedAt: null,
-          esimTranNo: null,
-        });
+        if (shouldRestore) {
+          // Restore the soft-deleted record and update with new import data
+          await this.esimRepository.restore(existing.id);
+          await this.esimRepository.update(existing.id, {
+            phoneNumber: phoneNumber ?? null,
+            lpa: lpa ?? null,
+            smdpAddress,
+            activationCode,
+            provider: rowProvider,
+            planId: planId ?? null,
+            orderItemId: null,
+            userId: null,
+            matchId: null,
+            qrcode: null,
+            directAppleInstallationUrl: null,
+            apnValue: apnValue ?? null,
+            isRoaming: null,
+            status: 'available',
+            dataUsed: null,
+            dataTotal: dataMb ? String(dataMb) : null,
+            expiresAt: expiresAt,
+            activatedAt: null,
+            esimTranNo: null,
+          });
+        } else {
+          await this.esimRepository.create({
+            iccid,
+            phoneNumber: phoneNumber ?? null,
+            lpa: lpa ?? null,
+            smdpAddress,
+            activationCode,
+            provider: rowProvider,
+            planId: planId ?? null,
+            orderItemId: null,
+            userId: null,
+            matchId: null,
+            qrcode: null,
+            directAppleInstallationUrl: null,
+            apnValue: apnValue ?? null,
+            isRoaming: null,
+            status: 'available',
+            dataUsed: null,
+            dataTotal: dataMb ? String(dataMb) : null,
+            expiresAt: expiresAt,
+            activatedAt: null,
+            esimTranNo: null,
+          });
+        }
 
         result.created++;
       } catch (error: any) {

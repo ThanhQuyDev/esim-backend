@@ -113,6 +113,9 @@ export class DestinationsService {
       isPopular: updateDestinationDto.isPopular,
       isActive: updateDestinationDto.isActive,
       description: updateDestinationDto.description,
+      descriptionVi: updateDestinationDto.descriptionVi,
+      title: updateDestinationDto.title,
+      titleVi: updateDestinationDto.titleVi,
     });
   }
 
