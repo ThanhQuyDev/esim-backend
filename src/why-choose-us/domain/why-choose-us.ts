@@ -4,7 +4,8 @@ export class WhyChooseUs {
   @ApiProperty({
     type: () => String,
     nullable: true,
-    description: 'Type classification for display sections',
+    description:
+      'Comma-separated display locations (e.g. "homepage,country,region")',
   })
   type?: string | null;
 

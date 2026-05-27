@@ -141,8 +141,18 @@ export class InvoicesService {
     });
 
     // Part 12 Feature 1.1: Auto-send invoice email when status changes to ISSUED
-    if (isTransitioningToIssued && updated) {
-      void this.sendInvoiceIssuedEmail(updated);
+    if (isTransitioningToIssued) {
+      // Refetch to guarantee we have the full persisted record. The `updated`
+      // object can carry `undefined` fields (invoiceEmail, companyName, ...)
+      // when the PATCH body only sends `status` — TypeORM keeps the columns
+      // intact on disk but the returned entity reflects the spread payload,
+      // so sending the mail with that object would result in `to: undefined`.
+      const fresh = await this.invoiceRepository.findById(id);
+      if (fresh) {
+        void this.sendInvoiceIssuedEmail(fresh);
+      } else if (updated) {
+        void this.sendInvoiceIssuedEmail(updated);
+      }
     }
 
     return updated;
@@ -154,6 +164,13 @@ export class InvoicesService {
    */
   private async sendInvoiceIssuedEmail(invoice: Invoice): Promise<void> {
     try {
+      if (!invoice.invoiceEmail) {
+        this.logger.warn(
+          `Cannot send invoice email: invoiceEmail is empty for invoice ${invoice.id}`,
+        );
+        return;
+      }
+
       const order =
         invoice.order ?? (await this.orderService.findById(invoice.orderId));
       if (!order) {

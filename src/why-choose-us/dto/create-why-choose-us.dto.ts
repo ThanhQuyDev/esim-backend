@@ -60,7 +60,8 @@ export class CreateWhyChooseUsDto {
   @ApiProperty({
     required: false,
     type: () => String,
-    description: 'Type classification for display sections',
+    description:
+      'Comma-separated display locations. Allowed values: homepage, country, region. Example: "homepage,country,region" to show in all 3 places.',
   })
   @IsOptional()
   @IsString()

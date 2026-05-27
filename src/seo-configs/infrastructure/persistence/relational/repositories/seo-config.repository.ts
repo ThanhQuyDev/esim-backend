@@ -36,22 +36,35 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
     sortOptions?: SortSeoConfigDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[SeoConfig[], number]> {
-    const where: FindOptionsWhere<SeoConfigEntity> = {};
+    // Common filter clauses applied to every OR branch when search is used.
+    const baseWhere: FindOptionsWhere<SeoConfigEntity> = {};
 
-    if (filterOptions?.search) {
-      where.url = ILike(`%${filterOptions.search}%`);
-    }
     if (filterOptions?.isActive !== undefined) {
-      where.isActive = filterOptions.isActive;
+      baseWhere.isActive = filterOptions.isActive;
     }
     if (filterOptions?.destinationId !== undefined) {
-      where.destinationId = filterOptions.destinationId;
+      baseWhere.destinationId = filterOptions.destinationId;
     }
     if (filterOptions?.regionId !== undefined) {
-      where.regionId = filterOptions.regionId;
+      baseWhere.regionId = filterOptions.regionId;
     }
     if (filterOptions?.planId !== undefined) {
-      where.planId = filterOptions.planId;
+      baseWhere.planId = filterOptions.planId;
+    }
+
+    // When `search` is provided, match across url / metaTitle / metaDescription
+    // using an array of where clauses (TypeORM treats this as OR).
+    let where:
+      | FindOptionsWhere<SeoConfigEntity>
+      | FindOptionsWhere<SeoConfigEntity>[] = baseWhere;
+
+    if (filterOptions?.search) {
+      const term = `%${filterOptions.search}%`;
+      where = [
+        { ...baseWhere, url: ILike(term) },
+        { ...baseWhere, metaTitle: ILike(term) },
+        { ...baseWhere, metaDescription: ILike(term) },
+      ];
     }
 
     const [entities, count] = await this.seoConfigsRepository.findAndCount({

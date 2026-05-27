@@ -1010,10 +1010,15 @@ export class OrdersService {
    * Resend the eSIM activation email for an existing paid order. Looks up the
    * eSIMs already stored against the order's items and reuses the same mail
    * template as the initial purchase flow.
+   *
+   * This action is strictly eSIM-only. Sending the invoice email is a separate
+   * concern handled by the "Issue invoice" flow (PATCH /invoices/:id with
+   * status = ISSUED). Mixing the two channels into one button caused
+   * misleading UX where clicking "Resend eSIM" would silently dispatch an
+   * invoice mail.
    */
   async resendEsimEmail(orderId: number): Promise<{
     sent: number;
-    invoiceSent: boolean;
     skippedReason?: string;
   }> {
     const order = await this.orderRepository.findById(orderId);
@@ -1021,91 +1026,59 @@ export class OrdersService {
 
     const buyer = await this.usersService.findById(order.userId);
     if (!buyer?.email) {
-      return {
-        sent: 0,
-        invoiceSent: false,
-        skippedReason: 'buyer-has-no-email',
-      };
+      return { sent: 0, skippedReason: 'buyer-has-no-email' };
     }
 
     const orderItems = await this.orderItemsService.findByOrderId(orderId);
     if (!orderItems.length) {
-      return { sent: 0, invoiceSent: false, skippedReason: 'no-order-items' };
+      return { sent: 0, skippedReason: 'no-order-items' };
     }
 
     const esims = await this.esimsService.findByOrderItemIds(
       orderItems.map((i) => i.id),
     );
 
-    let sent = 0;
     if (esims.length === 0) {
       this.logger.warn(
         `resendEsimEmail: no esims provisioned yet for order ${orderId}`,
       );
-    } else {
-      const plansById = new Map<number, Plan>();
-      for (const item of orderItems) {
-        if (!plansById.has(item.planId)) {
-          const plan = await this.plansService.findById(item.planId);
-          if (plan) plansById.set(item.planId, plan);
-        }
-      }
+      return { sent: 0, skippedReason: 'no-esims-provisioned-yet' };
+    }
 
-      for (const esim of esims) {
-        const plan =
-          esim.planId != null ? plansById.get(esim.planId) : undefined;
-        try {
-          await this.mailService.sendEsimPurchase({
-            to: buyer.email,
-            esimId: esim.id,
-            iccid: esim.iccid,
-            activationCode: esim.activationCode,
-            lpa: esim.lpa,
-            smdpAddress: esim.smdpAddress,
-            apn: esim.apnValue,
-            phoneNumber: esim.phoneNumber,
-            planName: plan?.name ?? '',
-            orderNumber: order.orderNumber,
-          });
-          sent += 1;
-        } catch (err) {
-          this.logger.error(
-            `resendEsimEmail: failed to send for esim ${esim.id} of order ${orderId}: ${(err as Error).message}`,
-          );
-        }
+    const plansById = new Map<number, Plan>();
+    for (const item of orderItems) {
+      if (!plansById.has(item.planId)) {
+        const plan = await this.plansService.findById(item.planId);
+        if (plan) plansById.set(item.planId, plan);
       }
     }
 
-    // Always attempt to resend the invoice email as well — admins use this
-    // endpoint as the single "deliver everything" trigger for manual orders.
-    let invoiceSent = false;
-    try {
-      const invoice = await this.invoiceRepository.findByOrderId(orderId);
-      if (invoice) {
-        await this.mailService.sendInvoiceIssued({
-          to: invoice.invoiceEmail,
+    let sent = 0;
+    for (const esim of esims) {
+      const plan =
+        esim.planId != null ? plansById.get(esim.planId) : undefined;
+      try {
+        await this.mailService.sendEsimPurchase({
+          to: buyer.email,
+          esimId: esim.id,
+          iccid: esim.iccid,
+          activationCode: esim.activationCode,
+          lpa: esim.lpa,
+          smdpAddress: esim.smdpAddress,
+          apn: esim.apnValue,
+          phoneNumber: esim.phoneNumber,
+          planName: plan?.name ?? '',
           orderNumber: order.orderNumber,
-          companyName: invoice.companyName,
-          taxCode: invoice.taxCode,
-          address: invoice.address,
-          totalAmountVnd: order.payableVndPrice ?? order.vndPrice ?? 0,
         });
-        invoiceSent = true;
+        sent += 1;
+      } catch (err) {
+        this.logger.error(
+          `resendEsimEmail: failed to send for esim ${esim.id} of order ${orderId}: ${(err as Error).message}`,
+        );
       }
-    } catch (err) {
-      this.logger.error(
-        `resendEsimEmail: failed to send invoice email for order ${orderId}: ${(err as Error).message}`,
-      );
     }
 
-    if (sent === 0 && !invoiceSent) {
-      return {
-        sent: 0,
-        invoiceSent: false,
-        skippedReason: 'no-esims-provisioned-yet',
-      };
-    }
-    return { sent, invoiceSent };
+    return { sent };
   }
 
   private async sendEsimPurchaseEmails(
@@ -1170,13 +1143,14 @@ export class OrdersService {
 
     const orderItems = await this.orderItemsService.findByOrderId(order.id);
 
-    const [esims, plans, user, coupon] = await Promise.all([
+    const [esims, plans, user, coupon, invoice] = await Promise.all([
       this.esimsService.findByOrderItemIds(orderItems.map((i) => i.id)),
       Promise.all(orderItems.map((i) => this.plansService.findById(i.planId))),
       this.usersService.findById(order.userId),
       order.couponCode
         ? this.couponsService.findByCode(order.couponCode)
         : Promise.resolve(null),
+      this.invoiceRepository.findByOrderId(order.id),
     ]);
 
     const esimsByOrderItemId = new Map<number, typeof esims>();
@@ -1247,6 +1221,18 @@ export class OrdersService {
           updatedAt: item.updatedAt,
         };
       }),
+      invoice: invoice
+        ? {
+            id: invoice.id,
+            status: invoice.status,
+            companyName: invoice.companyName,
+            taxCode: invoice.taxCode,
+            address: invoice.address,
+            invoiceEmail: invoice.invoiceEmail,
+            createdAt: invoice.createdAt,
+            updatedAt: invoice.updatedAt,
+          }
+        : null,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     };

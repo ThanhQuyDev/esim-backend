@@ -46,9 +46,13 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
     }
 
     if (filterOptions?.type) {
-      qb.andWhere('LOWER(TRIM(whyChooseUs.type)) = LOWER(:type)', {
-        type: filterOptions.type.trim(),
-      });
+      // Support filtering items that contain the given type within a
+      // comma-separated list (e.g. "homepage,country,region").
+      // This allows one item to appear in multiple places simultaneously.
+      qb.andWhere(
+        `(',' || LOWER(REPLACE(whyChooseUs.type, ' ', '')) || ',') LIKE :typePattern`,
+        { typePattern: `%,${filterOptions.type.trim().toLowerCase()},%` },
+      );
     }
 
     if (sortOptions?.length) {

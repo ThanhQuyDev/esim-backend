@@ -59,12 +59,14 @@ export class AdminOrdersController {
 
   /**
    * Feature 1.1 — Resend the eSIM activation email for an order.
+   *
+   * Strictly eSIM-only. To re-send the invoice email, use the
+   * "Issue invoice" action (PATCH /api/v1/invoices/:id { status: 'ISSUED' }).
    */
   @Post(':orderId/resend-esim-email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary:
-      'Resend the eSIM purchase / activation email (and invoice email if attached) to the buyer of an order',
+    summary: 'Resend the eSIM purchase / activation email to the buyer',
   })
   @ApiParam({ name: 'orderId', type: Number, required: true })
   @ApiOkResponse({
@@ -76,12 +78,6 @@ export class AdminOrdersController {
           example: 1,
           description: 'Number of eSIM purchase emails actually sent',
         },
-        invoiceSent: {
-          type: 'boolean',
-          example: true,
-          description:
-            'True if an invoice confirmation email was also sent (only when the order has an invoice attached)',
-        },
         skippedReason: {
           type: 'string',
           nullable: true,
@@ -92,7 +88,7 @@ export class AdminOrdersController {
   })
   resendEsimEmail(
     @Param('orderId', ParseIntPipe) orderId: number,
-  ): Promise<{ sent: number; invoiceSent: boolean; skippedReason?: string }> {
+  ): Promise<{ sent: number; skippedReason?: string }> {
     return this.ordersService.resendEsimEmail(orderId);
   }
 }

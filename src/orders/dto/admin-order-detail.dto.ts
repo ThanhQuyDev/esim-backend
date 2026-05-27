@@ -134,6 +134,36 @@ export class AdminOrderItemDto {
   updatedAt: Date;
 }
 
+export class AdminOrderInvoiceDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  id: string;
+
+  @ApiProperty({
+    type: String,
+    enum: ['PENDING', 'ISSUED', 'FAILED'],
+    example: 'PENDING',
+  })
+  status: string;
+
+  @ApiProperty({ type: String, example: 'Công ty TNHH ABC' })
+  companyName: string;
+
+  @ApiProperty({ type: String, example: '0123456789' })
+  taxCode: string;
+
+  @ApiProperty({ type: String, example: '123 Nguyễn Huệ, Q1, TP.HCM' })
+  address: string;
+
+  @ApiProperty({ type: String, example: 'finance@example.com' })
+  invoiceEmail: string;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
+}
+
 export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   id: number;
@@ -185,6 +215,14 @@ export class AdminOrderDetailDto {
 
   @ApiProperty({ type: () => [AdminOrderItemDto] })
   items: AdminOrderItemDto[];
+
+  @ApiPropertyOptional({
+    type: () => AdminOrderInvoiceDto,
+    nullable: true,
+    description:
+      'Invoice request attached to this order (1:1). Null when the customer did not request a financial invoice.',
+  })
+  invoice?: AdminOrderInvoiceDto | null;
 
   @ApiProperty()
   createdAt: Date;

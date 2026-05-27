@@ -18,6 +18,7 @@ import { AuthForgotPasswordDto } from './dto/auth-forgot-password.dto';
 import { AuthConfirmEmailDto } from './dto/auth-confirm-email.dto';
 import { AuthResetPasswordDto } from './dto/auth-reset-password.dto';
 import { AuthUpdateDto } from './dto/auth-update.dto';
+import { AuthUpdateProfileDto } from './dto/auth-update-profile.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthRegisterLoginDto } from './dto/auth-register-login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -160,6 +161,25 @@ export class AuthController {
     @Body() userDto: AuthUpdateDto,
   ): Promise<NullableType<User>> {
     return this.service.update(request.user, userDto);
+  }
+
+  @ApiBearerAuth()
+  @SerializeOptions({
+    groups: ['me'],
+  })
+  @Patch('me/profile')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({
+    type: User,
+    description:
+      'Update personal profile info (firstName, lastName, photo). Email and password changes are handled by PATCH /auth/me.',
+  })
+  public updateProfile(
+    @Request() request,
+    @Body() profileDto: AuthUpdateProfileDto,
+  ): Promise<NullableType<User>> {
+    return this.service.updateProfile(request.user, profileDto);
   }
 
   @ApiBearerAuth()
