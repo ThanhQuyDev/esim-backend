@@ -26,6 +26,8 @@ export abstract class OrderItemRepository {
 
   abstract findByOrderId(orderId: number): Promise<OrderItem[]>;
 
+  abstract countByOrderIds(orderIds: number[]): Promise<Map<number, number>>;
+
   abstract findByOrderRequestId(orderRequestId: string): Promise<OrderItem[]>;
 
   abstract findPendingByProvider(provider: string): Promise<OrderItem[]>;

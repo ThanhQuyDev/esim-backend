@@ -1116,7 +1116,7 @@ export class OrdersService {
     }
   }
 
-  findManyWithPagination({
+  async findManyWithPagination({
     filterOptions,
     sortOptions,
     paginationOptions,
@@ -1125,11 +1125,29 @@ export class OrdersService {
     sortOptions?: SortOrderDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Order[], number]> {
-    return this.orderRepository.findManyWithPagination({
+    const [orders, count] = await this.orderRepository.findManyWithPagination({
       filterOptions,
       sortOptions,
       paginationOptions,
     });
+
+    if (orders.length > 0) {
+      const orderIds = orders.map((o) => o.id);
+
+      // Batch fetch invoice existence and item counts
+      const [invoiceOrderIds, itemCounts] = await Promise.all([
+        this.invoiceRepository.findOrderIdsWithInvoice(orderIds),
+        this.orderItemsService.countByOrderIds(orderIds),
+      ]);
+
+      const invoiceSet = new Set(invoiceOrderIds);
+      for (const order of orders) {
+        order.isInvoice = invoiceSet.has(order.id);
+        order.itemCount = itemCounts.get(order.id) ?? 0;
+      }
+    }
+
+    return [orders, count];
   }
 
   findById(id: Order['id']): Promise<NullableType<Order>> {

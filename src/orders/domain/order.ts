@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { User } from '../../users/domain/user';
 
 export class Order {
   @ApiProperty({
@@ -12,10 +11,11 @@ export class Order {
   })
   userId!: number;
 
-  @ApiProperty({
-    type: () => User,
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Email of the buyer',
   })
-  user?: User;
+  userEmail?: string | null;
 
   @ApiProperty({
     type: String,
@@ -145,4 +145,16 @@ export class Order {
 
   @ApiProperty()
   deletedAt!: Date;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Whether this order has an invoice request',
+  })
+  isInvoice?: boolean;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'Number of order items',
+  })
+  itemCount?: number;
 }

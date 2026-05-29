@@ -1,7 +1,5 @@
-import { UserMapper } from '../../../../../users/infrastructure/persistence/relational/mappers/user.mapper';
 import { Order } from '../../../../domain/order';
 import { OrderEntity } from '../entities/order.entity';
-import { UserEntity } from '../../../../../users/infrastructure/persistence/relational/entities/user.entity';
 
 export class OrderMapper {
   static toDomain(raw: OrderEntity): Order {
@@ -9,7 +7,7 @@ export class OrderMapper {
     domainEntity.id = raw.id;
     domainEntity.userId = raw.userId;
     if (raw.user) {
-      domainEntity.user = UserMapper.toDomain(raw.user);
+      domainEntity.userEmail = raw.user.email ?? null;
     }
     domainEntity.orderNumber = raw.orderNumber;
     domainEntity.status = raw.status;
@@ -52,11 +50,6 @@ export class OrderMapper {
     }
     if (domainEntity.userId !== undefined) {
       persistenceEntity.userId = domainEntity.userId;
-    }
-    if (domainEntity.user) {
-      const userEntity = new UserEntity();
-      userEntity.id = Number(domainEntity.user.id);
-      persistenceEntity.user = userEntity;
     }
     if (domainEntity.orderNumber !== undefined) {
       persistenceEntity.orderNumber = domainEntity.orderNumber;

@@ -55,6 +55,10 @@ export class OrderItemsService {
     return this.orderItemsRepository.findByOrderId(orderId);
   }
 
+  countByOrderIds(orderIds: number[]): Promise<Map<number, number>> {
+    return this.orderItemsRepository.countByOrderIds(orderIds);
+  }
+
   findByOrderRequestId(orderRequestId: string): Promise<OrderItem[]> {
     return this.orderItemsRepository.findByOrderRequestId(orderRequestId);
   }

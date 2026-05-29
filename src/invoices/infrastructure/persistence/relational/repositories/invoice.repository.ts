@@ -52,6 +52,16 @@ export class InvoiceRelationalRepository implements InvoiceRepository {
     return entity ? InvoiceMapper.toDomain(entity) : null;
   }
 
+  async findOrderIdsWithInvoice(orderIds: number[]): Promise<number[]> {
+    if (!orderIds.length) return [];
+    const rows = await this.invoiceRepository
+      .createQueryBuilder('invoice')
+      .select('invoice.orderId', 'orderId')
+      .where('invoice.orderId IN (:...orderIds)', { orderIds })
+      .getRawMany<{ orderId: number }>();
+    return rows.map((r) => Number(r.orderId));
+  }
+
   async findByIds(ids: Invoice['id'][]): Promise<Invoice[]> {
     const entities = await this.invoiceRepository.find({
       where: { id: In(ids) },

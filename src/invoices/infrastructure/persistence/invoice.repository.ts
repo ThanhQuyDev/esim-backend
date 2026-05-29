@@ -20,6 +20,8 @@ export abstract class InvoiceRepository {
 
   abstract findByOrderId(orderId: number): Promise<NullableType<Invoice>>;
 
+  abstract findOrderIdsWithInvoice(orderIds: number[]): Promise<number[]>;
+
   abstract update(
     id: Invoice['id'],
     payload: DeepPartial<Invoice>,

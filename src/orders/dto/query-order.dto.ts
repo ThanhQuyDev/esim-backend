@@ -37,6 +37,22 @@ export class FilterOrderDto {
   @IsOptional()
   @IsString()
   planName?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Filter by buyer email (partial match)',
+  })
+  @IsOptional()
+  @IsString()
+  userEmail?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Filter by order number / order code (partial match)',
+  })
+  @IsOptional()
+  @IsString()
+  orderNumber?: string;
 }
 
 export class SortOrderDto {

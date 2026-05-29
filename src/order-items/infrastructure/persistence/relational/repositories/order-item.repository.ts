@@ -87,6 +87,22 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     return entities.map((e) => OrderItemMapper.toDomain(e));
   }
 
+  async countByOrderIds(orderIds: number[]): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    if (!orderIds.length) return result;
+    const rows = await this.orderItemsRepository
+      .createQueryBuilder('orderItem')
+      .select('orderItem.orderId', 'orderId')
+      .addSelect('COUNT(orderItem.id)', 'count')
+      .where('orderItem.orderId IN (:...orderIds)', { orderIds })
+      .groupBy('orderItem.orderId')
+      .getRawMany<{ orderId: number; count: string }>();
+    for (const row of rows) {
+      result.set(Number(row.orderId), Number(row.count));
+    }
+    return result;
+  }
+
   async update(
     id: OrderItem['id'],
     payload: Partial<OrderItem>,

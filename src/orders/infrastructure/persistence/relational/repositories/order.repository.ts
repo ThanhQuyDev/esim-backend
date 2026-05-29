@@ -33,8 +33,13 @@ export class OrdersRelationalRepository implements OrderRepository {
     sortOptions?: SortOrderDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Order[], number]> {
-    // Use QueryBuilder when advanced filters (iccid, planName) are present
-    if (filterOptions?.iccid || filterOptions?.planName) {
+    // Use QueryBuilder when advanced filters are present
+    if (
+      filterOptions?.iccid ||
+      filterOptions?.planName ||
+      filterOptions?.userEmail ||
+      filterOptions?.orderNumber
+    ) {
       return this.findManyWithAdvancedFilters(
         filterOptions,
         sortOptions,
@@ -104,14 +109,15 @@ export class OrdersRelationalRepository implements OrderRepository {
       });
     }
 
-    // Filter by iccid: match on order.targetIccid OR on order_item.iccid
+    // Filter by iccid: match on order.targetIccid OR via esim -> order_item
     if (filterOptions.iccid) {
       qb.andWhere(
         `(
           "order"."targetIccid" = :iccid
           OR "order"."id" IN (
             SELECT "oi"."orderId" FROM "order_item" "oi"
-            WHERE "oi"."iccid" = :iccid AND "oi"."deletedAt" IS NULL
+            INNER JOIN "esim" "e" ON "e"."orderItemId" = "oi"."id"
+            WHERE "e"."iccid" = :iccid
           )
         )`,
         { iccid: filterOptions.iccid },
@@ -124,10 +130,28 @@ export class OrdersRelationalRepository implements OrderRepository {
         `"order"."id" IN (
           SELECT "oi"."orderId" FROM "order_item" "oi"
           INNER JOIN "plan" "p" ON "p"."id" = "oi"."planId"
-          WHERE "p"."name" ILIKE :planName AND "oi"."deletedAt" IS NULL
+          WHERE "p"."name" ILIKE :planName
         )`,
         { planName: `%${filterOptions.planName}%` },
       );
+    }
+
+    // Filter by buyer email: partial match via user table
+    if (filterOptions.userEmail) {
+      qb.andWhere(
+        `"order"."userId" IN (
+          SELECT "u"."id" FROM "user" "u"
+          WHERE "u"."email" ILIKE :userEmail
+        )`,
+        { userEmail: `%${filterOptions.userEmail}%` },
+      );
+    }
+
+    // Filter by orderNumber: partial match (case-insensitive)
+    if (filterOptions.orderNumber) {
+      qb.andWhere('"order"."orderNumber" ILIKE :orderNumber', {
+        orderNumber: `%${filterOptions.orderNumber}%`,
+      });
     }
 
     // Sorting
