@@ -67,8 +67,13 @@ export class SeoConfigsService {
     return this.seoConfigsRepository.findById(id);
   }
 
+  /**
+   * Lookup endpoint behavior: returns the most specific ancestor SEO config
+   * for the given URL (e.g. `/destination/vietnam` falls back to
+   * `/destination` then `/` when no exact record exists).
+   */
   findByUrl(url: SeoConfig['url']): Promise<NullableType<SeoConfig>> {
-    return this.seoConfigsRepository.findByUrl(url);
+    return this.seoConfigsRepository.findByUrlWithFallback(url);
   }
 
   async update(

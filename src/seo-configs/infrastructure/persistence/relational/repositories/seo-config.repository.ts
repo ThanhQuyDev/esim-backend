@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, ILike, Repository } from 'typeorm';
+import { FindOptionsWhere, ILike, In, Repository } from 'typeorm';
 import { SeoConfigEntity } from '../entities/seo-config.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import {
@@ -11,6 +11,7 @@ import { SeoConfig } from '../../../../domain/seo-config';
 import { SeoConfigRepository } from '../../seo-config.repository';
 import { SeoConfigMapper } from '../mappers/seo-config.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { buildUrlAncestors } from '../../../../../utils/url-ancestors';
 
 @Injectable()
 export class SeoConfigsRelationalRepository implements SeoConfigRepository {
@@ -95,6 +96,35 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
   async findByUrl(url: SeoConfig['url']): Promise<NullableType<SeoConfig>> {
     const entity = await this.seoConfigsRepository.findOne({ where: { url } });
     return entity ? SeoConfigMapper.toDomain(entity) : null;
+  }
+
+  /**
+   * Ancestor-path lookup: for "/destination/vietnam" we look up
+   * ["/destination/vietnam", "/destination", "/"] and return the most
+   * specific match available so a more specific URL inherits SEO config
+   * from an ancestor when no exact record exists.
+   *
+   * `findByUrl` (exact match) is preserved separately and used by the
+   * service for duplicate-URL validation on create/update.
+   */
+  async findByUrlWithFallback(
+    url: SeoConfig['url'],
+  ): Promise<NullableType<SeoConfig>> {
+    const candidates = buildUrlAncestors(url);
+    if (!candidates.length) return null;
+
+    const entities = await this.seoConfigsRepository.find({
+      where: { url: In(candidates) },
+    });
+    if (!entities.length) return null;
+
+    // Pick the most specific ancestor present in the result set.
+    const byUrl = new Map(entities.map((entity) => [entity.url, entity]));
+    for (const candidate of candidates) {
+      const match = byUrl.get(candidate);
+      if (match) return SeoConfigMapper.toDomain(match);
+    }
+    return null;
   }
 
   async update(

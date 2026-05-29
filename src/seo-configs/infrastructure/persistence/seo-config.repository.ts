@@ -26,6 +26,10 @@ export abstract class SeoConfigRepository {
 
   abstract findByUrl(url: SeoConfig['url']): Promise<NullableType<SeoConfig>>;
 
+  abstract findByUrlWithFallback(
+    url: SeoConfig['url'],
+  ): Promise<NullableType<SeoConfig>>;
+
   abstract update(
     id: SeoConfig['id'],
     payload: DeepPartial<SeoConfig>,

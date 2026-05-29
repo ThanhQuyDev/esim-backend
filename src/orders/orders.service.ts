@@ -1055,8 +1055,7 @@ export class OrdersService {
 
     let sent = 0;
     for (const esim of esims) {
-      const plan =
-        esim.planId != null ? plansById.get(esim.planId) : undefined;
+      const plan = esim.planId != null ? plansById.get(esim.planId) : undefined;
       try {
         await this.mailService.sendEsimPurchase({
           to: buyer.email,

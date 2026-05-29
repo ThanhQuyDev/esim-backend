@@ -9,6 +9,7 @@ import { FaqRepository } from '../../faq.repository';
 import { FaqMapper } from '../mappers/faq.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { FilterFaqDto } from '../../../../dto/find-all-faqs.dto';
+import { buildUrlAncestors } from '../../../../../utils/url-ancestors';
 
 @Injectable()
 export class FaqRelationalRepository implements FaqRepository {
@@ -113,22 +114,41 @@ export class FaqRelationalRepository implements FaqRepository {
       }
     }
 
-    // 2. Find FAQs matching the url
+    // 2. Find FAQs matching the url (ancestor-path fallback).
+    // For "/destination/vietnam" we also pull FAQs attached to "/destination"
+    // and "/" so a more specific page inherits FAQs from its ancestors.
+    // Results are ordered by URL specificity (longest match first), then
+    // by sortOrder within the same URL.
     if (options.url && results.length < targetLimit) {
-      const urlFaqs = await this.faqRepository.find({
-        where: {
-          url: options.url,
-          isActive: true,
-          ...(options.language ? { language: options.language } : {}),
-        },
-        order: { sortOrder: 'ASC' },
-      });
-      for (const faq of urlFaqs) {
-        if (!collectedIds.has(faq.id)) {
-          results.push(faq);
-          collectedIds.add(faq.id);
+      const candidateUrls = buildUrlAncestors(options.url);
+      if (candidateUrls.length) {
+        const urlFaqs = await this.faqRepository.find({
+          where: {
+            url: In(candidateUrls),
+            isActive: true,
+            ...(options.language ? { language: options.language } : {}),
+          },
+          order: { sortOrder: 'ASC' },
+        });
+
+        // Sort by ancestor specificity (most specific first) then sortOrder.
+        const specificity = new Map(
+          candidateUrls.map((candidate, idx) => [candidate, idx]),
+        );
+        urlFaqs.sort((a, b) => {
+          const aRank = specificity.get(a.url ?? '') ?? Number.MAX_SAFE_INTEGER;
+          const bRank = specificity.get(b.url ?? '') ?? Number.MAX_SAFE_INTEGER;
+          if (aRank !== bRank) return aRank - bRank;
+          return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+        });
+
+        for (const faq of urlFaqs) {
+          if (!collectedIds.has(faq.id)) {
+            results.push(faq);
+            collectedIds.add(faq.id);
+          }
+          if (results.length >= targetLimit) break;
         }
-        if (results.length >= targetLimit) break;
       }
     }
 

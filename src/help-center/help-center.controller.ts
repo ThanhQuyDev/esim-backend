@@ -10,6 +10,7 @@ import {
   Query,
   Headers,
   NotFoundException,
+  Request,
 } from '@nestjs/common';
 import { HelpCenterService } from './help-center.service';
 import { CreateHelpCenterDto } from './dto/create-help-center.dto';
@@ -25,6 +26,8 @@ import {
 } from '@nestjs/swagger';
 import { HelpCenter } from './domain/help-center';
 import { AuthGuard } from '@nestjs/passport';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { RoleEnum } from '../roles/roles.enum';
 import {
   InfinityPaginationResponse,
   InfinityPaginationResponseDto,
@@ -47,9 +50,12 @@ export class HelpCenterController {
     return this.helpCenterService.create(createDto);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(OptionalJwtAuthGuard)
   @Get()
   @ApiOkResponse({ type: InfinityPaginationResponse(HelpCenter) })
   async findAll(
+    @Request() request: { user?: { role?: { id?: number | string } } },
     @Query() query: QueryHelpCenterDto,
     @Headers('x-custom-lang') lang?: string,
   ): Promise<InfinityPaginationResponseDto<HelpCenter>> {
@@ -62,6 +68,16 @@ export class HelpCenterController {
         ? query.isPublished
         : query?.filters?.isPublished;
 
+    // Admins see everything (drafts + published) by default. Public clients
+    // only see published items unless they explicitly pass `isPublished`.
+    const isAdmin = String(request?.user?.role?.id) === String(RoleEnum.admin);
+    const isPublishedFilter =
+      explicitIsPublished !== undefined
+        ? explicitIsPublished
+        : isAdmin
+          ? undefined
+          : true;
+
     const filterOptions = {
       ...query?.filters,
       search: query?.search || query?.filters?.search,
@@ -72,10 +88,7 @@ export class HelpCenterController {
         query?.isPopular !== undefined
           ? query.isPopular
           : query?.filters?.isPopular,
-      // Default to published-only when client doesn't explicitly pass the
-      // filter. Admin clients can opt-in to drafts via `isPublished=false`.
-      isPublished:
-        explicitIsPublished !== undefined ? explicitIsPublished : true,
+      isPublished: isPublishedFilter,
     };
 
     const [data, count] = await this.helpCenterService.findAllWithPagination({
