@@ -152,10 +152,12 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
   async searchForUser({
     keyword,
     language,
+    isPopular,
     paginationOptions,
   }: {
     keyword: string;
     language?: string;
+    isPopular?: boolean;
     paginationOptions: IPaginationOptions;
   }): Promise<[HelpCenter[], number]> {
     const qb = this.repo.createQueryBuilder('helpCenter');
@@ -166,6 +168,10 @@ export class HelpCenterRelationalRepository implements HelpCenterRepository {
 
     if (language) {
       qb.andWhere('"helpCenter"."language" = :language', { language });
+    }
+
+    if (typeof isPopular === 'boolean') {
+      qb.andWhere('"helpCenter"."isPopular" = :isPopular', { isPopular });
     }
 
     qb.andWhere(

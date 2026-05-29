@@ -46,15 +46,18 @@ export class HelpCenterService {
   searchForUser({
     keyword,
     language,
+    isPopular,
     paginationOptions,
   }: {
     keyword: string;
     language?: string;
+    isPopular?: boolean;
     paginationOptions: IPaginationOptions;
   }) {
     return this.helpCenterRepository.searchForUser({
       keyword,
       language,
+      isPopular,
       paginationOptions,
     });
   }

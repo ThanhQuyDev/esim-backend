@@ -112,6 +112,7 @@ export class HelpCenterController {
 
     const [data, count] = await this.helpCenterService.searchForUser({
       keyword: query.q,
+      isPopular: query.isPopular,
       language: lang || query.language,
       paginationOptions: { page, limit },
     });

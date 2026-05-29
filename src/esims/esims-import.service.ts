@@ -138,14 +138,36 @@ export class EsimsImportService {
         }
 
         // Resolve destinationId from per-row country code (with cache)
+        // Also try Country name (column 1) as fallback for destination lookup
+        const rowCountryName =
+          this.cellStr(row.getCell(col('country') ?? 1).value) ?? '';
+        const cacheKey = rowCountryCode || rowCountryName;
+
         let destinationId: number | null;
-        if (destinationCache.has(rowCountryCode)) {
-          destinationId = destinationCache.get(rowCountryCode) ?? null;
+        if (destinationCache.has(cacheKey)) {
+          destinationId = destinationCache.get(cacheKey) ?? null;
         } else {
-          const destination =
-            await this.destinationsService.findByCountryCode(rowCountryCode);
+          // Try by country code first (normalize to uppercase for DB match)
+          let destination = rowCountryCode
+            ? await this.destinationsService.findByCountryCode(
+                rowCountryCode.toUpperCase(),
+              )
+            : null;
+
+          // Fallback: try by country name if code lookup failed
+          if (!destination && rowCountryName) {
+            destination =
+              await this.destinationsService.findByName(rowCountryName);
+          }
+
           destinationId = destination?.id ?? null;
-          destinationCache.set(rowCountryCode, destinationId);
+          destinationCache.set(cacheKey, destinationId);
+
+          if (!destinationId) {
+            this.logger.warn(
+              `Row ${rowNum}: Could not resolve destination for countryCode="${rowCountryCode}", countryName="${rowCountryName}"`,
+            );
+          }
         }
 
         const providerPlanId =
@@ -212,13 +234,24 @@ export class EsimsImportService {
             if (existingPlan) {
               planId = existingPlan.id;
               planCache.set(planSlug, planId);
+
+              // Backfill destinationId on existing plan if it was NULL
+              if (!existingPlan.destinationId && destinationId) {
+                await this.planRepository.update(existingPlan.id, {
+                  destinationId,
+                  countryCode: rowCountryCode.toUpperCase(),
+                });
+                this.logger.log(
+                  `Backfilled destinationId=${destinationId} on plan "${planSlug}" (id=${existingPlan.id})`,
+                );
+              }
             } else {
               const newPlan = await this.plansService.create({
                 provider: rowProvider,
                 providerPlanId,
                 name: planName,
                 slug: planSlug,
-                countryCode: rowCountryCode,
+                countryCode: rowCountryCode.toUpperCase(),
                 destinationId,
                 durationDays,
                 dataMb,

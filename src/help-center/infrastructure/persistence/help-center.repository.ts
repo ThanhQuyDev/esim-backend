@@ -25,10 +25,12 @@ export abstract class HelpCenterRepository {
   abstract searchForUser({
     keyword,
     language,
+    isPopular,
     paginationOptions,
   }: {
     keyword: string;
     language?: string;
+    isPopular?: boolean;
     paginationOptions: IPaginationOptions;
   }): Promise<[HelpCenter[], number]>;
 

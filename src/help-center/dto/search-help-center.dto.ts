@@ -30,4 +30,14 @@ export class SearchHelpCenterDto {
   @IsOptional()
   @IsString()
   language?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Filter by popular/featured flag',
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  isPopular?: boolean;
 }
