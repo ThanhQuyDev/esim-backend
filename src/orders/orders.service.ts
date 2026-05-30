@@ -1196,6 +1196,8 @@ export class OrdersService {
       paymentMethod: order.paymentMethod,
       paymentId: order.paymentId,
       couponCode: order.couponCode,
+      referralCode: order.referralCode ?? null,
+      referralDiscountVndAmount: order.referralDiscountVndAmount ?? 0,
       discountAmount: order.discountAmount,
       vndPrice: order.vndPrice,
       vndCostPrice: order.vndCostPrice,

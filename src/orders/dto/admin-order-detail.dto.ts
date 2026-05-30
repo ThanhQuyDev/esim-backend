@@ -195,6 +195,12 @@ export class AdminOrderDetailDto {
   @ApiPropertyOptional({ type: String })
   couponCode?: string | null;
 
+  @ApiPropertyOptional({ type: String })
+  referralCode?: string | null;
+
+  @ApiProperty({ type: Number })
+  referralDiscountVndAmount: number;
+
   @ApiProperty({ type: Number })
   discountAmount: number;
 

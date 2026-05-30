@@ -65,6 +65,7 @@ export class OrdersRelationalRepository implements OrderRepository {
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where: where,
+      relations: ['user'],
       order: sortOptions?.length
         ? sortOptions.reduce(
             (accumulator, sort) => ({
@@ -89,6 +90,7 @@ export class OrdersRelationalRepository implements OrderRepository {
   ): Promise<[Order[], number]> {
     const qb = this.ordersRepository
       .createQueryBuilder('order')
+      .leftJoinAndSelect('order.user', 'user')
       .where('"order"."deletedAt" IS NULL');
 
     if (filterOptions.status) {
