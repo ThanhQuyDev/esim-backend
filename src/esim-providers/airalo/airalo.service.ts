@@ -311,6 +311,13 @@ export class AiraloService {
       fupSpeed: pkg.is_unlimited ? '1 Mbps' : null,
       isKyc: operator.is_kyc_verify ?? false,
       apn: operator.apn_value ?? null,
+      hotSpot: true,
+      hotSpotAllow:
+        planType === 'fixed'
+          ? dataMb >= 1024
+            ? `${dataMb / 1024}GB`
+            : `${dataMb}MB`
+          : null,
       lastSyncedAt: new Date(),
       isActive: true,
     };

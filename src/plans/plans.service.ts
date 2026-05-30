@@ -94,7 +94,9 @@ export class PlansService {
       isAbleMultidate: createPlanDto.isAbleMultidate ?? false,
       isCheapest: false,
       discount: createPlanDto.discount ?? 0,
-      vndPrice: createPlanDto.vndPrice ?? 0,
+      vndPrice: createPlanDto.isLocalInventory
+        ? createPlanDto.price
+        : (createPlanDto.vndPrice ?? 0),
       isKyc: createPlanDto.isKyc ?? false,
       isLocalInventory: createPlanDto.isLocalInventory ?? false,
       tags: createPlanDto.tags ?? null,

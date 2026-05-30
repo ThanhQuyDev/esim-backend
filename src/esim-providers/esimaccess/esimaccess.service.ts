@@ -354,6 +354,13 @@ export class EsimAccessService {
       isAbleMultidate: pkg.dataType === 2,
       isKyc: false,
       apn: null,
+      hotSpot: true,
+      hotSpotAllow:
+        planType === 'fixed'
+          ? dataMb >= 1024
+            ? `${dataMb / 1024}GB`
+            : `${dataMb}MB`
+          : null,
       lastSyncedAt: new Date(),
       isActive: true,
     };

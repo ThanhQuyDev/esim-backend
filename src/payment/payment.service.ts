@@ -38,6 +38,30 @@ export class PaymentService {
       rate,
     );
 
+    // If eXU wallet covers the entire amount, skip OnePay and finalize immediately
+    if (order.vndPrice <= 0) {
+      await this.ordersService.finalizePaidOrder(order.id, {
+        paymentMethod: 'wallet',
+        paymentId: null,
+      });
+      await this.ordersService.submitProviders(order.id);
+      if (order.couponCode) {
+        await this.ordersService.applyCouponAndClearCart(
+          order.couponCode,
+          order.userId,
+        );
+      } else {
+        await this.ordersService.clearCartForUser(order.userId);
+      }
+
+      const frontendDomain = this.configService.get('app.frontendDomain', {
+        infer: true,
+      });
+      const returnUrl = `${frontendDomain}/payment/result?orderNumber=${order.orderNumber}&success=true&method=wallet`;
+
+      return { paymentUrl: returnUrl, orderNumber: order.orderNumber };
+    }
+
     const paymentUrl = this.onepayService.buildPaymentUrl({
       orderNumber: order.orderNumber,
       vndAmount: order.vndPrice,

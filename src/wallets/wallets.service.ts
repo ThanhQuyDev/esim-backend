@@ -583,11 +583,27 @@ export class WalletsService {
       );
     }
 
-    if (amount > Number(order.vndPrice)) {
+    // Total order value = cash paid + eXU spent
+    const totalOrderValue =
+      Number(order.payableVndPrice ?? order.vndPrice ?? 0) +
+      Number(order.walletSpentVndAmount ?? 0);
+    const alreadyRefunded = Number(order.refundedAmountVnd ?? 0);
+
+    if (amount > totalOrderValue - alreadyRefunded) {
       throw new BadRequestException(
-        'Refund amount cannot exceed the paid VND amount',
+        'Refund amount cannot exceed the remaining refundable amount',
       );
     }
+
+    // Calculate how much goes back to eXU wallet vs external
+    const walletSpent = Number(order.walletSpentVndAmount ?? 0);
+
+    // Proportional refund: eXU portion = amount * (walletSpent / totalOrderValue)
+    const exuRefundAmount =
+      totalOrderValue > 0
+        ? Math.round((amount * walletSpent) / totalOrderValue)
+        : 0;
+    const cashRefundAmount = amount - exuRefundAmount;
 
     const refund = await this.orderRefundRepository.save(
       this.orderRefundRepository.create({
@@ -655,11 +671,29 @@ export class WalletsService {
       await this.orderReferralRepository.save(referral);
     }
 
-    if (dto.mode === OrderRefundModeEnum.WALLET && amount > 0) {
+    // Refund eXU portion back to wallet (always, regardless of mode)
+    if (exuRefundAmount > 0) {
+      await this.createTransaction(
+        order.userId,
+        WalletTransactionTypeEnum.REFUND_TO_WALLET,
+        exuRefundAmount,
+        {
+          orderId: order.id,
+          sourceType: 'order_refund',
+          sourceId: String(refund.id),
+          idempotencyKey: `refund_exu_return:${refund.id}`,
+          reason: 'Hoàn eXU đã sử dụng cho đơn hàng',
+          createdByAdminId: adminId,
+        },
+      );
+    }
+
+    // Refund cash portion to wallet if mode is WALLET
+    if (dto.mode === OrderRefundModeEnum.WALLET && cashRefundAmount > 0) {
       const walletTransaction = await this.createTransaction(
         order.userId,
         WalletTransactionTypeEnum.REFUND_TO_WALLET,
-        amount,
+        cashRefundAmount,
         {
           orderId: order.id,
           sourceType: 'order_refund',
@@ -673,7 +707,7 @@ export class WalletsService {
       await this.orderRefundRepository.save(refund);
     }
 
-    const refundedAmountVnd = Number(order.refundedAmountVnd ?? 0) + amount;
+    const refundedAmountVnd = alreadyRefunded + amount;
     await this.orderRepository.update(order.id, {
       status: 'refunded',
       refundStatus: OrderRefundStatusEnum.COMPLETED,

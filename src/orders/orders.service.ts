@@ -492,13 +492,17 @@ export class OrdersService {
 
     const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
 
-    const totalVndCostPrice = vndRate
-      ? planDetails.reduce(
-          (sum, item) =>
-            sum + Math.round(item.plan.costPrice * vndRate) * item.quantity,
-          0,
-        )
-      : 0;
+    const totalVndCostPrice = planDetails.reduce((sum, item) => {
+      if (item.plan.isLocalInventory) {
+        return sum + Math.round(item.plan.costPrice) * item.quantity;
+      }
+      return (
+        sum +
+        (vndRate
+          ? Math.round(item.plan.costPrice * vndRate) * item.quantity
+          : 0)
+      );
+    }, 0);
 
     const order = await this.orderRepository.create({
       userId,
@@ -543,9 +547,11 @@ export class OrdersService {
     }
 
     for (const item of planDetails) {
-      const itemVndCostPrice = vndRate
-        ? Math.round(item.plan.costPrice * vndRate) * item.quantity
-        : 0;
+      const itemVndCostPrice = item.plan.isLocalInventory
+        ? Math.round(item.plan.costPrice) * item.quantity
+        : vndRate
+          ? Math.round(item.plan.costPrice * vndRate) * item.quantity
+          : 0;
 
       await this.orderItemsService.create({
         orderId: order.id,
@@ -553,7 +559,7 @@ export class OrdersService {
         orderRequestId: null,
         status: 'pending',
         price: item.plan.price,
-        currency: dto.currency,
+        currency: item.plan.isLocalInventory ? 'VND' : dto.currency,
         quantity: item.quantity,
         vndPrice: getDiscountedVndPrice(item.plan) * item.quantity,
         vndCostPrice: itemVndCostPrice,
@@ -572,10 +578,11 @@ export class OrdersService {
     dto: SubmitOrderDto,
     planDetails: OrderPlanDetail[],
   ): Promise<OrderPricing> {
-    const totalAmount = planDetails.reduce(
-      (sum, item) => sum + item.plan.price * item.quantity,
-      0,
-    );
+    // totalAmount in USD — exclude local inventory (their price is already VND)
+    const totalAmount = planDetails.reduce((sum, item) => {
+      if (item.plan.isLocalInventory) return sum;
+      return sum + item.plan.price * item.quantity;
+    }, 0);
     const subtotalVndPrice = planDetails.reduce(
       (sum, item) => sum + getDiscountedVndPrice(item.plan) * item.quantity,
       0,
