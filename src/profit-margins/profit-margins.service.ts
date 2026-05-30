@@ -31,6 +31,7 @@ export class ProfitMarginsService {
       minVnd: dto.minVnd,
       maxVnd: dto.maxVnd,
       percentage: dto.percentage,
+      fixedAmountVnd: dto.fixedAmountVnd ?? 0,
       isActive: dto.isActive ?? true,
     });
 
@@ -82,6 +83,7 @@ export class ProfitMarginsService {
       minVnd: dto.minVnd,
       maxVnd: dto.maxVnd,
       percentage: dto.percentage,
+      fixedAmountVnd: dto.fixedAmountVnd,
       isActive: dto.isActive,
     })) as ProfitMarginTier;
 
@@ -160,6 +162,7 @@ export class ProfitMarginsService {
       minVnd: t.minVnd,
       maxVnd: t.maxVnd,
       percentage: Number(t.percentage),
+      fixedAmountVnd: Number(t.fixedAmountVnd) || 0,
     }));
     await this.plansService.recalculatePricesWithTiers(tierData);
   }

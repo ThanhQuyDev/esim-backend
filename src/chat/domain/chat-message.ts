@@ -7,8 +7,8 @@ export class ChatMessage {
   @ApiProperty({ type: Number })
   chatRoomId: number;
 
-  @ApiProperty({ type: Number })
-  senderId: number;
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  senderId: number | null;
 
   @ApiProperty({ type: String })
   message: string;

@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { Workbook } from 'exceljs';
 import { PlansService } from './plans.service';
 import { DestinationsService } from '../destinations/destinations.service';
+import { RegionsService } from '../regions/regions.service';
 import { ImportResult } from './plans-import.service';
 
 const SHEET_TYPE_MAP: Record<string, string> = {
@@ -47,6 +48,7 @@ export class PlansGadgetkoreaImportService {
   constructor(
     private readonly plansService: PlansService,
     private readonly destinationsService: DestinationsService,
+    private readonly regionsService: RegionsService,
   ) {}
 
   async importFromExcel(
@@ -70,6 +72,7 @@ export class PlansGadgetkoreaImportService {
     };
 
     const destinationCache = new Map<string, number | null>();
+    const regionCache = new Map<string, number | null>();
     const notFoundNames = new Set<string>();
 
     const allSheetNames = workbook.worksheets.map((ws) => ws.name);
@@ -103,19 +106,32 @@ export class PlansGadgetkoreaImportService {
             throw new Error('Missing country name in Plan column');
 
           let destinationId: number | null = null;
+          let regionId: number | null = null;
+
           if (destinationCache.has(countryName)) {
             destinationId = destinationCache.get(countryName)!;
           } else {
             const dest = await this.destinationsService.findByName(countryName);
             destinationId = dest?.id ?? null;
             destinationCache.set(countryName, destinationId);
-            if (!destinationId) notFoundNames.add(countryName);
           }
 
+          // If not found as destination, try as region
           if (!destinationId) {
+            if (regionCache.has(countryName)) {
+              regionId = regionCache.get(countryName)!;
+            } else {
+              const region = await this.regionsService.findByName(countryName);
+              regionId = region?.id ?? null;
+              regionCache.set(countryName, regionId);
+            }
+          }
+
+          if (!destinationId && !regionId) {
+            notFoundNames.add(countryName);
             result.skipped++;
             this.logger.warn(
-              `Sheet "${ws.name}" row ${rowNum}: Skipped - destination not found for "${countryName}"`,
+              `Sheet "${ws.name}" row ${rowNum}: Skipped - destination/region not found for "${countryName}"`,
             );
             continue;
           }
@@ -176,7 +192,7 @@ export class PlansGadgetkoreaImportService {
             slug,
             countryCode: null,
             destinationId,
-            regionId: null,
+            regionId,
             durationDays,
             dataMb,
             costPrice,

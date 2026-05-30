@@ -26,12 +26,16 @@ export class ChatMessageEntity extends EntityRelationalHelper {
   chatRoom?: ChatRoomEntity;
 
   @Index()
-  @Column({ type: Number })
-  senderId: number;
+  @Column({ type: Number, nullable: true })
+  senderId: number | null;
 
-  @ManyToOne(() => UserEntity, { eager: true })
+  @ManyToOne(() => UserEntity, {
+    eager: true,
+    nullable: true,
+    createForeignKeyConstraints: false,
+  })
   @JoinColumn({ name: 'senderId' })
-  sender?: UserEntity;
+  sender?: UserEntity | null;
 
   @Column({ type: 'text' })
   message: string;

@@ -89,18 +89,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /**
    * Trigger Logic 1: Send automated welcome message on user join.
+   * Only sends if the room has no messages yet (first time user opens chat).
    */
   private async sendWelcomeMessage(
     chatRoomId: number,
     roomName: string,
   ): Promise<void> {
     try {
+      // Only send welcome if room is brand new (no messages yet)
+      const existingMessages = await this.chatService.getMessages(
+        chatRoomId,
+        1,
+        1,
+      );
+      if (existingMessages.length > 0) return;
+
       const welcomeMsg = await this.chatAutomationsService.getWelcomeMessage();
       if (!welcomeMsg) return;
 
       const botMessage = await this.chatService.sendMessage(
         chatRoomId,
-        0, // senderId=0 represents the system/bot
+        null, // senderId=null represents the system/bot
         welcomeMsg,
       );
       this.server.to(roomName).emit('newMessage', botMessage);
@@ -192,7 +201,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       const botMessage = await this.chatService.sendMessage(
         chatRoomId,
-        0, // senderId=0 represents the system/bot
+        null, // senderId=null represents the system/bot
         firstResponseMsg,
       );
       this.server.to(roomName).emit('newMessage', botMessage);
@@ -242,6 +251,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     await this.chatService.markAsRead(data.chatRoomId, client.data.userId);
     client.emit('markedAsRead', { chatRoomId: data.chatRoomId });
+  }
+
+  @SubscribeMessage('subscribeAllRooms')
+  async handleSubscribeAllRooms(
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    const isAdmin = client.data.roleId === 1;
+    if (!isAdmin) {
+      client.emit('error', { message: 'Admin only' });
+      return;
+    }
+
+    const rooms = await this.chatService.getAllRooms();
+    for (const room of rooms) {
+      const roomName = `chat_room_${room.id}`;
+      await client.join(roomName);
+    }
+    client.emit('subscribedAllRooms', { count: rooms.length });
   }
 
   @SubscribeMessage('getRooms')

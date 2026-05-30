@@ -154,6 +154,23 @@ export class RegionsRelationalRepository implements RegionRepository {
     return RegionMapper.toDomain(entity);
   }
 
+  async findByName(name: Region['name']): Promise<NullableType<Region>> {
+    const entity = await this.regionsRepository.findOne({
+      where: { name },
+    });
+    if (!entity) return null;
+
+    const destinations = await this.regionsRepository.query(
+      `SELECT d.* FROM "destination" d
+       INNER JOIN "destination_region" dr ON dr."destinationId" = d.id
+       WHERE dr."regionId" = $1 AND d."deletedAt" IS NULL`,
+      [entity.id],
+    );
+    entity.destinations = destinations;
+
+    return RegionMapper.toDomain(entity);
+  }
+
   async update(
     id: Region['id'],
     payload: Partial<Region>,

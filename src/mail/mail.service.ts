@@ -162,10 +162,6 @@ export class MailService {
       ]);
     }
 
-    const backendDomain = this.configService.get('app.backendDomain', {
-      infer: true,
-    });
-
     await this.mailerService.sendMail({
       // Infrastructure 2.5 — route OTP through the dedicated SMTP transport
       // (no-reply@esim.com.vn) when configured, fall back to the primary
@@ -187,8 +183,8 @@ export class MailService {
         title: otpTitle,
         otp: mailData.data.otp,
         app_name: this.configService.get('app.name', { infer: true }),
-        // UI 2.2 — replace the raw "API ESIM.VN" headline with the brand logo.
-        logoUrl: `${backendDomain ?? ''}/files/logo_esimvn.svg`,
+        logoUrl:
+          'https://res.cloudinary.com/drozbviwb/image/upload/v1780067058/logo_esimvn_zycejk.png',
         text1,
         text2,
         text3,
@@ -222,7 +218,8 @@ export class MailService {
       planName: data.planName,
       orderNumber: data.orderNumber,
       qrCodeBase64: qrCodeUrl,
-      logoUrl: `${backendDomain}/files/logo_esimvn.svg`,
+      logoUrl:
+        'https://res.cloudinary.com/drozbviwb/image/upload/v1780067058/logo_esimvn_zycejk.png',
       app_name: appName,
       subject: template.subject,
     };

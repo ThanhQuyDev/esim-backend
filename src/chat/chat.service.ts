@@ -58,7 +58,7 @@ export class ChatService {
 
   async sendMessage(
     chatRoomId: number,
-    senderId: number,
+    senderId: number | null,
     message: string,
     attachment?: {
       fileUrl?: string;

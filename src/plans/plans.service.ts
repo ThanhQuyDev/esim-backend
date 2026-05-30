@@ -220,9 +220,32 @@ export class PlansService {
   }
 
   async recalculatePricesWithTiers(
-    tiers: Array<{ minVnd: number; maxVnd: number; percentage: number }>,
+    tiers: Array<{
+      minVnd: number;
+      maxVnd: number;
+      percentage: number;
+      fixedAmountVnd?: number;
+    }>,
   ): Promise<void> {
-    await this.plansRepository.recalculatePricesByTiers(tiers);
+    // Fetch current exchange rate for tier matching
+    let rate = 25500;
+    try {
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.rates?.VND) rate = data.rates.VND;
+      }
+    } catch {
+      // Use default rate
+    }
+
+    // Step 1: Recalculate price from costPrice using tiers
+    await this.plansRepository.recalculatePricesByTiers(tiers, rate);
+
+    // Step 2: Update vndPrice from the new price (excludes isLocalInventory)
+    await this.plansRepository.updateAllVndPrices(rate);
+
+    // Step 3: Mark cheapest plans
     await this.plansRepository.markCheapestPlans();
   }
 

@@ -33,6 +33,16 @@ export class CreateProfitMarginTierDto {
   @IsNumber()
   percentage: number;
 
+  @ApiPropertyOptional({
+    example: 10000,
+    type: Number,
+    description: 'Fixed amount in VND to add (used when percentage is 0)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fixedAmountVnd?: number;
+
   @ApiPropertyOptional({ example: true, type: Boolean })
   @IsOptional()
   @IsBoolean()

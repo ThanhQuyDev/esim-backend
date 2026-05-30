@@ -319,22 +319,40 @@ export class PlansRelationalRepository implements PlanRepository {
   }
 
   async recalculatePricesByTiers(
-    tiers: Array<{ minVnd: number; maxVnd: number; percentage: number }>,
+    tiers: Array<{
+      minVnd: number;
+      maxVnd: number;
+      percentage: number;
+      fixedAmountVnd?: number;
+    }>,
+    exchangeRate?: number,
   ): Promise<void> {
     if (tiers.length === 0) {
-      // No tiers configured — set price = costPrice (no profit)
       await this.plansRepository.query(
         `UPDATE "plan" SET "price" = "costPrice" WHERE "deletedAt" IS NULL`,
       );
       return;
     }
 
-    // Build CASE expression for tiered pricing
-    // For each tier: WHEN vndPrice BETWEEN minVnd AND maxVnd THEN costPrice * (1 + percentage/100)
+    const rate = exchangeRate || 25500;
+
+    // Match tier based on cost in VND:
+    // - isLocalInventory: costPrice is already VND
+    // - others: costPrice * exchangeRate
     let caseExpr = 'CASE ';
     for (const tier of tiers) {
-      const multiplier = 1 + tier.percentage / 100;
-      caseExpr += `WHEN "vndPrice" >= ${tier.minVnd} AND "vndPrice" <= ${tier.maxVnd} THEN ROUND("costPrice" * ${multiplier} * 100) / 100 `;
+      const costVndExpr = `(CASE WHEN "isLocalInventory" = true THEN "costPrice" ELSE ROUND("costPrice" * ${rate}) END)`;
+      const condition = `WHEN ${costVndExpr} >= ${tier.minVnd} AND ${costVndExpr} <= ${tier.maxVnd} THEN `;
+
+      if (tier.fixedAmountVnd && tier.fixedAmountVnd > 0) {
+        // Fixed amount: price = costPrice + fixedAmountVnd / rate (convert VND back to USD)
+        // For isLocalInventory: price = costPrice + fixedAmountVnd
+        caseExpr += `${condition}(CASE WHEN "isLocalInventory" = true THEN "costPrice" + ${tier.fixedAmountVnd} ELSE ROUND(("costPrice" + ${tier.fixedAmountVnd} / ${rate}) * 100) / 100 END) `;
+      } else {
+        // Percentage: price = costPrice * (1 + percentage/100)
+        const multiplier = 1 + tier.percentage / 100;
+        caseExpr += `${condition}ROUND("costPrice" * ${multiplier} * 100) / 100 `;
+      }
     }
     caseExpr += 'ELSE "costPrice" END';
 
@@ -345,7 +363,7 @@ export class PlansRelationalRepository implements PlanRepository {
 
   async updateAllVndPrices(rate: number): Promise<void> {
     await this.plansRepository.query(
-      `UPDATE "plan" SET "vndPrice" = ROUND("retailPrice" * $1 / 1000) * 1000 WHERE "deletedAt" IS NULL AND "currency" != 'VND'`,
+      `UPDATE "plan" SET "vndPrice" = ROUND("price" * $1 / 1000) * 1000 WHERE "deletedAt" IS NULL AND "currency" != 'VND' AND ("isLocalInventory" IS NULL OR "isLocalInventory" = false)`,
       [rate],
     );
   }

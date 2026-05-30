@@ -25,6 +25,9 @@ export class ProfitMarginTierEntity extends EntityRelationalHelper {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   percentage: number;
 
+  @Column({ type: 'int', default: 0 })
+  fixedAmountVnd: number;
+
   @Index()
   @Column({ type: Boolean, default: true })
   isActive: boolean;

@@ -8,6 +8,7 @@ export class ProfitMarginTierMapper {
     domainEntity.minVnd = raw.minVnd;
     domainEntity.maxVnd = raw.maxVnd;
     domainEntity.percentage = raw.percentage;
+    domainEntity.fixedAmountVnd = raw.fixedAmountVnd ?? 0;
     domainEntity.isActive = raw.isActive;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
@@ -23,6 +24,7 @@ export class ProfitMarginTierMapper {
     persistenceEntity.minVnd = domainEntity.minVnd;
     persistenceEntity.maxVnd = domainEntity.maxVnd;
     persistenceEntity.percentage = domainEntity.percentage;
+    persistenceEntity.fixedAmountVnd = domainEntity.fixedAmountVnd ?? 0;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;

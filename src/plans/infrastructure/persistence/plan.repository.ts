@@ -33,7 +33,13 @@ export abstract class PlanRepository {
   abstract batchUpdateDiscount(ids: number[], discount: number): Promise<void>;
 
   abstract recalculatePricesByTiers(
-    tiers: Array<{ minVnd: number; maxVnd: number; percentage: number }>,
+    tiers: Array<{
+      minVnd: number;
+      maxVnd: number;
+      percentage: number;
+      fixedAmountVnd?: number;
+    }>,
+    exchangeRate?: number,
   ): Promise<void>;
 
   abstract updateAllVndPrices(rate: number): Promise<void>;

@@ -27,6 +27,13 @@ export class ProfitMarginTier {
   })
   percentage: number;
 
+  @ApiProperty({
+    type: Number,
+    example: 10000,
+    description: 'Fixed amount in VND to add (alternative to percentage)',
+  })
+  fixedAmountVnd: number;
+
   @ApiProperty({ type: Boolean, example: true })
   isActive: boolean;
 

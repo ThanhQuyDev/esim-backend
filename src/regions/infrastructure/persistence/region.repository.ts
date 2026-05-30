@@ -24,6 +24,8 @@ export abstract class RegionRepository {
 
   abstract findBySlug(slug: Region['slug']): Promise<NullableType<Region>>;
 
+  abstract findByName(name: Region['name']): Promise<NullableType<Region>>;
+
   abstract update(
     id: Region['id'],
     payload: DeepPartial<Region>,
