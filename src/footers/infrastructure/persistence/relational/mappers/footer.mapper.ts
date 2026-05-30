@@ -13,6 +13,8 @@ export class FooterMapper {
 
     domainEntity.titleVi = raw.titleVi;
 
+    domainEntity.iconUrl = raw.iconUrl;
+
     domainEntity.id = raw.id;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
@@ -29,6 +31,8 @@ export class FooterMapper {
     persistenceEntity.title = domainEntity.title;
 
     persistenceEntity.titleVi = domainEntity.titleVi;
+
+    persistenceEntity.iconUrl = domainEntity.iconUrl;
 
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;

@@ -74,9 +74,9 @@ export class PlansRelationalRepository implements PlanRepository {
           duration: filterOptions.duration,
         });
       }
-      if (filterOptions?.type) {
-        qb.andWhere('plan."type" = :planType', {
-          planType: filterOptions.type,
+      if (filterOptions?.type?.length) {
+        qb.andWhere('plan."type" IN (:...planTypes)', {
+          planTypes: filterOptions.type,
         });
       }
       if (filterOptions?.data) {

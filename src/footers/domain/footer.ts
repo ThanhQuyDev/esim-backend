@@ -26,6 +26,12 @@ export class Footer {
   titleVi: string;
 
   @ApiProperty({
+    type: () => String,
+    nullable: true,
+  })
+  iconUrl?: string | null;
+
+  @ApiProperty({
     type: String,
   })
   id: string;

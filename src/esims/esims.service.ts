@@ -260,7 +260,7 @@ export class EsimsService {
   }
 
   /**
-   * Soft-delete sold eSIMs older than 6 months to free resources.
+   * Soft-delete sold/refunded eSIMs older than 6 months to free resources.
    * Runs daily at 2:00 AM.
    */
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
@@ -268,13 +268,22 @@ export class EsimsService {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const deleted = await this.esimsRepository.softDeleteByStatusOlderThan(
+    const deletedSold = await this.esimsRepository.softDeleteByStatusOlderThan(
       'sold',
       sixMonthsAgo,
     );
 
-    if (deleted > 0) {
-      this.logger.log(`Cleaned up ${deleted} sold eSIMs older than 6 months`);
+    const deletedRefunded =
+      await this.esimsRepository.softDeleteByStatusOlderThan(
+        'refunded',
+        sixMonthsAgo,
+      );
+
+    const total = deletedSold + deletedRefunded;
+    if (total > 0) {
+      this.logger.log(
+        `Cleaned up ${deletedSold} sold + ${deletedRefunded} refunded eSIMs older than 6 months`,
+      );
     }
   }
 }

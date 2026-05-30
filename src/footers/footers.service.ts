@@ -30,6 +30,8 @@ export class FootersService {
       title: createFooterDto.title,
 
       titleVi: createFooterDto.titleVi,
+
+      iconUrl: createFooterDto.iconUrl,
     });
   }
 
@@ -78,6 +80,8 @@ export class FootersService {
       title: updateFooterDto.title,
 
       titleVi: updateFooterDto.titleVi,
+
+      iconUrl: updateFooterDto.iconUrl,
     });
   }
 

@@ -35,6 +35,12 @@ export class FooterEntity extends EntityRelationalHelper {
   })
   titleVi: string;
 
+  @Column({
+    nullable: true,
+    type: String,
+  })
+  iconUrl?: string | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

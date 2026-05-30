@@ -69,4 +69,11 @@ export class Region {
 
   @ApiProperty()
   deletedAt: Date;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 120000,
+    description: 'Cheapest plan price (VND) in this region',
+  })
+  fromPrice?: number | null;
 }

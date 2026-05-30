@@ -80,7 +80,7 @@ export class PlansController {
   ): Promise<InfinityPaginationResponseDto<Plan>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
-    if (limit > 50) limit = 50;
+    if (limit > 200) limit = 200;
 
     const [data, count] = await this.plansService.findManyWithPagination({
       filterOptions: query?.filters,

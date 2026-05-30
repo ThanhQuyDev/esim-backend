@@ -49,12 +49,18 @@ export class FilterPlanDto {
   duration?: number;
 
   @ApiPropertyOptional({
-    type: String,
-    description: 'Filter by plan type (fixed, unlimited, daily, etc.)',
+    type: [String],
+    description:
+      'Filter by plan type (fixed, unlimited, daily, etc.) — accepts single string or array',
   })
   @IsOptional()
-  @IsString()
-  type?: string;
+  @IsString({ each: true })
+  @Transform(({ value }) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') return [value];
+    return value;
+  })
+  type?: string[];
 
   @ApiPropertyOptional({
     type: String,

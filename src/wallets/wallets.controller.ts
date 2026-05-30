@@ -76,6 +76,21 @@ export class WalletsController {
     return this.walletsService.updateReferralCode(req.user.id, dto.code);
   }
 
+  @Roles(RoleEnum.user, RoleEnum.admin)
+  @Post('me/referral/validate')
+  @HttpCode(HttpStatus.OK)
+  validateReferralCode(
+    @Request() req: { user: { id: number } },
+    @Body() dto: { code: string; subtotalVnd: number; hasCoupon?: boolean },
+  ) {
+    return this.walletsService.validateReferralForOrder(
+      req.user.id,
+      dto.code,
+      dto.subtotalVnd,
+      dto.hasCoupon ?? false,
+    );
+  }
+
   @Roles(RoleEnum.admin)
   @ApiOkResponse({ type: [AdminWalletListItemDto] })
   @Get('admin')

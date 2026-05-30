@@ -59,7 +59,13 @@ export class RegionsRelationalRepository implements RegionRepository {
       .createQueryBuilder('region')
       .leftJoin('destination_region', 'dr', 'dr."regionId" = region.id')
       .leftJoin('destination', 'dest', 'dest.id = dr."destinationId"')
-      .addSelect('COUNT(DISTINCT dest.id)', 'dest_count');
+      .leftJoin(
+        'plan',
+        'plan',
+        '(plan."regionId" = region.id OR plan."destinationId" = dest.id) AND plan."isActive" = true AND plan."deletedAt" IS NULL',
+      )
+      .addSelect('COUNT(DISTINCT dest.id)', 'dest_count')
+      .addSelect('MIN(plan."vndPrice")', 'from_price');
 
     if (filterOptions?.isActive !== undefined) {
       qb.andWhere('region."isActive" = :isActive', {
@@ -106,6 +112,8 @@ export class RegionsRelationalRepository implements RegionRepository {
         rawResults.raw[index]?.dest_count ?? '0',
         10,
       );
+      const rawFromPrice = rawResults.raw[index]?.from_price;
+      domain.fromPrice = rawFromPrice ? Number(rawFromPrice) : null;
       return domain;
     });
 
