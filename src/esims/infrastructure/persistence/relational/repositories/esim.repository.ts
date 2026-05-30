@@ -41,10 +41,7 @@ export class EsimsRelationalRepository implements EsimRepository {
 
     if (filterOptions?.status) {
       qb.andWhere('esim.status = :status', { status: filterOptions.status });
-    } else {
-      // By default hide refunded eSIMs from listing — they belong to refunded
-      // orders and should not appear in user-facing /my/list. Callers that
-      // really want them must filter `status = 'refunded'` explicitly.
+    } else if (!filterOptions?.includeAll) {
       qb.andWhere('esim.status != :refundedStatus', {
         refundedStatus: 'refunded',
       });

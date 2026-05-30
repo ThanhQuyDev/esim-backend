@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -23,6 +24,14 @@ export class FilterEsimDto {
   @IsOptional()
   @IsNumber()
   userId?: number;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Include all statuses (including refunded). Used by admin.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  includeAll?: boolean;
 }
 
 export class SortEsimDto {
