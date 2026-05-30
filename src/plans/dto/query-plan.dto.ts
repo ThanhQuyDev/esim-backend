@@ -49,18 +49,12 @@ export class FilterPlanDto {
   duration?: number;
 
   @ApiPropertyOptional({
-    type: [String],
+    type: String,
     description:
-      'Filter by plan type (fixed, unlimited, daily, etc.) — accepts single string or array',
+      'Filter by plan type (fixed, unlimited, daily, etc.) — single value, comma-separated, or array',
   })
   @IsOptional()
-  @IsString({ each: true })
-  @Transform(({ value }) => {
-    if (Array.isArray(value)) return value;
-    if (typeof value === 'string') return [value];
-    return value;
-  })
-  type?: string[];
+  type?: string | string[];
 
   @ApiPropertyOptional({
     type: String,
@@ -105,9 +99,10 @@ export class QueryPlanDto {
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
-  @Transform(({ value }) =>
-    value ? plainToInstance(FilterPlanDto, JSON.parse(value)) : undefined,
-  )
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    return plainToInstance(FilterPlanDto, JSON.parse(value));
+  })
   @ValidateNested()
   @Type(() => FilterPlanDto)
   filters?: FilterPlanDto | null;

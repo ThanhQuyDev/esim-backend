@@ -404,7 +404,7 @@ export class TopupService {
       filter.regionId = sourcePlan.regionId;
     }
     if (sourcePlan?.type) {
-      filter.type = [sourcePlan.type];
+      filter.type = sourcePlan.type;
     }
 
     const [plans] = await this.plansService.findManyWithPagination({

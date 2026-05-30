@@ -74,10 +74,19 @@ export class PlansRelationalRepository implements PlanRepository {
           duration: filterOptions.duration,
         });
       }
-      if (filterOptions?.type?.length) {
-        qb.andWhere('plan."type" IN (:...planTypes)', {
-          planTypes: filterOptions.type,
-        });
+      if (filterOptions?.type) {
+        const planTypes =
+          typeof filterOptions.type === 'string'
+            ? filterOptions.type
+                .split(',')
+                .map((t) => t.trim())
+                .filter(Boolean)
+            : Array.isArray(filterOptions.type)
+              ? filterOptions.type
+              : [filterOptions.type];
+        if (planTypes.length > 0) {
+          qb.andWhere('plan."type" IN (:...planTypes)', { planTypes });
+        }
       }
       if (filterOptions?.data) {
         const dataMb = this.parseDataToMb(filterOptions.data);
@@ -171,9 +180,18 @@ export class PlansRelationalRepository implements PlanRepository {
         });
       }
       if (filterOptions.type) {
-        qb.andWhere('plan."type" = :planType', {
-          planType: filterOptions.type,
-        });
+        const planTypes =
+          typeof filterOptions.type === 'string'
+            ? filterOptions.type
+                .split(',')
+                .map((t) => t.trim())
+                .filter(Boolean)
+            : Array.isArray(filterOptions.type)
+              ? filterOptions.type
+              : [filterOptions.type];
+        if (planTypes.length > 0) {
+          qb.andWhere('plan."type" IN (:...planTypes)', { planTypes });
+        }
       }
       if (filterOptions.data) {
         const dataMb = this.parseDataToMb(filterOptions.data);
