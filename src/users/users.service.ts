@@ -118,6 +118,7 @@ export class UsersService {
       // <creating-property-payload />
       firstName: createUserDto.firstName,
       lastName: createUserDto.lastName,
+      phoneNumber: createUserDto.phoneNumber ?? null,
       email: email,
       password: password,
       photo: photo,
@@ -272,6 +273,9 @@ export class UsersService {
       // <updating-property-payload />
       firstName: updateUserDto.firstName,
       lastName: updateUserDto.lastName,
+      ...(updateUserDto.phoneNumber !== undefined && {
+        phoneNumber: updateUserDto.phoneNumber,
+      }),
       email,
       password,
       photo,

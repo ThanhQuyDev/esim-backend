@@ -14,6 +14,9 @@ export class AdminOrderUserDto {
 
   @ApiPropertyOptional({ type: String })
   lastName: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  phoneNumber: string | null;
 }
 
 export class AdminPlanLocationInfoDto {

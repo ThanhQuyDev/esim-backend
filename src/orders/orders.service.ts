@@ -150,6 +150,20 @@ export class OrdersService {
   }
 
   async submitOrder(userId: number, dto: SubmitOrderDto): Promise<Order> {
+    // Save phone number to user profile if provided and user doesn't have one yet
+    if (dto.phoneNumber) {
+      try {
+        const currentUser = await this.usersService.findById(userId);
+        if (currentUser && !currentUser.phoneNumber) {
+          await this.usersService.update(userId, {
+            phoneNumber: dto.phoneNumber,
+          });
+        }
+      } catch {
+        // Non-blocking: phone save failure should not block order
+      }
+    }
+
     // 1. Resolve all plans and validate
     const planDetails = await Promise.all(
       dto.items.map(async (item) => {
@@ -1187,6 +1201,7 @@ export class OrdersService {
             email: user.email,
             firstName: user.firstName,
             lastName: user.lastName,
+            phoneNumber: user.phoneNumber ?? null,
           }
         : null,
       orderNumber: order.orderNumber,

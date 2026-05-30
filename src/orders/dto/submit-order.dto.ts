@@ -97,6 +97,25 @@ export class SubmitOrderDto {
   @IsString()
   referralCode?: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: '+84901234567',
+    description: 'Phone number for contact. Saved to user profile if not set.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'buyer@example.com',
+    description: 'Buyer email for order confirmation.',
+  })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
   @ApiPropertyOptional({ type: Number, example: 20000 })
   @IsOptional()
   @IsInt()
