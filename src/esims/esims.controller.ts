@@ -19,7 +19,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import * as QRCode from 'qrcode';
-import * as sharp from 'sharp';
+import sharp from 'sharp';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';

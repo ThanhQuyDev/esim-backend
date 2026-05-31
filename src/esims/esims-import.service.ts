@@ -336,6 +336,7 @@ export class EsimsImportService {
             userId: null,
             matchId: null,
             qrcode: null,
+            qrAccessToken: null,
             directAppleInstallationUrl: null,
             apnValue: apnValue ?? null,
             isRoaming: null,
