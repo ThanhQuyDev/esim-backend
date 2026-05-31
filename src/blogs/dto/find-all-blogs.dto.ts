@@ -18,6 +18,11 @@ export class FilterBlogDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  parent?: string;
 }
 
 export class SortBlogDto {

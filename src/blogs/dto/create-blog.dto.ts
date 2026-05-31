@@ -75,6 +75,14 @@ export class CreateBlogDto {
   })
   @IsOptional()
   @IsString()
+  parent?: string | null;
+
+  @ApiProperty({
+    required: false,
+    type: () => String,
+  })
+  @IsOptional()
+  @IsString()
   coverImage?: string | null;
 
   @ApiProperty({
@@ -138,6 +146,22 @@ export class CreateBlogDto {
   @IsArray()
   @IsString({ each: true })
   faqIds?: string[];
+
+  @ApiProperty({
+    required: false,
+    type: () => Boolean,
+  })
+  @IsOptional()
+  @IsBoolean()
+  faqEnabled?: boolean;
+
+  @ApiProperty({
+    required: false,
+    type: () => Boolean,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isPopular?: boolean;
 
   // Don't forget to use the class-validator decorators in the DTO properties.
 }

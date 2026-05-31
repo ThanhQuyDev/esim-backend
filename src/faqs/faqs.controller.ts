@@ -17,6 +17,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiParam,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { Faq } from './domain/faq';
@@ -52,6 +53,10 @@ export class FaqsController {
     description:
       'Get FAQs by url or blogId. Auto-fills to 6 items with random FAQs if not enough.',
   })
+  @ApiQuery({ name: 'url', required: false, type: String })
+  @ApiQuery({ name: 'blogId', required: false, type: String })
+  @ApiQuery({ name: 'language', required: false, type: String })
+  @ApiQuery({ name: 'limit', required: false, type: String })
   async findByContext(
     @Query('url') url?: string,
     @Query('blogId') blogId?: string,

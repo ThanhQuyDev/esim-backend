@@ -13,6 +13,7 @@ import Handlebars from 'handlebars';
 export interface EsimPurchaseMailData {
   to: string;
   esimId: number;
+  qrAccessToken: string | null;
   iccid: string;
   activationCode: string | null;
   lpa: string | null;
@@ -206,7 +207,7 @@ export class MailService {
     const backendDomain = this.configService.get('app.backendDomain', {
       infer: true,
     });
-    const qrCodeUrl = `${backendDomain}/api/v1/esims/${data.esimId}/qrcode`;
+    const qrCodeUrl = `${backendDomain}/api/v1/esims/${data.esimId}/qrcode?token=${data.qrAccessToken || ''}`;
 
     const context = {
       iccid: data.iccid,

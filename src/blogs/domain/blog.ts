@@ -23,6 +23,9 @@ export class Blog {
   category?: string | null;
 
   @ApiProperty({ type: () => String, nullable: true })
+  parent?: string | null;
+
+  @ApiProperty({ type: () => String, nullable: true })
   coverImage?: string | null;
 
   @ApiProperty({ type: () => String, nullable: true })
@@ -63,4 +66,10 @@ export class Blog {
 
   @ApiProperty({ type: () => [String], nullable: true })
   faqIds?: string[];
+
+  @ApiProperty({ type: () => Boolean, nullable: false })
+  faqEnabled?: boolean;
+
+  @ApiProperty({ type: () => Boolean, nullable: false })
+  isPopular?: boolean;
 }

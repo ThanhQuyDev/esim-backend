@@ -13,6 +13,7 @@ export class BlogMapper {
     domainEntity.author = raw.author;
     domainEntity.authorAvatar = raw.authorAvatar;
     domainEntity.category = raw.category;
+    domainEntity.parent = raw.parent;
     domainEntity.coverImage = raw.coverImage;
     domainEntity.excerpt = raw.excerpt;
     domainEntity.content = raw.content;
@@ -27,6 +28,8 @@ export class BlogMapper {
       : null;
     domainEntity.plans = raw.plans?.map((plan) => PlanMapper.toDomain(plan));
     domainEntity.faqs = raw.faqs?.map((faq) => FaqMapper.toDomain(faq));
+    domainEntity.faqEnabled = raw.faqEnabled;
+    domainEntity.isPopular = raw.isPopular;
     return domainEntity;
   }
 
@@ -38,6 +41,7 @@ export class BlogMapper {
     persistenceEntity.author = domainEntity.author;
     persistenceEntity.authorAvatar = domainEntity.authorAvatar;
     persistenceEntity.category = domainEntity.category;
+    persistenceEntity.parent = domainEntity.parent;
     persistenceEntity.coverImage = domainEntity.coverImage;
     persistenceEntity.excerpt = domainEntity.excerpt;
     persistenceEntity.content = domainEntity.content;
@@ -58,6 +62,8 @@ export class BlogMapper {
     persistenceEntity.faqs = domainEntity.faqs?.map((faq) =>
       FaqMapper.toPersistence(faq),
     );
+    persistenceEntity.faqEnabled = domainEntity.faqEnabled ?? false;
+    persistenceEntity.isPopular = domainEntity.isPopular ?? false;
     return persistenceEntity;
   }
 }

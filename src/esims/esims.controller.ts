@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import * as QRCode from 'qrcode';
+import * as sharp from 'sharp';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';
@@ -30,6 +31,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiParam,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { Roles } from '../roles/roles.decorator';
@@ -57,21 +59,56 @@ export class EsimsPublicController {
   @Get(':id/qrcode')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: Number, required: true })
+  @ApiQuery({ name: 'token', required: true, type: String })
   @ApiOkResponse({ description: 'QR code PNG image' })
   async getQrCode(
     @Param('id') id: number,
+    @Query('token') token: string,
     @Res() res: Response,
   ): Promise<void> {
+    if (!token) {
+      throw new NotFoundException('eSIM or LPA not found');
+    }
+
     const esim = await this.esimsService.findById(id);
     if (!esim || !esim.lpa) {
       throw new NotFoundException('eSIM or LPA not found');
     }
 
-    const buffer = await QRCode.toBuffer(esim.lpa, {
+    if (esim.qrAccessToken !== token) {
+      throw new NotFoundException('eSIM or LPA not found');
+    }
+
+    const qrBuffer = await QRCode.toBuffer(esim.lpa, {
       width: 400,
       margin: 2,
-      errorCorrectionLevel: 'M',
+      errorCorrectionLevel: 'H',
     });
+
+    let buffer: Buffer;
+    try {
+      const logoUrl =
+        'https://res.cloudinary.com/drozbviwb/image/upload/v1780067058/logo_esimvn_zycejk.png';
+      const logoRes = await fetch(logoUrl);
+      const logoArrayBuffer = await logoRes.arrayBuffer();
+      const logoBuffer = Buffer.from(logoArrayBuffer);
+      const logoSize = 70;
+      const resizedLogo = await sharp(logoBuffer)
+        .resize(logoSize, logoSize)
+        .toBuffer();
+
+      buffer = await sharp(qrBuffer)
+        .composite([
+          {
+            input: resizedLogo,
+            gravity: 'centre',
+          },
+        ])
+        .png()
+        .toBuffer();
+    } catch {
+      buffer = qrBuffer;
+    }
 
     res.set({
       'Content-Type': 'image/png',

@@ -36,6 +36,9 @@ export class Esim {
   qrcode: string | null;
 
   @ApiPropertyOptional({ type: String })
+  qrAccessToken: string | null;
+
+  @ApiPropertyOptional({ type: String })
   directAppleInstallationUrl: string | null;
 
   @ApiPropertyOptional({ type: String })

@@ -67,6 +67,12 @@ export class BlogRelationalRepository implements BlogRepository {
       });
     }
 
+    if (filterOptions?.parent) {
+      qb.andWhere('blog.parent = :parent', {
+        parent: filterOptions.parent,
+      });
+    }
+
     if (filterOptions?.search) {
       qb.andWhere(
         new Brackets((sub) => {
@@ -75,6 +81,9 @@ export class BlogRelationalRepository implements BlogRepository {
               search: `%${filterOptions.search}%`,
             })
             .orWhere('blog.category ILIKE :search', {
+              search: `%${filterOptions.search}%`,
+            })
+            .orWhere('blog.parent ILIKE :search', {
               search: `%${filterOptions.search}%`,
             });
         }),
@@ -234,5 +243,25 @@ export class BlogRelationalRepository implements BlogRepository {
       .getRawMany();
 
     return results.map((r) => r.category);
+  }
+
+  async findParentsByCategory(): Promise<Record<string, string[]>> {
+    const results = await this.blogRepository
+      .createQueryBuilder('blog')
+      .select(['blog.category', 'blog.parent'])
+      .where('blog.category IS NOT NULL')
+      .andWhere('blog.parent IS NOT NULL')
+      .groupBy('blog.category')
+      .addGroupBy('blog.parent')
+      .getRawMany();
+
+    const grouped: Record<string, string[]> = {};
+    for (const r of results) {
+      const cat = r.blog_category;
+      const parent = r.blog_parent;
+      if (!grouped[cat]) grouped[cat] = [];
+      if (!grouped[cat].includes(parent)) grouped[cat].push(parent);
+    }
+    return grouped;
   }
 }

@@ -223,8 +223,6 @@ export class WebhooksService {
 
     // 1. Find order items by orderNo (stored as orderRequestId)
     let userId: number | null = null;
-    let orderItemId: number | null = null;
-    let planId: number | null = null;
 
     const orderItems =
       await this.orderItemsService.findByOrderRequestId(orderNo);
@@ -240,16 +238,9 @@ export class WebhooksService {
       `Updated ${orderItems.length} order item(s) to completed (orderNo=${orderNo})`,
     );
 
-    let dataTotal: string | null = null;
     if (orderItems.length > 0) {
-      orderItemId = orderItems[0].id;
-      planId = orderItems[0].planId ?? null;
       const order = await this.ordersService.findById(orderItems[0].orderId);
       userId = order?.userId ?? null;
-      const dataMb = orderItems[0].plan?.dataMb;
-      if (dataMb != null) {
-        dataTotal = dataMb >= 1024 ? `${dataMb / 1024}GB` : `${dataMb}MB`;
-      }
     }
 
     // 2. Query EsimAccess for eSIM details
@@ -263,9 +254,38 @@ export class WebhooksService {
       return;
     }
 
-    // 3. Upsert eSIM records
+    // 3. Upsert eSIM records — match each eSIM to the correct order item
+    // by comparing packageCode from response with providerPlanId from plan.
+    // Track assigned order items to handle duplicate plans (same providerPlanId).
+    const assignedOrderItemIds = new Set<number>();
+
     for (const esim of esimList) {
       if (!esim.iccid) continue;
+
+      // Determine packageCode from the eSIM response
+      const packageCode: string | null =
+        esim.packageList?.[0]?.packageCode ?? null;
+
+      // Find matching order item: match by providerPlanId, skip already-assigned items
+      const matchedItem = packageCode
+        ? orderItems.find(
+            (item) =>
+              item.plan?.providerPlanId === packageCode &&
+              !assignedOrderItemIds.has(item.id),
+          )
+        : null;
+
+      const orderItemId = matchedItem?.id ?? null;
+      const planId = matchedItem?.planId ?? null;
+      let dataTotal: string | null = null;
+      if (matchedItem?.plan?.dataMb != null) {
+        const dataMb = matchedItem.plan.dataMb;
+        dataTotal = dataMb >= 1024 ? `${dataMb / 1024}GB` : `${dataMb}MB`;
+      }
+
+      if (orderItemId) {
+        assignedOrderItemIds.add(orderItemId);
+      }
 
       try {
         // Parse smdpAddress + activationCode from ac field "LPA:1$<smdp>$<matchingId>"
@@ -328,7 +348,8 @@ export class WebhooksService {
     }
 
     // Send purchase email for EsimAccess esims
-    await this.sendPurchaseEmailAfterWebhook(userId, orderItemId, orderNo);
+    const firstOrderItemId = orderItems[0]?.id ?? null;
+    await this.sendPurchaseEmailAfterWebhook(userId, firstOrderItemId, orderNo);
   }
 
   // ─── Gadget Korea ─────────────────────────────────────────────────────────────
@@ -490,6 +511,7 @@ export class WebhooksService {
         await this.mailService.sendEsimPurchase({
           to: user.email,
           esimId: esim.id,
+          qrAccessToken: esim.qrAccessToken,
           iccid: esim.iccid,
           activationCode: esim.activationCode,
           lpa: esim.lpa,

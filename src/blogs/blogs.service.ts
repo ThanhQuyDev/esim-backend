@@ -56,12 +56,15 @@ export class BlogsService {
           ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(createBlogDto.author)}`
           : null),
       category: createBlogDto.category,
+      parent: createBlogDto.parent,
       coverImage: createBlogDto.coverImage,
       excerpt: createBlogDto.excerpt,
       content: createBlogDto.content,
       slug: createBlogDto.slug,
       title: createBlogDto.title,
       timeRead: createBlogDto.timeRead,
+      faqEnabled: createBlogDto.faqEnabled ?? false,
+      isPopular: createBlogDto.isPopular ?? false,
       miniTag,
       plans,
       faqs,
@@ -144,12 +147,15 @@ export class BlogsService {
             ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(updateBlogDto.author)}`
             : undefined,
       category: updateBlogDto.category,
+      parent: updateBlogDto.parent,
       coverImage: updateBlogDto.coverImage,
       excerpt: updateBlogDto.excerpt,
       content: updateBlogDto.content,
       slug: updateBlogDto.slug,
       title: updateBlogDto.title,
       timeRead: updateBlogDto.timeRead,
+      faqEnabled: updateBlogDto.faqEnabled,
+      isPopular: updateBlogDto.isPopular,
       miniTag,
       plans,
       faqs,
@@ -162,5 +168,9 @@ export class BlogsService {
 
   findCategories() {
     return this.blogRepository.findCategories();
+  }
+
+  findParentsByCategory() {
+    return this.blogRepository.findParentsByCategory();
   }
 }

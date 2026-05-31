@@ -16,6 +16,7 @@ export class EsimMapper {
     domainEntity.lpa = raw.lpa;
     domainEntity.matchId = raw.matchId;
     domainEntity.qrcode = raw.qrcode;
+    domainEntity.qrAccessToken = raw.qrAccessToken;
     domainEntity.directAppleInstallationUrl = raw.directAppleInstallationUrl;
     domainEntity.apnValue = raw.apnValue;
     domainEntity.isRoaming = raw.isRoaming;
@@ -53,6 +54,7 @@ export class EsimMapper {
     persistenceEntity.lpa = domainEntity.lpa;
     persistenceEntity.matchId = domainEntity.matchId;
     persistenceEntity.qrcode = domainEntity.qrcode;
+    persistenceEntity.qrAccessToken = domainEntity.qrAccessToken;
     persistenceEntity.directAppleInstallationUrl =
       domainEntity.directAppleInstallationUrl;
     persistenceEntity.apnValue = domainEntity.apnValue;

@@ -86,6 +86,14 @@ export class BlogsController {
     return this.blogsService.findCategories();
   }
 
+  @Get('parents')
+  @ApiOkResponse({
+    description: 'Returns parents grouped by category',
+  })
+  findParentsByCategory(): Promise<Record<string, string[]>> {
+    return this.blogsService.findParentsByCategory();
+  }
+
   @Get('by-slug/:slug')
   @ApiParam({
     name: 'slug',

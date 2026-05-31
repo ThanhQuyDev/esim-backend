@@ -332,6 +332,7 @@ export class JapanTravelSimService {
       await this.mailService.sendEsimPurchase({
         to: user.email,
         esimId: 0,
+        qrAccessToken: null,
         iccid: result.iccid,
         activationCode: '',
         lpa: result.qrcodecontent ?? '',

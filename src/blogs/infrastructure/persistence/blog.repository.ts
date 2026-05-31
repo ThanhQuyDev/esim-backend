@@ -33,4 +33,6 @@ export abstract class BlogRepository {
   abstract remove(id: Blog['id']): Promise<void>;
 
   abstract findCategories(): Promise<string[]>;
+
+  abstract findParentsByCategory(): Promise<Record<string, string[]>>;
 }

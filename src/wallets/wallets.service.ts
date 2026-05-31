@@ -315,6 +315,14 @@ export class WalletsService {
       throw new NotFoundException('Referral code not found');
     }
 
+    // Check if referrer's wallet is locked
+    const referrerWallet = await this.walletRepository.findOne({
+      where: { userId: profile.userId },
+    });
+    if (referrerWallet && referrerWallet.status !== WalletStatusEnum.ACTIVE) {
+      throw new BadRequestException('Mã giới thiệu này không còn hợp lệ.');
+    }
+
     if (profile.userId === userId) {
       throw new BadRequestException(
         'Bạn không thể sử dụng mã giới thiệu của chính mình.',
@@ -331,7 +339,10 @@ export class WalletsService {
     }
 
     const referralBenefits = await this.orderReferralRepository.count({
-      where: { refereeUserId: userId },
+      where: [
+        { refereeUserId: userId, status: OrderReferralStatusEnum.PENDING },
+        { refereeUserId: userId, status: OrderReferralStatusEnum.CREDITED },
+      ],
     });
     if (referralBenefits > 0) {
       throw new BadRequestException('Bạn đã sử dụng mã giới thiệu trước đó.');

@@ -1089,6 +1089,7 @@ export class OrdersService {
         await this.mailService.sendEsimPurchase({
           to: buyer.email,
           esimId: esim.id,
+          qrAccessToken: esim.qrAccessToken,
           iccid: esim.iccid,
           activationCode: esim.activationCode,
           lpa: esim.lpa,
@@ -1128,6 +1129,7 @@ export class OrdersService {
         await this.mailService.sendEsimPurchase({
           to: user.email,
           esimId: esim.id,
+          qrAccessToken: esim.qrAccessToken,
           iccid: esim.iccid,
           activationCode: esim.activationCode,
           lpa: esim.lpa,

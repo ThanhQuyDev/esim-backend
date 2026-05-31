@@ -60,6 +60,9 @@ export class EsimEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   qrcode: string | null;
 
+  @Column({ type: 'uuid', nullable: true, default: () => 'uuid_generate_v4()' })
+  qrAccessToken: string | null;
+
   @Column({ type: String, nullable: true })
   directAppleInstallationUrl: string | null;
 

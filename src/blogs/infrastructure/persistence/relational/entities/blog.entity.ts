@@ -37,6 +37,9 @@ export class BlogEntity extends EntityRelationalHelper {
   category?: string | null;
 
   @Column({ nullable: true, type: String })
+  parent?: string | null;
+
+  @Column({ nullable: true, type: String })
   coverImage?: string | null;
 
   @Column({ nullable: true, type: String })
@@ -81,4 +84,10 @@ export class BlogEntity extends EntityRelationalHelper {
   @ManyToMany(() => FaqEntity, { eager: false })
   @JoinTable({ name: 'blog_faqs' })
   faqs?: FaqEntity[];
+
+  @Column({ nullable: false, type: Boolean, default: false })
+  faqEnabled: boolean;
+
+  @Column({ nullable: false, type: Boolean, default: false })
+  isPopular: boolean;
 }
