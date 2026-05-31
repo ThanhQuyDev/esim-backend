@@ -159,13 +159,10 @@ export class OrdersRelationalRepository implements OrderRepository {
     // Sorting
     if (sortOptions?.length) {
       sortOptions.forEach((sort) => {
-        qb.addOrderBy(
-          `"order"."${sort.orderBy}"`,
-          sort.order as 'ASC' | 'DESC',
-        );
+        qb.addOrderBy(`order.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
       });
     } else {
-      qb.addOrderBy('"order"."createdAt"', 'DESC');
+      qb.addOrderBy('order.createdAt', 'DESC');
     }
 
     // Pagination

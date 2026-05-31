@@ -547,7 +547,7 @@ export class EsimAccessService {
         `${baseUrl}/api/v1/open/package/list`,
         {
           locationCode: '',
-          type: '',
+          type: 'TOPUP',
           packageCode: '',
           iccid,
         },

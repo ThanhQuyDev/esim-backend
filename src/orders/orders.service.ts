@@ -150,15 +150,12 @@ export class OrdersService {
   }
 
   async submitOrder(userId: number, dto: SubmitOrderDto): Promise<Order> {
-    // Save phone number to user profile if provided and user doesn't have one yet
+    // Save phone number to user profile
     if (dto.phoneNumber) {
       try {
-        const currentUser = await this.usersService.findById(userId);
-        if (currentUser && !currentUser.phoneNumber) {
-          await this.usersService.update(userId, {
-            phoneNumber: dto.phoneNumber,
-          });
-        }
+        await this.usersService.update(userId, {
+          phoneNumber: dto.phoneNumber,
+        });
       } catch {
         // Non-blocking: phone save failure should not block order
       }
@@ -480,6 +477,17 @@ export class OrdersService {
     orderNumber: string,
     vndRate?: number,
   ): Promise<Order> {
+    // Save phone number to user profile if provided and user doesn't have one yet
+    if (dto.phoneNumber) {
+      try {
+        await this.usersService.update(userId, {
+          phoneNumber: dto.phoneNumber,
+        });
+      } catch {
+        // Non-blocking
+      }
+    }
+
     const planDetails = await Promise.all(
       dto.items.map(async (item) => {
         const plan = await this.plansService.findById(item.planId);
