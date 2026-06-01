@@ -207,7 +207,10 @@ export class MailService {
     const backendDomain = this.configService.get('app.backendDomain', {
       infer: true,
     });
-    const qrCodeUrl = `${backendDomain}/api/v1/esims/${data.esimId}/qrcode?token=${data.qrAccessToken || ''}`;
+    const qrCodeUrl =
+      data.esimId && data.qrAccessToken
+        ? `${backendDomain}/api/v1/esims/${data.esimId}/qrcode?token=${data.qrAccessToken}`
+        : '';
 
     const context = {
       iccid: data.iccid,

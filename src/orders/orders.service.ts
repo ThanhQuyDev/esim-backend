@@ -1556,9 +1556,28 @@ export class OrdersService {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async failExpiredPendingOrders(): Promise<void> {
-    const count = await this.orderRepository.failExpiredPendingOrders(30);
-    if (count > 0) {
-      this.logger.log(`Auto-failed ${count} expired pending orders`);
+    const failedOrderIds =
+      await this.orderRepository.failExpiredPendingOrders(30);
+    if (failedOrderIds.length > 0) {
+      this.logger.log(
+        `Auto-failed ${failedOrderIds.length} expired pending orders`,
+      );
+      for (const orderId of failedOrderIds) {
+        try {
+          await this.walletsService.releaseHoldForOrder(orderId);
+        } catch (err) {
+          this.logger.error(
+            `failExpiredPendingOrders: failed to release hold for order ${orderId}: ${(err as Error).message}`,
+          );
+        }
+        try {
+          await this.walletsService.reversePendingReferralForOrder(orderId);
+        } catch (err) {
+          this.logger.error(
+            `failExpiredPendingOrders: failed to reverse referral for order ${orderId}: ${(err as Error).message}`,
+          );
+        }
+      }
     }
   }
 

@@ -33,7 +33,9 @@ export abstract class OrderRepository {
 
   abstract remove(id: Order['id']): Promise<void>;
 
-  abstract failExpiredPendingOrders(minutesThreshold: number): Promise<number>;
+  abstract failExpiredPendingOrders(
+    minutesThreshold: number,
+  ): Promise<number[]>;
 
   abstract softDeleteByStatusOlderThan(
     status: string,

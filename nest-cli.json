@@ -5,7 +5,8 @@
   "compilerOptions": {
     "assets": [
       { "include": "i18n/**/*", "watchAssets": true },
-      { "include": "mail/mail-templates/**/*", "watchAssets": true }
+      { "include": "mail/mail-templates/**/*", "watchAssets": true },
+      { "include": "assets/**/*", "watchAssets": true }
     ]
   }
 }

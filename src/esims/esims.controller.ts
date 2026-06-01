@@ -20,6 +20,21 @@ import {
 import { Response } from 'express';
 import * as QRCode from 'qrcode';
 import sharp from 'sharp';
+import * as path from 'path';
+import * as fs from 'fs';
+
+let cachedLogoBuffer: Buffer | null = null;
+
+function getLogoBuffer(): Buffer | null {
+  if (cachedLogoBuffer) return cachedLogoBuffer;
+  try {
+    const logoPath = path.join(__dirname, '..', 'assets', 'logo-esimvn.png');
+    cachedLogoBuffer = fs.readFileSync(logoPath);
+    return cachedLogoBuffer;
+  } catch {
+    return null;
+  }
+}
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';
@@ -87,25 +102,25 @@ export class EsimsPublicController {
 
     let buffer: Buffer;
     try {
-      const logoUrl =
-        'https://res.cloudinary.com/drozbviwb/image/upload/v1780067058/logo_esimvn_zycejk.png';
-      const logoRes = await fetch(logoUrl);
-      const logoArrayBuffer = await logoRes.arrayBuffer();
-      const logoBuffer = Buffer.from(logoArrayBuffer);
-      const logoSize = 70;
-      const resizedLogo = await sharp(logoBuffer)
-        .resize(logoSize, logoSize)
-        .toBuffer();
+      const logoBuffer = getLogoBuffer();
+      if (logoBuffer) {
+        const logoSize = 70;
+        const resizedLogo = await sharp(logoBuffer)
+          .resize(logoSize, logoSize)
+          .toBuffer();
 
-      buffer = await sharp(qrBuffer)
-        .composite([
-          {
-            input: resizedLogo,
-            gravity: 'centre',
-          },
-        ])
-        .png()
-        .toBuffer();
+        buffer = await sharp(qrBuffer)
+          .composite([
+            {
+              input: resizedLogo,
+              gravity: 'centre',
+            },
+          ])
+          .png()
+          .toBuffer();
+      } else {
+        buffer = qrBuffer;
+      }
     } catch {
       buffer = qrBuffer;
     }

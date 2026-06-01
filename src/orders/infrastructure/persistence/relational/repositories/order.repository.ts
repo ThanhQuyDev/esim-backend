@@ -227,13 +227,16 @@ export class OrdersRelationalRepository implements OrderRepository {
     await this.ordersRepository.softDelete(id);
   }
 
-  async failExpiredPendingOrders(minutesThreshold: number): Promise<number> {
+  async failExpiredPendingOrders(minutesThreshold: number): Promise<number[]> {
     const cutoff = new Date(Date.now() - minutesThreshold * 60 * 1000);
-    const result = await this.ordersRepository.update(
-      { status: 'pending', createdAt: LessThan(cutoff) },
-      { status: 'failed' },
-    );
-    return result.affected ?? 0;
+    const expiredOrders = await this.ordersRepository.find({
+      where: { status: 'pending', createdAt: LessThan(cutoff) },
+      select: ['id'],
+    });
+    if (expiredOrders.length === 0) return [];
+    const ids = expiredOrders.map((o) => o.id);
+    await this.ordersRepository.update(ids, { status: 'failed' });
+    return ids;
   }
 
   async softDeleteByStatusOlderThan(

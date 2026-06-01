@@ -566,9 +566,7 @@ export class EsimAccessService {
       );
     }
 
-    return (data.obj?.packageList ?? []).filter(
-      (p) => p.supportTopUpType === 2,
-    );
+    return data.obj?.packageList ?? [];
   }
 
   /**

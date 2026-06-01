@@ -256,8 +256,8 @@ export class WebhooksService {
 
     // 3. Upsert eSIM records — match each eSIM to the correct order item
     // by comparing packageCode from response with providerPlanId from plan.
-    // Track assigned order items to handle duplicate plans (same providerPlanId).
-    const assignedOrderItemIds = new Set<number>();
+    // Track how many eSIMs have been assigned to each order item vs its quantity.
+    const assignedCountMap = new Map<number, number>();
 
     for (const esim of esimList) {
       if (!esim.iccid) continue;
@@ -266,12 +266,12 @@ export class WebhooksService {
       const packageCode: string | null =
         esim.packageList?.[0]?.packageCode ?? null;
 
-      // Find matching order item: match by providerPlanId, skip already-assigned items
+      // Find matching order item: match by providerPlanId, allow up to item.quantity assignments
       const matchedItem = packageCode
         ? orderItems.find(
             (item) =>
               item.plan?.providerPlanId === packageCode &&
-              !assignedOrderItemIds.has(item.id),
+              (assignedCountMap.get(item.id) ?? 0) < (item.quantity ?? 1),
           )
         : null;
 
@@ -284,7 +284,10 @@ export class WebhooksService {
       }
 
       if (orderItemId) {
-        assignedOrderItemIds.add(orderItemId);
+        assignedCountMap.set(
+          orderItemId,
+          (assignedCountMap.get(orderItemId) ?? 0) + 1,
+        );
       }
 
       try {

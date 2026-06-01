@@ -32,22 +32,18 @@ function isSmsCallEsimPlan(plan: Plan): boolean {
   return hasPositivePlanValue(plan.sms) || hasPositivePlanValue(plan.call);
 }
 
-function isStandardEsimPlan(plan: Plan): boolean {
-  return !plan.isLocalInventory && !isSmsCallEsimPlan(plan);
-}
-
 function groupPlansBySimType(plans: Plan[]): PlanGroups {
-  const standardPlans = plans.filter(isStandardEsimPlan);
+  const nonSmsCallPlans = plans.filter((p) => !isSmsCallEsimPlan(p));
 
   return {
-    dataPlans: standardPlans.filter((p) => p.type === 'fixed' && p.isCheapest),
-    slowUnlimited: standardPlans.filter((p) => p.type === 'daily'),
-    fastUnlimited: standardPlans.filter((p) => p.type === 'unlimited-reduce'),
-    dailyUnlimited: standardPlans.filter((p) => p.type === 'unlimited'),
-    localEsim: plans.filter((p) => p.isLocalInventory),
-    SmsCallEsim: plans.filter(
-      (p) => !p.isLocalInventory && isSmsCallEsimPlan(p),
+    dataPlans: nonSmsCallPlans.filter(
+      (p) => p.type === 'fixed' && p.isCheapest,
     ),
+    slowUnlimited: nonSmsCallPlans.filter((p) => p.type === 'daily'),
+    fastUnlimited: nonSmsCallPlans.filter((p) => p.type === 'unlimited-reduce'),
+    dailyUnlimited: nonSmsCallPlans.filter((p) => p.type === 'unlimited'),
+    localEsim: [],
+    SmsCallEsim: plans.filter(isSmsCallEsimPlan),
   };
 }
 
