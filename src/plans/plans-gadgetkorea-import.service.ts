@@ -11,11 +11,11 @@ const SHEET_TYPE_MAP: Record<string, string> = {
   'Real Unlimited': 'unlimited',
 };
 
-// Column indices (1-based) matching the new gadget-korea.xlsx header:
+// Column indices (1-based) matching the gadget-korea.xlsx header:
 // 1:SIM Type | 2:Plan | 3:Day | 4:Data | 5:Option Name | 6:Carrier | 7:Network |
 // 8:Access Type | 9:QOS | 10:Validity | 11:APN | 12:PreInstallation |
-// 13:Top-up | 14:KYC | 15:Hot-Spot | 16:Initialize policy |
-// 17:Option ID (For API) | 18:Normal Price | 19:Min.Sell Price | 20:B2B Price
+// 13:Top-up | 14:KYC | 15:Hot-Spot | 16:Hot-Spot Allow | 17:Initialize policy |
+// 18:Option ID (For API) | 19:Normal Price | 20:Min.Sell Price | 21:B2B Price
 const COL = {
   SIM_TYPE: 1,
   PLAN: 2,
@@ -32,11 +32,12 @@ const COL = {
   TOP_UP: 13,
   KYC: 14,
   HOT_SPOT: 15,
-  INITIALIZE_POLICY: 16,
-  OPTION_ID: 17,
-  NORMAL_PRICE: 18, // retail_price
-  MIN_SELL_PRICE: 19,
-  B2B_PRICE: 20, // cost_price
+  HOT_SPOT_ALLOW: 16,
+  INITIALIZE_POLICY: 17,
+  OPTION_ID: 18,
+  NORMAL_PRICE: 19, // retail_price
+  MIN_SELL_PRICE: 20,
+  B2B_PRICE: 21, // cost_price
 };
 
 const PROVIDER = 'gadgetkorea';
@@ -209,7 +210,8 @@ export class PlansGadgetkoreaImportService {
             isKyc,
             apn,
             hotSpot,
-            hotSpotAllow: null as string | null,
+            hotSpotAllow:
+              this.getString(row.getCell(COL.HOT_SPOT_ALLOW).value) || null,
             isActive: true,
           };
 

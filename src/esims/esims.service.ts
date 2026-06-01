@@ -59,7 +59,7 @@ export class EsimsService {
       lpa: createEsimDto.lpa ?? null,
       matchId: createEsimDto.matchId ?? null,
       qrcode: createEsimDto.qrcode ?? null,
-      qrAccessToken: null,
+      qrAccessToken: crypto.randomUUID(),
       directAppleInstallationUrl:
         createEsimDto.directAppleInstallationUrl ?? null,
       apnValue: createEsimDto.apnValue ?? null,

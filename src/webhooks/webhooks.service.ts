@@ -350,9 +350,13 @@ export class WebhooksService {
       }
     }
 
-    // Send purchase email for EsimAccess esims
-    const firstOrderItemId = orderItems[0]?.id ?? null;
-    await this.sendPurchaseEmailAfterWebhook(userId, firstOrderItemId, orderNo);
+    // Send purchase email for EsimAccess esims — all order items
+    const allOrderItemIds = orderItems.map((item) => item.id);
+    await this.sendPurchaseEmailsForOrderItems(
+      userId,
+      allOrderItemIds,
+      orderNo,
+    );
   }
 
   // ─── Gadget Korea ─────────────────────────────────────────────────────────────
@@ -491,6 +495,49 @@ export class WebhooksService {
   }
 
   // ─── Shared ──────────────────────────────────────────────────────────────────
+
+  private async sendPurchaseEmailsForOrderItems(
+    userId: number | null,
+    orderItemIds: number[],
+    orderRef: string | null,
+  ): Promise<void> {
+    if (!userId || orderItemIds.length === 0) return;
+
+    try {
+      const user = await this.usersService.findById(userId);
+      if (!user?.email) return;
+
+      const esims = await this.esimsService.findByOrderItemIds(orderItemIds);
+      if (!esims.length) return;
+
+      for (const esim of esims) {
+        const orderItem = await this.orderItemsService.findById(
+          esim.orderItemId!,
+        );
+        const order = orderItem
+          ? await this.ordersService.findById(orderItem.orderId)
+          : null;
+
+        await this.mailService.sendEsimPurchase({
+          to: user.email,
+          esimId: esim.id,
+          qrAccessToken: esim.qrAccessToken,
+          iccid: esim.iccid,
+          activationCode: esim.activationCode,
+          lpa: esim.lpa,
+          smdpAddress: esim.smdpAddress,
+          apn: esim.apnValue,
+          phoneNumber: esim.phoneNumber,
+          planName: orderItem?.plan?.name ?? '',
+          orderNumber: order?.orderNumber ?? orderRef ?? '',
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to send esim purchase emails (orderItemIds=${orderItemIds.join(',')}): ${(err as Error).message}`,
+      );
+    }
+  }
 
   private async sendPurchaseEmailAfterWebhook(
     userId: number | null,
