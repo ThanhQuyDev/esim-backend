@@ -654,7 +654,7 @@ export class OrdersService {
       afterCouponAndReferral - walletSpentVndAmount,
     );
     const cashbackAmountVnd = Math.round(
-      (payableVndPrice * EXU_CASHBACK_PERCENT) / 100,
+      (subtotalVndPrice * EXU_CASHBACK_PERCENT) / 100,
     );
 
     return {
