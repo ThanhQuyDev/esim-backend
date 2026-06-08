@@ -52,14 +52,43 @@ export class BlogRelationalRepository implements BlogRepository {
     filterOptions,
     sortOptions,
     paginationOptions,
+    lang,
   }: {
     filterOptions?: FilterBlogDto | null;
     sortOptions?: SortBlogDto[] | null;
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }): Promise<[Blog[], number]> {
     const qb = this.blogRepository
       .createQueryBuilder('blog')
-      .leftJoinAndSelect('blog.miniTag', 'miniTag');
+      .leftJoin('blog.miniTag', 'miniTag')
+      // List view never needs the heavy `content` column — select only the
+      // fields BlogListItem exposes (plus the miniTag join) to keep the
+      // payload small and avoid reading large rows from the DB.
+      .select([
+        'blog.id',
+        'blog.language',
+        'blog.title',
+        'blog.slug',
+        'blog.excerpt',
+        'blog.coverImage',
+        'blog.author',
+        'blog.authorAvatar',
+        'blog.category',
+        'blog.parent',
+        'blog.timeRead',
+        'blog.isPublished',
+        'blog.publishedAt',
+        'blog.faqEnabled',
+        'blog.isPopular',
+        'blog.createdAt',
+        'blog.updatedAt',
+        'miniTag',
+      ]);
+
+    if (lang) {
+      qb.andWhere('blog.language = :lang', { lang });
+    }
 
     if (filterOptions?.category) {
       qb.andWhere('blog.category = :category', {
@@ -235,22 +264,35 @@ export class BlogRelationalRepository implements BlogRepository {
     await this.blogRepository.delete(id);
   }
 
-  async findCategories(): Promise<string[]> {
-    const results = await this.blogRepository
+  async findCategories(lang?: string): Promise<string[]> {
+    const qb = this.blogRepository
       .createQueryBuilder('blog')
       .select('DISTINCT blog.category', 'category')
-      .where('blog.category IS NOT NULL')
-      .getRawMany();
+      .where('blog.category IS NOT NULL');
+
+    if (lang) {
+      qb.andWhere('blog.language = :lang', { lang });
+    }
+
+    const results = await qb.getRawMany();
 
     return results.map((r) => r.category);
   }
 
-  async findParentsByCategory(): Promise<Record<string, string[]>> {
-    const results = await this.blogRepository
+  async findParentsByCategory(
+    lang?: string,
+  ): Promise<Record<string, string[]>> {
+    const qb = this.blogRepository
       .createQueryBuilder('blog')
       .select(['blog.category', 'blog.parent'])
       .where('blog.category IS NOT NULL')
-      .andWhere('blog.parent IS NOT NULL')
+      .andWhere('blog.parent IS NOT NULL');
+
+    if (lang) {
+      qb.andWhere('blog.language = :lang', { lang });
+    }
+
+    const results = await qb
       .groupBy('blog.category')
       .addGroupBy('blog.parent')
       .getRawMany();

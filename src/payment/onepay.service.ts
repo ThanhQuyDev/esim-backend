@@ -11,6 +11,10 @@ export interface OnePayCheckoutParams {
   orderInfo?: string;
   againLink?: string;
   title?: string;
+  // Where OnePay redirects the buyer after payment. When omitted, falls back to
+  // the configured `onepay.returnUrl` env value. Pass a locale-aware URL so the
+  // buyer lands on the result page in the same language they checked out in.
+  returnUrl?: string;
 }
 
 @Injectable()
@@ -28,7 +32,7 @@ export class OnepayService {
       vpc_AccessCode: cfg.accessCode,
       vpc_Merchant: cfg.merchantId,
       vpc_Locale: params.locale ?? 'vn',
-      vpc_ReturnURL: cfg.returnUrl,
+      vpc_ReturnURL: params.returnUrl ?? cfg.returnUrl,
       vpc_CallbackURL: cfg.ipnUrl,
       vpc_MerchTxnRef: params.orderNumber,
       vpc_OrderInfo: params.orderInfo ?? params.orderNumber,

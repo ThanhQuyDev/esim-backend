@@ -13,10 +13,12 @@ export abstract class BlogRepository {
     filterOptions,
     sortOptions,
     paginationOptions,
+    lang,
   }: {
     filterOptions?: FilterBlogDto | null;
     sortOptions?: SortBlogDto[] | null;
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }): Promise<[Blog[], number]>;
 
   abstract findById(id: Blog['id']): Promise<NullableType<Blog>>;
@@ -32,7 +34,9 @@ export abstract class BlogRepository {
 
   abstract remove(id: Blog['id']): Promise<void>;
 
-  abstract findCategories(): Promise<string[]>;
+  abstract findCategories(lang?: string): Promise<string[]>;
 
-  abstract findParentsByCategory(): Promise<Record<string, string[]>>;
+  abstract findParentsByCategory(
+    lang?: string,
+  ): Promise<Record<string, string[]>>;
 }

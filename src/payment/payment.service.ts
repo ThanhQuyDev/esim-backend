@@ -54,10 +54,15 @@ export class PaymentService {
         await this.ordersService.clearCartForUser(order.userId);
       }
 
-      const frontendDomain = this.configService.get('app.frontendDomain', {
-        infer: true,
-      });
-      const returnUrl = `${frontendDomain}/payment/result?orderNumber=${order.orderNumber}&success=true&method=wallet`;
+      // Prefer the locale-aware result URL the client sent (validated against
+      // the frontend domain); fall back to the default English path otherwise.
+      // Either way, append the wallet success query params.
+      const base =
+        this.resolveReturnUrl(dto.returnUrl) ??
+        `${this.configService.get('app.frontendDomain', {
+          infer: true,
+        })}/payment/result`;
+      const returnUrl = this.appendWalletResultParams(base, order.orderNumber);
 
       return { paymentUrl: returnUrl, orderNumber: order.orderNumber };
     }
@@ -70,9 +75,54 @@ export class PaymentService {
       againLink: this.configService.getOrThrow('onepay', { infer: true })
         .returnUrl,
       title: 'esim.vn eSIM Payment',
+      locale: dto.locale === 'en' ? 'en' : 'vn',
+      returnUrl: this.resolveReturnUrl(dto.returnUrl),
     });
 
     return { paymentUrl, orderNumber: order.orderNumber };
+  }
+
+  /**
+   * Validate a client-supplied return URL. Only honor it when it is an absolute
+   * URL on the configured frontend domain — this prevents an open-redirect
+   * where a crafted `returnUrl` sends buyers to an attacker-controlled site
+   * after payment. Returns undefined to fall back to the env default.
+   */
+  private resolveReturnUrl(candidate?: string): string | undefined {
+    if (!candidate) return undefined;
+
+    const frontendDomain = this.configService.get('app.frontendDomain', {
+      infer: true,
+    });
+    if (!frontendDomain) return undefined;
+
+    try {
+      const target = new URL(candidate);
+      const allowed = new URL(frontendDomain);
+      if (target.origin === allowed.origin) {
+        return target.toString();
+      }
+    } catch {
+      // Malformed URL — ignore and use the default.
+    }
+    return undefined;
+  }
+
+  /**
+   * Append the wallet-success query params to a result URL without clobbering
+   * its existing path/query, so the locale-aware path the client sent is kept.
+   */
+  private appendWalletResultParams(base: string, orderNumber: string): string {
+    try {
+      const url = new URL(base);
+      url.searchParams.set('orderNumber', orderNumber);
+      url.searchParams.set('success', 'true');
+      url.searchParams.set('method', 'wallet');
+      return url.toString();
+    } catch {
+      // Malformed base — fall back to naive concatenation.
+      return `${base}?orderNumber=${orderNumber}&success=true&method=wallet`;
+    }
   }
 
   async handleIpn(query: Record<string, string>): Promise<{ code: string }> {
@@ -141,8 +191,19 @@ export class PaymentService {
     }
 
     if (!this.onepayService.isPaymentSuccess(query)) {
-      await this.ordersService.update(order.id, { status: 'failed' });
-      await this.ordersService.releaseWalletHoldForOrder(order.id);
+      // Delegate to cancelOrder for the FULL rollback: it sets status=failed,
+      // releases the eXU wallet hold, decrements coupon usage AND reverses the
+      // pending order-referral. The previous inline path only set status+hold,
+      // leaving the referral stuck in PENDING forever (the expiry cron never
+      // catches it since the order is no longer `pending`). The order is still
+      // pending here (guarded above), so cancelOrder runs cleanly.
+      try {
+        await this.ordersService.cancelOrder(order.id);
+      } catch (err) {
+        this.logger.error(
+          `OnePay IPN: rollback failed for ${orderNumber}: ${(err as Error).message}`,
+        );
+      }
       this.logger.log(
         `OnePay IPN: payment failed for ${orderNumber}, code=${query['vpc_TxnResponseCode']}`,
       );

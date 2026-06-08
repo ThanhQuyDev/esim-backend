@@ -75,10 +75,12 @@ export class BlogsService {
     filterOptions,
     sortOptions,
     paginationOptions,
+    lang,
   }: {
     filterOptions?: FilterBlogDto | null;
     sortOptions?: SortBlogDto[] | null;
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }) {
     return this.blogRepository.findAllWithPagination({
       filterOptions,
@@ -87,6 +89,7 @@ export class BlogsService {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
       },
+      lang,
     });
   }
 
@@ -166,11 +169,11 @@ export class BlogsService {
     return this.blogRepository.remove(id);
   }
 
-  findCategories() {
-    return this.blogRepository.findCategories();
+  findCategories(lang?: string) {
+    return this.blogRepository.findCategories(lang);
   }
 
-  findParentsByCategory() {
-    return this.blogRepository.findParentsByCategory();
+  findParentsByCategory(lang?: string) {
+    return this.blogRepository.findParentsByCategory(lang);
   }
 }

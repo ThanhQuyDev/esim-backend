@@ -51,7 +51,7 @@ export class FaqsController {
   @ApiOkResponse({
     type: [Faq],
     description:
-      'Get FAQs by url or blogId. Auto-fills to 6 items with random FAQs if not enough.',
+      'Get FAQs matching the exact url or blogId. Returns only real matches (no ancestor-path fallback, no random auto-fill).',
   })
   @ApiQuery({ name: 'url', required: false, type: String })
   @ApiQuery({ name: 'blogId', required: false, type: String })

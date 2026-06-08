@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Query,
+  Headers,
   NotFoundException,
 } from '@nestjs/common';
 import { BlogsService } from './blogs.service';
@@ -16,6 +17,7 @@ import { UpdateBlogDto } from './dto/update-blog.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiHeader,
   ApiOkResponse,
   ApiParam,
   ApiTags,
@@ -49,11 +51,18 @@ export class BlogsController {
   }
 
   @Get()
+  @ApiHeader({
+    name: 'x-custom-lang',
+    required: false,
+    description:
+      'Language filter (e.g. "en", "vi"). Returns blogs for that language only.',
+  })
   @ApiOkResponse({
     type: InfinityPaginationResponse(BlogListItem),
   })
   async findAll(
     @Query() query: QueryBlogDto,
+    @Headers('x-custom-lang') lang?: string,
   ): Promise<InfinityPaginationResponseDto<BlogListItem>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
@@ -69,6 +78,7 @@ export class BlogsController {
     const [data, count] = await this.blogsService.findAllWithPagination({
       filterOptions,
       sortOptions: query?.sort,
+      lang,
       paginationOptions: {
         page,
         limit,
@@ -79,19 +89,33 @@ export class BlogsController {
   }
 
   @Get('categories')
+  @ApiHeader({
+    name: 'x-custom-lang',
+    required: false,
+    description:
+      'Language filter (e.g. "en", "vi"). Returns categories for that language only.',
+  })
   @ApiOkResponse({
     type: [String],
   })
-  findCategories(): Promise<string[]> {
-    return this.blogsService.findCategories();
+  findCategories(@Headers('x-custom-lang') lang?: string): Promise<string[]> {
+    return this.blogsService.findCategories(lang);
   }
 
   @Get('parents')
+  @ApiHeader({
+    name: 'x-custom-lang',
+    required: false,
+    description:
+      'Language filter (e.g. "en", "vi"). Returns parents for that language only.',
+  })
   @ApiOkResponse({
     description: 'Returns parents grouped by category',
   })
-  findParentsByCategory(): Promise<Record<string, string[]>> {
-    return this.blogsService.findParentsByCategory();
+  findParentsByCategory(
+    @Headers('x-custom-lang') lang?: string,
+  ): Promise<Record<string, string[]>> {
+    return this.blogsService.findParentsByCategory(lang);
   }
 
   @Get('by-slug/:slug')

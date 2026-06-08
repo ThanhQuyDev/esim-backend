@@ -73,6 +73,15 @@ export class CreateRegionDto {
   isPopular?: boolean;
 
   @ApiPropertyOptional({
+    example: 'airalo,esimaccess',
+    type: String,
+    description: 'Comma-separated list of providers',
+  })
+  @IsOptional()
+  @IsString()
+  providers?: string | null;
+
+  @ApiPropertyOptional({
     type: [Number],
     example: [1, 2, 3],
     description: 'Array of destination IDs to associate with this region',

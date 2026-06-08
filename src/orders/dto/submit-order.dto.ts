@@ -131,4 +131,26 @@ export class SubmitOrderDto {
   @ValidateNested()
   @Type(() => SubmitOrderInvoiceDto)
   invoice?: SubmitOrderInvoiceDto;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'vi',
+    description:
+      'UI locale at checkout ("vi" | "en"). Controls OnePay gateway language and which localized result page the buyer returns to.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  locale?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'https://esim.vn/thanh-toan/ket-qua',
+    description:
+      'Absolute URL OnePay redirects to after payment. Must be on the configured frontend domain; otherwise it is ignored and the default env return URL is used. Lets the buyer land on the result page in their current language.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  returnUrl?: string;
 }
