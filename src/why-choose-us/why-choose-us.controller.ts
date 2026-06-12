@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Query,
+  Headers,
 } from '@nestjs/common';
 import { WhyChooseUsService } from './why-choose-us.service';
 import { CreateWhyChooseUsDto } from './dto/create-why-choose-us.dto';
@@ -15,6 +16,7 @@ import { UpdateWhyChooseUsDto } from './dto/update-why-choose-us.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiHeader,
   ApiOkResponse,
   ApiParam,
   ApiTags,
@@ -47,11 +49,17 @@ export class WhyChooseUsController {
   }
 
   @Get()
+  @ApiHeader({
+    name: 'x-custom-lang',
+    required: false,
+    description: 'Language filter: en or vi. If not provided, returns all.',
+  })
   @ApiOkResponse({
     type: InfinityPaginationResponse(WhyChooseUs),
   })
   async findAll(
     @Query() query: QueryWhyChooseUsDto,
+    @Headers('x-custom-lang') lang?: string,
   ): Promise<InfinityPaginationResponseDto<WhyChooseUs>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
@@ -72,6 +80,7 @@ export class WhyChooseUsController {
         page,
         limit,
       },
+      lang,
     });
 
     return infinityPagination(data, { page, limit }, count);

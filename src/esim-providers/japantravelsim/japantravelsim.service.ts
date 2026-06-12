@@ -280,8 +280,9 @@ export class JapanTravelSimService {
       const order = await this.ordersService.findById(orderItem.orderId);
       const userId = order?.userId ?? null;
 
+      let esim;
       if (existing) {
-        await this.esimsService.update(existing.id, {
+        esim = await this.esimsService.update(existing.id, {
           lpa: result.qrcodecontent ?? undefined,
           apnValue: plan?.apn ?? undefined,
           status: 'available',
@@ -290,7 +291,7 @@ export class JapanTravelSimService {
           provider: PROVIDER,
         });
       } else {
-        await this.esimsService.create({
+        esim = await this.esimsService.create({
           iccid: result.iccid,
           smdpAddress: null,
           activationCode: null,
@@ -311,7 +312,7 @@ export class JapanTravelSimService {
       );
 
       // Send purchase email
-      await this.sendPurchaseEmail(userId, orderItem, result, plan);
+      await this.sendPurchaseEmail(userId, orderItem, result, plan, esim);
     }
   }
 
@@ -320,6 +321,7 @@ export class JapanTravelSimService {
     orderItem: { id: number; orderId: number; planId: number },
     result: JapanTravelSimCallbackResponseItem,
     plan: any,
+    esim: { id: number; qrAccessToken: string | null } | null,
   ): Promise<void> {
     if (!userId) return;
 
@@ -331,8 +333,8 @@ export class JapanTravelSimService {
 
       await this.mailService.sendEsimPurchase({
         to: user.email,
-        esimId: 0,
-        qrAccessToken: null,
+        esimId: esim?.id ?? 0,
+        qrAccessToken: esim?.qrAccessToken ?? null,
         iccid: result.iccid,
         activationCode: '',
         lpa: result.qrcodecontent ?? '',

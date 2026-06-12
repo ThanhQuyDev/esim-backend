@@ -440,12 +440,27 @@ export class EsimsImportService {
       const msPerDay = 86400 * 1000;
       return new Date((value - 25569) * msPerDay);
     }
-    // Handle string dates like "2026-11-06"
-    const str =
-      typeof value === 'object' && 'text' in value
-        ? value.text
-        : String(value).trim();
+    // Handle string dates
+    const str = (
+      typeof value === 'object' && 'text' in value ? value.text : String(value)
+    ).trim();
     if (!str) return null;
+
+    // Handle dd/mm/yyyy (or dd-mm-yyyy) — the format used in the import Excel.
+    // new Date() would misread this as mm/dd/yyyy, so parse it explicitly.
+    const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (dmy) {
+      const day = Number(dmy[1]);
+      const month = Number(dmy[2]);
+      const year = Number(dmy[3]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        // Use UTC to avoid timezone shifting the date across day boundaries
+        const parsed = new Date(Date.UTC(year, month - 1, day));
+        return isNaN(parsed.getTime()) ? null : parsed;
+      }
+    }
+
+    // Fallback: ISO-like strings such as "2026-11-06"
     const parsed = new Date(str);
     return isNaN(parsed.getTime()) ? null : parsed;
   }

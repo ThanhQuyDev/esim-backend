@@ -40,6 +40,10 @@ export class CouponEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: true })
   isActive: boolean;
 
+  @Index()
+  @Column({ type: Boolean, default: false })
+  isPopular: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

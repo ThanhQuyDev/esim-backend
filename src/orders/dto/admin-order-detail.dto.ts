@@ -208,6 +208,9 @@ export class AdminOrderDetailDto {
   discountAmount: number;
 
   @ApiProperty({ type: Number })
+  couponDiscountVndAmount: number;
+
+  @ApiProperty({ type: Number })
   vndPrice: number;
 
   @ApiProperty({ type: Number })

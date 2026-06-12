@@ -46,10 +46,12 @@ export class WhyChooseUsService {
     filterOptions,
     sortOptions,
     paginationOptions,
+    lang,
   }: {
     filterOptions?: FilterWhyChooseUsDto | null;
     sortOptions?: SortWhyChooseUsDto[] | null;
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }) {
     return this.whyChooseUsRepository.findAllWithPagination({
       filterOptions,
@@ -58,6 +60,7 @@ export class WhyChooseUsService {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
       },
+      lang,
     });
   }
 

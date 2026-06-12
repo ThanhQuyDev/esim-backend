@@ -1231,6 +1231,7 @@ export class OrdersService {
       referralCode: order.referralCode ?? null,
       referralDiscountVndAmount: order.referralDiscountVndAmount ?? 0,
       discountAmount: order.discountAmount,
+      couponDiscountVndAmount: order.couponDiscountVndAmount ?? 0,
       vndPrice: order.vndPrice,
       vndCostPrice: order.vndCostPrice,
       walletSpentVndAmount: order.walletSpentVndAmount,
@@ -1619,8 +1620,7 @@ export class OrdersService {
         slug: plan.destination.slug,
         title: plan.destination.title ?? null,
         titleVi: plan.destination.titleVi ?? null,
-        thumbnailUrl:
-          plan.destination.avatarUrl ?? plan.destination.flagUrl ?? null,
+        thumbnailUrl: plan.destination.flagUrl ?? null,
       };
     }
 
@@ -1631,7 +1631,7 @@ export class OrdersService {
         slug: plan.region.slug,
         title: plan.region.title ?? null,
         titleVi: plan.region.titleVi ?? null,
-        thumbnailUrl: plan.region.avatarUrl ?? null,
+        thumbnailUrl: plan.region.iconUrl ?? null,
       };
     }
 

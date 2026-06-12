@@ -50,6 +50,7 @@ export class CouponsService {
         ? new Date(createCouponDto.expiresAt)
         : null,
       isActive: createCouponDto.isActive ?? true,
+      isPopular: createCouponDto.isPopular ?? false,
     } as Coupon);
   }
 
@@ -107,6 +108,8 @@ export class CouponsService {
         : null;
     if (updateCouponDto.isActive !== undefined)
       payload.isActive = updateCouponDto.isActive;
+    if (updateCouponDto.isPopular !== undefined)
+      payload.isPopular = updateCouponDto.isPopular;
 
     return this.couponRepository.update(id, payload);
   }

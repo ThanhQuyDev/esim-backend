@@ -15,6 +15,12 @@ export class FilterCouponDto {
   @Transform(({ value }) => value === 'true' || value === true)
   isActive?: boolean;
 
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  isPopular?: boolean;
+
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()

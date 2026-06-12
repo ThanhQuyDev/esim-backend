@@ -280,6 +280,10 @@ export class MailService {
     })(context);
 
     await this.mailerService.sendMail({
+      // Route through the dedicated no-reply transport (no-reply@esim.com.vn),
+      // same channel as the OTP flow. Falls back to the primary transport when
+      // the OTP/no-reply block is not configured.
+      transportName: 'otp',
       to: data.to,
       subject: subjectCompiled,
       text: `Invoice request received for order ${data.orderNumber}`,

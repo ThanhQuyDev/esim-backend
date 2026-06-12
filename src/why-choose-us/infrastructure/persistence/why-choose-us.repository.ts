@@ -16,10 +16,12 @@ export abstract class WhyChooseUsRepository {
     filterOptions,
     sortOptions,
     paginationOptions,
+    lang,
   }: {
     filterOptions?: FilterWhyChooseUsDto | null;
     sortOptions?: SortWhyChooseUsDto[] | null;
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }): Promise<[WhyChooseUs[], number]>;
 
   abstract findById(id: WhyChooseUs['id']): Promise<NullableType<WhyChooseUs>>;

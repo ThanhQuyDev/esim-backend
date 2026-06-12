@@ -28,6 +28,9 @@ export class Coupon {
   @ApiProperty({ type: Boolean, example: true })
   isActive: boolean;
 
+  @ApiProperty({ type: Boolean, example: false })
+  isPopular: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

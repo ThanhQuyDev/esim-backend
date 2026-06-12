@@ -138,7 +138,13 @@ export class EsimsRelationalRepository implements EsimRepository {
         orderItemId: null as any,
         userId: null as any,
       },
-      order: { createdAt: 'ASC' },
+      // FEFO — sell the eSIM closest to expiry first to avoid stale stock
+      // expiring unsold. eSIMs with no expiry (expiresAt = null) sort last,
+      // falling back to FIFO by createdAt.
+      order: {
+        expiresAt: { direction: 'ASC', nulls: 'LAST' },
+        createdAt: 'ASC',
+      },
       take: limit,
     });
     return entities.map(EsimMapper.toDomain);

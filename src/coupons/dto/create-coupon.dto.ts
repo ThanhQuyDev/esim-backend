@@ -51,4 +51,9 @@ export class CreateCouponDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ type: Boolean, default: false })
+  @IsOptional()
+  @IsBoolean()
+  isPopular?: boolean;
 }

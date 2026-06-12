@@ -31,12 +31,18 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
     filterOptions,
     sortOptions,
     paginationOptions,
+    lang,
   }: {
     filterOptions?: FilterWhyChooseUsDto | null;
     sortOptions?: SortWhyChooseUsDto[] | null;
     paginationOptions: IPaginationOptions;
+    lang?: string;
   }): Promise<[WhyChooseUs[], number]> {
     const qb = this.whyChooseUsRepository.createQueryBuilder('whyChooseUs');
+
+    if (lang) {
+      qb.andWhere('whyChooseUs.language = :lang', { lang });
+    }
 
     if (filterOptions?.search) {
       qb.andWhere(

@@ -116,25 +116,23 @@ export class BlogsService {
           : null
         : undefined;
 
-    const plans = updateBlogDto.planIds?.length
-      ? updateBlogDto.planIds.map((id) => {
-          const p = new Plan();
-          p.id = id;
-          return p;
-        })
-      : updateBlogDto.planIds === null
-        ? []
-        : undefined;
+    const plans =
+      updateBlogDto.planIds === undefined
+        ? undefined
+        : (updateBlogDto.planIds ?? []).map((id) => {
+            const p = new Plan();
+            p.id = id;
+            return p;
+          });
 
-    const faqs = updateBlogDto.faqIds?.length
-      ? updateBlogDto.faqIds.map((id) => {
-          const f = new Faq();
-          f.id = id;
-          return f;
-        })
-      : updateBlogDto.faqIds === null
-        ? []
-        : undefined;
+    const faqs =
+      updateBlogDto.faqIds === undefined
+        ? undefined
+        : (updateBlogDto.faqIds ?? []).map((id) => {
+            const f = new Faq();
+            f.id = id;
+            return f;
+          });
 
     return this.blogRepository.update(id, {
       // Do not remove comment below.

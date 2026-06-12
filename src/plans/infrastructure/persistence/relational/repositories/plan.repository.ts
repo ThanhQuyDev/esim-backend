@@ -362,9 +362,16 @@ export class PlansRelationalRepository implements PlanRepository {
   }
 
   async updateAllVndPrices(rate: number): Promise<void> {
+    // Non-local plans: price is in USD → convert to VND at the exchange rate.
     await this.plansRepository.query(
       `UPDATE "plan" SET "vndPrice" = ROUND("price" * $1 / 1000) * 1000 WHERE "deletedAt" IS NULL AND "currency" != 'VND' AND ("isLocalInventory" IS NULL OR "isLocalInventory" = false)`,
       [rate],
+    );
+
+    // Local inventory plans (e.g. Viettel): price is already in VND, so copy
+    // it straight across — no exchange-rate multiplication.
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "vndPrice" = ROUND("price") WHERE "deletedAt" IS NULL AND "isLocalInventory" = true`,
     );
   }
 

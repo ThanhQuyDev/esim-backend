@@ -41,6 +41,9 @@ export class CouponsRelationalRepository implements CouponRepository {
     if (filterOptions?.isActive !== undefined) {
       where.isActive = filterOptions.isActive;
     }
+    if (filterOptions?.isPopular !== undefined) {
+      where.isPopular = filterOptions.isPopular;
+    }
     if (filterOptions?.search) {
       where.code = ILike(`%${filterOptions.search}%`);
     }

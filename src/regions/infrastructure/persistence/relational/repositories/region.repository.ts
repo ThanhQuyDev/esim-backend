@@ -62,9 +62,12 @@ export class RegionsRelationalRepository implements RegionRepository {
       .leftJoin(
         'plan',
         'plan',
-        '(plan."regionId" = region.id OR plan."destinationId" = dest.id) AND plan."isActive" = true AND plan."deletedAt" IS NULL',
+        'plan."regionId" = region.id AND plan."isActive" = true AND plan."deletedAt" IS NULL',
       )
-      .addSelect('COUNT(DISTINCT dest.id)', 'dest_count')
+      .addSelect(
+        '(SELECT COUNT(*) FROM "destination_region" dr2 WHERE dr2."regionId" = region.id)',
+        'dest_count',
+      )
       .addSelect('MIN(plan."vndPrice")', 'from_price');
 
     if (filterOptions?.isActive !== undefined) {

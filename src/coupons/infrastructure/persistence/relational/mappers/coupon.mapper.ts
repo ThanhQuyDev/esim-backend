@@ -15,6 +15,7 @@ export class CouponMapper {
       : null;
     domain.expiresAt = raw.expiresAt;
     domain.isActive = raw.isActive;
+    domain.isPopular = raw.isPopular;
     domain.createdAt = raw.createdAt;
     domain.updatedAt = raw.updatedAt;
     domain.deletedAt = raw.deletedAt;
@@ -32,6 +33,7 @@ export class CouponMapper {
     entity.minOrderAmount = domain.minOrderAmount;
     entity.expiresAt = domain.expiresAt;
     entity.isActive = domain.isActive;
+    entity.isPopular = domain.isPopular;
     entity.createdAt = domain.createdAt;
     entity.updatedAt = domain.updatedAt;
     entity.deletedAt = domain.deletedAt;

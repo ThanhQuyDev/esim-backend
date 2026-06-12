@@ -21,6 +21,7 @@ export class OrderMapper {
     domainEntity.paymentId = raw.paymentId;
     domainEntity.couponCode = raw.couponCode;
     domainEntity.discountAmount = Number(raw.discountAmount);
+    domainEntity.couponDiscountVndAmount = Number(raw.couponDiscountVndAmount);
     domainEntity.vndPrice = Number(raw.vndPrice);
     domainEntity.vndCostPrice = Number(raw.vndCostPrice);
     domainEntity.subtotalVndPrice = Number(raw.subtotalVndPrice);
