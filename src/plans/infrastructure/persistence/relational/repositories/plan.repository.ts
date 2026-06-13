@@ -371,7 +371,7 @@ export class PlansRelationalRepository implements PlanRepository {
     // Local inventory plans (e.g. Viettel): price is already in VND, so copy
     // it straight across — no exchange-rate multiplication.
     await this.plansRepository.query(
-      `UPDATE "plan" SET "vndPrice" = ROUND("price") WHERE "deletedAt" IS NULL AND "isLocalInventory" = true`,
+      `UPDATE "plan" SET "vndPrice" = ROUND("price" / 1000) * 1000 WHERE "deletedAt" IS NULL AND "isLocalInventory" = true`,
     );
   }
 
