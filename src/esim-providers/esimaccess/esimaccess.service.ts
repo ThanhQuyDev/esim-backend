@@ -630,7 +630,7 @@ export class EsimAccessService {
     packages: EsimAccessPackage[],
   ): EsimAccessPackage[] {
     const groupKey = (pkg: EsimAccessPackage) =>
-      `${pkg.locationCode}_${pkg.volume}_${pkg.duration}_${pkg.dataType}`;
+      `${pkg.locationCode}_${pkg.volume}_${pkg.duration}_${pkg.dataType}_${pkg.fupPolicy}`;
 
     const grouped = new Map<string, EsimAccessPackage[]>();
     for (const pkg of packages) {
