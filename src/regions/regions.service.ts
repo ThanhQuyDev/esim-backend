@@ -26,10 +26,24 @@ export class RegionsService {
       });
     }
 
+    if (createRegionDto.externalCode) {
+      const existingByExternalCode =
+        await this.regionsRepository.findByExternalCode(
+          createRegionDto.externalCode,
+        );
+      if (existingByExternalCode) {
+        throw new UnprocessableEntityException({
+          status: HttpStatus.UNPROCESSABLE_ENTITY,
+          errors: { externalCode: 'externalCodeAlreadyExists' },
+        });
+      }
+    }
+
     return this.regionsRepository.create(
       {
         name: createRegionDto.name,
         slug: createRegionDto.slug,
+        externalCode: createRegionDto.externalCode ?? null,
         avatarUrl: createRegionDto.avatarUrl ?? null,
         iconUrl: createRegionDto.iconUrl ?? null,
         description: createRegionDto.description ?? null,
@@ -70,6 +84,10 @@ export class RegionsService {
 
   findByName(name: Region['name']): Promise<NullableType<Region>> {
     return this.regionsRepository.findByName(name);
+  }
+
+  findByExternalCode(externalCode: string): Promise<NullableType<Region>> {
+    return this.regionsRepository.findByExternalCode(externalCode);
   }
 
   async update(

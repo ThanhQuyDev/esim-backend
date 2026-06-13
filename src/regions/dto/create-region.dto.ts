@@ -20,6 +20,16 @@ export class CreateRegionDto {
   @IsString()
   slug: string;
 
+  @ApiPropertyOptional({
+    example: 'esimaccess-cn',
+    type: String,
+    description:
+      'Stable provider-derived identity key. Used by cron sync to match an existing region regardless of CMS edits to name/slug.',
+  })
+  @IsOptional()
+  @IsString()
+  externalCode?: string | null;
+
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()

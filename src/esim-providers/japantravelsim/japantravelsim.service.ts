@@ -264,70 +264,95 @@ export class JapanTravelSimService {
     result: JapanTravelSimCallbackResponseItem,
     orderItem: { id: number; orderId: number; planId: number },
   ): Promise<void> {
-    // Update order item status
+    if (!result.iccid) return;
+
+    // Get plan for APN and other fields
+    const plan = await this.plansService.findById(orderItem.planId);
+
+    // Create (or refresh) the eSIM record first so it shows up in
+    // "list my eSIM" even if the email step fails. Both create and update
+    // are idempotent on iccid, so re-running this on a retry is safe.
+    const existing = await this.esimsService.findByIccid(result.iccid);
+    const order = await this.ordersService.findById(orderItem.orderId);
+    const userId = order?.userId ?? null;
+
+    let esim;
+    if (existing) {
+      esim = await this.esimsService.update(existing.id, {
+        lpa: result.qrcodecontent ?? undefined,
+        apnValue: plan?.apn ?? undefined,
+        status: 'available',
+        userId: userId ?? undefined,
+        orderItemId: orderItem.id,
+        provider: PROVIDER,
+      });
+    } else {
+      esim = await this.esimsService.create({
+        iccid: result.iccid,
+        smdpAddress: null,
+        activationCode: null,
+        lpa: result.qrcodecontent ?? null,
+        qrcode: null,
+        apnValue: plan?.apn ?? null,
+        status: 'available',
+        userId,
+        orderItemId: orderItem.id,
+        provider: PROVIDER,
+        planId: orderItem.planId,
+        dataUsed: '0',
+      });
+    }
+
+    this.logger.log(
+      `JapanTravelSim eSIM created: iccid=${result.iccid}, channelOrderId=${result.channelOrderId}`,
+    );
+
+    // Send the purchase email. Only mark the order item `completed` once the
+    // email has actually been sent — otherwise leave it `pending` so the
+    // fallback cron poller retries on the next tick. Without this gate a
+    // transient mail failure would permanently lose the eSIM email because a
+    // completed item is never polled again.
+    const emailSent = await this.sendPurchaseEmail(
+      userId,
+      orderItem,
+      result,
+      plan,
+      esim,
+    );
+
+    if (!emailSent) {
+      this.logger.warn(
+        `[JTS] eSIM ${result.iccid} provisioned but email not sent for order item ${orderItem.id}; leaving pending for retry`,
+      );
+      return;
+    }
+
     await this.orderItemsService.update(orderItem.id, {
       status: 'completed',
       providerOrderId: result.OrderNo,
       providerOrderCode: result.channelOrderId,
     });
-
-    // Get plan for APN and other fields
-    const plan = await this.plansService.findById(orderItem.planId);
-
-    // Create eSIM record
-    if (result.iccid) {
-      const existing = await this.esimsService.findByIccid(result.iccid);
-      const order = await this.ordersService.findById(orderItem.orderId);
-      const userId = order?.userId ?? null;
-
-      let esim;
-      if (existing) {
-        esim = await this.esimsService.update(existing.id, {
-          lpa: result.qrcodecontent ?? undefined,
-          apnValue: plan?.apn ?? undefined,
-          status: 'available',
-          userId: userId ?? undefined,
-          orderItemId: orderItem.id,
-          provider: PROVIDER,
-        });
-      } else {
-        esim = await this.esimsService.create({
-          iccid: result.iccid,
-          smdpAddress: null,
-          activationCode: null,
-          lpa: result.qrcodecontent ?? null,
-          qrcode: null,
-          apnValue: plan?.apn ?? null,
-          status: 'available',
-          userId,
-          orderItemId: orderItem.id,
-          provider: PROVIDER,
-          planId: orderItem.planId,
-          dataUsed: '0',
-        });
-      }
-
-      this.logger.log(
-        `JapanTravelSim eSIM created: iccid=${result.iccid}, channelOrderId=${result.channelOrderId}`,
-      );
-
-      // Send purchase email
-      await this.sendPurchaseEmail(userId, orderItem, result, plan, esim);
-    }
   }
 
+  /**
+   * Sends the eSIM purchase email.
+   * @returns `true` when the email was sent OR there is genuinely no recipient
+   *   to send to (no user / no email on file) — in both cases the order item
+   *   can be safely marked completed. Returns `false` only on an actual send
+   *   failure so the caller can leave the item pending for a retry.
+   */
   private async sendPurchaseEmail(
     userId: number | null,
     orderItem: { id: number; orderId: number; planId: number },
     result: JapanTravelSimCallbackResponseItem,
     plan: any,
     esim: { id: number; qrAccessToken: string | null } | null,
-  ): Promise<void> {
-    if (!userId) return;
+  ): Promise<boolean> {
+    if (!userId) return true;
 
     try {
       const user = await this.usersService.findById(userId);
-      if (!user?.email) return;
+      if (!user?.email) return true;
 
       const order = await this.ordersService.findById(orderItem.orderId);
 
@@ -344,10 +369,12 @@ export class JapanTravelSimService {
         planName: plan?.name ?? '',
         orderNumber: order?.orderNumber ?? '',
       });
+      return true;
     } catch (err) {
       this.logger.error(
         `Failed to send purchase email: ${(err as Error).message}`,
       );
+      return false;
     }
   }
 

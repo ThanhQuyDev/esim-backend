@@ -23,6 +23,15 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: String, unique: true })
   slug: string;
 
+  /**
+   * Stable, provider-derived identity key (e.g. `esimaccess-cn`, `airalo-asia`).
+   * Used by the cron sync to match an existing region regardless of CMS edits
+   * to name/slug. Unique when present; nullable for manually created regions.
+   */
+  @Index()
+  @Column({ type: String, unique: true, nullable: true })
+  externalCode: string | null;
+
   @ManyToMany(() => DestinationEntity, (destination) => destination.regions)
   destinations: DestinationEntity[];
 

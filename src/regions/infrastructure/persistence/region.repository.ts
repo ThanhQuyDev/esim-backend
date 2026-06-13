@@ -26,6 +26,10 @@ export abstract class RegionRepository {
 
   abstract findByName(name: Region['name']): Promise<NullableType<Region>>;
 
+  abstract findByExternalCode(
+    externalCode: string,
+  ): Promise<NullableType<Region>>;
+
   abstract update(
     id: Region['id'],
     payload: DeepPartial<Region>,

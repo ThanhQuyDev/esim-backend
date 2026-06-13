@@ -13,6 +13,14 @@ export class Region {
   @ApiProperty({ type: String, example: 'europe' })
   slug: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: 'esimaccess-cn',
+    description:
+      'Stable provider-derived identity key. Used by cron sync to match an existing region regardless of CMS edits to name/slug.',
+  })
+  externalCode?: string | null;
+
   @ApiPropertyOptional({ type: () => [Destination] })
   destinations?: Destination[];
 

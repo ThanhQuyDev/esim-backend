@@ -214,19 +214,32 @@ export class AiraloService {
     country: AiraloCountry,
     operatorCountries: AiraloOperatorCountry[],
   ) {
-    const regionSlug = `airalo-${country.slug}`;
-    const existing = await this.regionsService.findBySlug(regionSlug);
+    // `externalCode` is the stable provider identity key. The CMS can freely
+    // change name/slug for display/SEO without detaching plans from this region.
+    const externalCode = `airalo-${country.slug}`;
+    const existing = await this.regionsService.findByExternalCode(externalCode);
 
     let region: { id: number };
     if (existing) {
       region = existing;
     } else {
-      region = await this.regionsService.create({
-        name: country.title,
-        slug: regionSlug,
-        iconUrl: country.image?.url || null,
-        isActive: true,
-      });
+      try {
+        region = await this.regionsService.create({
+          name: country.title,
+          slug: externalCode,
+          externalCode,
+          iconUrl: country.image?.url || null,
+          isActive: true,
+        });
+      } catch {
+        const retry =
+          await this.regionsService.findByExternalCode(externalCode);
+        if (retry) {
+          region = retry;
+        } else {
+          throw new Error(`Failed to create or find region ${externalCode}`);
+        }
+      }
     }
 
     // Link each country in the region to a destination

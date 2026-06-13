@@ -209,8 +209,10 @@ export class EsimAccessService {
   }
 
   private async resolveRegion(pkg: EsimAccessPackage, locationCodes: string[]) {
-    const regionSlug = `esimaccess-${pkg.locationCode.toLowerCase()}`;
-    const existing = await this.regionsService.findBySlug(regionSlug);
+    // `externalCode` is the stable provider identity key. The CMS can freely
+    // change name/slug for display/SEO without detaching plans from this region.
+    const externalCode = `esimaccess-${pkg.locationCode.toLowerCase()}`;
+    const existing = await this.regionsService.findByExternalCode(externalCode);
 
     let region: { id: number };
     if (existing) {
@@ -219,15 +221,17 @@ export class EsimAccessService {
       try {
         region = await this.regionsService.create({
           name: pkg.name.split(' ')[0] || pkg.locationCode,
-          slug: regionSlug,
+          slug: externalCode,
+          externalCode,
           isActive: true,
         });
       } catch {
-        const retry = await this.regionsService.findBySlug(regionSlug);
+        const retry =
+          await this.regionsService.findByExternalCode(externalCode);
         if (retry) {
           region = retry;
         } else {
-          throw new Error(`Failed to create or find region ${regionSlug}`);
+          throw new Error(`Failed to create or find region ${externalCode}`);
         }
       }
     }
