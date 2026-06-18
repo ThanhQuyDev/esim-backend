@@ -286,6 +286,27 @@ export class EsimAccessService {
     }
   }
 
+  private formatHotSpotAllow(planType: string, dataMb: number): string | null {
+    // Only unlimited / unlimited-reduce plans have no fixed hotspot quota.
+    // fixed & daily plans have a concrete data allowance (MB/GB).
+    if (planType === 'unlimited' || planType === 'unlimited-reduce') {
+      return null;
+    }
+    if (!dataMb || dataMb <= 0) {
+      return null;
+    }
+    if (dataMb < 1024) {
+      return `${dataMb}MB`;
+    }
+    const gb = dataMb / 1024;
+    if (Number.isInteger(gb)) {
+      return `${gb}GB`;
+    }
+    // Round to 1 decimal place and strip trailing ".0" for clean labels
+    const rounded = Math.round(gb * 10) / 10;
+    return `${rounded}GB`;
+  }
+
   private async upsertPlan(
     pkg: EsimAccessPackage,
     destinationId: number | null,
@@ -359,12 +380,7 @@ export class EsimAccessService {
       isKyc: false,
       apn: null,
       hotSpot: true,
-      hotSpotAllow:
-        planType === 'fixed'
-          ? dataMb >= 1024
-            ? `${dataMb / 1024}GB`
-            : `${dataMb}MB`
-          : null,
+      hotSpotAllow: this.formatHotSpotAllow(planType, dataMb),
       lastSyncedAt: new Date(),
       isActive: true,
     };
@@ -633,8 +649,21 @@ export class EsimAccessService {
   private filterPreferNonhkip(
     packages: EsimAccessPackage[],
   ): EsimAccessPackage[] {
+    const normalizeFupPolicy = (fupPolicy: string): string => {
+      const lower = fupPolicy.toLowerCase().trim();
+
+      // 1 Mbps trở lên → giữ nguyên, coi là type riêng
+      const mbpsMatch = lower.match(/^([\d.]+)\s*mbps$/);
+      if (mbpsMatch && parseFloat(mbpsMatch[1]) >= 1) {
+        return fupPolicy;
+      }
+
+      // Dưới 1 Mbps (512 Kbps, 384 Kbps, ...) → gom chung 1 nhóm
+      return 'sub1mbps';
+    };
+
     const groupKey = (pkg: EsimAccessPackage) =>
-      `${pkg.locationCode}_${pkg.volume}_${pkg.duration}_${pkg.dataType}_${pkg.fupPolicy}`;
+      `${pkg.locationCode}_${pkg.volume}_${pkg.duration}_${pkg.dataType}_${normalizeFupPolicy(pkg.fupPolicy)}`;
 
     const grouped = new Map<string, EsimAccessPackage[]>();
     for (const pkg of packages) {
@@ -650,7 +679,6 @@ export class EsimAccessService {
       if (group.length === 1) {
         result.push(group[0]);
       } else {
-        // If any package in the group has "nonhkip", prefer it
         const nonhkip = group.find(
           (p) =>
             p.name.toLowerCase().includes('nonhkip') ||

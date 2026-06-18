@@ -269,6 +269,13 @@ export class JapanTravelSimService {
     // Get plan for APN and other fields
     const plan = await this.plansService.findById(orderItem.planId);
 
+    // Parse SM-DP+ Address and Activation Code from LPA.
+    // LPA format: LPA:1$<smdpAddress>$<activationCode>
+    // e.g. LPA:1$TEST.YOURSIM.CO.KR$C00F00A000A0000C0EE000CD000FDB0B
+    const lpa = result.qrcodecontent ?? null;
+    const smdpAddress = lpa ? this.extractSmdpFromLpa(lpa) : null;
+    const activationCode = lpa ? this.extractActivationCodeFromLpa(lpa) : null;
+
     // Create (or refresh) the eSIM record first so it shows up in
     // "list my eSIM" even if the email step fails. Both create and update
     // are idempotent on iccid, so re-running this on a retry is safe.
@@ -280,6 +287,8 @@ export class JapanTravelSimService {
     if (existing) {
       esim = await this.esimsService.update(existing.id, {
         lpa: result.qrcodecontent ?? undefined,
+        smdpAddress: smdpAddress ?? undefined,
+        activationCode: activationCode ?? undefined,
         apnValue: plan?.apn ?? undefined,
         status: 'available',
         userId: userId ?? undefined,
@@ -289,8 +298,8 @@ export class JapanTravelSimService {
     } else {
       esim = await this.esimsService.create({
         iccid: result.iccid,
-        smdpAddress: null,
-        activationCode: null,
+        smdpAddress,
+        activationCode,
         lpa: result.qrcodecontent ?? null,
         qrcode: null,
         apnValue: plan?.apn ?? null,
@@ -356,14 +365,22 @@ export class JapanTravelSimService {
 
       const order = await this.ordersService.findById(orderItem.orderId);
 
+      // Parse SM-DP+ Address and Activation Code from LPA for the email.
+      // LPA format: LPA:1$<smdpAddress>$<activationCode>
+      const lpa = result.qrcodecontent ?? '';
+      const smdpAddress = lpa ? this.extractSmdpFromLpa(lpa) : null;
+      const activationCode = lpa
+        ? this.extractActivationCodeFromLpa(lpa)
+        : null;
+
       await this.mailService.sendEsimPurchase({
         to: user.email,
         esimId: esim?.id ?? 0,
         qrAccessToken: esim?.qrAccessToken ?? null,
         iccid: result.iccid,
-        activationCode: '',
-        lpa: result.qrcodecontent ?? '',
-        smdpAddress: '',
+        activationCode: activationCode ?? '',
+        lpa,
+        smdpAddress: smdpAddress ?? '',
         apn: plan?.apn ?? '',
         phoneNumber: null,
         planName: plan?.name ?? '',
@@ -379,6 +396,32 @@ export class JapanTravelSimService {
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
+
+  /**
+   * Extract SM-DP+ Address from LPA code.
+   * LPA format: LPA:1$<smdpAddress>$<activationCode>
+   * Returns the value between the first $_$ (i.e. between first and second $).
+   */
+  private extractSmdpFromLpa(lpa: string): string | null {
+    const parts = lpa.split('$');
+    // parts[0] = "LPA:1", parts[1] = smdpAddress, parts[2] = activationCode
+    if (parts.length >= 2 && parts[1]) {
+      return parts[1];
+    }
+    return null;
+  }
+
+  /**
+   * Extract Activation Code from LPA code.
+   * Returns the value after the last $ in the LPA string.
+   */
+  private extractActivationCodeFromLpa(lpa: string): string | null {
+    const lastDollarIndex = lpa.lastIndexOf('$');
+    if (lastDollarIndex >= 0 && lastDollarIndex < lpa.length - 1) {
+      return lpa.substring(lastDollarIndex + 1);
+    }
+    return null;
+  }
 
   private getConfig() {
     return {

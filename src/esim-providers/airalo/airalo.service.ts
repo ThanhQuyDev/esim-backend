@@ -325,12 +325,7 @@ export class AiraloService {
       isKyc: operator.is_kyc_verify ?? false,
       apn: operator.apn_value ?? null,
       hotSpot: true,
-      hotSpotAllow:
-        planType === 'fixed'
-          ? dataMb >= 1024
-            ? `${dataMb / 1024}GB`
-            : `${dataMb}MB`
-          : null,
+      hotSpotAllow: this.formatHotSpotAllow(planType, dataMb),
       lastSyncedAt: new Date(),
       isActive: true,
     };
@@ -499,6 +494,27 @@ export class AiraloService {
       default:
         return `${locationName} ${dataLabel} / ${durationDays}day`;
     }
+  }
+
+  private formatHotSpotAllow(planType: string, dataMb: number): string | null {
+    // Only unlimited / unlimited-reduce plans have no fixed hotspot quota.
+    // fixed & daily plans have a concrete data allowance (MB/GB).
+    if (planType === 'unlimited' || planType === 'unlimited-reduce') {
+      return null;
+    }
+    if (!dataMb || dataMb <= 0) {
+      return null;
+    }
+    if (dataMb < 1024) {
+      return `${dataMb}MB`;
+    }
+    const gb = dataMb / 1024;
+    if (Number.isInteger(gb)) {
+      return `${gb}GB`;
+    }
+    // Round to 1 decimal place and strip trailing ".0" for clean labels
+    const rounded = Math.round(gb * 10) / 10;
+    return `${rounded}GB`;
   }
 
   private buildPlanSlug(
