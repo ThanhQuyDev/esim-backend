@@ -21,7 +21,7 @@ export class FindAllSupportedDevicesDto {
   @ApiPropertyOptional({
     default: 10,
     description:
-      'Page size. Defaults to 10. Server caps at 100 to keep the admin grid responsive.',
+      'Page size. Defaults to 10. Server caps at 200 to keep the admin grid responsive.',
   })
   @Transform(({ value }) => toPositiveInt(value, 10))
   @IsOptional()

@@ -62,7 +62,7 @@ export class SupportedDevicesController {
     // with sensible defaults (page=1, limit=10). We just cap limit at 100.
     const page = query.page ?? 1;
     let limit = query.limit ?? 10;
-    if (limit > 100) limit = 100;
+    if (limit > 200) limit = 200;
 
     const [data, count] =
       await this.supportedDevicesService.findAllWithPagination({
