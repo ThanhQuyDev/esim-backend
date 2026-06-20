@@ -288,34 +288,38 @@ export class JapanTravelSimService {
     const order = await this.ordersService.findById(orderItem.orderId);
     const userId = order?.userId ?? null;
 
-    let esim;
+    // `existing` truthy ⇒ this callback was already processed in a prior run
+    // (eSIM already provisioned, email already sent). The scheduled 60s poll
+    // and the 30s cron poll can race and both observe the order-item as
+    // `pending` before either flips it to `completed`. Treating an existing
+    // eSIM as the authoritative "already done" signal prevents duplicate
+    // purchase emails while still ensuring the order-item reaches `completed`.
     if (existing) {
-      esim = await this.esimsService.update(existing.id, {
-        lpa: result.qrcodecontent ?? undefined,
-        smdpAddress: smdpAddress ?? undefined,
-        activationCode: activationCode ?? undefined,
-        apnValue: plan?.apn ?? undefined,
-        status: 'available',
-        userId: userId ?? undefined,
-        orderItemId: orderItem.id,
-        provider: PROVIDER,
+      this.logger.log(
+        `JapanTravelSim eSIM already provisioned: iccid=${result.iccid}, channelOrderId=${result.channelOrderId}; skipping duplicate email`,
+      );
+      await this.orderItemsService.update(orderItem.id, {
+        status: 'completed',
+        providerOrderId: result.OrderNo,
+        providerOrderCode: result.channelOrderId,
       });
-    } else {
-      esim = await this.esimsService.create({
-        iccid: result.iccid,
-        smdpAddress,
-        activationCode,
-        lpa: result.qrcodecontent ?? null,
-        qrcode: null,
-        apnValue: plan?.apn ?? null,
-        status: 'available',
-        userId,
-        orderItemId: orderItem.id,
-        provider: PROVIDER,
-        planId: orderItem.planId,
-        dataUsed: '0',
-      });
+      return;
     }
+
+    const esim = await this.esimsService.create({
+      iccid: result.iccid,
+      smdpAddress,
+      activationCode,
+      lpa: result.qrcodecontent ?? null,
+      qrcode: null,
+      apnValue: plan?.apn ?? null,
+      status: 'available',
+      userId,
+      orderItemId: orderItem.id,
+      provider: PROVIDER,
+      planId: orderItem.planId,
+      dataUsed: '0',
+    });
 
     this.logger.log(
       `JapanTravelSim eSIM created: iccid=${result.iccid}, channelOrderId=${result.channelOrderId}`,
