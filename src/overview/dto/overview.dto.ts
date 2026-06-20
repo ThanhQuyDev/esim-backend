@@ -18,6 +18,8 @@ export const OVERVIEW_PROVIDERS = [
   'airalo',
   'esimaccess',
   'gadgetkorea',
+  'japantravelsim',
+  'viettel',
 ] as const;
 
 export type OverviewProvider = (typeof OVERVIEW_PROVIDERS)[number];
