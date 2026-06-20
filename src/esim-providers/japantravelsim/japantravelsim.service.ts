@@ -39,6 +39,12 @@ export class JapanTravelSimService {
 
   // ─── Order Submission ───────────────────────────────────────────────────────
 
+  // The JapanTravelSim INSERT API requires an `email` field, but we never send
+  // the customer's personal email to the provider. A fixed internal mailbox is
+  // used instead — it is never read for fulfillment (eSIM delivery is driven by
+  // the callback polling → eSIM record → our own purchase email).
+  private static readonly PROVIDER_EMAIL = 'esimvietnam.api@gmail.com';
+
   async submitOrder(params: {
     orderId: string;
     items: Array<{
@@ -46,7 +52,6 @@ export class JapanTravelSimService {
       wrGroup: string;
       deviceSkuId: string;
       days: number;
-      email: string;
     }>;
   }): Promise<JapanTravelSimInsertResponse> {
     const config = this.getConfig();
@@ -61,7 +66,7 @@ export class JapanTravelSimService {
         deviceSkuId: item.deviceSkuId,
         days: String(item.days),
         start_date: new Date().toISOString().split('T')[0],
-        email: item.email,
+        email: JapanTravelSimService.PROVIDER_EMAIL,
         language: 'en_US',
       })),
     };

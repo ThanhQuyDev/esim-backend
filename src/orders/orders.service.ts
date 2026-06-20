@@ -346,29 +346,49 @@ export class OrdersService {
     }
 
     // 8. Call JapanTravelSim API
+    // The JapanTravelSim INSERT API has no quantity field: each entry in
+    // `data[]` requires a unique OrderId and produces exactly one
+    // channelOrderId → one eSIM. So we expand each cart line by its
+    // quantity into individual units, submit one `data[]` row per unit,
+    // and create one order-item per unit (quantity = 1 each) to preserve a
+    // strict 1:1:1 mapping (order-item → channelOrderId → eSIM).
     if (japanTravelSimItems.length > 0) {
-      const user = await this.usersService.findById(userId);
-      const userEmail = user?.email ?? 'noreply@esimvn.com';
+      // Expand items by quantity into individual units. Each unit gets a
+      // globally unique index used to build a unique OrderId.
+      const jtsUnits: Array<{
+        item: (typeof japanTravelSimItems)[number];
+        unitOrderId: string;
+      }> = [];
+      let unitCounter = 0;
+      for (const item of japanTravelSimItems) {
+        const count = Math.max(1, item.quantity);
+        for (let u = 0; u < count; u++) {
+          jtsUnits.push({
+            item,
+            unitOrderId: `${orderNumber}-jts-${unitCounter}`,
+          });
+          unitCounter++;
+        }
+      }
 
-      // Batch into groups of 10
+      // Batch into groups of 10 (API limit)
       const channelOrderIdMap = new Map<string, string>();
-      for (let i = 0; i < japanTravelSimItems.length; i += 10) {
-        const batch = japanTravelSimItems.slice(i, i + 10);
+      for (let i = 0; i < jtsUnits.length; i += 10) {
+        const batch = jtsUnits.slice(i, i + 10);
         try {
           const result = await this.japanTravelSimService.submitOrder({
             orderId: `${orderNumber}-jts-${i}`,
-            items: batch.map((item, idx) => {
-              const [wrGroup, deviceSkuId] = item.plan.providerPlanId.includes(
-                ':',
-              )
-                ? item.plan.providerPlanId.split(':')
-                : ['plan', item.plan.providerPlanId];
+            items: batch.map((unit) => {
+              const [wrGroup, deviceSkuId] =
+                unit.item.plan.providerPlanId.includes(':')
+                  ? unit.item.plan.providerPlanId.split(':')
+                  : ['plan', unit.item.plan.providerPlanId];
               return {
-                OrderId: `${orderNumber}-jts-${i + idx}`,
+                OrderId: unit.unitOrderId,
                 wrGroup,
                 deviceSkuId,
-                days: item.plan.durationDays,
-                email: userEmail,
+                days: unit.item.plan.durationDays,
+                email: 'esimvietnam.api@gmail.com',
               };
             }),
           });
@@ -382,18 +402,17 @@ export class OrdersService {
         }
       }
 
-      for (let idx = 0; idx < japanTravelSimItems.length; idx++) {
-        const item = japanTravelSimItems[idx];
-        const itemOrderId = `${orderNumber}-jts-${idx}`;
-        const channelOrderId = channelOrderIdMap.get(itemOrderId) ?? null;
+      // Create one order-item per unit (quantity = 1)
+      for (const unit of jtsUnits) {
+        const channelOrderId = channelOrderIdMap.get(unit.unitOrderId) ?? null;
         await this.orderItemsService.create({
           orderId: order.id,
-          planId: item.planId,
+          planId: unit.item.planId,
           orderRequestId: channelOrderId,
           status: 'pending',
-          price: item.plan.price,
+          price: unit.item.plan.price,
           currency: dto.currency,
-          quantity: item.quantity,
+          quantity: 1,
         });
       }
 
@@ -560,6 +579,32 @@ export class OrdersService {
         : vndRate
           ? Math.round(item.plan.costPrice * vndRate) * item.quantity
           : 0;
+
+      // JapanTravelSim INSERT API has no quantity field: each unit needs its
+      // own unique OrderId → channelOrderId → eSIM. Expand into one
+      // order-item per unit (quantity = 1 each) so submitProviders can map
+      // one channelOrderId onto one order-item. Total price/cost is
+      // preserved because each row carries the per-unit amounts.
+      if (item.plan.provider === 'japantravelsim') {
+        const count = Math.max(1, item.quantity);
+        for (let u = 0; u < count; u++) {
+          await this.orderItemsService.create({
+            orderId: order.id,
+            planId: item.planId,
+            orderRequestId: null,
+            status: 'pending',
+            price: item.plan.price,
+            currency: dto.currency,
+            quantity: 1,
+            vndPrice: getDiscountedVndPrice(item.plan),
+            vndCostPrice: vndRate
+              ? Math.round(item.plan.costPrice * vndRate)
+              : 0,
+            periodNum: item.periodNum ?? null,
+          });
+        }
+        continue;
+      }
 
       await this.orderItemsService.create({
         orderId: order.id,
@@ -859,8 +904,7 @@ export class OrdersService {
 
     // 8. Call JapanTravelSim API
     if (japanTravelSimItems.length > 0) {
-      const user = await this.usersService.findById(order.userId);
-      const userEmail = user?.email ?? 'noreply@esimvn.com';
+      const userEmail = 'esimvietnam.api@gmail.com';
 
       const channelOrderIdMap = new Map<string, string>();
       for (let i = 0; i < japanTravelSimItems.length; i += 10) {
