@@ -305,11 +305,15 @@ export class OrdersService {
       }
     }
 
-    // 7. Call Gadget Korea API — one call for all gadgetkorea items
+    // 7. Call Gadget Korea API — one call for all gadgetkorea items.
+    // The provider returns one topupId per unit (qty 2 → 2 topupIds), and the
+    // webhook fires once per topupId. So we expand each line into one
+    // order-item per unit (quantity = 1), each bound to its own topupId, to
+    // keep a strict 1:1 mapping (order-item → topupId → eSIM webhook).
     if (gadgetKoreaItems.length > 0) {
       const gkOrderId = `${orderNumber}-gk`;
-      // Map optionId -> topupId after response
-      const topupIdMap = new Map<string, string>();
+      // optionId -> queue of topupIds (one entry per unit)
+      const topupIdsByOption = new Map<string, string[]>();
       try {
         const result = await this.gadgetKoreaService.submitOrder({
           orderId: gkOrderId,
@@ -318,10 +322,13 @@ export class OrdersService {
             qty: i.quantity,
           })),
         });
-        // result.products: [{ topupId, optionId }]
+        // result.products: [{ topupId, optionId }] — one per unit
         for (const p of result.products ?? []) {
           if (p.topupId && p.optionId) {
-            topupIdMap.set(p.optionId.toLowerCase(), p.topupId);
+            const key = p.optionId.toLowerCase();
+            const queue = topupIdsByOption.get(key) ?? [];
+            queue.push(p.topupId);
+            topupIdsByOption.set(key, queue);
           }
         }
       } catch (err) {
@@ -331,17 +338,20 @@ export class OrdersService {
       }
 
       for (const item of gadgetKoreaItems) {
-        const topupId =
-          topupIdMap.get(item.plan.providerPlanId.toLowerCase()) ?? null;
-        await this.orderItemsService.create({
-          orderId: order.id,
-          planId: item.planId,
-          orderRequestId: topupId,
-          status: 'pending',
-          price: item.plan.price,
-          currency: dto.currency,
-          quantity: item.quantity,
-        });
+        const queue =
+          topupIdsByOption.get(item.plan.providerPlanId.toLowerCase()) ?? [];
+        for (let u = 0; u < item.quantity; u++) {
+          const topupId = queue.shift() ?? null;
+          await this.orderItemsService.create({
+            orderId: order.id,
+            planId: item.planId,
+            orderRequestId: topupId,
+            status: 'pending',
+            price: item.plan.price,
+            currency: dto.currency,
+            quantity: 1,
+          });
+        }
       }
     }
 
@@ -585,7 +595,14 @@ export class OrdersService {
       // order-item per unit (quantity = 1 each) so submitProviders can map
       // one channelOrderId onto one order-item. Total price/cost is
       // preserved because each row carries the per-unit amounts.
-      if (item.plan.provider === 'japantravelsim') {
+      //
+      // Gadget Korea behaves the same way: it returns one topupId per unit and
+      // the webhook fires once per topupId, so it also needs one order-item
+      // per unit.
+      if (
+        item.plan.provider === 'japantravelsim' ||
+        item.plan.provider === 'gadgetkorea'
+      ) {
         const count = Math.max(1, item.quantity);
         for (let u = 0; u < count; u++) {
           await this.orderItemsService.create({
@@ -871,18 +888,28 @@ export class OrdersService {
 
     if (gadgetKoreaItems.length > 0) {
       const gkOrderId = `${order.orderNumber}-gk`;
-      const topupIdMap = new Map<string, string>();
+      // optionId -> queue of topupIds (one entry per unit)
+      const topupIdsByOption = new Map<string, string[]>();
+      // Aggregate qty per optionId since items are now one-per-unit
+      const qtyByOption = new Map<string, number>();
+      for (const item of gadgetKoreaItems) {
+        const key = item.plan.providerPlanId.toLowerCase();
+        qtyByOption.set(key, (qtyByOption.get(key) ?? 0) + item.quantity);
+      }
       try {
         const result = await this.gadgetKoreaService.submitOrder({
           orderId: gkOrderId,
-          products: gadgetKoreaItems.map((i) => ({
-            optionId: i.plan.providerPlanId.toLowerCase(),
-            qty: i.quantity,
+          products: [...qtyByOption.entries()].map(([optionId, qty]) => ({
+            optionId,
+            qty,
           })),
         });
         for (const p of result.products ?? []) {
           if (p.topupId && p.optionId) {
-            topupIdMap.set(p.optionId.toLowerCase(), p.topupId);
+            const key = p.optionId.toLowerCase();
+            const queue = topupIdsByOption.get(key) ?? [];
+            queue.push(p.topupId);
+            topupIdsByOption.set(key, queue);
           }
         }
       } catch (err) {
@@ -892,8 +919,9 @@ export class OrdersService {
       }
 
       for (const item of gadgetKoreaItems) {
-        const topupId =
-          topupIdMap.get(item.plan.providerPlanId.toLowerCase()) ?? null;
+        const queue =
+          topupIdsByOption.get(item.plan.providerPlanId.toLowerCase()) ?? [];
+        const topupId = queue.shift() ?? null;
         if (topupId) {
           await this.orderItemsService.update(item.id, {
             orderRequestId: topupId,
