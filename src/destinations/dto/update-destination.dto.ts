@@ -23,7 +23,6 @@ export class UpdateDestinationDto extends PartialType(CreateDestinationDto) {
   @ApiPropertyOptional({ example: 'JP', type: String })
   @IsOptional()
   @IsString()
-  @MaxLength(2)
   countryCode?: string;
 
   @ApiPropertyOptional({ example: 1, type: Number })
