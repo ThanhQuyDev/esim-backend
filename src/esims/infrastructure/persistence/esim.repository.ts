@@ -43,6 +43,8 @@ export abstract class EsimRepository {
 
   abstract remove(id: Esim['id']): Promise<void>;
 
+  abstract removeMany(ids: Esim['id'][]): Promise<number>;
+
   abstract restore(id: Esim['id']): Promise<void>;
 
   abstract markRefundedByOrderId(orderId: number): Promise<number>;

@@ -25,6 +25,11 @@ export class FilterEsimDto {
   @IsNumber()
   userId?: number;
 
+  @ApiPropertyOptional({ type: String, description: 'Filter by plan name' })
+  @IsOptional()
+  @IsString()
+  planName?: string;
+
   @ApiPropertyOptional({
     type: Boolean,
     description: 'Include all statuses (including refunded). Used by admin.',

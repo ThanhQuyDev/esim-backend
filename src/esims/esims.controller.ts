@@ -40,6 +40,10 @@ import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';
 import { ImportEsimsExcelDto } from './dto/import-esims-excel.dto';
 import {
+  BulkDeleteEsimsDto,
+  BulkDeleteEsimsResponseDto,
+} from './dto/bulk-delete-esims.dto';
+import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
@@ -269,6 +273,15 @@ export class EsimsController {
     @Body() updateEsimDto: UpdateEsimDto,
   ): Promise<Esim | null> {
     return this.esimsService.update(id, updateEsimDto);
+  }
+
+  @Delete('bulk')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: BulkDeleteEsimsResponseDto })
+  async removeMany(
+    @Body() dto: BulkDeleteEsimsDto,
+  ): Promise<BulkDeleteEsimsResponseDto> {
+    return { deleted: await this.esimsService.removeMany(dto.ids) };
   }
 
   @Delete(':id')

@@ -55,6 +55,11 @@ export class EsimsRelationalRepository implements EsimRepository {
         { search: `%${filterOptions.search}%` },
       );
     }
+    if (filterOptions?.planName) {
+      qb.andWhere('plan.name ILIKE :planName', {
+        planName: `%${filterOptions.planName}%`,
+      });
+    }
 
     if (sortOptions?.length) {
       sortOptions.forEach((sort) => {
@@ -175,6 +180,12 @@ export class EsimsRelationalRepository implements EsimRepository {
     await this.esimsRepository.softDelete(id);
   }
 
+  async removeMany(ids: Esim['id'][]): Promise<number> {
+    if (!ids.length) return 0;
+    const result = await this.esimsRepository.softDelete(ids as number[]);
+    return result.affected ?? 0;
+  }
+
   async restore(id: Esim['id']): Promise<void> {
     await this.esimsRepository.restore(id);
   }
@@ -196,7 +207,9 @@ export class EsimsRelationalRepository implements EsimRepository {
   async findAllForExport(
     filterOptions?: FilterEsimDto | null,
   ): Promise<Esim[]> {
-    const qb = this.esimsRepository.createQueryBuilder('esim');
+    const qb = this.esimsRepository
+      .createQueryBuilder('esim')
+      .leftJoinAndSelect('esim.plan', 'plan');
 
     if (filterOptions?.status) {
       qb.andWhere('esim.status = :status', { status: filterOptions.status });
@@ -209,6 +222,11 @@ export class EsimsRelationalRepository implements EsimRepository {
         '(esim.iccid ILIKE :search OR esim.esimTranNo ILIKE :search)',
         { search: `%${filterOptions.search}%` },
       );
+    }
+    if (filterOptions?.planName) {
+      qb.andWhere('plan.name ILIKE :planName', {
+        planName: `%${filterOptions.planName}%`,
+      });
     }
 
     qb.orderBy('esim.createdAt', 'DESC');

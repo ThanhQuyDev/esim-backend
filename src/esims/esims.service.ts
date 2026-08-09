@@ -149,6 +149,10 @@ export class EsimsService {
     await this.esimsRepository.remove(id);
   }
 
+  removeMany(ids: Esim['id'][]): Promise<number> {
+    return this.esimsRepository.removeMany(ids);
+  }
+
   /**
    * Bulk-mark every eSIM tied to the given order's items as `refunded`.
    * Returns the number of rows updated.
