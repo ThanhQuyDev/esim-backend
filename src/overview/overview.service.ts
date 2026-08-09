@@ -35,6 +35,9 @@ const ORDER_ITEM_ALIAS = 'order_item';
 const PLAN_ALIAS = 'plan';
 const UNKNOWN_GROUP = 'Unknown';
 
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+const VN_TIMEZONE = 'Asia/Ho_Chi_Minh';
+
 type RawValue = string | number | null | undefined;
 type PeriodGroupBy = 'day' | 'week' | 'month' | 'year';
 type OrderItemQuery = SelectQueryBuilder<OrderItemEntity>;
@@ -258,7 +261,10 @@ export class OverviewService {
         `COALESCE(SUM(${ORDER_ITEM_ALIAS}.quantity), 0)`,
         'plansPurchased',
       )
-      .addSelect(`COALESCE(SUM(${ORDER_ITEM_ALIAS}."vndPrice"), 0)`, 'revenue')
+      .addSelect(
+        `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
+        'revenue',
+      )
       .groupBy(destinationGroupExpression)
       .addGroupBy('destination.id')
       .addGroupBy(destinationNameExpression)
@@ -310,7 +316,7 @@ export class OverviewService {
     if (query.provider) {
       const raw = await this.createCompletedItemsQuery(ORDER_ITEM_ALIAS, query)
         .select(
-          `COALESCE(SUM(${ORDER_ITEM_ALIAS}."vndPrice"), 0)`,
+          `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
           'totalRevenue',
         )
         .getRawOne<{ totalRevenue?: RawValue }>();
@@ -323,7 +329,7 @@ export class OverviewService {
 
     const raw = await revenueQb
       .select(
-        `COALESCE(SUM(CASE WHEN ${ORDER_ALIAS}.status IN (:...completedOrderStatuses) THEN ${ORDER_ALIAS}."vndPrice" ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN ${ORDER_ALIAS}.status IN (:...completedOrderStatuses) THEN ${this.orderNetRevenueExpression()} ELSE 0 END), 0)`,
         'totalRevenue',
       )
       .setParameter('completedOrderStatuses', [...COMPLETED_ORDER_STATUSES])
@@ -446,7 +452,7 @@ export class OverviewService {
         'costPrice',
       )
       .addSelect(
-        `COALESCE(SUM(${ORDER_ITEM_ALIAS}."vndPrice"), 0)`,
+        `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
         'totalRevenue',
       )
       .groupBy('bucket')
@@ -477,7 +483,7 @@ export class OverviewService {
           'costPrice',
         )
         .addSelect(
-          `COALESCE(SUM(${ORDER_ITEM_ALIAS}."vndPrice"), 0)`,
+          `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
           'totalRevenue',
         )
         .groupBy(`${PLAN_ALIAS}.provider`)
@@ -521,7 +527,7 @@ export class OverviewService {
         'costPrice',
       )
       .addSelect(
-        `COALESCE(SUM(${ORDER_ITEM_ALIAS}."vndPrice"), 0)`,
+        `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
         'totalRevenue',
       )
       .groupBy(destinationGroupExpression)
@@ -620,54 +626,54 @@ export class OverviewService {
     from: string;
     to: string;
   } {
-    const now = new Date();
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
-    const endOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      23,
-      59,
-      59,
-      999,
-    );
+    const vnNow = new Date(Date.now() + VN_OFFSET_MS);
+
+    const startOfDayUtc = (offsetDays: number): Date =>
+      new Date(
+        Date.UTC(
+          vnNow.getUTCFullYear(),
+          vnNow.getUTCMonth(),
+          vnNow.getUTCDate() + offsetDays,
+          0,
+          0,
+          0,
+          0,
+        ) - VN_OFFSET_MS,
+      );
+    const endOfDayUtc = (offsetDays: number): Date =>
+      new Date(
+        Date.UTC(
+          vnNow.getUTCFullYear(),
+          vnNow.getUTCMonth(),
+          vnNow.getUTCDate() + offsetDays,
+          23,
+          59,
+          59,
+          999,
+        ) - VN_OFFSET_MS,
+      );
 
     switch (preset) {
       case 'today':
         return {
-          from: startOfToday.toISOString(),
-          to: endOfToday.toISOString(),
+          from: startOfDayUtc(0).toISOString(),
+          to: endOfDayUtc(0).toISOString(),
         };
-      case 'yesterday': {
-        const startOfYesterday = new Date(startOfToday);
-        startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-        const endOfYesterday = new Date(startOfYesterday);
-        endOfYesterday.setHours(23, 59, 59, 999);
+      case 'yesterday':
         return {
-          from: startOfYesterday.toISOString(),
-          to: endOfYesterday.toISOString(),
+          from: startOfDayUtc(-1).toISOString(),
+          to: endOfDayUtc(-1).toISOString(),
         };
-      }
-      case 'last7days': {
-        const start = new Date(startOfToday);
-        start.setDate(start.getDate() - 6);
+      case 'last7days':
         return {
-          from: start.toISOString(),
-          to: endOfToday.toISOString(),
+          from: startOfDayUtc(-6).toISOString(),
+          to: endOfDayUtc(0).toISOString(),
         };
-      }
-      case 'last30days': {
-        const start = new Date(startOfToday);
-        start.setDate(start.getDate() - 29);
+      case 'last30days':
         return {
-          from: start.toISOString(),
-          to: endOfToday.toISOString(),
+          from: startOfDayUtc(-29).toISOString(),
+          to: endOfDayUtc(0).toISOString(),
         };
-      }
     }
   }
 
@@ -683,25 +689,40 @@ export class OverviewService {
     const columnExpression =
       column === 'quantity'
         ? `${ORDER_ITEM_ALIAS}.quantity`
-        : `${ORDER_ITEM_ALIAS}."vndPrice"`;
+        : this.itemNetRevenueExpression();
 
     return `COALESCE(SUM(CASE WHEN ${ORDER_ALIAS}.status IN (:...completedOrderStatuses) AND ${ORDER_ITEM_ALIAS}.status IN (:...completedOrderItemStatuses) THEN ${columnExpression} ELSE 0 END), 0)`;
   }
 
+  private orderNetRevenueExpression(): string {
+    const subtotal = `${ORDER_ALIAS}."subtotalVndPrice"`;
+    const discounts = `${ORDER_ALIAS}."couponDiscountVndAmount" + ${ORDER_ALIAS}."referralDiscountVndAmount"`;
+
+    return `CASE WHEN ${subtotal} > 0 THEN GREATEST(${subtotal} - ${discounts}, 0) ELSE ${ORDER_ALIAS}."vndPrice" END`;
+  }
+
+  private itemNetRevenueExpression(): string {
+    const subtotal = `${ORDER_ALIAS}."subtotalVndPrice"`;
+    return `CASE WHEN ${subtotal} > 0 THEN ${ORDER_ITEM_ALIAS}."vndPrice" * ${this.orderNetRevenueExpression()} / ${subtotal} ELSE ${ORDER_ITEM_ALIAS}."vndPrice" END`;
+  }
+
   private getDateBucketExpression(groupBy: PeriodGroupBy): string {
+    // Shift the naive UTC timestamp into Vietnam wall-clock time before grouping.
+    const vnCreatedAt = `(${ORDER_ALIAS}."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE '${VN_TIMEZONE}')`;
+
     if (groupBy === 'year') {
-      return `TO_CHAR(DATE_TRUNC('year', ${ORDER_ALIAS}."createdAt"), 'YYYY')`;
+      return `TO_CHAR(DATE_TRUNC('year', ${vnCreatedAt}), 'YYYY')`;
     }
 
     if (groupBy === 'week') {
-      return `TO_CHAR(DATE_TRUNC('week', ${ORDER_ALIAS}."createdAt"), 'IYYY-IW')`;
+      return `TO_CHAR(DATE_TRUNC('week', ${vnCreatedAt}), 'IYYY-IW')`;
     }
 
     if (groupBy === 'month') {
-      return `TO_CHAR(DATE_TRUNC('month', ${ORDER_ALIAS}."createdAt"), 'YYYY-MM')`;
+      return `TO_CHAR(DATE_TRUNC('month', ${vnCreatedAt}), 'YYYY-MM')`;
     }
 
-    return `TO_CHAR(DATE_TRUNC('day', ${ORDER_ALIAS}."createdAt"), 'YYYY-MM-DD')`;
+    return `TO_CHAR(DATE_TRUNC('day', ${vnCreatedAt}), 'YYYY-MM-DD')`;
   }
 
   private getDestinationGroupExpression(): string {
