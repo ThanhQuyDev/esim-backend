@@ -12,6 +12,12 @@ export class Invoice {
     type: () => String,
     nullable: false,
   })
+  invoicePhone: string;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: false,
+  })
   invoiceEmail: string;
 
   @ApiProperty({

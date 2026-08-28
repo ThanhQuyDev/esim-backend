@@ -69,3 +69,7 @@ AIRALO_API_CLIENT_SECRET=
 AIRALO_BASE_URL=https://partners-api.airalo.com
 AIRALO_WEBHOOK_SECRET=
 GADGET_KOREA_WEBHOOK_SECRET=
+
+BILLION_CHANNEL_ID=
+BILLION_APP_SECRET=
+BILLION_BASE_URL=https://api-flow-ts.billionconnect.com/Flow/saler/2.0/invoke

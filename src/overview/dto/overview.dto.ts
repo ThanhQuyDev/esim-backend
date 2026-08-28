@@ -19,6 +19,8 @@ export const OVERVIEW_PROVIDERS = [
   'esimaccess',
   'gadgetkorea',
   'japantravelsim',
+  'microesim',
+  'billion',
   'viettel',
 ] as const;
 

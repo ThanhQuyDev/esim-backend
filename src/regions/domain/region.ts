@@ -13,6 +13,9 @@ export class Region {
   @ApiProperty({ type: String, example: 'europe' })
   slug: string;
 
+  @ApiPropertyOptional({ type: String, example: 'chau-au' })
+  slugVi: string | null;
+
   @ApiPropertyOptional({
     type: String,
     example: 'esimaccess-cn',

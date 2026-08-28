@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -19,6 +20,12 @@ export class CreateRegionDto {
   @IsNotEmpty()
   @IsString()
   slug: string;
+
+  @ApiPropertyOptional({ example: 'chau-au', type: String })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  slugVi?: string | null;
 
   @ApiPropertyOptional({
     example: 'esimaccess-cn',

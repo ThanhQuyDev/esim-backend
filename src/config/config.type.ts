@@ -8,7 +8,10 @@ import { EsimAccessConfig } from '../esim-providers/config/esimaccess-config.typ
 import { AiraloConfig } from '../esim-providers/config/airalo-config.type';
 import { GadgetKoreaConfig } from '../esim-providers/config/gadgetkorea-config.type';
 import { JapanTravelSimConfig } from '../esim-providers/config/japantravelsim-config.type';
+import { MicroEsimConfig } from '../esim-providers/config/microesim-config.type';
+import { BillionConfig } from '../esim-providers/config/billion-config.type';
 import { OnepayConfig } from '../payment/config/onepay-config.type';
+import { SepayConfig } from '../payment/config/sepay-config.type';
 
 export type AllConfigType = {
   app: AppConfig;
@@ -21,5 +24,8 @@ export type AllConfigType = {
   airalo: AiraloConfig;
   gadgetKorea: GadgetKoreaConfig;
   japanTravelSim: JapanTravelSimConfig;
+  microEsim: MicroEsimConfig;
+  billion: BillionConfig;
   onepay: OnepayConfig;
+  sepay: SepayConfig;
 };

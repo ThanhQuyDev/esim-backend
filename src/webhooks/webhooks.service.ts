@@ -6,6 +6,8 @@ import { OrderItemsService } from '../order-items/order-items.service';
 import { OrdersService } from '../orders/orders.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
+import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
+import { BillionService } from '../esim-providers/billion/billion.service';
 import { AllConfigType } from '../config/config.type';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
@@ -20,6 +22,8 @@ export class WebhooksService {
     private readonly ordersService: OrdersService,
     private readonly esimAccessService: EsimAccessService,
     private readonly gadgetKoreaService: GadgetKoreaService,
+    private readonly microEsimService: MicroEsimService,
+    private readonly billionService: BillionService,
     private readonly configService: ConfigService<AllConfigType>,
     private readonly mailService: MailService,
     private readonly usersService: UsersService,
@@ -577,5 +581,41 @@ export class WebhooksService {
         `Failed to send esim purchase email (orderItemId=${orderItemId}): ${(err as Error).message}`,
       );
     }
+  }
+
+  // ─── MicroEsim ─────────────────────────────────────────────────────────────
+
+  /**
+   * Handle an async callback from MicroEsim. The provider pushes a single-device
+   * payload; MicroEsimService re-queries full topup detail and upserts every
+   * eSIM idempotently, so this is a thin delegation.
+   */
+  async handleMicroEsimEvent(payload: any): Promise<void> {
+    this.logger.log(`[MicroEsim] webhook payload: ${JSON.stringify(payload)}`);
+    await this.microEsimService.handleCallback(payload);
+  }
+
+  // ─── BILLION ───────────────────────────────────────────────────────────────
+
+  /**
+   * Handle a BILLION notification. BILLION wraps notices in the same
+   * `{ tradeType, tradeTime, tradeData }` envelope as its requests — we only act
+   * on N009 (ESIM QR Code), passing `tradeData` to BillionService for
+   * idempotent provisioning. N012 (profile status change) and other notices are
+   * logged and acknowledged. BILLION defines no signature header for notices;
+   * provisioning is authenticated by the orderId existing in our DB (unknown
+   * ids are no-ops), mirroring the MicroEsim webhook.
+   */
+  async handleBillionEvent(payload: any): Promise<void> {
+    this.logger.log(`[Billion] webhook payload: ${JSON.stringify(payload)}`);
+    const tradeType = payload?.tradeType;
+    const tradeData = payload?.tradeData ?? payload;
+
+    if (tradeType === 'N009') {
+      await this.billionService.handleCallback(tradeData);
+      return;
+    }
+
+    this.logger.log(`[Billion] Acknowledged notice ${tradeType ?? '(none)'}`);
   }
 }

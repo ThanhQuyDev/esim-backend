@@ -3,6 +3,7 @@ import { BlogEntity } from '../entities/blog.entity';
 import { MiniTagMapper } from '../../../../../mini-tags/infrastructure/persistence/relational/mappers/mini-tag.mapper';
 import { PlanMapper } from '../../../../../plans/infrastructure/persistence/relational/mappers/plan.mapper';
 import { FaqMapper } from '../../../../../faqs/infrastructure/persistence/relational/mappers/faq.mapper';
+import { AuthorProfileMapper } from '../../../../../authors/infrastructure/persistence/relational/mappers/author-profile.mapper';
 
 export class BlogMapper {
   static toDomain(raw: BlogEntity): Blog {
@@ -12,6 +13,12 @@ export class BlogMapper {
     domainEntity.isPublished = raw.isPublished;
     domainEntity.author = raw.author;
     domainEntity.authorAvatar = raw.authorAvatar;
+    domainEntity.authorProfileId = raw.authorProfileId ?? null;
+    domainEntity.authorProfile = raw.authorProfile
+      ? AuthorProfileMapper.toDomain(raw.authorProfile)
+      : null;
+    domainEntity.authorSlug = raw.authorProfile?.slug ?? null;
+    domainEntity.authorBio = raw.authorProfile?.description ?? null;
     domainEntity.category = raw.category;
     domainEntity.parent = raw.parent;
     domainEntity.coverImage = raw.coverImage;
@@ -40,6 +47,8 @@ export class BlogMapper {
     persistenceEntity.isPublished = domainEntity.isPublished;
     persistenceEntity.author = domainEntity.author;
     persistenceEntity.authorAvatar = domainEntity.authorAvatar;
+    persistenceEntity.authorProfileId =
+      domainEntity.authorProfile?.id ?? domainEntity.authorProfileId ?? null;
     persistenceEntity.category = domainEntity.category;
     persistenceEntity.parent = domainEntity.parent;
     persistenceEntity.coverImage = domainEntity.coverImage;

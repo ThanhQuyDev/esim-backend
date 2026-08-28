@@ -8,6 +8,8 @@ export enum TopupProvider {
   AIRALO = 'AIRALO',
   ESIM_ACCESS = 'ESIM_ACCESS',
   GADGET_KOREA = 'GADGET_KOREA',
+  BILLION = 'BILLION',
+  MICRO_ESIM = 'MICRO_ESIM',
 }
 
 /**

@@ -16,6 +16,8 @@ import { FileEntity } from '../../../../../files/infrastructure/persistence/rela
 
 import { AuthProvidersEnum } from '../../../../../auth/auth-providers.enum';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
+import { MembershipTierEnum } from '../../../../../wallets/tier/tier.enum';
+import { AuthorProfileEntity } from '../../../../../authors/infrastructure/persistence/relational/entities/author-profile.entity';
 
 @Entity({
   name: 'user',
@@ -50,11 +52,25 @@ export class UserEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   phoneNumber: string | null;
 
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  lifetimeSpendVnd: number;
+
+  @Column({ type: String, nullable: true })
+  tierOverride: MembershipTierEnum | null;
+
+  @Column({ type: String, nullable: true })
+  tierOverrideReason: string | null;
+
   @OneToOne(() => FileEntity, {
     eager: true,
   })
   @JoinColumn()
   photo?: FileEntity | null;
+
+  @OneToOne(() => AuthorProfileEntity, (profile) => profile.user, {
+    eager: true,
+  })
+  authorProfile?: AuthorProfileEntity | null;
 
   @ManyToOne(() => RoleEntity, {
     eager: true,

@@ -12,6 +12,7 @@ import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
 import { EsimsService } from '../esims/esims.service';
 import { Order } from '../orders/domain/order';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
+import { UserEntity } from '../users/infrastructure/persistence/relational/entities/user.entity';
 import { RefundOrderDto } from './dto/admin-wallet.dto';
 import {
   AdminWalletListItemDto,
@@ -25,6 +26,14 @@ import { UserReferralProfileEntity } from './infrastructure/persistence/relation
 import { UserWalletEntity } from './infrastructure/persistence/relational/entities/user-wallet.entity';
 import { WalletHoldEntity } from './infrastructure/persistence/relational/entities/wallet-hold.entity';
 import { WalletTransactionEntity } from './infrastructure/persistence/relational/entities/wallet-transaction.entity';
+import { UserSpendTransactionEntity } from './infrastructure/persistence/relational/entities/user-spend-transaction.entity';
+import { resolveTierSummary } from './tier/tier.resolver';
+import { calculateCumulativeReversalVnd } from './wallets.refund';
+import {
+  MembershipTierEnum,
+  TierSourceEnum,
+  UserSpendTransactionTypeEnum,
+} from './tier/tier.enum';
 import {
   EXU_EXPIRY_DAYS,
   OrderReferralStatusEnum,
@@ -32,7 +41,6 @@ import {
   OrderRefundStatusEnum,
   REFERRAL_DISCOUNT_VND,
   REFERRAL_MIN_ORDER_VND,
-  REFERRAL_REWARD_VND,
   WalletHoldStatusEnum,
   WalletStatusEnum,
   WalletTransactionTypeEnum,
@@ -46,6 +54,8 @@ export type ReferralValidationResult = {
   referrerUserId: number;
   buyerDiscountVnd: number;
   rewardVnd: number;
+  membershipTierSnapshot: MembershipTierEnum;
+  tierSourceSnapshot: TierSourceEnum;
 };
 
 type WalletTransactionInput = {
@@ -79,6 +89,10 @@ export class WalletsService {
     private readonly orderRefundRepository: Repository<OrderRefundEntity>,
     @InjectRepository(OrderEntity)
     private readonly orderRepository: Repository<OrderEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
+    @InjectRepository(UserSpendTransactionEntity)
+    private readonly spendTransactionRepository: Repository<UserSpendTransactionEntity>,
     @Inject(forwardRef(() => EsimsService))
     private readonly esimsService: EsimsService,
   ) {}
@@ -94,12 +108,29 @@ export class WalletsService {
         )
       : null;
 
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException(`User ${userId} not found`);
+    const tierSummary = resolveTierSummary(
+      Number(user.lifetimeSpendVnd ?? 0),
+      user.tierOverride,
+    );
+
     return {
       balanceVnd: Number(wallet.balanceVnd),
       availableBalanceVnd,
       status: wallet.status,
       expiresAt,
       daysLeft,
+      lifetimeSpendVnd: Number(user.lifetimeSpendVnd ?? 0),
+      automaticTier: tierSummary.automaticTier,
+      membershipTier: tierSummary.membershipTier,
+      tierSource: tierSummary.tierSource,
+      cashbackPercent: tierSummary.benefits.cashbackPercent,
+      referralRewardVnd: tierSummary.benefits.referralRewardVnd,
+      tierBenefits: tierSummary.benefits,
+      nextTier: tierSummary.nextTier,
+      nextTierThresholdVnd: tierSummary.nextTierThresholdVnd,
+      progressPercent: tierSummary.progressPercent,
     };
   }
 
@@ -348,11 +379,24 @@ export class WalletsService {
       throw new BadRequestException('Bạn đã sử dụng mã giới thiệu trước đó.');
     }
 
+    const referrer = await this.userRepository.findOne({
+      where: { id: profile.userId },
+    });
+    if (!referrer) {
+      throw new NotFoundException('Referrer not found');
+    }
+    const tierSummary = resolveTierSummary(
+      Number(referrer.lifetimeSpendVnd ?? 0),
+      referrer.tierOverride,
+    );
+
     return {
       referralCode: code,
       referrerUserId: profile.userId,
       buyerDiscountVnd: REFERRAL_DISCOUNT_VND,
-      rewardVnd: REFERRAL_REWARD_VND,
+      rewardVnd: tierSummary.benefits.referralRewardVnd,
+      membershipTierSnapshot: tierSummary.membershipTier,
+      tierSourceSnapshot: tierSummary.tierSource,
     };
   }
 
@@ -374,6 +418,8 @@ export class WalletsService {
         referralCode: referral.referralCode,
         buyerDiscountVnd: referral.buyerDiscountVnd,
         rewardVnd: referral.rewardVnd,
+        membershipTierSnapshot: referral.membershipTierSnapshot,
+        tierSourceSnapshot: referral.tierSourceSnapshot,
         status: OrderReferralStatusEnum.PENDING,
       }),
     );
@@ -472,6 +518,8 @@ export class WalletsService {
   }
 
   async completePaidOrderBenefits(order: Order): Promise<void> {
+    await this.recordPurchaseSpend(order);
+
     if (order.walletSpentVndAmount > 0) {
       await this.captureHoldForOrder(order.id);
     }
@@ -486,7 +534,7 @@ export class WalletsService {
           sourceType: 'order',
           sourceId: String(order.id),
           idempotencyKey: `order_cashback:${order.id}`,
-          reason: '2% eXu cashback for paid order',
+          reason: `${order.cashbackPercentSnapshot}% eXu cashback for paid order`,
         },
       );
       await this.orderRepository.update(order.id, {
@@ -519,6 +567,125 @@ export class WalletsService {
       referral.status = OrderReferralStatusEnum.CREDITED;
       await this.orderReferralRepository.save(referral);
     }
+  }
+
+  private async recordPurchaseSpend(order: Order): Promise<void> {
+    const amountVnd = Math.max(
+      0,
+      Math.round(Number(order.eligibleSpendVnd ?? 0)),
+    );
+    if (amountVnd === 0) return;
+
+    await this.dataSource.transaction(async (manager) => {
+      const spendRepo = manager.getRepository(UserSpendTransactionEntity);
+      const idempotencyKey = `lifetime_spend:purchase:${order.id}`;
+      const existing = await spendRepo.findOne({ where: { idempotencyKey } });
+      if (existing) return;
+
+      const user = await manager.getRepository(UserEntity).findOne({
+        where: { id: order.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) throw new NotFoundException(`User ${order.userId} not found`);
+
+      await spendRepo.save(
+        spendRepo.create({
+          userId: order.userId,
+          orderId: order.id,
+          refundId: null,
+          type: UserSpendTransactionTypeEnum.PURCHASE,
+          amountVnd,
+          idempotencyKey,
+          metadata: {
+            membershipTier: order.membershipTierSnapshot,
+            tierSource: order.tierSourceSnapshot,
+          },
+        }),
+      );
+      user.lifetimeSpendVnd = Number(user.lifetimeSpendVnd ?? 0) + amountVnd;
+      await manager.getRepository(UserEntity).save(user);
+    });
+  }
+
+  private async recordRefundSpend(
+    order: Order,
+    refund: OrderRefundEntity,
+    refundedAmountVnd: number,
+    totalOrderValue: number,
+  ): Promise<void> {
+    const eligibleSpendVnd = Math.max(
+      0,
+      Math.round(Number(order.eligibleSpendVnd ?? 0)),
+    );
+    if (eligibleSpendVnd === 0 || totalOrderValue <= 0) return;
+
+    await this.dataSource.transaction(async (manager) => {
+      const spendRepo = manager.getRepository(UserSpendTransactionEntity);
+      const idempotencyKey = `lifetime_spend:refund:${refund.id}`;
+      const existing = await spendRepo.findOne({ where: { idempotencyKey } });
+      if (existing) return;
+
+      const reversed = await spendRepo
+        .createQueryBuilder('spend')
+        .select('COALESCE(SUM(ABS(spend.amountVnd)), 0)', 'sum')
+        .where('spend.orderId = :orderId', { orderId: order.id })
+        .andWhere('spend.type = :type', {
+          type: UserSpendTransactionTypeEnum.REFUND,
+        })
+        .getRawOne<{ sum: string }>();
+      const alreadyReversedVnd = Number(reversed?.sum ?? 0);
+      const reversalVnd = calculateCumulativeReversalVnd(
+        eligibleSpendVnd,
+        refundedAmountVnd,
+        totalOrderValue,
+        alreadyReversedVnd,
+      );
+      if (reversalVnd === 0) return;
+
+      const user = await manager.getRepository(UserEntity).findOne({
+        where: { id: order.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) throw new NotFoundException(`User ${order.userId} not found`);
+
+      await spendRepo.save(
+        spendRepo.create({
+          userId: order.userId,
+          orderId: order.id,
+          refundId: refund.id,
+          type: UserSpendTransactionTypeEnum.REFUND,
+          amountVnd: -reversalVnd,
+          idempotencyKey,
+          metadata: { refundedAmountVnd, totalOrderValue },
+        }),
+      );
+      user.lifetimeSpendVnd = Math.max(
+        0,
+        Number(user.lifetimeSpendVnd ?? 0) - reversalVnd,
+      );
+      await manager.getRepository(UserEntity).save(user);
+    });
+  }
+
+  private async getWalletBenefitReversalVnd(
+    orderId: number,
+    type: WalletTransactionTypeEnum,
+    originalAmountVnd: number,
+    refundedAmountVnd: number,
+    totalOrderValue: number,
+  ): Promise<number> {
+    const reversed = await this.transactionRepository
+      .createQueryBuilder('transaction')
+      .select('COALESCE(SUM(ABS(transaction.amountVnd)), 0)', 'sum')
+      .where('transaction.orderId = :orderId', { orderId })
+      .andWhere('transaction.type = :type', { type })
+      .getRawOne<{ sum: string }>();
+    return calculateCumulativeReversalVnd(
+      originalAmountVnd,
+      refundedAmountVnd,
+      totalOrderValue,
+      Number(reversed?.sum ?? 0),
+    );
   }
 
   async adminAdjustWallet(
@@ -588,10 +755,8 @@ export class WalletsService {
     }
 
     const amount = Math.round(Number(dto.amountVnd));
-    if (amount < 0) {
-      throw new BadRequestException(
-        'Refund amount must be greater than or equal to 0',
-      );
+    if (amount <= 0) {
+      throw new BadRequestException('Refund amount must be greater than 0');
     }
 
     // Total order value = cash paid + eXU spent
@@ -630,20 +795,33 @@ export class WalletsService {
       }),
     );
 
-    if (order.cashbackAmountVnd > 0 && !order.cashbackReversedAt) {
+    const refundedAmountVnd = alreadyRefunded + amount;
+
+    const cashbackAmountVnd = Number(order.cashbackAmountVnd ?? 0);
+    const cashbackReversalVnd = await this.getWalletBenefitReversalVnd(
+      order.id,
+      WalletTransactionTypeEnum.ORDER_CASHBACK_REVERSAL,
+      cashbackAmountVnd,
+      refundedAmountVnd,
+      totalOrderValue,
+    );
+    if (cashbackReversalVnd > 0) {
       await this.createTransaction(
         order.userId,
         WalletTransactionTypeEnum.ORDER_CASHBACK_REVERSAL,
-        -Number(order.cashbackAmountVnd),
+        -cashbackReversalVnd,
         {
           orderId: order.id,
-          sourceType: 'order',
-          sourceId: String(order.id),
-          idempotencyKey: `order_cashback_reversal:${order.id}`,
-          reason: 'Reverse order cashback after refund',
+          sourceType: 'order_refund',
+          sourceId: String(refund.id),
+          idempotencyKey: `order_cashback_reversal:${refund.id}`,
+          reason: 'Reverse order cashback proportionally after refund',
+          metadata: { refundedAmountVnd, totalOrderValue },
           createdByAdminId: adminId,
         },
       );
+    }
+    if (cashbackAmountVnd > 0 && refundedAmountVnd >= totalOrderValue) {
       await this.orderRepository.update(order.id, {
         cashbackReversedAt: new Date(),
       });
@@ -652,28 +830,49 @@ export class WalletsService {
     const referral = await this.orderReferralRepository.findOne({
       where: { orderId: order.id },
     });
-    if (
-      referral &&
-      referral.status === OrderReferralStatusEnum.CREDITED &&
-      !referral.reversedTransactionId
-    ) {
-      const reverseTransaction = await this.createTransaction(
-        referral.referrerUserId,
+    if (referral && referral.status === OrderReferralStatusEnum.CREDITED) {
+      const referralRewardVnd = Number(referral.rewardVnd ?? 0);
+      const referralReversalVnd = await this.getWalletBenefitReversalVnd(
+        order.id,
         WalletTransactionTypeEnum.REFERRAL_REWARD_REVERSAL,
-        -Number(referral.rewardVnd),
-        {
-          orderId: order.id,
-          refUserId: referral.refereeUserId,
-          sourceType: 'order_referral',
-          sourceId: String(referral.id),
-          idempotencyKey: `referral_reward_reversal:${order.id}`,
-          reason: 'Reverse referral reward after refund',
-          createdByAdminId: adminId,
-        },
+        referralRewardVnd,
+        refundedAmountVnd,
+        totalOrderValue,
       );
-      referral.reversedTransactionId = reverseTransaction.id;
-      referral.status = OrderReferralStatusEnum.REVERSED;
-      await this.orderReferralRepository.save(referral);
+      let reversedTransactionId = referral.reversedTransactionId;
+      if (referralReversalVnd > 0) {
+        const reverseTransaction = await this.createTransaction(
+          referral.referrerUserId,
+          WalletTransactionTypeEnum.REFERRAL_REWARD_REVERSAL,
+          -referralReversalVnd,
+          {
+            orderId: order.id,
+            refUserId: referral.refereeUserId,
+            sourceType: 'order_refund',
+            sourceId: String(refund.id),
+            idempotencyKey: `referral_reward_reversal:${refund.id}`,
+            reason: 'Reverse referral reward proportionally after refund',
+            metadata: { refundedAmountVnd, totalOrderValue },
+            createdByAdminId: adminId,
+          },
+        );
+        reversedTransactionId = reverseTransaction.id;
+      }
+      if (refundedAmountVnd >= totalOrderValue) {
+        if (!reversedTransactionId) {
+          const lastReversal = await this.transactionRepository.findOne({
+            where: {
+              orderId: order.id,
+              type: WalletTransactionTypeEnum.REFERRAL_REWARD_REVERSAL,
+            },
+            order: { createdAt: 'DESC' },
+          });
+          reversedTransactionId = lastReversal?.id ?? null;
+        }
+        referral.reversedTransactionId = reversedTransactionId;
+        referral.status = OrderReferralStatusEnum.REVERSED;
+        await this.orderReferralRepository.save(referral);
+      }
     } else if (
       referral &&
       referral.status === OrderReferralStatusEnum.PENDING
@@ -718,12 +917,20 @@ export class WalletsService {
       await this.orderRefundRepository.save(refund);
     }
 
-    const refundedAmountVnd = alreadyRefunded + amount;
+    await this.recordRefundSpend(
+      order,
+      refund,
+      refundedAmountVnd,
+      totalOrderValue,
+    );
+    const isFullyRefunded = refundedAmountVnd >= totalOrderValue;
     await this.orderRepository.update(order.id, {
-      status: 'refunded',
+      status: isFullyRefunded ? 'refunded' : 'paid',
       refundStatus: OrderRefundStatusEnum.COMPLETED,
       refundedAmountVnd,
     });
+
+    if (!isFullyRefunded) return refund;
 
     // Mark all eSIMs tied to this order as `refunded` so they no longer
     // appear in the user's /my/list. Failure here must NOT block the refund —

@@ -29,6 +29,12 @@ export class InvoiceEntity extends EntityRelationalHelper {
     nullable: false,
     type: String,
   })
+  invoicePhone: string;
+
+  @Column({
+    nullable: false,
+    type: String,
+  })
   invoiceEmail: string;
 
   @Column({

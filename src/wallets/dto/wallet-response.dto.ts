@@ -1,5 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { WalletStatusEnum, WalletTransactionTypeEnum } from '../wallets.enum';
+import { TierBenefits } from '../tier/tier.constants';
+import { MembershipTierEnum, TierSourceEnum } from '../tier/tier.enum';
 
 export class WalletTransactionDto {
   @ApiProperty({ type: Number })
@@ -82,6 +84,36 @@ export class WalletMeDto {
 
   @ApiProperty({ type: Number, nullable: true })
   daysLeft!: number | null;
+
+  @ApiProperty({ type: Number })
+  lifetimeSpendVnd!: number;
+
+  @ApiProperty({ enum: MembershipTierEnum })
+  automaticTier!: MembershipTierEnum;
+
+  @ApiProperty({ enum: MembershipTierEnum })
+  membershipTier!: MembershipTierEnum;
+
+  @ApiProperty({ enum: TierSourceEnum })
+  tierSource!: TierSourceEnum;
+
+  @ApiProperty({ type: Number })
+  cashbackPercent!: number;
+
+  @ApiProperty({ type: Number })
+  referralRewardVnd!: number;
+
+  @ApiProperty({ type: Object })
+  tierBenefits!: TierBenefits;
+
+  @ApiProperty({ enum: MembershipTierEnum, nullable: true })
+  nextTier!: MembershipTierEnum | null;
+
+  @ApiProperty({ type: Number, nullable: true })
+  nextTierThresholdVnd!: number | null;
+
+  @ApiProperty({ type: Number })
+  progressPercent!: number;
 }
 
 export class ReferralProfileDto {

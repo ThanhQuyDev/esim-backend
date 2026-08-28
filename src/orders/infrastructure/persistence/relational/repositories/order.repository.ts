@@ -202,6 +202,16 @@ export class OrdersRelationalRepository implements OrderRepository {
     return entity ? OrderMapper.toDomain(entity) : null;
   }
 
+  async findByBankTransferCode(
+    bankTransferCode: string,
+  ): Promise<NullableType<Order>> {
+    const entity = await this.ordersRepository.findOne({
+      where: { bankTransferCode },
+    });
+
+    return entity ? OrderMapper.toDomain(entity) : null;
+  }
+
   async update(id: Order['id'], payload: Partial<Order>): Promise<Order> {
     const entity = await this.ordersRepository.findOne({
       where: { id: Number(id) },

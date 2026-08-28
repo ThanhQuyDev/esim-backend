@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs';
 import { AuthEmailLoginDto } from './dto/auth-email-login.dto';
 import { AuthUpdateDto } from './dto/auth-update.dto';
 import { AuthUpdateProfileDto } from './dto/auth-update-profile.dto';
+import { AuthSetPasswordDto } from './dto/auth-set-password.dto';
 import { AuthProvidersEnum } from './auth-providers.enum';
 import { SocialInterface } from '../social/interfaces/social.interface';
 import { AuthRegisterLoginDto } from './dto/auth-register-login.dto';
@@ -57,20 +58,14 @@ export class AuthService {
       });
     }
 
-    if (user.provider !== AuthProvidersEnum.email) {
-      throw new UnprocessableEntityException({
-        status: HttpStatus.UNPROCESSABLE_ENTITY,
-        errors: {
-          email: `needLoginViaProvider:${user.provider}`,
-        },
-      });
-    }
-
     if (!user.password) {
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         errors: {
-          password: 'incorrectPassword',
+          password:
+            user.provider !== AuthProvidersEnum.email
+              ? `needLoginViaProvider:${user.provider}`
+              : 'passwordNotSet',
         },
       });
     }
@@ -514,6 +509,39 @@ export class AuthService {
     }
 
     await this.usersService.update(userJwtPayload.id, profileDto);
+
+    return this.usersService.findById(userJwtPayload.id);
+  }
+
+  async setPassword(
+    userJwtPayload: JwtPayloadType,
+    dto: AuthSetPasswordDto,
+  ): Promise<NullableType<User>> {
+    const currentUser = await this.usersService.findById(userJwtPayload.id);
+
+    if (!currentUser) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          user: 'userNotFound',
+        },
+      });
+    }
+
+    // Changing an existing password must go through PATCH /auth/me, which
+    // requires oldPassword.
+    if (currentUser.password) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          password: 'passwordAlreadySet',
+        },
+      });
+    }
+
+    await this.usersService.update(userJwtPayload.id, {
+      password: dto.password,
+    });
 
     return this.usersService.findById(userJwtPayload.id);
   }

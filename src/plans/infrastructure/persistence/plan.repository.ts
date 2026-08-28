@@ -52,6 +52,10 @@ export abstract class PlanRepository {
 
   abstract getDistinctProvidersByRegionId(regionId: number): Promise<string[]>;
 
+  abstract getLocalCarriers(): Promise<
+    { provider: string; fromVndPrice: number; planCount: number }[]
+  >;
+
   abstract deactivateStaleProviderPlans(
     provider: string,
     syncStartedAt: Date,

@@ -67,7 +67,7 @@ export class FaqsController {
       url,
       blogId,
       language,
-      limit: limit ? Number(limit) : 6,
+      limit: limit ? Number(limit) : undefined,
     });
   }
 

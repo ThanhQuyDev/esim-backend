@@ -7,6 +7,7 @@ export class DestinationMapper {
     domainEntity.id = raw.id;
     domainEntity.name = raw.name;
     domainEntity.slug = raw.slug;
+    domainEntity.slugVi = raw.slugVi ?? null;
     domainEntity.countryCode = raw.countryCode;
     domainEntity.parentId = raw.parentId;
     domainEntity.flagUrl = raw.flagUrl;
@@ -25,6 +26,7 @@ export class DestinationMapper {
         ref.id = r.id;
         ref.name = r.name;
         ref.slug = r.slug;
+        ref.slugVi = r.slugVi ?? null;
         ref.avatarUrl = r.avatarUrl;
         return ref;
       });
@@ -42,6 +44,7 @@ export class DestinationMapper {
     }
     persistenceEntity.name = domainEntity.name;
     persistenceEntity.slug = domainEntity.slug;
+    persistenceEntity.slugVi = domainEntity.slugVi ?? null;
     persistenceEntity.countryCode = domainEntity.countryCode;
     persistenceEntity.parentId = domainEntity.parentId;
     persistenceEntity.flagUrl = domainEntity.flagUrl;

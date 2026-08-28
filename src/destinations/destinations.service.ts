@@ -33,9 +33,24 @@ export class DestinationsService {
       });
     }
 
+    if (createDestinationDto.slugVi) {
+      const existingBySlugVi = await this.destinationsRepository.findBySlug(
+        createDestinationDto.slugVi,
+      );
+      if (existingBySlugVi) {
+        throw new UnprocessableEntityException({
+          status: HttpStatus.UNPROCESSABLE_ENTITY,
+          errors: {
+            slugVi: 'slugAlreadyExists',
+          },
+        });
+      }
+    }
+
     return this.destinationsRepository.create({
       name: createDestinationDto.name,
       slug: createDestinationDto.slug,
+      slugVi: createDestinationDto.slugVi ?? null,
       countryCode: createDestinationDto.countryCode,
       parentId: createDestinationDto.parentId ?? null,
       flagUrl: createDestinationDto.flagUrl ?? null,
@@ -102,9 +117,24 @@ export class DestinationsService {
       }
     }
 
+    if (updateDestinationDto.slugVi) {
+      const existingBySlugVi = await this.destinationsRepository.findBySlug(
+        updateDestinationDto.slugVi,
+      );
+      if (existingBySlugVi && existingBySlugVi.id !== Number(id)) {
+        throw new UnprocessableEntityException({
+          status: HttpStatus.UNPROCESSABLE_ENTITY,
+          errors: {
+            slugVi: 'slugAlreadyExists',
+          },
+        });
+      }
+    }
+
     return this.destinationsRepository.update(id, {
       name: updateDestinationDto.name,
       slug: updateDestinationDto.slug,
+      slugVi: updateDestinationDto.slugVi,
       countryCode: updateDestinationDto.countryCode,
       parentId: updateDestinationDto.parentId,
       flagUrl: updateDestinationDto.flagUrl,

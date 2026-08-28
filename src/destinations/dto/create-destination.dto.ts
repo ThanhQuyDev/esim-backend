@@ -20,6 +20,12 @@ export class CreateDestinationDto {
   @MaxLength(100)
   slug: string;
 
+  @ApiPropertyOptional({ example: 'nhat-ban', type: String })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  slugVi?: string | null;
+
   @ApiProperty({ example: 'JP', type: String })
   @IsNotEmpty()
   @IsString()

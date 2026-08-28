@@ -12,7 +12,10 @@ import esimAccessConfig from './esim-providers/config/esimaccess.config';
 import airaloConfig from './esim-providers/config/airalo.config';
 import gadgetKoreaConfig from './esim-providers/config/gadgetkorea.config';
 import japanTravelSimConfig from './esim-providers/config/japantravelsim.config';
+import microEsimConfig from './esim-providers/config/microesim.config';
+import billionConfig from './esim-providers/config/billion.config';
 import onepayConfig from './payment/config/onepay.config';
+import sepayConfig from './payment/config/sepay.config';
 import path from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -105,7 +108,10 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
         airaloConfig,
         gadgetKoreaConfig,
         japanTravelSimConfig,
+        microEsimConfig,
+        billionConfig,
         onepayConfig,
+        sepayConfig,
       ],
       envFilePath: ['.env'],
     }),

@@ -2,6 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { AiraloService } from './airalo/airalo.service';
 import { EsimAccessService } from './esimaccess/esimaccess.service';
+import { MicroEsimService } from './microesim/microesim.service';
+import { BillionService } from './billion/billion.service';
 import { PlansService } from '../plans/plans.service';
 import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 
@@ -12,6 +14,8 @@ export class SyncOrchestratorService implements OnModuleInit {
   constructor(
     private readonly airaloService: AiraloService,
     private readonly esimAccessService: EsimAccessService,
+    private readonly microEsimService: MicroEsimService,
+    private readonly billionService: BillionService,
     private readonly plansService: PlansService,
     private readonly profitMarginsService: ProfitMarginsService,
   ) {}
@@ -36,6 +40,18 @@ export class SyncOrchestratorService implements OnModuleInit {
       await this.esimAccessService.syncPlans();
     } catch (error: any) {
       this.logger.error(`EsimAccess sync failed: ${error.message}`);
+    }
+
+    try {
+      await this.microEsimService.syncPlans();
+    } catch (error: any) {
+      this.logger.error(`MicroEsim sync failed: ${error.message}`);
+    }
+
+    try {
+      await this.billionService.syncPlans();
+    } catch (error: any) {
+      this.logger.error(`Billion sync failed: ${error.message}`);
     }
 
     this.logger.log('Recalculating prices by tiers...');

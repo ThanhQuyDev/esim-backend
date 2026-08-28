@@ -13,9 +13,16 @@ import { PlansService } from '../plans/plans.service';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
+import { BillionService } from '../esim-providers/billion/billion.service';
+import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { AiraloTopupPackage } from '../esim-providers/airalo/airalo-api.types';
 import { EsimAccessPackage } from '../esim-providers/esimaccess/esimaccess-api.types';
 import { OnepayService } from '../payment/onepay.service';
+import {
+  generateBankTransferCode,
+  buildVietQrUrl,
+} from '../payment/bank-transfer.util';
+import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 import { TopupPackageDto, TopupProvider } from './dto/topup-package.dto';
 import { TopupCheckoutDto } from './dto/topup-checkout.dto';
 import {
@@ -30,22 +37,32 @@ const PROVIDER_NAME_TO_ENUM: Record<string, TopupProvider> = {
   airalo: TopupProvider.AIRALO,
   esimaccess: TopupProvider.ESIM_ACCESS,
   gadgetkorea: TopupProvider.GADGET_KOREA,
+  billion: TopupProvider.BILLION,
+  microesim: TopupProvider.MICRO_ESIM,
 };
 
 const ENUM_TO_PROVIDER_NAME: Record<TopupProvider, string> = {
   [TopupProvider.AIRALO]: 'airalo',
   [TopupProvider.ESIM_ACCESS]: 'esimaccess',
   [TopupProvider.GADGET_KOREA]: 'gadgetkorea',
+  [TopupProvider.BILLION]: 'billion',
+  [TopupProvider.MICRO_ESIM]: 'microesim',
 };
 
-/**
- * Markup applied on top of provider list price for AIRALO direct topups
- * (which are not stored in our `plan` table). Mirrors the default tier
- * markup used by the cataloguer; topups below the lowest tier will get
- * the same baseline.
- */
-const AIRALO_TOPUP_MARKUP_PERCENT = 30;
 const VND_ROUNDING_UNIT = 1000;
+
+/**
+ * Providers whose SIMs cannot currently be topped up, even though we catalogue
+ * their plans. MICRO_ESIM's public API exposes no recharge endpoint (its
+ * `esimSubscribe` only creates brand-new eSIMs and cannot target an existing
+ * device — verified against the official Postman collection 2026-08-25), so we
+ * must refuse a topup BEFORE the customer pays rather than collect money and
+ * fail at execute time. Remove a provider from this set once a real recharge
+ * path is wired.
+ */
+const TOPUP_UNSUPPORTED_PROVIDERS: ReadonlySet<TopupProvider> = new Set([
+  TopupProvider.MICRO_ESIM,
+]);
 
 function roundVndToThousands(amount: number): number {
   return Math.round(amount / VND_ROUNDING_UNIT) * VND_ROUNDING_UNIT;
@@ -73,7 +90,10 @@ export class TopupService {
     private readonly airaloService: AiraloService,
     private readonly esimAccessService: EsimAccessService,
     private readonly gadgetKoreaService: GadgetKoreaService,
+    private readonly billionService: BillionService,
+    private readonly microEsimService: MicroEsimService,
     private readonly onepayService: OnepayService,
+    private readonly profitMarginsService: ProfitMarginsService,
     private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
@@ -88,21 +108,41 @@ export class TopupService {
   }> {
     const { provider, esim } = await this.resolveProviderForIccid(iccid);
 
+    // Providers we catalogue but cannot recharge (e.g. MicroEsim) return an
+    // empty list so the FE shows "no packages" and never reaches checkout.
+    if (TOPUP_UNSUPPORTED_PROVIDERS.has(provider)) {
+      this.logger.log(
+        `listPackages: provider ${provider} does not support topup; returning empty list for iccid=${iccid}`,
+      );
+      return { iccid, provider, packages: [] };
+    }
+
     const vndRate = await this.fetchVndRate().catch(() => null);
 
     let packages: TopupPackageDto[] = [];
     if (provider === TopupProvider.AIRALO) {
       const list = await this.airaloService.listTopupPackages(iccid);
-      packages = list.map((p) => this.mapAiraloPackage(p, vndRate));
+      packages = await Promise.all(
+        list.map((p) => this.mapAiraloPackage(p, vndRate)),
+      );
     } else if (provider === TopupProvider.ESIM_ACCESS) {
       const list = await this.esimAccessService.listTopupPackagesByIccid(iccid);
-      packages = list.map((p) => this.mapEsimAccessPackage(p, vndRate));
+      packages = await Promise.all(
+        list.map((p) => this.mapEsimAccessPackage(p, vndRate)),
+      );
     } else {
-      // GADGET_KOREA — query our own `plan` table for matching plans
+      // GADGET_KOREA / BILLION / MICRO_ESIM — these providers have no
+      // "topups eligible for this SIM" API, so we offer topup plans from our
+      // own `plan` table, matched to the source SIM's country/region/type.
       const sourcePlan = esim.planId
         ? await this.plansService.findById(esim.planId)
         : null;
-      packages = await this.listGadgetKoreaPackagesFromDb(sourcePlan);
+      const providerName = ENUM_TO_PROVIDER_NAME[provider];
+      packages = await this.listDbCataloguePackages(
+        providerName,
+        provider,
+        sourcePlan,
+      );
     }
 
     return { iccid, provider, packages };
@@ -112,19 +152,28 @@ export class TopupService {
    * Creates a pending TOPUP order and builds the OnePay payment URL.
    * Provider's API is NOT called here — only at IPN-paid time.
    */
-  async checkout(
+  /**
+   * Validate the request and create the pending TOPUP order shared by both
+   * checkout flows (OnePay and bank transfer). Returns the created order plus
+   * the resolved VND amount so callers can build their payment instructions.
+   */
+  private async createPendingTopupOrder(
     userId: number,
     dto: TopupCheckoutDto,
-    clientIp: string,
-  ): Promise<{
-    success: true;
-    orderId: string;
-    paymentUrl: string;
-  }> {
+  ): Promise<{ order: Order; vndAmount: number }> {
     const { provider } = await this.resolveProviderForIccid(dto.iccid);
     if (provider !== dto.provider) {
       throw new BadRequestException(
         `Provider mismatch: iccid resolves to ${provider} but payload says ${dto.provider}`,
+      );
+    }
+
+    // Defense in depth: block checkout for providers we cannot recharge before
+    // any money is collected. listPackages already returns [] for these, so a
+    // well-behaved client never gets here — this stops a hand-crafted request.
+    if (TOPUP_UNSUPPORTED_PROVIDERS.has(provider)) {
+      throw new BadRequestException(
+        `Provider ${provider} does not support topup for existing eSIMs`,
       );
     }
 
@@ -178,6 +227,78 @@ export class TopupService {
       refundStatus: null,
       refundedAmountVnd: 0,
     });
+
+    return { order, vndAmount };
+  }
+
+  /**
+   * Bank-transfer (SePay / Techcombank) topup checkout. Creates the same
+   * pending TOPUP order as {@link checkout} but attaches a short transfer
+   * reference code instead of building an OnePay URL; the SePay webhook
+   * finalizes the order and triggers {@link executeTopup}.
+   */
+  async checkoutBankTransfer(
+    userId: number,
+    dto: TopupCheckoutDto,
+  ): Promise<{
+    success: true;
+    orderId: string;
+    bankTransferCode: string;
+    qrUrl: string;
+    amount: number;
+    accountNumber: string;
+    accountName: string;
+    bankCode: string;
+  }> {
+    const sepay = this.configService.getOrThrow('sepay', { infer: true });
+    if (!sepay.accountNumber) {
+      throw new BadRequestException(
+        'Bank transfer is not configured (missing SEPAY_ACCOUNT_NUMBER)',
+      );
+    }
+
+    const { order } = await this.createPendingTopupOrder(userId, dto);
+
+    const bankTransferCode = generateBankTransferCode();
+    await this.orderRepository.update(order.id, {
+      paymentMethod: 'bank_transfer',
+      bankTransferCode,
+    });
+
+    const qrUrl = buildVietQrUrl({
+      bankCode: sepay.bankCode,
+      accountNumber: sepay.accountNumber,
+      accountName: sepay.accountName,
+      amountVnd: order.vndPrice,
+      transferCode: bankTransferCode,
+    });
+
+    this.logger.log(
+      `Topup bank-transfer checkout: orderNumber=${order.orderNumber} code=${bankTransferCode} vnd=${order.vndPrice}`,
+    );
+
+    return {
+      success: true,
+      orderId: order.orderNumber,
+      bankTransferCode,
+      qrUrl,
+      amount: order.vndPrice,
+      accountNumber: sepay.accountNumber,
+      accountName: sepay.accountName,
+      bankCode: sepay.bankCode,
+    };
+  }
+
+  async checkout(
+    userId: number,
+    dto: TopupCheckoutDto,
+    clientIp: string,
+  ): Promise<{
+    success: true;
+    orderId: string;
+    paymentUrl: string;
+  }> {
+    const { order } = await this.createPendingTopupOrder(userId, dto);
 
     const paymentUrl = this.onepayService.buildPaymentUrl({
       orderNumber: order.orderNumber,
@@ -267,6 +388,37 @@ export class TopupService {
           topupId: esim.esimTranNo,
           optionId: packageId,
         });
+      } else if (provider === TopupProvider.BILLION) {
+        // BILLION recharge (F007) keys directly on the ICCID + plan skuId — it
+        // does NOT reference the original F040 order. packageId is the skuId.
+        await this.billionService.submitTopup({
+          channelOrderId: `${orderNumber}-tu`,
+          channelSubOrderId: `${orderNumber}-tu-1`,
+          iccid,
+          skuId: packageId,
+          copies: 1,
+        });
+      } else if (provider === TopupProvider.MICRO_ESIM) {
+        // MicroEsim recharge is keyed on the provider order (topup_id, stored as
+        // order-item.orderRequestId) + the eSIM device_id (esim.esimTranNo).
+        const esim = await this.esimsService.findByIccid(iccid);
+        if (!esim || !esim.esimTranNo) {
+          throw new Error(
+            `MicroEsim topup requires esim.esimTranNo (device_id) but it was missing for iccid=${iccid}`,
+          );
+        }
+        const orderRequestId = await this.resolveProviderOrderRef(esim.id);
+        if (!orderRequestId) {
+          throw new Error(
+            `MicroEsim topup requires the provider topup_id (order-item.orderRequestId) but it was missing for iccid=${iccid}`,
+          );
+        }
+        await this.microEsimService.submitTopup({
+          topupId: orderRequestId,
+          deviceId: esim.esimTranNo,
+          channelDataplanId: packageId,
+          customOrderNo: `${orderNumber}-tu`,
+        });
       } else {
         throw new Error(`Unsupported provider ${provider}`);
       }
@@ -307,6 +459,23 @@ export class TopupService {
     return { provider, esim };
   }
 
+  /**
+   * Resolve the provider-side order reference (`order-item.orderRequestId`)
+   * for a given eSIM. BILLION stores its F040 `orderId` there; MicroEsim
+   * stores its `topup_id`. Both are needed to target a recharge at the
+   * existing profile. Mirrors the relation walk used in EsimsService.getDataUsage.
+   */
+  private async resolveProviderOrderRef(
+    esimId: number,
+  ): Promise<string | null> {
+    const esimWithRelations =
+      await this.esimsService.findByIdWithRelations(esimId);
+    return (
+      (esimWithRelations as { orderItem?: { orderRequestId?: string | null } })
+        ?.orderItem?.orderRequestId ?? null
+    );
+  }
+
   private async markManualIntervention(
     order: Order,
     reason: string,
@@ -325,10 +494,10 @@ export class TopupService {
     }
   }
 
-  private mapAiraloPackage(
+  private async mapAiraloPackage(
     pkg: AiraloTopupPackage,
     vndRate: number | null,
-  ): TopupPackageDto {
+  ): Promise<TopupPackageDto> {
     const dataAmountBytes = pkg.is_unlimited
       ? 0
       : Math.round(pkg.amount * 1024 * 1024); // amount is MB
@@ -336,12 +505,19 @@ export class TopupService {
       ? 'Unlimited'
       : formatDataLabel(dataAmountBytes);
 
-    const retailPriceUsd = pkg.price; // already retail
-    const vndPrice = vndRate
-      ? roundVndToThousands(
-          retailPriceUsd * vndRate * (1 + AIRALO_TOPUP_MARKUP_PERCENT / 100),
-        )
-      : undefined;
+    // `net_price` is our cost (what Airalo charges us); apply our profit tiers
+    // on top of it — exactly like SIM pricing — instead of reselling Airalo's
+    // own retail price. Falls back to provider retail if the FX rate is down.
+    const costPriceUsd = pkg.net_price;
+    const vndPrice =
+      vndRate != null
+        ? await this.profitMarginsService.calculateRetailVndFromCostUsd(
+            costPriceUsd,
+            vndRate,
+          )
+        : undefined;
+    const retailPriceUsd =
+      vndPrice != null && vndRate ? vndPrice / vndRate : pkg.price;
 
     return {
       provider: TopupProvider.AIRALO,
@@ -351,27 +527,37 @@ export class TopupService {
       dataAmountText,
       durationDays: pkg.day,
       isUnlimited: pkg.is_unlimited,
-      price: pkg.net_price,
+      price: costPriceUsd,
       retailPrice: retailPriceUsd,
       vndPrice,
     };
   }
 
-  private mapEsimAccessPackage(
+  private async mapEsimAccessPackage(
     pkg: EsimAccessPackage,
     vndRate: number | null,
-  ): TopupPackageDto {
+  ): Promise<TopupPackageDto> {
     const dataAmountBytes = pkg.volume; // already in bytes
     const isUnlimited = pkg.dataType === 4;
     const dataAmountText = isUnlimited
       ? 'Unlimited'
       : formatDataLabel(dataAmountBytes);
 
+    // `price` (÷10000) is our cost; apply our profit tiers on top of it rather
+    // than reselling the provider's retailPrice, so topup margin matches SIM
+    // sales. Falls back to provider retail if the FX rate is down.
     const costPriceUsd = pkg.price / 10000;
-    const retailPriceUsd = pkg.retailPrice / 10000;
-    const vndPrice = vndRate
-      ? roundVndToThousands(retailPriceUsd * vndRate)
-      : undefined;
+    const vndPrice =
+      vndRate != null
+        ? await this.profitMarginsService.calculateRetailVndFromCostUsd(
+            costPriceUsd,
+            vndRate,
+          )
+        : undefined;
+    const retailPriceUsd =
+      vndPrice != null && vndRate
+        ? vndPrice / vndRate
+        : pkg.retailPrice / 10000;
 
     return {
       provider: TopupProvider.ESIM_ACCESS,
@@ -387,14 +573,21 @@ export class TopupService {
     };
   }
 
-  private async listGadgetKoreaPackagesFromDb(
+  /**
+   * List topup packages from our own `plan` table for providers that have no
+   * "topups eligible for this SIM" API (GADGET_KOREA, BILLION, MICRO_ESIM).
+   *
+   * We match on the source SIM's original plan (country/region + type) so the
+   * offered topups are compatible with the SIM. Without a source plan we fall
+   * back to all active plans for that provider.
+   */
+  private async listDbCataloguePackages(
+    providerName: string,
+    providerEnum: TopupProvider,
     sourcePlan: Plan | null,
   ): Promise<TopupPackageDto[]> {
-    // Gadget Korea: spec says "query DB to find plans matching country/region/type
-    // of the source SIM's original plan". Without a source plan we fall back to
-    // returning all active gadgetkorea plans.
     const filter: FilterPlanDto = {
-      provider: ['gadgetkorea'],
+      provider: [providerName],
       isActive: true,
     };
 
@@ -418,7 +611,7 @@ export class TopupService {
       const isUnlimited =
         plan.type === 'unlimited' || plan.type === 'unlimited-reduce';
       return {
-        provider: TopupProvider.GADGET_KOREA,
+        provider: providerEnum,
         packageId: plan.providerPlanId,
         name: plan.name,
         dataAmountBytes,

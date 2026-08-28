@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { MiniTag } from '../../mini-tags/domain/mini-tag';
+import { AuthorProfile } from '../../authors/domain/author-profile';
 
 export class BlogListItem {
   @ApiProperty({ type: String })
@@ -19,6 +20,12 @@ export class BlogListItem {
 
   @ApiProperty({ type: () => String, nullable: true })
   coverImage?: string | null;
+
+  @ApiProperty({ type: () => AuthorProfile, nullable: true })
+  authorProfile?: AuthorProfile | null;
+
+  @ApiProperty({ type: () => String, nullable: true })
+  authorSlug?: string | null;
 
   @ApiProperty({ type: () => String, nullable: true })
   author?: string | null;

@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { MiniTag } from '../../mini-tags/domain/mini-tag';
 import { Plan } from '../../plans/domain/plan';
 import { Faq } from '../../faqs/domain/faq';
+import { AuthorProfile } from '../../authors/domain/author-profile';
 
 export class Blog {
   @ApiProperty({ type: () => String, nullable: false })
@@ -12,6 +13,18 @@ export class Blog {
 
   @ApiProperty({ type: () => Boolean, nullable: false })
   isPublished?: boolean;
+
+  @ApiProperty({ type: () => AuthorProfile, nullable: true })
+  authorProfile?: AuthorProfile | null;
+
+  @ApiProperty({ type: () => Number, nullable: true })
+  authorProfileId?: number | null;
+
+  @ApiProperty({ type: () => String, nullable: true })
+  authorSlug?: string | null;
+
+  @ApiProperty({ type: () => String, nullable: true })
+  authorBio?: string | null;
 
   @ApiProperty({ type: () => String, nullable: true })
   author?: string | null;

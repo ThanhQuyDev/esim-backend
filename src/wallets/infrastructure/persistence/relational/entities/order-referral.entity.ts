@@ -13,6 +13,7 @@ import { UserEntity } from '../../../../../users/infrastructure/persistence/rela
 import { OrderEntity } from '../../../../../orders/infrastructure/persistence/relational/entities/order.entity';
 import { WalletTransactionEntity } from './wallet-transaction.entity';
 import { OrderReferralStatusEnum } from '../../../../wallets.enum';
+import { MembershipTierEnum, TierSourceEnum } from '../../../../tier/tier.enum';
 
 @Entity({ name: 'order_referral' })
 export class OrderReferralEntity extends EntityRelationalHelper {
@@ -52,6 +53,12 @@ export class OrderReferralEntity extends EntityRelationalHelper {
 
   @Column({ type: 'decimal', precision: 14, scale: 0, default: 10000 })
   rewardVnd!: number;
+
+  @Column({ type: String, default: MembershipTierEnum.TRAVELER })
+  membershipTierSnapshot!: MembershipTierEnum;
+
+  @Column({ type: String, default: TierSourceEnum.AUTOMATIC })
+  tierSourceSnapshot!: TierSourceEnum;
 
   @Index()
   @Column({ type: String, default: OrderReferralStatusEnum.PENDING })

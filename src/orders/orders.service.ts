@@ -22,6 +22,8 @@ import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { JapanTravelSimService } from '../esim-providers/japantravelsim/japantravelsim.service';
+import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
+import { BillionService } from '../esim-providers/billion/billion.service';
 import { AllConfigType } from '../config/config.type';
 import { CouponsService } from '../coupons/coupons.service';
 import { EsimsService } from '../esims/esims.service';
@@ -33,8 +35,8 @@ import { UsersService } from '../users/users.service';
 import { Plan } from '../plans/domain/plan';
 import { WalletsService } from '../wallets/wallets.service';
 import type { ReferralValidationResult } from '../wallets/wallets.service';
-import { EXU_CASHBACK_PERCENT } from '../wallets/wallets.enum';
 import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
+import { MembershipTierEnum, TierSourceEnum } from '../wallets/tier/tier.enum';
 import { InvoiceRepository } from '../invoices/infrastructure/persistence/invoice.repository';
 import { InvoiceStatus } from '../invoices/invoices.enum';
 
@@ -65,6 +67,10 @@ type OrderPricing = {
   walletSpentVndAmount: number;
   payableVndPrice: number;
   cashbackAmountVnd: number;
+  membershipTierSnapshot: MembershipTierEnum;
+  tierSourceSnapshot: TierSourceEnum;
+  cashbackPercentSnapshot: number;
+  eligibleSpendVnd: number;
   referral?: ReferralValidationResult;
 };
 
@@ -80,6 +86,8 @@ export class OrdersService {
     private readonly esimAccessService: EsimAccessService,
     private readonly gadgetKoreaService: GadgetKoreaService,
     private readonly japanTravelSimService: JapanTravelSimService,
+    private readonly microEsimService: MicroEsimService,
+    private readonly billionService: BillionService,
     private readonly configService: ConfigService<AllConfigType>,
     @Inject(forwardRef(() => CouponsService))
     private readonly couponsService: CouponsService,
@@ -107,6 +115,7 @@ export class OrdersService {
         companyName: invoiceDto.companyName,
         taxCode: invoiceDto.taxCode,
         address: invoiceDto.address,
+        invoicePhone: invoiceDto.invoicePhone,
         invoiceEmail: invoiceDto.invoiceEmail,
         orderId: order.id,
         order,
@@ -142,6 +151,10 @@ export class OrdersService {
       walletSpentVndAmount: 0,
       payableVndPrice: 0,
       cashbackAmountVnd: 0,
+      membershipTierSnapshot: MembershipTierEnum.TRAVELER,
+      tierSourceSnapshot: TierSourceEnum.AUTOMATIC,
+      cashbackPercentSnapshot: 2,
+      eligibleSpendVnd: 0,
       cashbackTransactionId: null,
       cashbackReversedAt: null,
       refundStatus: null,
@@ -196,6 +209,10 @@ export class OrdersService {
       walletSpentVndAmount: pricing.walletSpentVndAmount,
       payableVndPrice: pricing.payableVndPrice,
       cashbackAmountVnd: pricing.cashbackAmountVnd,
+      membershipTierSnapshot: pricing.membershipTierSnapshot,
+      tierSourceSnapshot: pricing.tierSourceSnapshot,
+      cashbackPercentSnapshot: pricing.cashbackPercentSnapshot,
+      eligibleSpendVnd: pricing.eligibleSpendVnd,
       cashbackTransactionId: null,
       cashbackReversedAt: null,
       refundStatus: null,
@@ -561,6 +578,10 @@ export class OrdersService {
       walletSpentVndAmount: pricing.walletSpentVndAmount,
       payableVndPrice: pricing.payableVndPrice,
       cashbackAmountVnd: pricing.cashbackAmountVnd,
+      membershipTierSnapshot: pricing.membershipTierSnapshot,
+      tierSourceSnapshot: pricing.tierSourceSnapshot,
+      cashbackPercentSnapshot: pricing.cashbackPercentSnapshot,
+      eligibleSpendVnd: pricing.eligibleSpendVnd,
       cashbackTransactionId: null,
       cashbackReversedAt: null,
       refundStatus: null,
@@ -699,24 +720,32 @@ export class OrdersService {
     }
 
     const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
-    const afterCouponAndReferral = Math.max(
+    const eligibleSpendVnd = Math.max(
       0,
       subtotalVndPrice - couponDiscountVndAmount - referralDiscountVndAmount,
     );
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException(`User ${userId} not found`);
+    }
+    const membershipTierSnapshot =
+      user.membershipTier ?? MembershipTierEnum.TRAVELER;
+    const tierSourceSnapshot = user.tierSource ?? TierSourceEnum.AUTOMATIC;
+    const cashbackPercentSnapshot = user.tierBenefits?.cashbackPercent ?? 2;
     const requestedWalletAmount = Math.max(
       0,
       Math.round(Number(dto.useWalletAmountVnd ?? 0)),
     );
     const walletSpentVndAmount = Math.min(
       requestedWalletAmount,
-      afterCouponAndReferral,
+      eligibleSpendVnd,
     );
     const payableVndPrice = Math.max(
       0,
-      afterCouponAndReferral - walletSpentVndAmount,
+      eligibleSpendVnd - walletSpentVndAmount,
     );
     const cashbackAmountVnd = Math.round(
-      (afterCouponAndReferral * EXU_CASHBACK_PERCENT) / 100,
+      (eligibleSpendVnd * cashbackPercentSnapshot) / 100,
     );
 
     return {
@@ -732,12 +761,20 @@ export class OrdersService {
       walletSpentVndAmount,
       payableVndPrice,
       cashbackAmountVnd,
+      membershipTierSnapshot,
+      tierSourceSnapshot,
+      cashbackPercentSnapshot,
+      eligibleSpendVnd,
       referral,
     };
   }
 
   async findByOrderNumber(orderNumber: string): Promise<NullableType<Order>> {
     return this.orderRepository.findByOrderNumber(orderNumber);
+  }
+
+  async findByBankTransferCode(code: string): Promise<NullableType<Order>> {
+    return this.orderRepository.findByBankTransferCode(code);
   }
 
   async findByOrderNumberAndUserId(
@@ -833,6 +870,12 @@ export class OrdersService {
     );
     const japanTravelSimItems = itemsWithPlans.filter(
       (i) => i.plan.provider === 'japantravelsim',
+    );
+    const microEsimItems = itemsWithPlans.filter(
+      (i) => i.plan.provider === 'microesim',
+    );
+    const billionItems = itemsWithPlans.filter(
+      (i) => i.plan.provider === 'billion',
     );
     const localItems = itemsWithPlans.filter((i) => i.plan.isLocalInventory);
 
@@ -981,6 +1024,77 @@ export class OrdersService {
       this.japanTravelSimService.scheduleCallbackAfterSubmit(
         allChannelOrderIds,
       );
+    }
+
+    // 8b. Call MicroEsim API — one esimSubscribe per order item (number = qty).
+    // eSIMs are provisioned asynchronously: MicroEsim pushes to our webhook, and
+    // MicroEsimService also schedules a topupDetail poll as a fallback.
+    if (microEsimItems.length > 0) {
+      const backendDomain = this.configService.getOrThrow('app.backendDomain', {
+        infer: true,
+      });
+      const notifyUrl = `${backendDomain}/api/v1/webhooks/microesim`;
+      const topupIds: string[] = [];
+
+      for (const item of microEsimItems) {
+        try {
+          const topupId = await this.microEsimService.submitOrder({
+            channelDataplanId: item.plan.providerPlanId,
+            number: item.quantity,
+            customOrderNo: `${order.orderNumber}-me-${item.id}`,
+            notifyUrl,
+          });
+          await this.orderItemsService.update(item.id, {
+            orderRequestId: topupId,
+          });
+          topupIds.push(topupId);
+        } catch (err) {
+          this.logger.error(
+            `MicroEsim order failed for plan ${item.planId}: ${(err as Error).message}`,
+          );
+        }
+      }
+
+      this.microEsimService.scheduleCallbackAfterSubmit(topupIds);
+    }
+
+    // 8c. Call BILLION API — one F040 create-eSIM-order per BILLION order.
+    // eSIMs are provisioned asynchronously: BILLION pushes the QR (N009) to our
+    // webhook. Unlike MicroEsim there is no query that returns the QR/LPA, so
+    // there is no poll fallback — we only record the wait (see BillionService).
+    if (billionItems.length > 0) {
+      let email = 'esimvietnam.api@gmail.com';
+      if (order.userId) {
+        const user = await this.usersService.findById(order.userId);
+        if (user?.email) email = user.email;
+      }
+
+      const channelOrderId = `${order.orderNumber}-bl`;
+      try {
+        const result = await this.billionService.submitOrder({
+          channelOrderId,
+          email,
+          subOrderList: billionItems.map((item) => ({
+            channelSubOrderId: `${order.orderNumber}-bl-${item.id}`,
+            deviceSkuId: item.plan.providerPlanId,
+            planSkuCopies: 1,
+            number: item.quantity,
+          })),
+        });
+
+        // Every order-item in this BILLION order shares the main orderId, which
+        // is how the N009 webhook (findByOrderRequestId) locates them.
+        for (const item of billionItems) {
+          await this.orderItemsService.update(item.id, {
+            orderRequestId: result.orderId,
+          });
+        }
+        this.billionService.scheduleCallbackAfterSubmit([result.orderId]);
+      } catch (err) {
+        this.logger.error(
+          `BILLION order failed for order ${order.orderNumber}: ${(err as Error).message}`,
+        );
+      }
     }
 
     // 9. Local providers (esimvn) — assign available esims from inventory
@@ -1352,6 +1466,7 @@ export class OrdersService {
             companyName: invoice.companyName,
             taxCode: invoice.taxCode,
             address: invoice.address,
+            invoicePhone: invoice.invoicePhone,
             invoiceEmail: invoice.invoiceEmail,
             createdAt: invoice.createdAt,
             updatedAt: invoice.updatedAt,
@@ -1387,6 +1502,9 @@ export class OrdersService {
       }),
       ...(updateOrderDto.paymentId !== undefined && {
         paymentId: updateOrderDto.paymentId,
+      }),
+      ...(updateOrderDto.bankTransferCode !== undefined && {
+        bankTransferCode: updateOrderDto.bankTransferCode,
       }),
       ...(updateOrderDto.cashbackTransactionId !== undefined && {
         cashbackTransactionId: updateOrderDto.cashbackTransactionId,
@@ -1505,6 +1623,24 @@ export class OrdersService {
           // Cancel gadgetkorea: use orderRequestId from order-item
           if (item.orderRequestId) {
             await this.gadgetKoreaService.cancelOrder(item.orderRequestId);
+          }
+        } else if (item.plan.provider === 'microesim') {
+          // Cancel microesim: terminate each eSIM by topup_id (orderRequestId)
+          // + device_id (stored as esimTranNo).
+          const esims = await this.esimsService.findByOrderItemIds([item.id]);
+          for (const esim of esims) {
+            if (item.orderRequestId && esim.esimTranNo) {
+              await this.microEsimService.terminate(
+                item.orderRequestId,
+                esim.esimTranNo,
+              );
+            }
+          }
+        } else if (item.plan.provider === 'billion') {
+          // Cancel billion: F008 cancels the whole order by orderId
+          // (stored as orderRequestId). Best-effort inside the service.
+          if (item.orderRequestId) {
+            await this.billionService.cancelOrder(item.orderRequestId);
           }
         } else if (item.plan.isLocalInventory) {
           // Viettel (local): mark esim as refunded

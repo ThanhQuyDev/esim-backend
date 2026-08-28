@@ -1,4 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  MembershipTierEnum,
+  TierSourceEnum,
+} from '../../wallets/tier/tier.enum';
 
 export class Order {
   @ApiProperty({
@@ -81,6 +85,14 @@ export class Order {
 
   @ApiPropertyOptional({
     type: String,
+    example: 'ESIM7K2M9P',
+    description:
+      'Short bank-transfer reference code (only set for bank_transfer orders)',
+  })
+  bankTransferCode?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
     example: 'SUMMER10',
   })
   couponCode?: string | null;
@@ -124,6 +136,18 @@ export class Order {
 
   @ApiProperty({ type: Number, example: 9000 })
   cashbackAmountVnd!: number;
+
+  @ApiProperty({ enum: MembershipTierEnum })
+  membershipTierSnapshot!: MembershipTierEnum;
+
+  @ApiProperty({ enum: TierSourceEnum })
+  tierSourceSnapshot!: TierSourceEnum;
+
+  @ApiProperty({ type: Number, example: 2 })
+  cashbackPercentSnapshot!: number;
+
+  @ApiProperty({ type: Number, example: 450000 })
+  eligibleSpendVnd!: number;
 
   @ApiPropertyOptional({ type: Number })
   cashbackTransactionId?: number | null;

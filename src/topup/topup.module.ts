@@ -6,6 +6,7 @@ import { EsimsModule } from '../esims/esims.module';
 import { PlansModule } from '../plans/plans.module';
 import { EsimProvidersModule } from '../esim-providers/esim-providers.module';
 import { OnepayModule } from '../payment/onepay.module';
+import { ProfitMarginsModule } from '../profit-margins/profit-margins.module';
 
 @Module({
   imports: [
@@ -16,6 +17,9 @@ import { OnepayModule } from '../payment/onepay.module';
     PlansModule,
     EsimProvidersModule,
     OnepayModule,
+    // Provides ProfitMarginsService so Airalo / eSIMAccess topups apply the
+    // same tiered profit margin as SIM plans.
+    ProfitMarginsModule,
   ],
   controllers: [TopupController],
   providers: [TopupService],

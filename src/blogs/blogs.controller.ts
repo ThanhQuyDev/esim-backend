@@ -10,6 +10,7 @@ import {
   Query,
   Headers,
   NotFoundException,
+  Request,
 } from '@nestjs/common';
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
@@ -31,6 +32,10 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { QueryBlogDto } from './dto/find-all-blogs.dto';
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
+import { AuthorsService } from '../authors/authors.service';
 
 @ApiTags('Blogs')
 @Controller({
@@ -38,16 +43,23 @@ import { QueryBlogDto } from './dto/find-all-blogs.dto';
   version: '1',
 })
 export class BlogsController {
-  constructor(private readonly blogsService: BlogsService) {}
+  constructor(
+    private readonly blogsService: BlogsService,
+    private readonly authorsService: AuthorsService,
+  ) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.author)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
     type: Blog,
   })
-  create(@Body() createBlogDto: CreateBlogDto) {
-    return this.blogsService.create(createBlogDto);
+  create(
+    @Body() createBlogDto: CreateBlogDto,
+    @Request() request: { user: { id: number } },
+  ) {
+    return this.blogsService.create(createBlogDto, Number(request.user.id));
   }
 
   @Get()
@@ -118,6 +130,13 @@ export class BlogsController {
     return this.blogsService.findParentsByCategory(lang);
   }
 
+  @Get('authors/:slug')
+  async findAuthor(@Param('slug') slug: string) {
+    const author = await this.authorsService.findBySlug(slug);
+    if (!author) throw new NotFoundException();
+    return author;
+  }
+
   @Get('by-slug/:slug')
   @ApiParam({
     name: 'slug',
@@ -147,7 +166,8 @@ export class BlogsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.author)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -157,19 +177,27 @@ export class BlogsController {
   @ApiOkResponse({
     type: Blog,
   })
-  update(@Param('id') id: string, @Body() updateBlogDto: UpdateBlogDto) {
-    return this.blogsService.update(id, updateBlogDto);
+  update(
+    @Param('id') id: string,
+    @Body() updateBlogDto: UpdateBlogDto,
+    @Request() request: { user: { id: number } },
+  ) {
+    return this.blogsService.update(id, updateBlogDto, Number(request.user.id));
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.author)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({
     name: 'id',
     type: String,
     required: true,
   })
-  remove(@Param('id') id: string) {
-    return this.blogsService.remove(id);
+  remove(
+    @Param('id') id: string,
+    @Request() request: { user: { id: number } },
+  ) {
+    return this.blogsService.remove(id, Number(request.user.id));
   }
 }

@@ -13,6 +13,7 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 import { MiniTagEntity } from '../../../../../mini-tags/infrastructure/persistence/relational/entities/mini-tag.entity';
 import { PlanEntity } from '../../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
 import { FaqEntity } from '../../../../../faqs/infrastructure/persistence/relational/entities/faq.entity';
+import { AuthorProfileEntity } from '../../../../../authors/infrastructure/persistence/relational/entities/author-profile.entity';
 
 @Entity({
   name: 'blog',
@@ -26,6 +27,17 @@ export class BlogEntity extends EntityRelationalHelper {
 
   @Column({ nullable: false, type: Boolean })
   isPublished?: boolean;
+
+  @Column({ nullable: true, type: Number })
+  authorProfileId?: number | null;
+
+  @ManyToOne(() => AuthorProfileEntity, {
+    eager: false,
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'authorProfileId' })
+  authorProfile?: AuthorProfileEntity | null;
 
   @Column({ nullable: true, type: String })
   author?: string | null;

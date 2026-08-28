@@ -11,6 +11,10 @@ import {
 } from 'typeorm';
 import { UserEntity } from '../../../../../users/infrastructure/persistence/relational/entities/user.entity';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
+import {
+  MembershipTierEnum,
+  TierSourceEnum,
+} from '../../../../../wallets/tier/tier.enum';
 
 @Entity({
   name: 'order',
@@ -63,6 +67,13 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   paymentId?: string | null;
 
+  // Short, bank-friendly transfer code ([A-Z0-9], e.g. ESIM7K2M9P) used to
+  // match an incoming SePay bank-transfer webhook back to this order. Null for
+  // OnePay/wallet orders. Unique when present.
+  @Index({ unique: true, where: '"bankTransferCode" IS NOT NULL' })
+  @Column({ type: String, nullable: true })
+  bankTransferCode?: string | null;
+
   @Index()
   @Column({ type: String, nullable: true })
   couponCode?: string | null;
@@ -101,6 +112,18 @@ export class OrderEntity extends EntityRelationalHelper {
 
   @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
   cashbackAmountVnd!: number;
+
+  @Column({ type: String, default: MembershipTierEnum.TRAVELER })
+  membershipTierSnapshot!: MembershipTierEnum;
+
+  @Column({ type: String, default: TierSourceEnum.AUTOMATIC })
+  tierSourceSnapshot!: TierSourceEnum;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 2 })
+  cashbackPercentSnapshot!: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  eligibleSpendVnd!: number;
 
   @Column({ type: Number, nullable: true })
   cashbackTransactionId?: number | null;

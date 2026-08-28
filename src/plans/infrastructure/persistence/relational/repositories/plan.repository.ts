@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { PlanEntity } from '../entities/plan.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterPlanDto, SortPlanDto } from '../../../../dto/query-plan.dto';
@@ -37,10 +37,12 @@ export class PlansRelationalRepository implements PlanRepository {
       const qb = this.plansRepository
         .createQueryBuilder('plan')
         .leftJoinAndSelect('plan.destination', 'dest')
+        .leftJoinAndSelect('plan.region', 'region')
+        .leftJoin('region.destinations', 'regionDest')
         .leftJoin('destination', 'child', 'child."parentId" = dest.id');
 
       qb.where(
-        '(plan.name ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search)',
+        '(plan.name ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest."keySearch" ILIKE :search OR regionDest."countryCode" ILIKE :search)',
         { search: `%${filterOptions.search}%` },
       );
 
@@ -52,6 +54,11 @@ export class PlansRelationalRepository implements PlanRepository {
       if (filterOptions?.isActive !== undefined) {
         qb.andWhere('plan."isActive" = :isActive', {
           isActive: filterOptions.isActive,
+        });
+      }
+      if (filterOptions?.isLocalInventory !== undefined) {
+        qb.andWhere('plan."isLocalInventory" = :isLocalInventory', {
+          isLocalInventory: filterOptions.isLocalInventory,
         });
       }
       if (filterOptions?.destinationId !== undefined) {
@@ -69,6 +76,7 @@ export class PlansRelationalRepository implements PlanRepository {
           providers: filterOptions.provider,
         });
       }
+      this.applyLocationAndCallSmsFilters(qb, filterOptions);
       if (filterOptions?.duration !== undefined) {
         qb.andWhere('plan."durationDays" = :duration', {
           duration: filterOptions.duration,
@@ -128,6 +136,9 @@ export class PlansRelationalRepository implements PlanRepository {
     if (filterOptions?.isActive !== undefined) {
       where.isActive = filterOptions.isActive;
     }
+    if (filterOptions?.isLocalInventory !== undefined) {
+      where.isLocalInventory = filterOptions.isLocalInventory;
+    }
     if (filterOptions?.destinationId !== undefined) {
       where.destinationId = filterOptions.destinationId;
     }
@@ -138,16 +149,20 @@ export class PlansRelationalRepository implements PlanRepository {
       where.provider = In(filterOptions.provider);
     }
 
-    // For duration, type, data, tags filters we need query builder
+    // Joined location and call/SMS filters require a query builder.
     if (
       filterOptions?.duration !== undefined ||
       filterOptions?.type ||
       filterOptions?.data ||
-      filterOptions?.tags?.length
+      filterOptions?.tags?.length ||
+      filterOptions?.country ||
+      filterOptions?.hasCallSms !== undefined
     ) {
       const qb = this.plansRepository.createQueryBuilder('plan');
       qb.leftJoinAndSelect('plan.destination', 'dest');
       qb.leftJoinAndSelect('plan.region', 'region');
+      qb.leftJoin('region.destinations', 'regionDest');
+      qb.leftJoin('destination', 'child', 'child."parentId" = dest.id');
 
       if (filterOptions?.isCheapest !== undefined) {
         qb.andWhere('plan."isCheapest" = :isCheapest', {
@@ -157,6 +172,11 @@ export class PlansRelationalRepository implements PlanRepository {
       if (filterOptions?.isActive !== undefined) {
         qb.andWhere('plan."isActive" = :isActive', {
           isActive: filterOptions.isActive,
+        });
+      }
+      if (filterOptions?.isLocalInventory !== undefined) {
+        qb.andWhere('plan."isLocalInventory" = :isLocalInventory', {
+          isLocalInventory: filterOptions.isLocalInventory,
         });
       }
       if (filterOptions?.destinationId !== undefined) {
@@ -174,6 +194,7 @@ export class PlansRelationalRepository implements PlanRepository {
           providers: filterOptions.provider,
         });
       }
+      this.applyLocationAndCallSmsFilters(qb, filterOptions);
       if (filterOptions.duration !== undefined) {
         qb.andWhere('plan."durationDays" = :duration', {
           duration: filterOptions.duration,
@@ -397,6 +418,32 @@ export class PlansRelationalRepository implements PlanRepository {
     return rows.map((r) => r.provider);
   }
 
+  /**
+   * List local-inventory carriers (one row per `provider`) for the domestic
+   * eSIM tab. `fromVndPrice` is the cheapest plan price for that carrier so the
+   * card can show "Từ {n}đ". Ordered by cheapest carrier first.
+   */
+  async getLocalCarriers(): Promise<
+    { provider: string; fromVndPrice: number; planCount: number }[]
+  > {
+    const rows: {
+      provider: string;
+      fromVndPrice: string | number;
+      planCount: string | number;
+    }[] = await this.plansRepository.query(
+      `SELECT "provider" AS provider, MIN("vndPrice") AS "fromVndPrice", COUNT(*)::int AS "planCount"
+       FROM "plan"
+       WHERE "isLocalInventory" = true AND "isActive" = true AND "deletedAt" IS NULL
+       GROUP BY "provider"
+       ORDER BY MIN("vndPrice") ASC`,
+    );
+    return rows.map((r) => ({
+      provider: r.provider,
+      fromVndPrice: Number(r.fromVndPrice) || 0,
+      planCount: Number(r.planCount) || 0,
+    }));
+  }
+
   async deactivateStaleProviderPlans(
     provider: string,
     syncStartedAt: Date,
@@ -419,12 +466,14 @@ export class PlansRelationalRepository implements PlanRepository {
   ): Promise<Plan[]> {
     const qb = this.plansRepository
       .createQueryBuilder('plan')
-      .leftJoinAndSelect('plan.destination', 'dest');
+      .leftJoinAndSelect('plan.destination', 'dest')
+      .leftJoinAndSelect('plan.region', 'region')
+      .leftJoin('region.destinations', 'regionDest')
+      .leftJoin('destination', 'child', 'child."parentId" = dest.id');
 
     if (filterOptions?.search) {
-      qb.leftJoin('destination', 'child', 'child."parentId" = dest.id');
       qb.where(
-        '(plan.name ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search)',
+        '(plan.name ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest."keySearch" ILIKE :search OR regionDest."countryCode" ILIKE :search)',
         { search: `%${filterOptions.search}%` },
       );
     }
@@ -454,6 +503,7 @@ export class PlansRelationalRepository implements PlanRepository {
         providers: filterOptions.provider,
       });
     }
+    this.applyLocationAndCallSmsFilters(qb, filterOptions);
     if (filterOptions?.duration !== undefined) {
       qb.andWhere('plan."durationDays" = :duration', {
         duration: filterOptions.duration,
@@ -480,6 +530,26 @@ export class PlansRelationalRepository implements PlanRepository {
 
     const entities = await qb.getMany();
     return entities.map((entity) => PlanMapper.toDomain(entity));
+  }
+
+  private applyLocationAndCallSmsFilters(
+    qb: SelectQueryBuilder<PlanEntity>,
+    filterOptions?: FilterPlanDto | null,
+  ): void {
+    if (filterOptions?.country) {
+      qb.andWhere(
+        '(plan."countryCode" ILIKE :country OR dest."countryCode" ILIKE :country OR dest.name ILIKE :country OR dest."keySearch" ILIKE :country OR child."countryCode" ILIKE :country OR child.name ILIKE :country OR child."keySearch" ILIKE :country OR region.name ILIKE :country OR region.slug ILIKE :country OR regionDest."countryCode" ILIKE :country OR regionDest.name ILIKE :country OR regionDest."keySearch" ILIKE :country)',
+        { country: `%${filterOptions.country}%` },
+      );
+    }
+
+    if (filterOptions?.hasCallSms === true) {
+      qb.andWhere('(COALESCE(plan.sms, 0) > 0 OR COALESCE(plan.call, 0) > 0)');
+    } else if (filterOptions?.hasCallSms === false) {
+      qb.andWhere(
+        '(COALESCE(plan.sms, 0) <= 0 AND COALESCE(plan.call, 0) <= 0)',
+      );
+    }
   }
 
   private parseDataToMb(dataStr: string): number {

@@ -9,6 +9,8 @@ export class InvoiceMapper {
     const domainEntity = new Invoice();
     domainEntity.status = raw.status;
 
+    domainEntity.invoicePhone = raw.invoicePhone;
+
     domainEntity.invoiceEmail = raw.invoiceEmail;
 
     domainEntity.address = raw.address;
@@ -33,6 +35,8 @@ export class InvoiceMapper {
   static toPersistence(domainEntity: Invoice): InvoiceEntity {
     const persistenceEntity = new InvoiceEntity();
     persistenceEntity.status = domainEntity.status;
+
+    persistenceEntity.invoicePhone = domainEntity.invoicePhone;
 
     persistenceEntity.invoiceEmail = domainEntity.invoiceEmail;
 

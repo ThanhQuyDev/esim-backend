@@ -31,6 +31,13 @@ export class CreateInvoiceDto {
     type: () => String,
   })
   @IsString()
+  invoicePhone: string;
+
+  @ApiProperty({
+    required: true,
+    type: () => String,
+  })
+  @IsString()
   invoiceEmail: string;
 
   @ApiProperty({

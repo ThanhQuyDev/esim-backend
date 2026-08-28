@@ -59,7 +59,7 @@ export class RefundOrderDto {
 
   @ApiProperty({ type: Number, example: 90000 })
   @IsInt()
-  @Min(0)
+  @Min(1)
   amountVnd!: number;
 
   @ApiPropertyOptional({ type: String })

@@ -157,6 +157,9 @@ export class AdminOrderInvoiceDto {
   @ApiProperty({ type: String, example: '123 Nguyễn Huệ, Q1, TP.HCM' })
   address: string;
 
+  @ApiProperty({ type: String, example: '+84901234567' })
+  invoicePhone: string;
+
   @ApiProperty({ type: String, example: 'finance@example.com' })
   invoiceEmail: string;
 

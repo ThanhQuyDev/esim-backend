@@ -1,9 +1,11 @@
 import {
   HttpStatus,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
   UnprocessableEntityException,
+  forwardRef,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CreateEsimDto } from './dto/create-esim.dto';
@@ -16,6 +18,8 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
+import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
+import { BillionService } from '../esim-providers/billion/billion.service';
 
 export interface DataUsageResult {
   remaining: number | null;
@@ -36,6 +40,10 @@ export class EsimsService {
     private readonly airaloService: AiraloService,
     private readonly esimAccessService: EsimAccessService,
     private readonly gadgetKoreaService: GadgetKoreaService,
+    @Inject(forwardRef(() => MicroEsimService))
+    private readonly microEsimService: MicroEsimService,
+    @Inject(forwardRef(() => BillionService))
+    private readonly billionService: BillionService,
   ) {}
 
   async create(createEsimDto: CreateEsimDto): Promise<Esim> {
@@ -236,6 +244,95 @@ export class EsimsService {
           expiredAt: usage.expireTime || null,
           isUnlimited: false,
           status: usage.activeTime ? 'ACTIVE' : 'INACTIVE',
+          lastUpdateTime: null,
+        };
+        await this.esimsRepository.update(esim.id, {
+          dataUsed: String(result.dataUsed),
+        });
+        return result;
+      } catch {
+        return this.fallbackFromDb(esim);
+      }
+    }
+
+    if (esim.provider === 'microesim') {
+      // MicroEsim needs both topup_id (order-item.orderRequestId) and
+      // device_id (stored on esim.esimTranNo) to query device detail.
+      const esimWithRelations =
+        await this.esimsRepository.findByIdWithRelations(esim.id);
+      const topupId =
+        (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
+      const deviceId = esim.esimTranNo;
+      if (!topupId || !deviceId) {
+        throw new NotFoundException(
+          'topup_id or device_id not found for this eSIM',
+        );
+      }
+      try {
+        const detail = await this.microEsimService.getDeviceDetail(
+          topupId,
+          deviceId,
+        );
+        const dataUsedMb = parseFloat(detail.data_usage ?? '0') || 0;
+        const result: DataUsageResult = {
+          remaining: null,
+          total: 0,
+          dataUsed: dataUsedMb,
+          expiredAt: detail.expire_time || null,
+          isUnlimited: false,
+          status: detail.status
+            ? detail.status.toUpperCase()
+            : detail.active_time
+              ? 'ACTIVE'
+              : 'INACTIVE',
+          lastUpdateTime: null,
+        };
+        await this.esimsRepository.update(esim.id, {
+          dataUsed: String(result.dataUsed),
+        });
+        return result;
+      } catch {
+        return this.fallbackFromDb(esim);
+      }
+    }
+
+    if (esim.provider === 'billion') {
+      // BILLION F046 needs the main orderId (order-item.orderRequestId) and the
+      // iccid. Usage is reported per sub-order: usageInfoList[].usageAmt in KB,
+      // total quota in totalTraffic KB ('-1' = unlimited).
+      const esimWithRelations =
+        await this.esimsRepository.findByIdWithRelations(esim.id);
+      const orderId =
+        (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
+      const iccid = esim.iccid;
+      if (!orderId || !iccid) {
+        throw new NotFoundException('orderId or iccid not found for this eSIM');
+      }
+      try {
+        const detail = await this.billionService.getUsage(orderId, iccid);
+        const sub = detail.subOrderList?.[0];
+        const usedKb = (sub?.usageInfoList ?? []).reduce(
+          (sum, u) => sum + (parseFloat(u.usageAmt ?? u.useageAmt ?? '0') || 0),
+          0,
+        );
+        const totalKb = parseFloat(sub?.totalTraffic ?? '0');
+        const isUnlimited = totalKb === -1;
+        const totalMb =
+          isUnlimited || !Number.isFinite(totalKb) ? 0 : totalKb / 1024;
+        const dataUsedMb = usedKb / 1024;
+        const planStatusMap: Record<string, string> = {
+          '0': 'INACTIVE',
+          '1': 'ACTIVE',
+          '2': 'FINISHED',
+          '3': 'CANCELLED',
+        };
+        const result: DataUsageResult = {
+          remaining: isUnlimited ? null : Math.max(totalMb - dataUsedMb, 0),
+          total: totalMb,
+          dataUsed: dataUsedMb,
+          expiredAt: sub?.planEndTime || null,
+          isUnlimited,
+          status: planStatusMap[sub?.planStatus ?? ''] ?? 'UNKNOWN',
           lastUpdateTime: null,
         };
         await this.esimsRepository.update(esim.id, {

@@ -5,6 +5,7 @@ import { BlogEntity } from '../entities/blog.entity';
 import { MiniTagEntity } from '../../../../../mini-tags/infrastructure/persistence/relational/entities/mini-tag.entity';
 import { PlanEntity } from '../../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
 import { FaqEntity } from '../../../../../faqs/infrastructure/persistence/relational/entities/faq.entity';
+import { AuthorProfileEntity } from '../../../../../authors/infrastructure/persistence/relational/entities/author-profile.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { Blog } from '../../../../domain/blog';
 import { FilterBlogDto, SortBlogDto } from '../../../../dto/find-all-blogs.dto';
@@ -23,10 +24,19 @@ export class BlogRelationalRepository implements BlogRepository {
     private readonly planRepository: Repository<PlanEntity>,
     @InjectRepository(FaqEntity)
     private readonly faqRepository: Repository<FaqEntity>,
+    @InjectRepository(AuthorProfileEntity)
+    private readonly authorProfileRepository: Repository<AuthorProfileEntity>,
   ) {}
 
   async create(data: Blog): Promise<Blog> {
     const persistenceModel = BlogMapper.toPersistence(data);
+    const authorProfileId = data.authorProfile?.id ?? data.authorProfileId;
+    if (authorProfileId) {
+      persistenceModel.authorProfile =
+        (await this.authorProfileRepository.findOneBy({
+          id: authorProfileId,
+        })) ?? null;
+    }
     if (data.miniTag?.id) {
       persistenceModel.miniTag =
         (await this.miniTagRepository.findOneBy({ id: data.miniTag.id })) ??
@@ -62,6 +72,7 @@ export class BlogRelationalRepository implements BlogRepository {
     const qb = this.blogRepository
       .createQueryBuilder('blog')
       .leftJoin('blog.miniTag', 'miniTag')
+      .leftJoinAndSelect('blog.authorProfile', 'authorProfile')
       // List view never needs the heavy `content` column — select only the
       // fields BlogListItem exposes (plus the miniTag join) to keep the
       // payload small and avoid reading large rows from the DB.
@@ -74,6 +85,8 @@ export class BlogRelationalRepository implements BlogRepository {
         'blog.coverImage',
         'blog.author',
         'blog.authorAvatar',
+        'blog.authorProfileId',
+        'authorProfile',
         'blog.category',
         'blog.parent',
         'blog.timeRead',
@@ -88,6 +101,12 @@ export class BlogRelationalRepository implements BlogRepository {
 
     if (lang) {
       qb.andWhere('blog.language = :lang', { lang });
+    }
+
+    if (filterOptions?.authorSlug) {
+      qb.andWhere('authorProfile.slug = :authorSlug', {
+        authorSlug: filterOptions.authorSlug,
+      });
     }
 
     if (filterOptions?.category) {
@@ -189,7 +208,12 @@ export class BlogRelationalRepository implements BlogRepository {
   async findById(id: Blog['id']): Promise<NullableType<Blog>> {
     const entity = await this.blogRepository.findOne({
       where: { id },
-      relations: { miniTag: true, plans: true, faqs: true },
+      relations: {
+        miniTag: true,
+        plans: true,
+        faqs: true,
+        authorProfile: true,
+      },
     });
 
     return entity ? BlogMapper.toDomain(entity) : null;
@@ -199,7 +223,12 @@ export class BlogRelationalRepository implements BlogRepository {
     const normalized = slug.startsWith('/') ? slug : `/${slug}`;
     const entity = await this.blogRepository.findOne({
       where: { slug: normalized, isPublished: true },
-      relations: { miniTag: true, plans: true, faqs: true },
+      relations: {
+        miniTag: true,
+        plans: true,
+        faqs: true,
+        authorProfile: true,
+      },
     });
 
     return entity ? BlogMapper.toDomain(entity) : null;
@@ -208,7 +237,12 @@ export class BlogRelationalRepository implements BlogRepository {
   async findByIds(ids: Blog['id'][]): Promise<Blog[]> {
     const entities = await this.blogRepository.find({
       where: { id: In(ids) },
-      relations: { miniTag: true, plans: true, faqs: true },
+      relations: {
+        miniTag: true,
+        plans: true,
+        faqs: true,
+        authorProfile: true,
+      },
     });
 
     return entities.map((entity) => BlogMapper.toDomain(entity));
@@ -217,7 +251,12 @@ export class BlogRelationalRepository implements BlogRepository {
   async update(id: Blog['id'], payload: Partial<Blog>): Promise<Blog> {
     const entity = await this.blogRepository.findOne({
       where: { id },
-      relations: { miniTag: true, plans: true, faqs: true },
+      relations: {
+        miniTag: true,
+        plans: true,
+        faqs: true,
+        authorProfile: true,
+      },
     });
 
     if (!entity) {

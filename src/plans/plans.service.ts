@@ -301,6 +301,43 @@ export class PlansService {
     return groupPlansBySimType(all);
   }
 
+  /**
+   * List the domestic (local-inventory) carriers for the "eSIM nội địa" tab.
+   * Grouped dynamically from active `isLocalInventory` plans by `provider`, so
+   * new carriers appear automatically without code changes. `fromVndPrice` is
+   * the cheapest plan price per carrier for the "Từ {n}đ" card label.
+   */
+  async listLocalCarriers(): Promise<
+    { provider: string; fromVndPrice: number; planCount: number }[]
+  > {
+    return this.plansRepository.getLocalCarriers();
+  }
+
+  /**
+   * Fetch and group all active local-inventory plans for one carrier
+   * (provider slug). Used by the /esim-noi-dia/[carrier] detail page.
+   * Throws NotFound when the carrier has no active local plans.
+   */
+  async findLocalPlansByCarrier(provider: string): Promise<PlanGroups> {
+    const [all] = await this.plansRepository.findManyWithPagination({
+      filterOptions: {
+        provider: [provider],
+        isLocalInventory: true,
+        isActive: true,
+      },
+      sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
+      paginationOptions: { page: 1, limit: 1000 },
+    });
+
+    if (all.length === 0) {
+      throw new NotFoundException(
+        `No domestic eSIM plans found for carrier '${provider}'`,
+      );
+    }
+
+    return groupPlansBySimType(all);
+  }
+
   async batchUpdateDiscount(ids: number[], discount: number): Promise<void> {
     await this.plansRepository.batchUpdateDiscount(ids, discount);
   }

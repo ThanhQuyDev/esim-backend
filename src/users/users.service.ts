@@ -18,12 +18,14 @@ import { FileType } from '../files/domain/file';
 import { Role } from '../roles/domain/role';
 import { Status } from '../statuses/domain/status';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AuthorsService } from '../authors/authors.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly usersRepository: UserRepository,
     private readonly filesService: FilesService,
+    private readonly authorsService: AuthorsService,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
@@ -113,12 +115,22 @@ export class UsersService {
       };
     }
 
-    return this.usersRepository.create({
+    if (Number(role?.id) === RoleEnum.author && !createUserDto.authorProfile) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { authorProfile: 'authorProfileRequired' },
+      });
+    }
+
+    const user = await this.usersRepository.create({
       // Do not remove comment below.
       // <creating-property-payload />
       firstName: createUserDto.firstName,
       lastName: createUserDto.lastName,
       phoneNumber: createUserDto.phoneNumber ?? null,
+      lifetimeSpendVnd: 0,
+      tierOverride: null,
+      tierOverrideReason: null,
       email: email,
       password: password,
       photo: photo,
@@ -127,6 +139,15 @@ export class UsersService {
       provider: createUserDto.provider ?? AuthProvidersEnum.email,
       socialId: createUserDto.socialId,
     });
+
+    if (createUserDto.authorProfile) {
+      user.authorProfile = await this.authorsService.upsertForUser(
+        Number(user.id),
+        createUserDto.authorProfile,
+      );
+    }
+
+    return user;
   }
 
   findManyWithPagination({
@@ -268,13 +289,32 @@ export class UsersService {
       };
     }
 
-    return this.usersRepository.update(id, {
+    const currentUser = await this.usersRepository.findById(id);
+    const resultingRoleId = Number(role?.id ?? currentUser?.role?.id);
+    if (
+      resultingRoleId === RoleEnum.author &&
+      !updateUserDto.authorProfile &&
+      !currentUser?.authorProfile
+    ) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { authorProfile: 'authorProfileRequired' },
+      });
+    }
+
+    const user = await this.usersRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
       firstName: updateUserDto.firstName,
       lastName: updateUserDto.lastName,
       ...(updateUserDto.phoneNumber !== undefined && {
         phoneNumber: updateUserDto.phoneNumber,
+      }),
+      ...(updateUserDto.tierOverride !== undefined && {
+        tierOverride: updateUserDto.tierOverride,
+      }),
+      ...(updateUserDto.tierOverrideReason !== undefined && {
+        tierOverrideReason: updateUserDto.tierOverrideReason,
       }),
       email,
       password,
@@ -284,6 +324,15 @@ export class UsersService {
       provider: updateUserDto.provider,
       socialId: updateUserDto.socialId,
     });
+
+    if (user && updateUserDto.authorProfile) {
+      user.authorProfile = await this.authorsService.upsertForUser(
+        Number(user.id),
+        updateUserDto.authorProfile,
+      );
+    }
+
+    return user;
   }
 
   async remove(id: User['id']): Promise<void> {

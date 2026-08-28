@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, ILike } from 'typeorm';
+import { Repository, In, ILike, FindOptionsWhere } from 'typeorm';
 import { FaqEntity } from '../entities/faq.entity';
 import { BlogEntity } from '../../../../../blogs/infrastructure/persistence/relational/entities/blog.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
@@ -34,10 +34,14 @@ export class FaqRelationalRepository implements FaqRepository {
     paginationOptions: IPaginationOptions;
     filterOptions?: FilterFaqDto | null;
   }): Promise<[Faq[], number]> {
-    const where: any = {};
+    // An array of where clauses is OR-ed by TypeORM. Matching url as well as
+    // question/answer lets admins narrow a page's FAQs by typing its path
+    // (e.g. "/home") instead of scanning every row.
+    let where: FindOptionsWhere<FaqEntity> | FindOptionsWhere<FaqEntity>[] = {};
 
     if (filterOptions?.search) {
-      where.question = ILike(`%${filterOptions.search}%`);
+      const term = ILike(`%${filterOptions.search}%`);
+      where = [{ question: term }, { answer: term }, { url: term }];
     }
 
     const [entities, count] = await this.faqRepository.findAndCount({
@@ -93,7 +97,7 @@ export class FaqRelationalRepository implements FaqRepository {
     language?: string;
     limit?: number;
   }): Promise<Faq[]> {
-    const targetLimit = options.limit ?? 6;
+    const targetLimit = options.limit;
     const collectedIds = new Set<string>();
     const results: FaqEntity[] = [];
 
@@ -115,7 +119,7 @@ export class FaqRelationalRepository implements FaqRepository {
 
     // 2. Find FAQs matching the exact url sent by the client.
     // No ancestor-path fallback: only FAQs attached to the exact slug match.
-    if (options.url && results.length < targetLimit) {
+    if (options.url && (targetLimit == null || results.length < targetLimit)) {
       const urlFaqs = await this.faqRepository.find({
         where: {
           url: options.url,
@@ -130,11 +134,13 @@ export class FaqRelationalRepository implements FaqRepository {
           results.push(faq);
           collectedIds.add(faq.id);
         }
-        if (results.length >= targetLimit) break;
+        if (targetLimit != null && results.length >= targetLimit) break;
       }
     }
 
-    return results.slice(0, targetLimit).map((e) => FaqMapper.toDomain(e));
+    const limited =
+      targetLimit != null ? results.slice(0, targetLimit) : results;
+    return limited.map((e) => FaqMapper.toDomain(e));
   }
 
   async remove(id: Faq['id']): Promise<void> {

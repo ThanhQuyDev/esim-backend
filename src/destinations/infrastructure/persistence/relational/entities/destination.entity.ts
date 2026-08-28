@@ -28,6 +28,9 @@ export class DestinationEntity extends EntityRelationalHelper {
   @Column({ type: String, unique: true })
   slug: string;
 
+  @Column({ type: String, nullable: true })
+  slugVi: string | null;
+
   @Index()
   @Column({ type: String, length: 10 })
   countryCode: string;

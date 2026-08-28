@@ -26,6 +26,18 @@ export class RegionsService {
       });
     }
 
+    if (createRegionDto.slugVi) {
+      const existingBySlugVi = await this.regionsRepository.findBySlug(
+        createRegionDto.slugVi,
+      );
+      if (existingBySlugVi) {
+        throw new UnprocessableEntityException({
+          status: HttpStatus.UNPROCESSABLE_ENTITY,
+          errors: { slugVi: 'slugAlreadyExists' },
+        });
+      }
+    }
+
     if (createRegionDto.externalCode) {
       const existingByExternalCode =
         await this.regionsRepository.findByExternalCode(
@@ -43,6 +55,7 @@ export class RegionsService {
       {
         name: createRegionDto.name,
         slug: createRegionDto.slug,
+        slugVi: createRegionDto.slugVi ?? null,
         externalCode: createRegionDto.externalCode ?? null,
         avatarUrl: createRegionDto.avatarUrl ?? null,
         iconUrl: createRegionDto.iconUrl ?? null,
@@ -106,11 +119,24 @@ export class RegionsService {
       }
     }
 
+    if (updateRegionDto.slugVi) {
+      const existingBySlugVi = await this.regionsRepository.findBySlug(
+        updateRegionDto.slugVi,
+      );
+      if (existingBySlugVi && existingBySlugVi.id !== Number(id)) {
+        throw new UnprocessableEntityException({
+          status: HttpStatus.UNPROCESSABLE_ENTITY,
+          errors: { slugVi: 'slugAlreadyExists' },
+        });
+      }
+    }
+
     return this.regionsRepository.update(
       id,
       {
         name: updateRegionDto.name,
         slug: updateRegionDto.slug,
+        slugVi: updateRegionDto.slugVi,
         avatarUrl: updateRegionDto.avatarUrl,
         iconUrl: updateRegionDto.iconUrl,
         description: updateRegionDto.description,

@@ -190,6 +190,71 @@ export class PlansController {
     return this.plansService.findPlansByRegion(slug);
   }
 
+  /**
+   * List the domestic (local-inventory) eSIM carriers, grouped by provider,
+   * for the "eSIM nội địa" tab. Public — mirrors by-destination.
+   */
+  @ApiOkResponse({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          provider: { type: 'string', example: 'wintel' },
+          fromVndPrice: { type: 'number', example: 49000 },
+          planCount: { type: 'number', example: 12 },
+        },
+      },
+    },
+  })
+  @Get('local-carriers')
+  @HttpCode(HttpStatus.OK)
+  listLocalCarriers() {
+    return this.plansService.listLocalCarriers();
+  }
+
+  /**
+   * Grouped plans for one domestic carrier (e.g. wintel / itel / vnsky),
+   * for the /esim-noi-dia/[carrier] detail page. Public.
+   */
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        dataPlans: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        slowUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        fastUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        dailyUnlimited: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        localEsim: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+        SmsCallEsim: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Plan' },
+        },
+      },
+    },
+  })
+  @Get('local/:carrier')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'carrier', type: String, required: true })
+  findLocalPlansByCarrier(@Param('carrier') carrier: string) {
+    return this.plansService.findLocalPlansByCarrier(carrier);
+  }
+
   @ApiBearerAuth()
   @Roles(RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)

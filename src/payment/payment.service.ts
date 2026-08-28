@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnepayService } from './onepay.service';
 import { OrdersService } from '../orders/orders.service';
@@ -11,6 +11,22 @@ import {
   TOPUP_ORDER_NUMBER_PREFIX,
   TOPUP_ORDER_STATUS,
 } from '../topup/topup.constants';
+import {
+  generateBankTransferCode,
+  buildVietQrUrl,
+  extractBankTransferCode,
+} from './bank-transfer.util';
+
+/** Shape returned by both bank-transfer checkout endpoints (buy-new + topup). */
+export interface BankTransferCheckoutResult {
+  orderNumber: string;
+  bankTransferCode: string;
+  qrUrl: string;
+  amount: number;
+  accountNumber: string;
+  accountName: string;
+  bankCode: string;
+}
 
 @Injectable()
 export class PaymentService {
@@ -83,6 +99,100 @@ export class PaymentService {
   }
 
   /**
+   * Bank-transfer checkout (SePay / Techcombank) for a BUY_NEW order.
+   *
+   * Creates the same pending order as {@link createCheckout} but skips OnePay:
+   * instead we attach a short {@link generateBankTransferCode} reference, and
+   * the buyer transfers manually. SePay's webhook (`/webhooks/sepay`) later
+   * matches that code and finalizes the order.
+   *
+   * The eXU-covers-everything case still finalizes immediately — no transfer
+   * is needed, so we return the wallet result URL like the OnePay path does.
+   */
+  async createBankTransferCheckout(
+    userId: number,
+    dto: SubmitOrderDto,
+  ): Promise<BankTransferCheckoutResult & { paymentUrl?: string }> {
+    const sepay = this.configService.getOrThrow('sepay', { infer: true });
+    if (!sepay.accountNumber) {
+      throw new BadRequestException(
+        'Bank transfer is not configured (missing SEPAY_ACCOUNT_NUMBER)',
+      );
+    }
+
+    const rate = await this.fetchVndRate();
+    const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const order = await this.ordersService.createPendingOrder(
+      userId,
+      dto,
+      orderNumber,
+      rate,
+    );
+
+    // Wallet covers the whole amount — nothing to transfer, finalize now.
+    if (order.vndPrice <= 0) {
+      await this.ordersService.finalizePaidOrder(order.id, {
+        paymentMethod: 'wallet',
+        paymentId: null,
+      });
+      await this.ordersService.submitProviders(order.id);
+      if (order.couponCode) {
+        await this.ordersService.applyCouponAndClearCart(
+          order.couponCode,
+          order.userId,
+        );
+      } else {
+        await this.ordersService.clearCartForUser(order.userId);
+      }
+
+      const base =
+        this.resolveReturnUrl(dto.returnUrl) ??
+        `${this.configService.get('app.frontendDomain', {
+          infer: true,
+        })}/payment/result`;
+
+      return {
+        orderNumber: order.orderNumber,
+        bankTransferCode: '',
+        qrUrl: '',
+        amount: 0,
+        accountNumber: sepay.accountNumber,
+        accountName: sepay.accountName,
+        bankCode: sepay.bankCode,
+        paymentUrl: this.appendWalletResultParams(base, order.orderNumber),
+      };
+    }
+
+    const bankTransferCode = generateBankTransferCode();
+    await this.ordersService.update(order.id, {
+      paymentMethod: 'bank_transfer',
+      bankTransferCode,
+    });
+
+    const qrUrl = buildVietQrUrl({
+      bankCode: sepay.bankCode,
+      accountNumber: sepay.accountNumber,
+      accountName: sepay.accountName,
+      amountVnd: order.vndPrice,
+      transferCode: bankTransferCode,
+    });
+
+    this.logger.log(
+      `Bank-transfer checkout created: order=${order.orderNumber} code=${bankTransferCode} amount=${order.vndPrice}`,
+    );
+
+    return {
+      orderNumber: order.orderNumber,
+      bankTransferCode,
+      qrUrl,
+      amount: order.vndPrice,
+      accountNumber: sepay.accountNumber,
+      accountName: sepay.accountName,
+      bankCode: sepay.bankCode,
+    };
+  }
+
+  /**
    * Validate a client-supplied return URL. Only honor it when it is an absolute
    * URL on the configured frontend domain — this prevents an open-redirect
    * where a crafted `returnUrl` sends buyers to an attacker-controlled site
@@ -123,6 +233,141 @@ export class PaymentService {
       // Malformed base — fall back to naive concatenation.
       return `${base}?orderNumber=${orderNumber}&success=true&method=wallet`;
     }
+  }
+
+  /**
+   * Handle an incoming SePay bank-transfer webhook.
+   *
+   * SePay watches the Techcombank account and POSTs here when money arrives.
+   * We match the transfer back to an order via the short reference code we
+   * embedded in the transfer memo, verify the amount, then reuse the exact
+   * same finalize paths as the OnePay IPN:
+   *   - TOPUP   → mark PAID + fire-and-forget executeTopup()
+   *   - BUY_NEW → finalizePaidOrder + submitProviders + coupon/cart cleanup
+   *
+   * Always returns success for unknown/duplicate transfers: SePay retries on
+   * non-2xx, and a retry storm over a transfer we can't act on helps nobody.
+   * Money that cannot be matched is left for manual reconciliation.
+   */
+  async handleSepayWebhook(payload: {
+    id?: number | string;
+    gateway?: string;
+    transferType?: string;
+    transferAmount?: number;
+    content?: string;
+    referenceCode?: string;
+    accountNumber?: string;
+    transactionDate?: string;
+  }): Promise<{ success: boolean }> {
+    this.logger.log(`SePay webhook: ${JSON.stringify(payload)}`);
+
+    // Only incoming money matters; outgoing transfers are ignored.
+    if (payload.transferType && payload.transferType !== 'in') {
+      return { success: true };
+    }
+
+    const code = extractBankTransferCode(payload.content ?? '');
+    if (!code) {
+      this.logger.warn(
+        `SePay webhook: no transfer code in content "${payload.content ?? ''}" — needs manual reconciliation`,
+      );
+      return { success: true };
+    }
+
+    const order = await this.ordersService.findByBankTransferCode(code);
+    if (!order) {
+      this.logger.warn(
+        `SePay webhook: no order for transfer code ${code} — needs manual reconciliation`,
+      );
+      return { success: true };
+    }
+
+    // Idempotency: SePay may deliver the same event more than once.
+    if (order.status !== 'pending') {
+      this.logger.log(
+        `SePay webhook: order ${order.orderNumber} already processed (status=${order.status})`,
+      );
+      return { success: true };
+    }
+
+    // Never provision on an underpayment — leave it pending for an admin.
+    const paidAmount = Number(payload.transferAmount ?? 0);
+    const expected = Number(order.payableVndPrice ?? order.vndPrice ?? 0);
+    if (paidAmount < expected) {
+      this.logger.warn(
+        `SePay webhook: underpaid order ${order.orderNumber} — got ${paidAmount}, expected ${expected}. Left pending for manual review.`,
+      );
+      return { success: true };
+    }
+
+    const paymentId = payload.referenceCode ?? String(payload.id ?? '') ?? null;
+
+    // ── TOPUP ──────────────────────────────────────────────────────────────
+    if (order.orderType === 'TOPUP') {
+      await this.ordersService.update(order.id, {
+        status: TOPUP_ORDER_STATUS.PAID,
+        paymentMethod: 'bank_transfer',
+        paymentId,
+      });
+
+      // Fire-and-forget: the provider call can be slow and must not hold the
+      // webhook response. Failures surface as MANUAL_INTERVENTION inside.
+      void this.topupService
+        .executeTopup(order.orderNumber)
+        .catch((err) =>
+          this.logger.error(
+            `SePay webhook: async executeTopup crashed for ${order.orderNumber}: ${(err as Error).message}`,
+          ),
+        );
+
+      this.logger.log(
+        `SePay webhook: topup ${order.orderNumber} marked PAID (code=${code}), provider submission scheduled`,
+      );
+      return { success: true };
+    }
+
+    // ── BUY_NEW ────────────────────────────────────────────────────────────
+    try {
+      await this.ordersService.finalizePaidOrder(order.id, {
+        paymentMethod: 'bank_transfer',
+        paymentId,
+      });
+      await this.ordersService.submitProviders(order.id);
+      if (order.couponCode) {
+        await this.ordersService.applyCouponAndClearCart(
+          order.couponCode,
+          order.userId,
+        );
+      } else {
+        await this.ordersService.clearCartForUser(order.userId);
+      }
+      this.logger.log(
+        `SePay webhook: order ${order.orderNumber} paid (code=${code}) and submitted`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `SePay webhook: submitProviders failed for ${order.orderNumber}: ${(err as Error).message}`,
+      );
+    }
+
+    return { success: true };
+  }
+
+  /** Constant-time-ish check of the SePay webhook Apikey header. */
+  verifySepayApiKey(authorizationHeader?: string): boolean {
+    const expected = this.configService.getOrThrow('sepay', {
+      infer: true,
+    }).webhookApiKey;
+    if (!expected) {
+      this.logger.error(
+        'SePay webhook rejected: SEPAY_WEBHOOK_APIKEY is not configured',
+      );
+      return false;
+    }
+    const provided = (authorizationHeader ?? '')
+      .replace(/^Apikey\s+/i, '')
+      .trim();
+    return provided.length > 0 && provided === expected;
   }
 
   async handleIpn(query: Record<string, string>): Promise<{ code: string }> {

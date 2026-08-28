@@ -23,6 +23,12 @@ export class CreateInvoiceForOrderDto {
   @MaxLength(500)
   address: string;
 
+  @ApiProperty({ example: '+84901234567', maxLength: 20 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  invoicePhone: string;
+
   @ApiProperty({ example: 'finance@example.com' })
   @IsEmail()
   @IsNotEmpty()

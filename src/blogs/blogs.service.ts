@@ -1,6 +1,7 @@
 import {
-  // common
+  ForbiddenException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
@@ -11,17 +12,24 @@ import { Blog } from './domain/blog';
 import { MiniTagsService } from '../mini-tags/mini-tags.service';
 import { Plan } from '../plans/domain/plan';
 import { Faq } from '../faqs/domain/faq';
+import { AuthorsService } from '../authors/authors.service';
 
 @Injectable()
 export class BlogsService {
   constructor(
     private readonly blogRepository: BlogRepository,
     private readonly miniTagsService: MiniTagsService,
+    private readonly authorsService: AuthorsService,
   ) {}
 
-  async create(createBlogDto: CreateBlogDto) {
+  async create(createBlogDto: CreateBlogDto, userId: number) {
     // Do not remove comment below.
     // <creating-property />
+
+    const authorProfile = await this.authorsService.findByUserId(userId);
+    if (!authorProfile) {
+      throw new ForbiddenException('Author profile is required');
+    }
 
     const miniTag = createBlogDto.miniTagId
       ? await this.miniTagsService.findById(createBlogDto.miniTagId)
@@ -49,12 +57,10 @@ export class BlogsService {
       language: createBlogDto.language,
       publishedAt: createBlogDto.publishedAt,
       isPublished: createBlogDto.isPublished,
-      author: createBlogDto.author,
-      authorAvatar:
-        createBlogDto.authorAvatar ??
-        (createBlogDto.author
-          ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(createBlogDto.author)}`
-          : null),
+      authorProfile,
+      authorProfileId: authorProfile.id,
+      author: authorProfile.name,
+      authorAvatar: authorProfile.avatar,
       category: createBlogDto.category,
       parent: createBlogDto.parent,
       coverImage: createBlogDto.coverImage,
@@ -105,9 +111,13 @@ export class BlogsService {
     return this.blogRepository.findByIds(ids);
   }
 
-  async update(id: Blog['id'], updateBlogDto: UpdateBlogDto) {
-    // Do not remove comment below.
-    // <updating-property />
+  async update(id: Blog['id'], updateBlogDto: UpdateBlogDto, userId: number) {
+    const current = await this.blogRepository.findById(id);
+    if (!current) throw new NotFoundException();
+    const authorProfile = await this.authorsService.findByUserId(userId);
+    if (!authorProfile || current.authorProfileId !== authorProfile.id) {
+      throw new ForbiddenException();
+    }
 
     const miniTag =
       updateBlogDto.miniTagId !== undefined
@@ -140,13 +150,10 @@ export class BlogsService {
       language: updateBlogDto.language,
       publishedAt: updateBlogDto.publishedAt,
       isPublished: updateBlogDto.isPublished,
-      author: updateBlogDto.author,
-      authorAvatar:
-        updateBlogDto.authorAvatar !== undefined
-          ? updateBlogDto.authorAvatar
-          : updateBlogDto.author
-            ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(updateBlogDto.author)}`
-            : undefined,
+      authorProfile,
+      authorProfileId: authorProfile.id,
+      author: authorProfile.name,
+      authorAvatar: authorProfile.avatar,
       category: updateBlogDto.category,
       parent: updateBlogDto.parent,
       coverImage: updateBlogDto.coverImage,
@@ -163,8 +170,18 @@ export class BlogsService {
     });
   }
 
-  remove(id: Blog['id']) {
-    return this.blogRepository.remove(id);
+  remove(id: Blog['id'], userId: number) {
+    return this.updateOwnership(id, userId).then(() =>
+      this.blogRepository.remove(id),
+    );
+  }
+
+  private async updateOwnership(id: Blog['id'], userId: number) {
+    const current = await this.blogRepository.findById(id);
+    const profile = await this.authorsService.findByUserId(userId);
+    if (!current || !profile || current.authorProfileId !== profile.id) {
+      throw new ForbiddenException();
+    }
   }
 
   findCategories(lang?: string) {

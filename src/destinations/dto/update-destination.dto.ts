@@ -20,6 +20,12 @@ export class UpdateDestinationDto extends PartialType(CreateDestinationDto) {
   @MaxLength(100)
   slug?: string;
 
+  @ApiPropertyOptional({ example: 'nhat-ban', type: String })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  slugVi?: string | null;
+
   @ApiPropertyOptional({ example: 'JP', type: String })
   @IsOptional()
   @IsString()

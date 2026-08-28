@@ -6,6 +6,7 @@ import { BlogEntity } from './entities/blog.entity';
 import { MiniTagEntity } from '../../../../mini-tags/infrastructure/persistence/relational/entities/mini-tag.entity';
 import { PlanEntity } from '../../../../plans/infrastructure/persistence/relational/entities/plan.entity';
 import { FaqEntity } from '../../../../faqs/infrastructure/persistence/relational/entities/faq.entity';
+import { AuthorProfileEntity } from '../../../../authors/infrastructure/persistence/relational/entities/author-profile.entity';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { FaqEntity } from '../../../../faqs/infrastructure/persistence/relationa
       MiniTagEntity,
       PlanEntity,
       FaqEntity,
+      AuthorProfileEntity,
     ]),
   ],
   providers: [

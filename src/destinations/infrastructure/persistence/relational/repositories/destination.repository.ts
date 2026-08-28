@@ -108,7 +108,7 @@ export class DestinationsRelationalRepository implements DestinationRepository {
     slug: Destination['slug'],
   ): Promise<NullableType<Destination>> {
     const entity = await this.destinationsRepository.findOne({
-      where: { slug },
+      where: [{ slug }, { slugVi: slug }],
       relations: ['regions'],
     });
 

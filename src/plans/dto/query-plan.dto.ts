@@ -25,6 +25,14 @@ export class FilterPlanDto {
   @IsBoolean()
   isActive?: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Filter by local-inventory flag (domestic eSIM plans)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isLocalInventory?: boolean;
+
   @ApiPropertyOptional({ type: Number })
   @IsOptional()
   @IsNumber()
@@ -34,6 +42,24 @@ export class FilterPlanDto {
   @IsOptional()
   @IsNumber()
   regionId?: number;
+
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Filter by country/region: matches plan country code, destination country code/name/keySearch or region name/slug',
+  })
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'true: only plans with call or SMS quota; false: only plans without both',
+  })
+  @IsOptional()
+  @IsBoolean()
+  hasCallSms?: boolean;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()

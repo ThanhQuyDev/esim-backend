@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -19,6 +20,12 @@ export class UpdateRegionDto extends PartialType(CreateRegionDto) {
   @IsOptional()
   @IsString()
   slug?: string;
+
+  @ApiPropertyOptional({ example: 'chau-a', type: String })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  slugVi?: string | null;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()

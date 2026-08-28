@@ -19,6 +19,7 @@ import { AuthConfirmEmailDto } from './dto/auth-confirm-email.dto';
 import { AuthResetPasswordDto } from './dto/auth-reset-password.dto';
 import { AuthUpdateDto } from './dto/auth-update.dto';
 import { AuthUpdateProfileDto } from './dto/auth-update-profile.dto';
+import { AuthSetPasswordDto } from './dto/auth-set-password.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthRegisterLoginDto } from './dto/auth-register-login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -180,6 +181,25 @@ export class AuthController {
     @Body() profileDto: AuthUpdateProfileDto,
   ): Promise<NullableType<User>> {
     return this.service.updateProfile(request.user, profileDto);
+  }
+
+  @ApiBearerAuth()
+  @SerializeOptions({
+    groups: ['me'],
+  })
+  @Post('me/password')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({
+    type: User,
+    description:
+      'Set a password for an account that does not have one yet (e.g. created via OTP or social login). Changing an existing password is handled by PATCH /auth/me.',
+  })
+  public setPassword(
+    @Request() request,
+    @Body() dto: AuthSetPasswordDto,
+  ): Promise<NullableType<User>> {
+    return this.service.setPassword(request.user, dto);
   }
 
   @ApiBearerAuth()

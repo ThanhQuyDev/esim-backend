@@ -2,11 +2,19 @@ import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateUserDto } from './create-user.dto';
 
 import { Transform, Type } from 'class-transformer';
-import { IsEmail, IsOptional, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { FileDto } from '../../files/dto/file.dto';
 import { RoleDto } from '../../roles/dto/role.dto';
 import { StatusDto } from '../../statuses/dto/status.dto';
 import { lowerCaseTransformer } from '../../utils/transformers/lower-case.transformer';
+import { MembershipTierEnum } from '../../wallets/tier/tier.enum';
+import { AuthorProfileDto } from '../../authors/dto/author-profile.dto';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
   @ApiPropertyOptional({ example: 'test1@example.com', type: String })
@@ -36,9 +44,24 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   phoneNumber?: string | null;
 
+  @ApiPropertyOptional({ enum: MembershipTierEnum, nullable: true })
+  @IsOptional()
+  @IsEnum(MembershipTierEnum)
+  tierOverride?: MembershipTierEnum | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  tierOverrideReason?: string | null;
+
   @ApiPropertyOptional({ type: () => FileDto })
   @IsOptional()
   photo?: FileDto | null;
+
+  @ApiPropertyOptional({ type: () => AuthorProfileDto })
+  @IsOptional()
+  @Type(() => AuthorProfileDto)
+  authorProfile?: AuthorProfileDto | null;
 
   @ApiPropertyOptional({ type: () => RoleDto })
   @IsOptional()

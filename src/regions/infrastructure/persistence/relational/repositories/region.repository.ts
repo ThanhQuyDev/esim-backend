@@ -142,7 +142,7 @@ export class RegionsRelationalRepository implements RegionRepository {
 
   async findBySlug(slug: Region['slug']): Promise<NullableType<Region>> {
     const entity = await this.regionsRepository.findOne({
-      where: { slug },
+      where: [{ slug }, { slugVi: slug }],
     });
     if (!entity) return null;
 

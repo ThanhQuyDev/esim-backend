@@ -2,7 +2,13 @@ import { Exclude, Expose } from 'class-transformer';
 import { FileType } from '../../files/domain/file';
 import { Role } from '../../roles/domain/role';
 import { Status } from '../../statuses/domain/status';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  MembershipTierEnum,
+  TierSourceEnum,
+} from '../../wallets/tier/tier.enum';
+import { TierBenefits } from '../../wallets/tier/tier.constants';
+import { AuthorProfile } from '../../authors/domain/author-profile';
 
 const idType = Number;
 
@@ -21,6 +27,13 @@ export class User {
 
   @Exclude({ toPlainOnly: true })
   password?: string;
+
+  @ApiProperty({
+    type: Boolean,
+    example: true,
+  })
+  @Expose({ groups: ['me', 'admin'] })
+  hasPassword?: boolean;
 
   @ApiProperty({
     type: String,
@@ -54,10 +67,34 @@ export class User {
   })
   phoneNumber: string | null;
 
+  @ApiProperty({ type: Number, example: 1000000 })
+  lifetimeSpendVnd: number;
+
+  @ApiPropertyOptional({ enum: MembershipTierEnum, nullable: true })
+  tierOverride: MembershipTierEnum | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  tierOverrideReason: string | null;
+
+  @ApiProperty({ enum: MembershipTierEnum })
+  automaticTier?: MembershipTierEnum;
+
+  @ApiProperty({ enum: MembershipTierEnum })
+  membershipTier?: MembershipTierEnum;
+
+  @ApiProperty({ enum: TierSourceEnum })
+  tierSource?: TierSourceEnum;
+
+  @ApiProperty({ type: Object })
+  tierBenefits?: TierBenefits;
+
   @ApiProperty({
     type: () => FileType,
   })
   photo?: FileType | null;
+
+  @ApiPropertyOptional({ type: () => AuthorProfile, nullable: true })
+  authorProfile?: AuthorProfile | null;
 
   @ApiProperty({
     type: () => Role,

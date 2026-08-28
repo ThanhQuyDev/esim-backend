@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
+import { UserEntity } from '../users/infrastructure/persistence/relational/entities/user.entity';
 import { WalletsController } from './wallets.controller';
 import { WalletsService } from './wallets.service';
 import { OrderReferralEntity } from './infrastructure/persistence/relational/entities/order-referral.entity';
@@ -9,6 +10,7 @@ import { UserReferralProfileEntity } from './infrastructure/persistence/relation
 import { UserWalletEntity } from './infrastructure/persistence/relational/entities/user-wallet.entity';
 import { WalletHoldEntity } from './infrastructure/persistence/relational/entities/wallet-hold.entity';
 import { WalletTransactionEntity } from './infrastructure/persistence/relational/entities/wallet-transaction.entity';
+import { UserSpendTransactionEntity } from './infrastructure/persistence/relational/entities/user-spend-transaction.entity';
 import { EsimsModule } from '../esims/esims.module';
 
 @Module({
@@ -21,6 +23,8 @@ import { EsimsModule } from '../esims/esims.module';
       OrderReferralEntity,
       OrderRefundEntity,
       OrderEntity,
+      UserEntity,
+      UserSpendTransactionEntity,
     ]),
     forwardRef(() => EsimsModule),
   ],

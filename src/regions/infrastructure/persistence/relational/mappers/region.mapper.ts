@@ -8,6 +8,7 @@ export class RegionMapper {
     domainEntity.id = raw.id;
     domainEntity.name = raw.name;
     domainEntity.slug = raw.slug;
+    domainEntity.slugVi = raw.slugVi ?? null;
     domainEntity.externalCode = raw.externalCode ?? null;
     if (raw.destinations) {
       domainEntity.destinations = raw.destinations.map(
@@ -37,6 +38,7 @@ export class RegionMapper {
     }
     persistenceEntity.name = domainEntity.name;
     persistenceEntity.slug = domainEntity.slug;
+    persistenceEntity.slugVi = domainEntity.slugVi ?? null;
     persistenceEntity.externalCode = domainEntity.externalCode ?? null;
     persistenceEntity.avatarUrl = domainEntity.avatarUrl;
     persistenceEntity.iconUrl = domainEntity.iconUrl;

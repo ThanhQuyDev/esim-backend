@@ -23,6 +23,11 @@ export class FilterBlogDto {
   @IsOptional()
   @IsString()
   parent?: string;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  authorSlug?: string;
 }
 
 export class SortBlogDto {

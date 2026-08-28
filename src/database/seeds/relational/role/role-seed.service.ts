@@ -27,6 +27,21 @@ export class RoleSeedService {
       );
     }
 
+    const countAuthor = await this.repository.count({
+      where: {
+        id: RoleEnum.author,
+      },
+    });
+
+    if (!countAuthor) {
+      await this.repository.save(
+        this.repository.create({
+          id: RoleEnum.author,
+          name: 'Author',
+        }),
+      );
+    }
+
     const countAdmin = await this.repository.count({
       where: {
         id: RoleEnum.admin,

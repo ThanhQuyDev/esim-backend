@@ -13,6 +13,9 @@ export class RegionRef {
   slug: string;
 
   @ApiPropertyOptional({ type: String })
+  slugVi: string | null;
+
+  @ApiPropertyOptional({ type: String })
   avatarUrl: string | null;
 }
 
@@ -33,6 +36,12 @@ export class Destination {
     example: 'japan',
   })
   slug: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'nhat-ban',
+  })
+  slugVi: string | null;
 
   @ApiProperty({
     type: String,

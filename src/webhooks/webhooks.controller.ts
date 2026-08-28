@@ -98,4 +98,47 @@ export class WebhooksController {
     await this.webhooksService.handleGadgetKoreaEvent(payload);
     return { received: true };
   }
+
+  @Post('microesim')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Receive eSIM delivery events from MicroEsim' })
+  @ApiOkResponse({ description: 'Event processed' })
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: false,
+      forbidNonWhitelisted: false,
+    }),
+  )
+  async microEsim(
+    @Body() payload: Record<string, any>,
+  ): Promise<{ received: boolean }> {
+    this.logger.log(`[MicroEsim] raw payload: ${JSON.stringify(payload)}`);
+    // MicroEsim docs define no signature header; provisioning is idempotent and
+    // authenticated by the topup_id existing in our DB (unknown ids are no-ops).
+    await this.webhooksService.handleMicroEsimEvent(payload);
+    return { received: true };
+  }
+
+  @Post('billion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Receive eSIM QR (N009) events from BILLION' })
+  @ApiOkResponse({ description: 'Event processed' })
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: false,
+      forbidNonWhitelisted: false,
+    }),
+  )
+  async billion(
+    @Body() payload: Record<string, any>,
+  ): Promise<{ tradeCode: string; tradeMsg: string }> {
+    this.logger.log(`[Billion] raw payload: ${JSON.stringify(payload)}`);
+    // BILLION defines no signature header for notifications; provisioning is
+    // idempotent and authenticated by the orderId existing in our DB (unknown
+    // ids are no-ops). BILLION expects a { tradeCode, tradeMsg } ack body.
+    await this.webhooksService.handleBillionEvent(payload);
+    return { tradeCode: '1000', tradeMsg: 'success' };
+  }
 }

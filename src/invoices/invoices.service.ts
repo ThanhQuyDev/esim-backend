@@ -22,6 +22,7 @@ export interface CreateInvoiceForOrderInput {
   companyName: string;
   taxCode: string;
   address: string;
+  invoicePhone: string;
   invoiceEmail: string;
 }
 
@@ -58,6 +59,8 @@ export class InvoicesService {
       // Do not remove comment below.
       // <creating-property-payload />
       status: createInvoiceDto.status,
+
+      invoicePhone: createInvoiceDto.invoicePhone,
 
       invoiceEmail: createInvoiceDto.invoiceEmail,
 
@@ -128,6 +131,8 @@ export class InvoicesService {
       // Do not remove comment below.
       // <updating-property-payload />
       status: updateInvoiceDto.status,
+
+      invoicePhone: updateInvoiceDto.invoicePhone,
 
       invoiceEmail: updateInvoiceDto.invoiceEmail,
 
@@ -229,6 +234,7 @@ export class InvoicesService {
       companyName: input.companyName,
       taxCode: input.taxCode,
       address: input.address,
+      invoicePhone: input.invoicePhone,
       invoiceEmail: input.invoiceEmail,
       orderId: order.id,
       order,

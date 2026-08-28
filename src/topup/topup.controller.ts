@@ -30,6 +30,19 @@ class TopupCheckoutResponse {
   paymentUrl!: string;
 }
 
+class TopupBankTransferResponse {
+  success!: true;
+  orderId!: string;
+  /** Reference code the buyer must include in the transfer memo. */
+  bankTransferCode!: string;
+  /** VietQR image URL with account, amount and memo pre-filled. */
+  qrUrl!: string;
+  amount!: number;
+  accountNumber!: string;
+  accountName!: string;
+  bankCode!: string;
+}
+
 /**
  * Public Topup endpoints — see "Đặc tả Kỹ thuật Topup" spec.
  *
@@ -61,5 +74,20 @@ export class TopupController {
     @Ip() ip: string,
   ): Promise<TopupCheckoutResponse> {
     return this.topupService.checkout(req.user.id, dto, ip);
+  }
+
+  /**
+   * Bank-transfer topup checkout (SePay / Techcombank). Returns the VietQR
+   * plus the reference code to put in the transfer memo; the order is
+   * finalized asynchronously by the SePay webhook.
+   */
+  @Post('bank-transfer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: TopupBankTransferResponse })
+  async bankTransfer(
+    @Request() req: { user: { id: number } },
+    @Body() dto: TopupCheckoutDto,
+  ): Promise<TopupBankTransferResponse> {
+    return this.topupService.checkoutBankTransfer(req.user.id, dto);
   }
 }

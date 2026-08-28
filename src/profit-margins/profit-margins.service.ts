@@ -154,6 +154,45 @@ export class ProfitMarginsService {
   }
 
   /**
+   * Compute the retail price in VND from a provider cost, applying the same
+   * tiered profit margin used for SIM plans (see
+   * PlanRepository.recalculatePricesByTiers), so topup pricing matches SIM
+   * pricing exactly.
+   *
+   * Steps, mirroring the SIM SQL:
+   *   1. Convert cost to VND (costUsd * rate).
+   *   2. Match the tier whose [minVnd, maxVnd] contains that cost-in-VND.
+   *   3. Apply the tier: fixedAmountVnd (added) takes precedence over
+   *      percentage; no matching tier means no margin (cost passed through).
+   *   4. Round to the nearest 1,000 VND (same unit as checkout charges).
+   *
+   * @param costUsd provider cost price in USD
+   * @param rate    USD→VND exchange rate
+   */
+  async calculateRetailVndFromCostUsd(
+    costUsd: number,
+    rate: number,
+  ): Promise<number> {
+    const costVnd = costUsd * rate;
+    const tiers = await this.tierRepository.findAll();
+
+    let retailVnd = costVnd; // no-tier fallback: pass cost through
+    for (const tier of tiers) {
+      if (costVnd >= tier.minVnd && costVnd <= tier.maxVnd) {
+        const fixed = Number(tier.fixedAmountVnd) || 0;
+        retailVnd =
+          fixed > 0
+            ? costVnd + fixed
+            : costVnd * (1 + Number(tier.percentage) / 100);
+        break;
+      }
+    }
+
+    // Round to the nearest 1,000 VND (matches VND_ROUNDING_UNIT at checkout).
+    return Math.round(retailVnd / 1000) * 1000;
+  }
+
+  /**
    * Recalculate price and vndPrice for all plans based on current tiers.
    */
   async recalculateAllPlanPrices(): Promise<void> {

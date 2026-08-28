@@ -21,6 +21,10 @@ export abstract class OrderRepository {
 
   abstract findByOrderNumber(orderNumber: string): Promise<NullableType<Order>>;
 
+  abstract findByBankTransferCode(
+    bankTransferCode: string,
+  ): Promise<NullableType<Order>>;
+
   abstract findByOrderNumberAndUserId(
     orderNumber: string,
     userId: number,

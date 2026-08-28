@@ -19,6 +19,7 @@ export class OrderMapper {
     domainEntity.currency = raw.currency;
     domainEntity.paymentMethod = raw.paymentMethod;
     domainEntity.paymentId = raw.paymentId;
+    domainEntity.bankTransferCode = raw.bankTransferCode;
     domainEntity.couponCode = raw.couponCode;
     domainEntity.discountAmount = Number(raw.discountAmount);
     domainEntity.couponDiscountVndAmount = Number(raw.couponDiscountVndAmount);
@@ -34,6 +35,10 @@ export class OrderMapper {
     domainEntity.walletSpentVndAmount = Number(raw.walletSpentVndAmount);
     domainEntity.payableVndPrice = Number(raw.payableVndPrice);
     domainEntity.cashbackAmountVnd = Number(raw.cashbackAmountVnd);
+    domainEntity.membershipTierSnapshot = raw.membershipTierSnapshot;
+    domainEntity.tierSourceSnapshot = raw.tierSourceSnapshot;
+    domainEntity.cashbackPercentSnapshot = Number(raw.cashbackPercentSnapshot);
+    domainEntity.eligibleSpendVnd = Number(raw.eligibleSpendVnd);
     domainEntity.cashbackTransactionId = raw.cashbackTransactionId;
     domainEntity.cashbackReversedAt = raw.cashbackReversedAt;
     domainEntity.refundStatus = raw.refundStatus;
@@ -78,6 +83,7 @@ export class OrderMapper {
     }
     persistenceEntity.paymentMethod = domainEntity.paymentMethod;
     persistenceEntity.paymentId = domainEntity.paymentId;
+    persistenceEntity.bankTransferCode = domainEntity.bankTransferCode;
     persistenceEntity.couponCode = domainEntity.couponCode;
     persistenceEntity.discountAmount = domainEntity.discountAmount ?? 0;
     persistenceEntity.vndPrice = domainEntity.vndPrice ?? 0;
@@ -93,6 +99,20 @@ export class OrderMapper {
       domainEntity.walletSpentVndAmount ?? 0;
     persistenceEntity.payableVndPrice = domainEntity.payableVndPrice ?? 0;
     persistenceEntity.cashbackAmountVnd = domainEntity.cashbackAmountVnd ?? 0;
+    if (domainEntity.membershipTierSnapshot !== undefined) {
+      persistenceEntity.membershipTierSnapshot =
+        domainEntity.membershipTierSnapshot;
+    }
+    if (domainEntity.tierSourceSnapshot !== undefined) {
+      persistenceEntity.tierSourceSnapshot = domainEntity.tierSourceSnapshot;
+    }
+    if (domainEntity.cashbackPercentSnapshot !== undefined) {
+      persistenceEntity.cashbackPercentSnapshot =
+        domainEntity.cashbackPercentSnapshot;
+    }
+    if (domainEntity.eligibleSpendVnd !== undefined) {
+      persistenceEntity.eligibleSpendVnd = domainEntity.eligibleSpendVnd;
+    }
     persistenceEntity.cashbackTransactionId =
       domainEntity.cashbackTransactionId;
     persistenceEntity.cashbackReversedAt = domainEntity.cashbackReversedAt;

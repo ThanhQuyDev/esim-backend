@@ -23,6 +23,9 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: String, unique: true })
   slug: string;
 
+  @Column({ type: String, nullable: true })
+  slugVi: string | null;
+
   /**
    * Stable, provider-derived identity key (e.g. `esimaccess-cn`, `airalo-asia`).
    * Used by the cron sync to match an existing region regardless of CMS edits

@@ -44,11 +44,12 @@ export class UsersRelationalRepository implements UserRepository {
     }
 
     if (filterOptions?.search) {
-      // Search across email, firstName, lastName with OR
+      // Search across email, firstName, lastName, phoneNumber with OR
       where.push(
         { ...baseWhere, email: ILike(`%${filterOptions.search}%`) },
         { ...baseWhere, firstName: ILike(`%${filterOptions.search}%`) },
         { ...baseWhere, lastName: ILike(`%${filterOptions.search}%`) },
+        { ...baseWhere, phoneNumber: ILike(`%${filterOptions.search}%`) },
       );
     } else {
       where.push(baseWhere);

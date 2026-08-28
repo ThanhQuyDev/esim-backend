@@ -9,6 +9,8 @@ import {
   HttpStatus,
   UseGuards,
   Ip,
+  Headers,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
@@ -39,6 +41,62 @@ export class PaymentController {
     @Ip() ip: string,
   ): Promise<{ paymentUrl: string; orderNumber: string }> {
     return this.paymentService.createCheckout(req.user.id, dto, ip);
+  }
+
+  /**
+   * Bank-transfer checkout (SePay / Techcombank). Returns the VietQR image URL
+   * plus the reference code the buyer must put in the transfer memo. The order
+   * stays `pending` until SePay's webhook confirms the money arrived.
+   */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Post('plan/bank-transfer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        orderNumber: { type: 'string' },
+        bankTransferCode: { type: 'string', example: 'ESIM7K2M9P' },
+        qrUrl: { type: 'string' },
+        amount: { type: 'number', example: 280000 },
+        accountNumber: { type: 'string' },
+        accountName: { type: 'string' },
+        bankCode: { type: 'string', example: 'TCB' },
+        paymentUrl: {
+          type: 'string',
+          description: 'Only set when the eXU wallet already covered the order',
+        },
+      },
+    },
+  })
+  bankTransfer(
+    @Request() req: { user: { id: number } },
+    @Body() dto: SubmitOrderDto,
+  ) {
+    return this.paymentService.createBankTransferCheckout(req.user.id, dto);
+  }
+
+  /**
+   * SePay webhook — fired when money lands in the Techcombank account.
+   * Authenticated by the `Authorization: Apikey <token>` header.
+   */
+  @Post('sepay/webhook')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: { success: { type: 'boolean' } },
+    },
+  })
+  async sepayWebhook(
+    @Headers('authorization') authorization: string,
+    @Body() payload: Record<string, any>,
+  ): Promise<{ success: boolean }> {
+    if (!this.paymentService.verifySepayApiKey(authorization)) {
+      throw new UnauthorizedException('Invalid SePay webhook API key');
+    }
+    return this.paymentService.handleSepayWebhook(payload);
   }
 
   @Get('plan/return')
