@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { I18nContext } from 'nestjs-i18n';
 import { MailData } from './interfaces/mail-data.interface';
+import { BRAND_LOGO_URL, SUPPORT_EMAIL } from './mail-branding';
 
 import { MaybeType } from '../utils/types/maybe.type';
 import { MailerService } from '../mailer/mailer.service';
@@ -31,6 +32,25 @@ export interface InvoiceIssuedMailData {
   taxCode: string;
   address: string;
   totalAmountVnd: number;
+}
+
+/**
+ * Where an approved affiliate manages their links, as a path on the public
+ * site (#095).
+ *
+ * The storefront's Vietnamese profile route is `/ho-so` (`/profile` is the
+ * English one) and the Affiliates tab opens from `?tab=affiliate`. This was
+ * `/tai-khoan/affiliates` — a path that exists in neither language, so the
+ * approval email's one call to action was a 404.
+ */
+export const PARTNER_AFFILIATE_PATH = '/ho-so?tab=affiliate';
+
+/** Outcome of an affiliate application, either way (#095). */
+export interface PartnerDecisionMailData {
+  to: string;
+  contactName: string;
+  /** Only carried by the rejection, and only when an admin gave one. */
+  reason?: string | null;
 }
 
 @Injectable()
@@ -184,8 +204,7 @@ export class MailService {
         title: otpTitle,
         otp: mailData.data.otp,
         app_name: this.configService.get('app.name', { infer: true }),
-        logoUrl:
-          'https://res.cloudinary.com/drozbviwb/image/upload/v1780067058/logo_esimvn_zycejk.png',
+        logoUrl: BRAND_LOGO_URL,
         text1,
         text2,
         text3,
@@ -222,8 +241,7 @@ export class MailService {
       planName: data.planName,
       orderNumber: data.orderNumber,
       qrCodeBase64: qrCodeUrl,
-      logoUrl:
-        'https://res.cloudinary.com/drozbviwb/image/upload/v1780067058/logo_esimvn_zycejk.png',
+      logoUrl: BRAND_LOGO_URL,
       app_name: appName,
       subject: template.subject,
     };
@@ -271,6 +289,11 @@ export class MailService {
       address: data.address,
       totalAmountFormatted,
       app_name: appName,
+      // The invoice email never got a logo or a support address of its own
+      // (#079): the header could only render as plain text, and the footer
+      // pointed at a mailbox nobody reads.
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
     };
 
@@ -291,6 +314,69 @@ export class MailService {
       context: {},
       html: htmlCompiled,
     });
+  }
+
+  /**
+   * Tell an affiliate applicant what an admin decided (#095).
+   *
+   * Approval and rejection share everything but the template and the reason,
+   * so they share one sender. Nothing here throws: an applicant is approved in
+   * the database whether or not the mail server is reachable, and the caller
+   * fires this without awaiting the result.
+   */
+  private async sendPartnerDecision(
+    templateName:
+      | 'partner_application_approved'
+      | 'partner_application_rejected',
+    data: PartnerDecisionMailData,
+  ): Promise<void> {
+    const template = await this.emailTemplatesService.findByName(templateName);
+    if (!template) {
+      this.logger.warn(
+        `Email template "${templateName}" not found, skipping partner decision email`,
+      );
+      return;
+    }
+
+    const appName = this.configService.get('app.name', { infer: true });
+    const context = {
+      contactName: data.contactName,
+      reason: data.reason ?? null,
+      // Where an approved partner picks up their links. `getOrThrow` on
+      // purpose: a missing domain would otherwise mail out a link that starts
+      // with the literal word "undefined", and the caller already swallows a
+      // throw here without touching the approval itself.
+      portalUrl:
+        this.configService.getOrThrow('app.frontendDomain', { infer: true }) +
+        PARTNER_AFFILIATE_PATH,
+      app_name: appName,
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail: SUPPORT_EMAIL,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      transportName: 'otp',
+      to: data.to,
+      subject: subjectCompiled,
+      text: subjectCompiled,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
+    });
+  }
+
+  async sendPartnerApproved(data: PartnerDecisionMailData): Promise<void> {
+    await this.sendPartnerDecision('partner_application_approved', data);
+  }
+
+  async sendPartnerRejected(data: PartnerDecisionMailData): Promise<void> {
+    await this.sendPartnerDecision('partner_application_rejected', data);
   }
 
   async confirmNewEmail(mailData: MailData<{ hash: string }>): Promise<void> {

@@ -5,7 +5,9 @@ import { FooterEntity } from '../entities/footer.entity';
 export class FooterMapper {
   static toDomain(raw: FooterEntity): Footer {
     const domainEntity = new Footer();
+    domainEntity.sortOrder = raw.sortOrder;
     domainEntity.categories = raw.categories;
+    domainEntity.categoriesVi = raw.categoriesVi;
 
     domainEntity.url = raw.url;
 
@@ -24,7 +26,9 @@ export class FooterMapper {
 
   static toPersistence(domainEntity: Footer): FooterEntity {
     const persistenceEntity = new FooterEntity();
+    persistenceEntity.sortOrder = domainEntity.sortOrder ?? 0;
     persistenceEntity.categories = domainEntity.categories;
+    persistenceEntity.categoriesVi = domainEntity.categoriesVi;
 
     persistenceEntity.url = domainEntity.url;
 

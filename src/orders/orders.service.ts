@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
   forwardRef,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -39,17 +40,71 @@ import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
 import { MembershipTierEnum, TierSourceEnum } from '../wallets/tier/tier.enum';
 import { InvoiceRepository } from '../invoices/infrastructure/persistence/invoice.repository';
 import { InvoiceStatus } from '../invoices/invoices.enum';
+import { PartnersService } from '../partners/partners.service';
 
 const VND_ROUNDING_UNIT = 1000;
 
+/**
+ * What share of an order a commission came to (#095).
+ *
+ * The commission row stores dong, not a percentage — the rate can change per
+ * tier and per campaign — so the figure an admin sees is worked out against
+ * the money the order actually took, which is the number they are checking it
+ * against anyway.
+ */
+function commissionShareOfOrder(
+  commissionVnd: number,
+  order: { subtotalVndPrice?: number | null; vndPrice?: number | null },
+): number {
+  const base = Number(order.subtotalVndPrice ?? order.vndPrice ?? 0);
+  if (!(base > 0) || !(commissionVnd > 0)) return 0;
+  return Math.round((commissionVnd / base) * 1000) / 10;
+}
 function roundVndToThousands(amount: number): number {
   return Math.round(amount / VND_ROUNDING_UNIT) * VND_ROUNDING_UNIT;
 }
 
-function getDiscountedVndPrice(plan: Plan): number {
-  const vndPrice = plan.vndPrice ?? 0;
+function getPlanPeriodMultiplier(
+  plan: Plan,
+  periodNum?: number | null,
+): number {
+  if (!plan.isAbleMultidate) return 1;
+  return Math.max(1, Math.round(Number(periodNum ?? 1)));
+}
+
+export function getDiscountedVndPrice(
+  plan: Plan,
+  periodNum?: number | null,
+): number {
+  const multiplier = getPlanPeriodMultiplier(plan, periodNum);
+  const vndPrice = (plan.vndPrice ?? 0) * multiplier;
   if (!plan.discount || plan.discount <= 0) return vndPrice;
   return roundVndToThousands(vndPrice * (1 - plan.discount / 100));
+}
+
+/**
+ * Price of a plan in DOLLARS.
+ *
+ * `plan.price` is dollars for API suppliers but VND for local inventory, so
+ * reading it directly recorded a đồng figure as USD on the order — roughly a
+ * 25,000x overstatement on Viettel and other domestic plans (#037). `usdPrice`
+ * is maintained in dollars for every provider by the hourly exchange-rate job.
+ *
+ * Falls back to 0 rather than to `price` for local plans: a missing dollar
+ * figure is obvious, a VND number labelled USD is not.
+ */
+export function getPlanUsdPrice(plan: Plan, periodNum?: number | null): number {
+  const multiplier = getPlanPeriodMultiplier(plan, periodNum);
+  const usd = Number(plan.usdPrice ?? 0);
+
+  if (usd > 0) return usd * multiplier;
+  if (plan.isLocalInventory) return 0;
+
+  return plan.price * multiplier;
+}
+
+function getPlanCostPrice(plan: Plan, periodNum?: number | null): number {
+  return plan.costPrice * getPlanPeriodMultiplier(plan, periodNum);
 }
 
 type OrderPlanDetail = SubmitOrderDto['items'][number] & { plan: Plan };
@@ -97,7 +152,82 @@ export class OrdersService {
     private readonly usersService: UsersService,
     private readonly walletsService: WalletsService,
     private readonly invoiceRepository: InvoiceRepository,
+    private readonly partnersService: PartnersService,
   ) {}
+
+  /**
+   * Resolve an optional KOL partner-link code (from checkout, sourced from the
+   * `esim_partner_link` cookie set at /go/[code]) into partner attribution
+   * fields for the new order. Independent of coupon/referral — a buyer can
+   * have both a discount code AND arrive via a KOL link.
+   *
+   * `clickedAt` is when the buyer last opened the link. The partner only earns
+   * on an order placed within 30 days of that visit (#095, ý 3); the check
+   * itself lives in `PartnersService.resolveLinkForAttribution`, which falls
+   * back to the click log when the checkout sends no stamp.
+   */
+  private async resolvePartnerAttribution(
+    partnerLinkCode?: string | null,
+    clickedAt?: string | null,
+  ): Promise<{
+    partnerLinkCode: string | null;
+    attributedPartnerId: number | null;
+    linkId: number | null;
+  }> {
+    if (!partnerLinkCode) {
+      return { partnerLinkCode: null, attributedPartnerId: null, linkId: null };
+    }
+    const parsedClickedAt = clickedAt ? new Date(clickedAt) : null;
+    const resolved = await this.partnersService.resolveLinkForAttribution(
+      partnerLinkCode,
+      parsedClickedAt && !Number.isNaN(parsedClickedAt.getTime())
+        ? parsedClickedAt
+        : null,
+    );
+    if (!resolved) {
+      return { partnerLinkCode: null, attributedPartnerId: null, linkId: null };
+    }
+    return {
+      partnerLinkCode,
+      attributedPartnerId: resolved.partnerId,
+      linkId: resolved.linkId,
+    };
+  }
+
+  /**
+   * Create the PENDING commission snapshot for a newly-created order that
+   * carries partner attribution. Errors are logged but never propagated —
+   * commission bookkeeping must not block order placement.
+   */
+  private async createPendingCommissionIfAttributed(
+    order: Order,
+    attribution: { attributedPartnerId: number | null; linkId: number | null },
+  ): Promise<void> {
+    if (!attribution.attributedPartnerId) return;
+    try {
+      await this.partnersService.createPendingCommissionForOrder({
+        orderId: order.id,
+        partnerId: attribution.attributedPartnerId,
+        linkId: attribution.linkId,
+        // Lets the partners module refuse a partner buying through their own
+        // link (#095).
+        buyerUserId: order.userId,
+        // Commission base is the order value AFTER discounts but BEFORE the
+        // buyer's eXU wallet spend: eXU is the customer paying with store
+        // credit, not a discount, so it must not shrink what the partner earns.
+        // `payableVndPrice` subtracts it, `eligibleSpendVnd` does not.
+        orderValueVnd:
+          order.eligibleSpendVnd ??
+          order.payableVndPrice ??
+          order.vndPrice ??
+          0,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to create pending partner commission for order ${order.id}: ${(err as Error).message}`,
+      );
+    }
+  }
 
   /**
    * Persist the optional invoice request that comes alongside a checkout payload.
@@ -147,6 +277,8 @@ export class OrdersService {
       couponDiscountVndAmount: 0,
       referralCode: null,
       referrerUserId: null,
+      partnerLinkCode: null,
+      attributedPartnerId: null,
       referralDiscountVndAmount: 0,
       walletSpentVndAmount: 0,
       payableVndPrice: 0,
@@ -186,6 +318,10 @@ export class OrdersService {
     );
 
     const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
+    const attribution = await this.resolvePartnerAttribution(
+      dto.partnerLinkCode,
+      dto.partnerLinkClickedAt,
+    );
 
     // 3. Create order
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -205,6 +341,8 @@ export class OrdersService {
       couponDiscountVndAmount: pricing.couponDiscountVndAmount,
       referralCode: pricing.referralCode,
       referrerUserId: pricing.referrerUserId,
+      partnerLinkCode: attribution.partnerLinkCode,
+      attributedPartnerId: attribution.attributedPartnerId,
       referralDiscountVndAmount: pricing.referralDiscountVndAmount,
       walletSpentVndAmount: pricing.walletSpentVndAmount,
       payableVndPrice: pricing.payableVndPrice,
@@ -234,6 +372,8 @@ export class OrdersService {
         pricing.walletSpentVndAmount,
       );
     }
+
+    await this.createPendingCommissionIfAttributed(order, attribution);
 
     // 4. Group items by provider
     const airaloItems = planDetails.filter((i) => i.plan.provider === 'airalo');
@@ -545,16 +685,19 @@ export class OrdersService {
     );
 
     const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
+    const attribution = await this.resolvePartnerAttribution(
+      dto.partnerLinkCode,
+      dto.partnerLinkClickedAt,
+    );
 
     const totalVndCostPrice = planDetails.reduce((sum, item) => {
+      const itemCostPrice = getPlanCostPrice(item.plan, item.periodNum);
       if (item.plan.isLocalInventory) {
-        return sum + Math.round(item.plan.costPrice) * item.quantity;
+        return sum + Math.round(itemCostPrice) * item.quantity;
       }
       return (
         sum +
-        (vndRate
-          ? Math.round(item.plan.costPrice * vndRate) * item.quantity
-          : 0)
+        (vndRate ? Math.round(itemCostPrice * vndRate) * item.quantity : 0)
       );
     }, 0);
 
@@ -574,6 +717,8 @@ export class OrdersService {
       couponDiscountVndAmount: pricing.couponDiscountVndAmount,
       referralCode: pricing.referralCode,
       referrerUserId: pricing.referrerUserId,
+      partnerLinkCode: attribution.partnerLinkCode,
+      attributedPartnerId: attribution.attributedPartnerId,
       referralDiscountVndAmount: pricing.referralDiscountVndAmount,
       walletSpentVndAmount: pricing.walletSpentVndAmount,
       payableVndPrice: pricing.payableVndPrice,
@@ -596,6 +741,8 @@ export class OrdersService {
       );
     }
 
+    await this.createPendingCommissionIfAttributed(order, attribution);
+
     if (pricing.walletSpentVndAmount > 0) {
       await this.walletsService.createHold(
         order.id,
@@ -605,10 +752,11 @@ export class OrdersService {
     }
 
     for (const item of planDetails) {
+      const unitCostPrice = getPlanCostPrice(item.plan, item.periodNum);
       const itemVndCostPrice = item.plan.isLocalInventory
-        ? Math.round(item.plan.costPrice) * item.quantity
+        ? Math.round(unitCostPrice) * item.quantity
         : vndRate
-          ? Math.round(item.plan.costPrice * vndRate) * item.quantity
+          ? Math.round(unitCostPrice * vndRate) * item.quantity
           : 0;
 
       // JapanTravelSim INSERT API has no quantity field: each unit needs its
@@ -631,13 +779,11 @@ export class OrdersService {
             planId: item.planId,
             orderRequestId: null,
             status: 'pending',
-            price: item.plan.price,
+            price: getPlanUsdPrice(item.plan, item.periodNum),
             currency: dto.currency,
             quantity: 1,
-            vndPrice: getDiscountedVndPrice(item.plan),
-            vndCostPrice: vndRate
-              ? Math.round(item.plan.costPrice * vndRate)
-              : 0,
+            vndPrice: getDiscountedVndPrice(item.plan, item.periodNum),
+            vndCostPrice: vndRate ? Math.round(unitCostPrice * vndRate) : 0,
             periodNum: item.periodNum ?? null,
           });
         }
@@ -649,10 +795,11 @@ export class OrdersService {
         planId: item.planId,
         orderRequestId: null,
         status: 'pending',
-        price: item.plan.price,
+        price: getPlanUsdPrice(item.plan, item.periodNum),
         currency: item.plan.isLocalInventory ? 'VND' : dto.currency,
         quantity: item.quantity,
-        vndPrice: getDiscountedVndPrice(item.plan) * item.quantity,
+        vndPrice:
+          getDiscountedVndPrice(item.plan, item.periodNum) * item.quantity,
         vndCostPrice: itemVndCostPrice,
         periodNum: item.periodNum ?? null,
       });
@@ -672,10 +819,11 @@ export class OrdersService {
     // totalAmount in USD — exclude local inventory (their price is already VND)
     const totalAmount = planDetails.reduce((sum, item) => {
       if (item.plan.isLocalInventory) return sum;
-      return sum + item.plan.price * item.quantity;
+      return sum + getPlanUsdPrice(item.plan, item.periodNum) * item.quantity;
     }, 0);
     const subtotalVndPrice = planDetails.reduce(
-      (sum, item) => sum + getDiscountedVndPrice(item.plan) * item.quantity,
+      (sum, item) =>
+        sum + getDiscountedVndPrice(item.plan, item.periodNum) * item.quantity,
       0,
     );
 
@@ -714,9 +862,12 @@ export class OrdersService {
       couponDiscountVndAmount = roundVndToThousands(
         couponResult.discountAmount,
       );
-      // Derive USD discount from the same percentage
-      const discountPercent = couponResult.discountPercent / 100;
-      discountAmount = Math.round(totalAmount * discountPercent * 100) / 100;
+      // Derive the USD discount from the share actually taken off, not the
+      // coupon's configured percentage: a capped or flat-amount code (#082)
+      // is no longer described by that number, and the two currencies would
+      // disagree about the same order.
+      const discountShare = couponResult.effectiveDiscountPercent / 100;
+      discountAmount = Math.round(totalAmount * discountShare * 100) / 100;
     }
 
     const finalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
@@ -827,6 +978,7 @@ export class OrdersService {
                 vndPrice: plan.vndPrice,
                 currency: plan.currency,
                 speed: plan.speed,
+                fupSpeed: plan.fupSpeed,
                 operatorName: plan.operatorName,
                 countryCode: plan.countryCode,
                 locationInfo: this.buildLocationInfo(plan),
@@ -842,14 +994,103 @@ export class OrdersService {
     };
   }
 
+  /**
+   * Ask the suppliers again for the eSIMs an order never received (#030).
+   *
+   * The usual cause is the deposit with a supplier running dry mid-order: the
+   * customer has paid, some lines came back with an eSIM and the rest failed.
+   * An admin tops the deposit up and presses the button.
+   *
+   * The important part is what it REFUSES to do. `submitProviders` orders every
+   * line it is given, so running it again over a whole order would buy a second
+   * eSIM for every line that already worked — real money, and duplicate eSIMs
+   * for the customer. So a line is retried only when BOTH are true:
+   *   - it has no eSIM yet, and
+   *   - it has no provider order reference, i.e. the supplier never accepted it.
+   * A line that was accepted but is still waiting on the provider's webhook
+   * (Airalo, Billion, MicroEsim deliver asynchronously) is left alone.
+   */
+  async retryProvisioning(orderId: number): Promise<{
+    retriedItemIds: number[];
+    skippedItemIds: number[];
+    message: string;
+  }> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+
+    if (order.status !== 'paid') {
+      throw new UnprocessableEntityException(
+        `Order ${order.orderNumber} is ${order.status}; only a paid order can be re-sent to the supplier`,
+      );
+    }
+
+    const items = await this.orderItemsService.findByOrderId(orderId);
+    const esims = await this.esimsService.findByOrderItemIds(
+      items.map((item) => Number(item.id)),
+    );
+    const itemIdsWithEsim = new Set(
+      esims.map((esim) => Number(esim.orderItemId)),
+    );
+
+    const retriedItemIds: number[] = [];
+    const skippedItemIds: number[] = [];
+
+    for (const item of items) {
+      const id = Number(item.id);
+      const hasEsim = itemIdsWithEsim.has(id);
+      const acceptedByProvider = !!item.orderRequestId;
+
+      if (hasEsim || acceptedByProvider) {
+        skippedItemIds.push(id);
+      } else {
+        retriedItemIds.push(id);
+      }
+    }
+
+    if (retriedItemIds.length === 0) {
+      return {
+        retriedItemIds,
+        skippedItemIds,
+        message:
+          'Không có sản phẩm nào cần gọi lại: tất cả đã có eSIM hoặc đã được nhà cung cấp tiếp nhận.',
+      };
+    }
+
+    this.logger.log(
+      `retryProvisioning: re-submitting items ${retriedItemIds.join(', ')} of order ${order.orderNumber}`,
+    );
+
+    await this.submitProviders(orderId, { onlyItemIds: retriedItemIds });
+
+    return {
+      retriedItemIds,
+      skippedItemIds,
+      message: `Đã gọi lại nhà cung cấp cho ${retriedItemIds.length} sản phẩm.`,
+    };
+  }
+
+  /**
+   * Order the eSIMs from the suppliers.
+   *
+   * `onlyItemIds` restricts the run to part of the order — used by the retry
+   * button (#030) so lines that already came back with an eSIM are never
+   * ordered a second time.
+   */
   async submitProviders(
     orderId: number,
-    options: { mutedEmail?: boolean } = {},
+    options: { mutedEmail?: boolean; onlyItemIds?: number[] } = {},
   ): Promise<void> {
     const order = await this.orderRepository.findById(orderId);
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
-    const orderItems = await this.orderItemsService.findByOrderId(orderId);
+    const allItems = await this.orderItemsService.findByOrderId(orderId);
+    const orderItems = options.onlyItemIds?.length
+      ? allItems.filter((item) =>
+          options.onlyItemIds!.includes(Number(item.id)),
+        )
+      : allItems;
+
+    if (orderItems.length === 0) return;
 
     const itemsWithPlans = await Promise.all(
       orderItems.map(async (oi) => {
@@ -1351,16 +1592,37 @@ export class OrdersService {
     if (orders.length > 0) {
       const orderIds = orders.map((o) => o.id);
 
-      // Batch fetch invoice existence and item counts
-      const [invoiceOrderIds, itemCounts] = await Promise.all([
-        this.invoiceRepository.findOrderIdsWithInvoice(orderIds),
-        this.orderItemsService.countByOrderIds(orderIds),
-      ]);
+      // Batch fetch invoice existence, item counts and affiliate commissions
+      const [invoiceOrderIds, itemCounts, productQuantities, commissions] =
+        await Promise.all([
+          this.invoiceRepository.findOrderIdsWithInvoice(orderIds),
+          this.orderItemsService.countByOrderIds(orderIds),
+          this.orderItemsService.sumQuantityByOrderIds(orderIds),
+          // One query for the page, so the affiliate badge costs nothing
+          // per row (#095).
+          this.partnersService.getCommissionSummariesByOrderIds(orderIds),
+        ]);
 
       const invoiceSet = new Set(invoiceOrderIds);
       for (const order of orders) {
         order.isInvoice = invoiceSet.has(order.id);
         order.itemCount = itemCounts.get(order.id) ?? 0;
+        // What the customer counts: eSIMs, not order lines (#064).
+        order.productQuantity = productQuantities.get(order.id) ?? 0;
+
+        const commission = commissions.get(order.id);
+        order.partnerCommission = commission
+          ? {
+              partnerId: commission.partnerId,
+              partnerName: commission.partnerName,
+              commissionVnd: commission.commissionVnd,
+              commissionPercent: commissionShareOfOrder(
+                commission.commissionVnd,
+                order,
+              ),
+              status: commission.status,
+            }
+          : null;
       }
     }
 
@@ -1377,15 +1639,20 @@ export class OrdersService {
 
     const orderItems = await this.orderItemsService.findByOrderId(order.id);
 
-    const [esims, plans, user, coupon, invoice] = await Promise.all([
-      this.esimsService.findByOrderItemIds(orderItems.map((i) => i.id)),
-      Promise.all(orderItems.map((i) => this.plansService.findById(i.planId))),
-      this.usersService.findById(order.userId),
-      order.couponCode
-        ? this.couponsService.findByCode(order.couponCode)
-        : Promise.resolve(null),
-      this.invoiceRepository.findByOrderId(order.id),
-    ]);
+    const [esims, plans, user, coupon, invoice, partnerCommission] =
+      await Promise.all([
+        this.esimsService.findByOrderItemIds(orderItems.map((i) => i.id)),
+        Promise.all(
+          orderItems.map((i) => this.plansService.findById(i.planId)),
+        ),
+        this.usersService.findById(order.userId),
+        order.couponCode
+          ? this.couponsService.findByCode(order.couponCode)
+          : Promise.resolve(null),
+        this.invoiceRepository.findByOrderId(order.id),
+        // Who earned on this order and how much (#095).
+        this.partnersService.getCommissionSummaryByOrderId(order.id),
+      ]);
 
     const esimsByOrderItemId = new Map<number, typeof esims>();
     for (const esim of esims) {
@@ -1416,6 +1683,21 @@ export class OrdersService {
       couponCode: order.couponCode,
       referralCode: order.referralCode ?? null,
       referralDiscountVndAmount: order.referralDiscountVndAmount ?? 0,
+      partnerCommission: partnerCommission
+        ? {
+            partnerId: partnerCommission.partnerId,
+            partnerName: partnerCommission.partnerName,
+            partnerStatus: partnerCommission.partnerStatus,
+            linkCode: partnerCommission.linkCode,
+            commissionVnd: partnerCommission.commissionVnd,
+            commissionPercent: commissionShareOfOrder(
+              partnerCommission.commissionVnd,
+              order,
+            ),
+            status: partnerCommission.status,
+            tierSnapshot: partnerCommission.tierSnapshot,
+          }
+        : null,
       discountAmount: order.discountAmount,
       couponDiscountVndAmount: order.couponDiscountVndAmount ?? 0,
       vndPrice: order.vndPrice,
@@ -1439,6 +1721,7 @@ export class OrdersService {
                 vndPrice: plan.vndPrice,
                 currency: plan.currency,
                 speed: plan.speed,
+                fupSpeed: plan.fupSpeed,
                 operatorName: plan.operatorName,
                 countryCode: plan.countryCode,
                 provider: plan.provider,
@@ -1536,6 +1819,15 @@ export class OrdersService {
     });
     if (updatedOrder) {
       await this.walletsService.completePaidOrderBenefits(updatedOrder);
+      if (updatedOrder.attributedPartnerId) {
+        try {
+          await this.partnersService.creditCommissionForOrder(updatedOrder.id);
+        } catch (err) {
+          this.logger.error(
+            `Failed to credit partner commission for order ${updatedOrder.id}: ${(err as Error).message}`,
+          );
+        }
+      }
       // Auto-send the invoice confirmation email when an invoice request was
       // attached to the order at checkout. Skip when explicitly muted, e.g.
       // admin "đặt đơn hộ" (the admin will trigger this manually after
@@ -1584,10 +1876,75 @@ export class OrdersService {
     const order = await this.orderRepository.findById(id);
     if (!order) throw new NotFoundException(`Order ${id} not found`);
 
-    // Cancel with suppliers before processing refund
-    await this.cancelOrderWithSuppliers(order.id);
+    // Per-item refund (#027): validate the selection belongs to this order
+    // before touching any supplier, and cap the amount at what those items are
+    // actually worth so a slip cannot refund more than was paid for them.
+    let selectedItemIds: number[] | undefined;
+    if (dto.orderItemIds?.length) {
+      const orderItems = await this.orderItemsService.findByOrderId(order.id);
+      const validIds = new Set(orderItems.map((item) => Number(item.id)));
+      const unknown = dto.orderItemIds.filter((id) => !validIds.has(id));
+      if (unknown.length) {
+        throw new NotFoundException(
+          `Order items ${unknown.join(', ')} do not belong to order ${order.id}`,
+        );
+      }
 
-    return this.walletsService.refundOrder(order, dto, adminId);
+      selectedItemIds = dto.orderItemIds;
+
+      const selectedValue = orderItems
+        .filter((item) => selectedItemIds!.includes(Number(item.id)))
+        .reduce((sum, item) => sum + Number(item.vndPrice ?? 0), 0);
+
+      if (Number(dto.amountVnd) > selectedValue) {
+        throw new UnprocessableEntityException(
+          `Refund ${dto.amountVnd} exceeds the value of the selected items (${selectedValue})`,
+        );
+      }
+    }
+
+    // Cancel with suppliers before processing refund
+    await this.cancelOrderWithSuppliers(order.id, selectedItemIds);
+
+    const refund = await this.walletsService.refundOrder(order, dto, adminId);
+
+    // Mark the refunded lines so they drop out of revenue/cost reporting and
+    // the CMS can show which part of the order was given back. The overview
+    // only counts items with status `completed`.
+    if (selectedItemIds?.length) {
+      for (const itemId of selectedItemIds) {
+        try {
+          await this.orderItemsService.update(itemId, {
+            status: 'refunded',
+          } as never);
+        } catch (err) {
+          this.logger.error(
+            `refundOrder: failed to mark order item ${itemId} refunded: ${(err as Error).message}`,
+          );
+        }
+      }
+    }
+
+    if (order.attributedPartnerId) {
+      const totalOrderValue =
+        Number(order.payableVndPrice ?? order.vndPrice ?? 0) +
+        Number(order.walletSpentVndAmount ?? 0);
+      const refundedAmountVnd =
+        Number(order.refundedAmountVnd ?? 0) +
+        Math.round(Number(dto.amountVnd));
+      const isFullRefund = refundedAmountVnd >= totalOrderValue;
+      try {
+        await this.partnersService.reverseCommissionForOrder(order.id, {
+          fullRefund: isFullRefund,
+        });
+      } catch (err) {
+        this.logger.error(
+          `refundOrder: failed to reverse partner commission for order ${order.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return refund;
   }
 
   /**
@@ -1597,8 +1954,21 @@ export class OrdersService {
    * - Gadget Korea: call POST /api/v2/cancel/{orderRequestId} from order-item
    * - Viettel (local): clear userId and orderItemId in esim table
    */
-  private async cancelOrderWithSuppliers(orderId: number): Promise<void> {
-    const orderItems = await this.orderItemsService.findByOrderId(orderId);
+  /**
+   * Cancel with the suppliers behind an order.
+   *
+   * `onlyItemIds` limits it to part of the order (#027): an order can mix
+   * suppliers, and refunding the esimaccess line must NOT cancel the airalo
+   * line sitting next to it.
+   */
+  private async cancelOrderWithSuppliers(
+    orderId: number,
+    onlyItemIds?: number[],
+  ): Promise<void> {
+    const allItems = await this.orderItemsService.findByOrderId(orderId);
+    const orderItems = onlyItemIds?.length
+      ? allItems.filter((item) => onlyItemIds.includes(Number(item.id)))
+      : allItems;
 
     const itemsWithPlans = await Promise.all(
       orderItems.map(async (oi) => {
@@ -1742,6 +2112,16 @@ export class OrdersService {
       );
     }
 
+    if (order.attributedPartnerId) {
+      try {
+        await this.partnersService.reverseCommissionForOrder(order.id);
+      } catch (err) {
+        this.logger.error(
+          `cancelOrder: failed to reverse pending partner commission for order ${order.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+
     this.logger.log(
       `cancelOrder: order ${order.orderNumber} (id=${order.id}) cancelled by ${
         userId !== undefined ? `user ${userId}` : 'admin'
@@ -1796,12 +2176,9 @@ export class OrdersService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async cleanupFailedOrders(): Promise<void> {
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
     const deleted = await this.orderRepository.softDeleteByStatusOlderThan(
       'failed',
-      oneWeekAgo,
+      7,
     );
 
     if (deleted > 0) {

@@ -28,6 +28,11 @@ export abstract class OrderItemRepository {
 
   abstract countByOrderIds(orderIds: number[]): Promise<Map<number, number>>;
 
+  /** Total eSIMs per order — quantities summed, not lines counted (#064). */
+  abstract sumQuantityByOrderIds(
+    orderIds: number[],
+  ): Promise<Map<number, number>>;
+
   abstract findByOrderRequestId(orderRequestId: string): Promise<OrderItem[]>;
 
   abstract findPendingByProvider(provider: string): Promise<OrderItem[]>;

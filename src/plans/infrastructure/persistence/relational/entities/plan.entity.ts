@@ -110,6 +110,21 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: 'bigint', default: 0 })
   vndPrice: number;
 
+  /**
+   * Price in USD, for every provider. The `price` column holds VND for local
+   * inventory, so this is the only field safe to read as dollars.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  usdPrice: number;
+
+  /**
+   * Exit IP is local rather than routed via Hong Kong. Apps that geo-block
+   * Hong Kong routing (TikTok, ChatGPT) work on these (#041).
+   */
+  @Index()
+  @Column({ type: Boolean, default: false })
+  isNonHkIp: boolean;
+
   @Column({ type: Boolean, default: false })
   isKyc: boolean;
 

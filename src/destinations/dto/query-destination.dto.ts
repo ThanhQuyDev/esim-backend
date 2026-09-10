@@ -15,6 +15,11 @@ export class FilterDestinationDto {
   @IsString()
   search?: string;
 
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  parentId?: number | null;
+
   @ApiPropertyOptional({ type: Boolean })
   @IsOptional()
   @IsBoolean()

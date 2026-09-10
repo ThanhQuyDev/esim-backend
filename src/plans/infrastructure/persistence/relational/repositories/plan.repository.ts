@@ -382,6 +382,42 @@ export class PlansRelationalRepository implements PlanRepository {
     );
   }
 
+  /**
+   * Keep both cross-currency columns in step with today's rate.
+   *
+   * `price` means dollars for API suppliers but VND for local inventory, so
+   * `usdPrice` is maintained separately and is the only column safe to read as
+   * dollars (#037).
+   */
+  /**
+   * Unsold eSIMs per plan. "Unsold" means the same thing the fulfilment code
+   * means by it: status `available`, not attached to an order item and not
+   * owned by a customer — otherwise a plan would look in stock while every
+   * eSIM behind it is already sold.
+   */
+  async countAvailableEsimsByPlanIds(
+    planIds: number[],
+  ): Promise<Record<number, number>> {
+    if (!planIds.length) return {};
+
+    const rows: { planId: string | number; count: string | number }[] =
+      await this.plansRepository.query(
+        `SELECT "planId", COUNT(*) AS count FROM "esim"
+           WHERE "planId" = ANY($1)
+             AND "status" = 'available'
+             AND "orderItemId" IS NULL
+             AND "userId" IS NULL
+             AND "deletedAt" IS NULL
+           GROUP BY "planId"`,
+        [planIds],
+      );
+
+    return rows.reduce<Record<number, number>>((acc, row) => {
+      acc[Number(row.planId)] = Number(row.count);
+      return acc;
+    }, {});
+  }
+
   async updateAllVndPrices(rate: number): Promise<void> {
     // Non-local plans: price is in USD → convert to VND at the exchange rate.
     await this.plansRepository.query(
@@ -393,6 +429,18 @@ export class PlansRelationalRepository implements PlanRepository {
     // it straight across — no exchange-rate multiplication.
     await this.plansRepository.query(
       `UPDATE "plan" SET "vndPrice" = ROUND("price" / 1000) * 1000 WHERE "deletedAt" IS NULL AND "isLocalInventory" = true`,
+    );
+
+    // Non-local plans already hold dollars in `price`.
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "usdPrice" = "price" WHERE "deletedAt" IS NULL AND "isLocalInventory" IS NOT TRUE`,
+    );
+
+    // Local plans have no supplier dollar price at all, so derive one from the
+    // VND price. Without this they reported their đồng figure as dollars.
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "usdPrice" = ROUND("vndPrice"::numeric / $1, 2) WHERE "deletedAt" IS NULL AND "isLocalInventory" = true AND $1 > 0`,
+      [rate],
     );
   }
 

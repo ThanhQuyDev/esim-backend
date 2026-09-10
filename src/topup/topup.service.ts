@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Injectable,
   Logger,
@@ -24,11 +25,17 @@ import {
 } from '../payment/bank-transfer.util';
 import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 import { TopupPackageDto, TopupProvider } from './dto/topup-package.dto';
-import { TopupCheckoutDto } from './dto/topup-checkout.dto';
 import {
+  AdminManualTopupDto,
+  TopupCheckoutDto,
+  TopupPaymentMethod,
+} from './dto/topup-checkout.dto';
+import {
+  FALLBACK_USD_VND_RATE,
   OrderType,
   TOPUP_ORDER_NUMBER_PREFIX,
   TOPUP_ORDER_STATUS,
+  ADMIN_MANUAL_PAYMENT_METHOD,
 } from './topup.constants';
 import { Plan } from '../plans/domain/plan';
 import { FilterPlanDto } from '../plans/dto/query-plan.dto';
@@ -61,6 +68,23 @@ const VND_ROUNDING_UNIT = 1000;
  * path is wired.
  */
 const TOPUP_UNSUPPORTED_PROVIDERS: ReadonlySet<TopupProvider> = new Set([
+  TopupProvider.MICRO_ESIM,
+]);
+
+/**
+ * Providers with no "topups eligible for this SIM" API, whose topup catalogue
+ * therefore comes from our own `plan` table.
+ *
+ * For these the DTO's `packageId` is the `plan.id`, NOT `plan.providerPlanId`:
+ * a provider plan id is not guaranteed unique across our rows (a bad import
+ * once gave every gadgetkorea plan the same value), and a non-unique packageId
+ * makes checkout silently charge for whichever row happens to match first.
+ * The provider-side id is resolved from the plan at execute time — see
+ * {@link TopupService.resolveProviderPackageId}.
+ */
+const TOPUP_DB_CATALOGUE_PROVIDERS: ReadonlySet<TopupProvider> = new Set([
+  TopupProvider.GADGET_KOREA,
+  TopupProvider.BILLION,
   TopupProvider.MICRO_ESIM,
 ]);
 
@@ -121,12 +145,16 @@ export class TopupService {
 
     let packages: TopupPackageDto[] = [];
     if (provider === TopupProvider.AIRALO) {
-      const list = await this.airaloService.listTopupPackages(iccid);
+      const list = await this.callProvider(provider, iccid, () =>
+        this.airaloService.listTopupPackages(iccid),
+      );
       packages = await Promise.all(
         list.map((p) => this.mapAiraloPackage(p, vndRate)),
       );
     } else if (provider === TopupProvider.ESIM_ACCESS) {
-      const list = await this.esimAccessService.listTopupPackagesByIccid(iccid);
+      const list = await this.callProvider(provider, iccid, () =>
+        this.esimAccessService.listTopupPackagesByIccid(iccid),
+      );
       packages = await Promise.all(
         list.map((p) => this.mapEsimAccessPackage(p, vndRate)),
       );
@@ -179,18 +207,33 @@ export class TopupService {
 
     // Look up the package server-side so the price cannot be tampered with.
     const { packages } = await this.listPackages(dto.iccid);
-    const pkg = packages.find((p) => p.packageId === dto.packageId);
+    const matches = packages.filter((p) => p.packageId === dto.packageId);
+    if (matches.length > 1) {
+      // Two packages sharing an id means we cannot tell which one the customer
+      // picked — charging for an arbitrary one is worse than refusing.
+      this.logger.error(
+        `Ambiguous packageId '${dto.packageId}' for iccid ${dto.iccid}: ${matches.length} packages share it`,
+      );
+      throw new BadRequestException(
+        `Package ${dto.packageId} is ambiguous for iccid ${dto.iccid}`,
+      );
+    }
+    const pkg = matches[0];
     if (!pkg) {
       throw new NotFoundException(
         `Package ${dto.packageId} not available for iccid ${dto.iccid}`,
       );
     }
 
+    // `pkg` comes from `listPackages`, where every price has already been
+    // through the margin tiers (#086) — this is only the belt-and-braces
+    // path for a package that somehow arrived without a VND figure.
     const vndAmount =
       pkg.vndPrice && pkg.vndPrice > 0
         ? pkg.vndPrice
         : roundVndToThousands(
-            (await this.fetchVndRate().catch(() => 26000)) * pkg.retailPrice,
+            (await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)) *
+              pkg.retailPrice,
           );
 
     const orderNumber = `${TOPUP_ORDER_NUMBER_PREFIX}-${Date.now()}-${Math.random()
@@ -320,6 +363,88 @@ export class TopupService {
   }
 
   /**
+   * Topup an eSIM on the customer's behalf, skipping the payment gateway.
+   *
+   * For the case where money already reached esim.vn some other way (direct
+   * transfer, goodwill, a failed gateway payment that was settled manually) and
+   * an admin just needs the allowance applied.
+   *
+   * It deliberately reuses `createPendingTopupOrder`, so an admin gets exactly
+   * the same guards a customer does: the ICCID must really belong to the given
+   * provider, the provider must actually support recharging (MicroEsim does
+   * not), and the package and its price are looked up server-side rather than
+   * trusted from the request.
+   *
+   * The order is attributed to the eSIM's OWNER, not to the admin, so the
+   * customer sees it in their history and the reporting stays correct. It is
+   * recorded as paid with `paymentMethod: 'ADMIN_MANUAL'` and the admin's id,
+   * so a topup granted without money can always be told apart later.
+   *
+   * Unlike the gateway path this awaits the provider call: the admin is
+   * standing there and needs to know whether it worked.
+   */
+  async adminManualTopup(
+    dto: AdminManualTopupDto,
+    adminId: number,
+  ): Promise<{
+    success: boolean;
+    orderNumber: string;
+    status: string;
+    vndAmount: number;
+  }> {
+    const esim = await this.esimsService.findByIccid(dto.iccid);
+    if (!esim) {
+      throw new NotFoundException(`eSIM ${dto.iccid} not found`);
+    }
+    if (!esim.userId) {
+      throw new BadRequestException(
+        `eSIM ${dto.iccid} is not owned by any customer yet`,
+      );
+    }
+
+    const { order, vndAmount } = await this.createPendingTopupOrder(
+      esim.userId,
+      {
+        iccid: dto.iccid,
+        packageId: dto.packageId,
+        provider: dto.provider,
+        paymentMethod: TopupPaymentMethod.ONEPAY,
+      } as TopupCheckoutDto,
+    );
+
+    // The order table has no free-text note column, so the audit trail goes
+    // into `paymentId` — the field that normally holds the gateway reference,
+    // which for a bypassed payment is exactly what is missing.
+    const reference =
+      `admin:${adminId}${dto.note ? ` — ${dto.note}` : ''}`.slice(0, 255);
+
+    await this.orderRepository.update(order.id, {
+      status: TOPUP_ORDER_STATUS.PAID,
+      paymentMethod: ADMIN_MANUAL_PAYMENT_METHOD,
+      paymentId: reference,
+    } as never);
+
+    this.logger.log(
+      `Admin ${adminId} granted manual topup ${order.orderNumber} ` +
+        `(iccid=${dto.iccid}, package=${dto.packageId}, user=${esim.userId})`,
+    );
+
+    await this.executeTopup(order.orderNumber);
+
+    const finalized = await this.orderRepository.findByOrderNumber(
+      order.orderNumber,
+    );
+    const status = finalized?.status ?? TOPUP_ORDER_STATUS.PAID;
+
+    return {
+      success: status === TOPUP_ORDER_STATUS.COMPLETED,
+      orderNumber: order.orderNumber,
+      status,
+      vndAmount,
+    };
+  }
+
+  /**
    * After OnePay IPN marks an order PAID, this triggers the provider-side
    * topup submission. Designed to be fire-and-forget (don't make the IPN
    * await this — return early and let this run in the background).
@@ -365,16 +490,23 @@ export class TopupService {
     }
 
     try {
+      // `packageId` is our own id for DB-catalogued providers; translate it to
+      // whatever the provider expects before calling out.
+      const providerPackageId = await this.resolveProviderPackageId(
+        provider,
+        packageId,
+      );
+
       if (provider === TopupProvider.AIRALO) {
         await this.airaloService.submitTopup({
-          packageId,
+          packageId: providerPackageId,
           iccid,
           description: `Topup for ${orderNumber}`,
         });
       } else if (provider === TopupProvider.ESIM_ACCESS) {
         await this.esimAccessService.submitTopup({
           iccid,
-          packageCode: packageId,
+          packageCode: providerPackageId,
           transactionId: orderNumber,
         });
       } else if (provider === TopupProvider.GADGET_KOREA) {
@@ -386,7 +518,7 @@ export class TopupService {
         }
         await this.gadgetKoreaService.submitTopup({
           topupId: esim.esimTranNo,
-          optionId: packageId,
+          optionId: providerPackageId,
         });
       } else if (provider === TopupProvider.BILLION) {
         // BILLION recharge (F007) keys directly on the ICCID + plan skuId — it
@@ -395,7 +527,7 @@ export class TopupService {
           channelOrderId: `${orderNumber}-tu`,
           channelSubOrderId: `${orderNumber}-tu-1`,
           iccid,
-          skuId: packageId,
+          skuId: providerPackageId,
           copies: 1,
         });
       } else if (provider === TopupProvider.MICRO_ESIM) {
@@ -416,7 +548,7 @@ export class TopupService {
         await this.microEsimService.submitTopup({
           topupId: orderRequestId,
           deviceId: esim.esimTranNo,
-          channelDataplanId: packageId,
+          channelDataplanId: providerPackageId,
           customOrderNo: `${orderNumber}-tu`,
         });
       } else {
@@ -440,6 +572,30 @@ export class TopupService {
   }
 
   // -- helpers ----------------------------------------------------
+
+  /**
+   * Run a provider's "which topups can this SIM take" call, turning a provider
+   * or network failure into a 502 with a message the FE can show. Without this
+   * the raw error propagated and the customer got a bare 500 — indistinguishable
+   * from a bug on our side, and unhelpful to support.
+   */
+  private async callProvider<T>(
+    provider: TopupProvider,
+    iccid: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      const message = (err as Error).message;
+      this.logger.error(
+        `listPackages: ${provider} failed for iccid=${iccid}: ${message}`,
+      );
+      throw new BadGatewayException(
+        `Could not load topup packages from ${provider} right now. Please try again later.`,
+      );
+    }
+  }
 
   private async resolveProviderForIccid(iccid: string): Promise<{
     provider: TopupProvider;
@@ -465,6 +621,29 @@ export class TopupService {
    * stores its `topup_id`. Both are needed to target a recharge at the
    * existing profile. Mirrors the relation walk used in EsimsService.getDataUsage.
    */
+  /**
+   * Translate the `packageId` stored on the order into the id the provider
+   * expects. For DB-catalogued providers that means looking the plan up by id
+   * and reading its `providerPlanId`; every other provider already stores its
+   * own id. Orders created before packageId became `plan.id` stored the
+   * provider id directly, so a non-numeric value is passed through unchanged.
+   */
+  private async resolveProviderPackageId(
+    provider: TopupProvider,
+    packageId: string,
+  ): Promise<string> {
+    if (!TOPUP_DB_CATALOGUE_PROVIDERS.has(provider)) return packageId;
+    if (!/^\d+$/.test(packageId)) return packageId;
+
+    const plan = await this.plansService.findById(Number(packageId));
+    if (!plan?.providerPlanId) {
+      throw new Error(
+        `Plan ${packageId} not found or has no providerPlanId — cannot submit ${provider} topup`,
+      );
+    }
+    return plan.providerPlanId;
+  }
+
   private async resolveProviderOrderRef(
     esimId: number,
   ): Promise<string | null> {
@@ -507,17 +686,19 @@ export class TopupService {
 
     // `net_price` is our cost (what Airalo charges us); apply our profit tiers
     // on top of it — exactly like SIM pricing — instead of reselling Airalo's
-    // own retail price. Falls back to provider retail if the FX rate is down.
+    // own retail price.
+    //
+    // A missing FX rate used to fall back to Airalo's own retail price, which
+    // is a price with THEIR margin and none of ours (#086). The fallback rate
+    // keeps our tiers applied instead.
     const costPriceUsd = pkg.net_price;
+    const rate = vndRate ?? FALLBACK_USD_VND_RATE;
     const vndPrice =
-      vndRate != null
-        ? await this.profitMarginsService.calculateRetailVndFromCostUsd(
-            costPriceUsd,
-            vndRate,
-          )
-        : undefined;
-    const retailPriceUsd =
-      vndPrice != null && vndRate ? vndPrice / vndRate : pkg.price;
+      await this.profitMarginsService.calculateRetailVndFromCostUsd(
+        costPriceUsd,
+        rate,
+      );
+    const retailPriceUsd = Math.round((vndPrice / rate) * 100) / 100;
 
     return {
       provider: TopupProvider.AIRALO,
@@ -545,19 +726,16 @@ export class TopupService {
 
     // `price` (÷10000) is our cost; apply our profit tiers on top of it rather
     // than reselling the provider's retailPrice, so topup margin matches SIM
-    // sales. Falls back to provider retail if the FX rate is down.
+    // sales. With no live FX rate we use the fallback rate rather than the
+    // provider's retail price, which carries no margin of ours (#086).
     const costPriceUsd = pkg.price / 10000;
+    const rate = vndRate ?? FALLBACK_USD_VND_RATE;
     const vndPrice =
-      vndRate != null
-        ? await this.profitMarginsService.calculateRetailVndFromCostUsd(
-            costPriceUsd,
-            vndRate,
-          )
-        : undefined;
-    const retailPriceUsd =
-      vndPrice != null && vndRate
-        ? vndPrice / vndRate
-        : pkg.retailPrice / 10000;
+      await this.profitMarginsService.calculateRetailVndFromCostUsd(
+        costPriceUsd,
+        rate,
+      );
+    const retailPriceUsd = Math.round((vndPrice / rate) * 100) / 100;
 
     return {
       provider: TopupProvider.ESIM_ACCESS,
@@ -610,9 +788,18 @@ export class TopupService {
       const dataAmountBytes = (plan.dataMb ?? 0) * 1024 * 1024;
       const isUnlimited =
         plan.type === 'unlimited' || plan.type === 'unlimited-reduce';
+      // Postgres numeric columns come back as strings; the DTO promises
+      // numbers and the FE calls .toFixed() on them.
+      //
+      // `price` is the margin-applied figure the tier recalculation writes;
+      // `retailPrice` is whatever the provider's own catalogue said and never
+      // gets recalculated, so preferring it sold topups at no margin (#086).
+      const marginPrice = Number(plan.price) || 0;
+      const retailPrice = marginPrice || Number(plan.retailPrice) || 0;
       return {
         provider: providerEnum,
-        packageId: plan.providerPlanId,
+        packageId: String(plan.id),
+        providerPackageId: plan.providerPlanId,
         name: plan.name,
         dataAmountBytes,
         dataAmountText: isUnlimited
@@ -620,9 +807,20 @@ export class TopupService {
           : formatDataLabel(dataAmountBytes),
         durationDays: plan.durationDays,
         isUnlimited,
-        price: plan.costPrice,
-        retailPrice: plan.retailPrice || plan.price,
-        vndPrice: plan.vndPrice ?? undefined,
+        price: Number(plan.costPrice) || 0,
+        retailPrice,
+        // Local-inventory rows keep VND in `price` already; API-provider rows
+        // are dollars, so convert with the same rate the tiers used.
+        vndPrice:
+          plan.vndPrice != null && Number(plan.vndPrice) > 0
+            ? Number(plan.vndPrice)
+            : marginPrice > 0
+              ? roundVndToThousands(
+                  plan.isLocalInventory
+                    ? marginPrice
+                    : marginPrice * FALLBACK_USD_VND_RATE,
+                )
+              : undefined,
       };
     });
   }

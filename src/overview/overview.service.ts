@@ -33,10 +33,86 @@ import {
 const ORDER_ALIAS = 'purchase_order';
 const ORDER_ITEM_ALIAS = 'order_item';
 const PLAN_ALIAS = 'plan';
+
+/**
+ * Revenue actually earned on an order: what the customer was charged AFTER the
+ * coupon ("khuyến mãi") and referral ("giới thiệu") discounts come off, never
+ * below zero. Orders written before those columns existed fall back to the
+ * stored total.
+ *
+ * Exported so the formula can be pinned by a test — every revenue and profit
+ * figure on the Tổng quan screen is built on it.
+ */
+export function orderNetRevenueSql(orderAlias: string): string {
+  const subtotal = `${orderAlias}."subtotalVndPrice"`;
+  const discounts = `${orderAlias}."couponDiscountVndAmount" + ${orderAlias}."referralDiscountVndAmount"`;
+
+  return `CASE WHEN ${subtotal} > 0 THEN GREATEST(${subtotal} - ${discounts}, 0) ELSE ${orderAlias}."vndPrice" END`;
+}
+
+/**
+ * One order line's share of {@link orderNetRevenueSql}, pro-rated by its price
+ * against the order subtotal — an order-level discount has to be spread across
+ * the lines it paid for, otherwise per-provider and per-destination revenue
+ * would each claim the full discount.
+ */
+export function itemNetRevenueSql(
+  orderAlias: string,
+  itemAlias: string,
+): string {
+  const subtotal = `${orderAlias}."subtotalVndPrice"`;
+
+  return `CASE WHEN ${subtotal} > 0 THEN ${itemAlias}."vndPrice" * ${orderNetRevenueSql(orderAlias)} / ${subtotal} ELSE ${itemAlias}."vndPrice" END`;
+}
 const UNKNOWN_GROUP = 'Unknown';
 
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 const VN_TIMEZONE = 'Asia/Ho_Chi_Minh';
+
+/** Convert a Vietnam calendar-day offset into exact UTC query boundaries. */
+export function vietnamDayRangeUtc(
+  now: Date,
+  offsetDays = 0,
+): {
+  from: Date;
+  to: Date;
+} {
+  const vnNow = new Date(now.getTime() + VN_OFFSET_MS);
+  const year = vnNow.getUTCFullYear();
+  const month = vnNow.getUTCMonth();
+  const day = vnNow.getUTCDate() + offsetDays;
+
+  return {
+    from: new Date(Date.UTC(year, month, day, 0, 0, 0, 0) - VN_OFFSET_MS),
+    to: new Date(Date.UTC(year, month, day, 23, 59, 59, 999) - VN_OFFSET_MS),
+  };
+}
+
+/**
+ * The CMS date-range picker sends calendar days (`yyyy-MM-dd`) with no time or
+ * zone. `new Date('2026-09-01')` parses those as UTC midnight, which is 07:00
+ * in Vietnam — so the first seven hours of the day were dropped from every
+ * custom-range report. Expand such values into the exact Vietnam-day
+ * boundaries instead; timestamps that already carry a time/zone pass through.
+ */
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export function vietnamBoundaryFromInput(
+  value: string,
+  edge: 'start' | 'end',
+): Date {
+  if (!DATE_ONLY_PATTERN.test(value)) {
+    return new Date(value);
+  }
+
+  const [year, month, day] = value.split('-').map(Number);
+  const utcMs =
+    edge === 'start'
+      ? Date.UTC(year, month - 1, day, 0, 0, 0, 0)
+      : Date.UTC(year, month - 1, day, 23, 59, 59, 999);
+
+  return new Date(utcMs - VN_OFFSET_MS);
+}
 
 type RawValue = string | number | null | undefined;
 type PeriodGroupBy = 'day' | 'week' | 'month' | 'year';
@@ -600,13 +676,13 @@ export class OverviewService {
 
     if (resolved.from) {
       qb.andWhere(`"${alias}"."createdAt" >= :from`, {
-        from: new Date(resolved.from),
+        from: vietnamBoundaryFromInput(resolved.from, 'start'),
       });
     }
 
     if (resolved.to) {
       qb.andWhere(`"${alias}"."createdAt" <= :to`, {
-        to: new Date(resolved.to),
+        to: vietnamBoundaryFromInput(resolved.to, 'end'),
       });
     }
   }
@@ -626,53 +702,29 @@ export class OverviewService {
     from: string;
     to: string;
   } {
-    const vnNow = new Date(Date.now() + VN_OFFSET_MS);
-
-    const startOfDayUtc = (offsetDays: number): Date =>
-      new Date(
-        Date.UTC(
-          vnNow.getUTCFullYear(),
-          vnNow.getUTCMonth(),
-          vnNow.getUTCDate() + offsetDays,
-          0,
-          0,
-          0,
-          0,
-        ) - VN_OFFSET_MS,
-      );
-    const endOfDayUtc = (offsetDays: number): Date =>
-      new Date(
-        Date.UTC(
-          vnNow.getUTCFullYear(),
-          vnNow.getUTCMonth(),
-          vnNow.getUTCDate() + offsetDays,
-          23,
-          59,
-          59,
-          999,
-        ) - VN_OFFSET_MS,
-      );
+    const now = new Date();
+    const range = (offsetDays: number) => vietnamDayRangeUtc(now, offsetDays);
 
     switch (preset) {
       case 'today':
         return {
-          from: startOfDayUtc(0).toISOString(),
-          to: endOfDayUtc(0).toISOString(),
+          from: range(0).from.toISOString(),
+          to: range(0).to.toISOString(),
         };
       case 'yesterday':
         return {
-          from: startOfDayUtc(-1).toISOString(),
-          to: endOfDayUtc(-1).toISOString(),
+          from: range(-1).from.toISOString(),
+          to: range(-1).to.toISOString(),
         };
       case 'last7days':
         return {
-          from: startOfDayUtc(-6).toISOString(),
-          to: endOfDayUtc(0).toISOString(),
+          from: range(-6).from.toISOString(),
+          to: range(0).to.toISOString(),
         };
       case 'last30days':
         return {
-          from: startOfDayUtc(-29).toISOString(),
-          to: endOfDayUtc(0).toISOString(),
+          from: range(-29).from.toISOString(),
+          to: range(0).to.toISOString(),
         };
     }
   }
@@ -695,15 +747,11 @@ export class OverviewService {
   }
 
   private orderNetRevenueExpression(): string {
-    const subtotal = `${ORDER_ALIAS}."subtotalVndPrice"`;
-    const discounts = `${ORDER_ALIAS}."couponDiscountVndAmount" + ${ORDER_ALIAS}."referralDiscountVndAmount"`;
-
-    return `CASE WHEN ${subtotal} > 0 THEN GREATEST(${subtotal} - ${discounts}, 0) ELSE ${ORDER_ALIAS}."vndPrice" END`;
+    return orderNetRevenueSql(ORDER_ALIAS);
   }
 
   private itemNetRevenueExpression(): string {
-    const subtotal = `${ORDER_ALIAS}."subtotalVndPrice"`;
-    return `CASE WHEN ${subtotal} > 0 THEN ${ORDER_ITEM_ALIAS}."vndPrice" * ${this.orderNetRevenueExpression()} / ${subtotal} ELSE ${ORDER_ITEM_ALIAS}."vndPrice" END`;
+    return itemNetRevenueSql(ORDER_ALIAS, ORDER_ITEM_ALIAS);
   }
 
   private getDateBucketExpression(groupBy: PeriodGroupBy): string {

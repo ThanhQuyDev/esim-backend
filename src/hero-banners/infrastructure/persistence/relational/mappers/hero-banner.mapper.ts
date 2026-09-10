@@ -21,6 +21,8 @@ export class HeroBannerMapper {
 
     domainEntity.language = raw.language;
 
+    domainEntity.image = raw.image ?? null;
+
     domainEntity.id = raw.id;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
@@ -45,6 +47,8 @@ export class HeroBannerMapper {
     persistenceEntity.description = domainEntity.description;
 
     persistenceEntity.language = domainEntity.language;
+
+    persistenceEntity.image = domainEntity.image ?? null;
 
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;

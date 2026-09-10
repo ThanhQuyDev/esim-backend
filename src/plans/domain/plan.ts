@@ -90,6 +90,30 @@ export class Plan {
   @ApiProperty({ type: Number, example: 45000, description: 'Price in VND' })
   vndPrice: number;
 
+  @ApiProperty({
+    type: Number,
+    example: 1.9,
+    description:
+      'Price in USD for every provider. Unlike price, this is never VND.',
+  })
+  usdPrice: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 12,
+    description:
+      'Unsold eSIMs left in stock. Only set for local-inventory plans; undefined for API providers, which mint an eSIM on demand.',
+  })
+  availableStock?: number | null;
+
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    description:
+      'Exit IP is local, not routed via Hong Kong — needed for TikTok/ChatGPT.',
+  })
+  isNonHkIp: boolean;
+
   @ApiProperty({ type: Boolean, example: false })
   isKyc: boolean;
 

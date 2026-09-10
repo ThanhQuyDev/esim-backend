@@ -125,6 +125,25 @@ export class Order {
   @ApiPropertyOptional({ type: Number })
   referrerUserId?: number | null;
 
+  @ApiPropertyOptional({
+    type: Object,
+    description:
+      'Affiliate commission attached to this order, when it came from a partner (#095).',
+  })
+  partnerCommission?: {
+    partnerId: number;
+    partnerName: string | null;
+    commissionVnd: number;
+    commissionPercent: number;
+    status: string;
+  } | null;
+
+  @ApiPropertyOptional({ type: String, example: 'KOLABC123' })
+  partnerLinkCode?: string | null;
+
+  @ApiPropertyOptional({ type: Number })
+  attributedPartnerId?: number | null;
+
   @ApiProperty({ type: Number, example: 0 })
   referralDiscountVndAmount!: number;
 
@@ -181,4 +200,11 @@ export class Order {
     description: 'Number of order items',
   })
   itemCount?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description:
+      'Total eSIMs in the order (quantities summed, not lines counted)',
+  })
+  productQuantity?: number;
 }

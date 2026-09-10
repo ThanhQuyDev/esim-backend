@@ -21,6 +21,14 @@ export abstract class PlanRepository {
 
   abstract findById(id: Plan['id']): Promise<NullableType<Plan>>;
 
+  /**
+   * Unsold eSIMs per plan, for local inventory. Keyed by plan id; a plan with
+   * no stock left is simply absent from the map.
+   */
+  abstract countAvailableEsimsByPlanIds(
+    planIds: number[],
+  ): Promise<Record<number, number>>;
+
   abstract findBySlug(slug: Plan['slug']): Promise<NullableType<Plan>>;
 
   abstract update(

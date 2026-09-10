@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
 import { UserEntity } from '../users/infrastructure/persistence/relational/entities/user.entity';
 import { WalletsController } from './wallets.controller';
+import { MembershipTiersController } from './tier/tiers.controller';
 import { WalletsService } from './wallets.service';
 import { OrderReferralEntity } from './infrastructure/persistence/relational/entities/order-referral.entity';
 import { OrderRefundEntity } from './infrastructure/persistence/relational/entities/order-refund.entity';
@@ -28,7 +29,7 @@ import { EsimsModule } from '../esims/esims.module';
     ]),
     forwardRef(() => EsimsModule),
   ],
-  controllers: [WalletsController],
+  controllers: [WalletsController, MembershipTiersController],
   providers: [WalletsService],
   exports: [WalletsService],
 })

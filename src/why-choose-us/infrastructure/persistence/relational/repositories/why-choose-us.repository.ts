@@ -45,8 +45,15 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
     }
 
     if (filterOptions?.search) {
+      // Match the page type as well as title/description, so an admin can
+      // narrow to a single page by TYPING it ("trang chu") instead of only
+      // picking it from the dropdown — same idea as searching FAQ/SEO rows by
+      // their url. Underscores are normalised away, and `_` is a single-char
+      // wildcard in LIKE anyway, so "trang chu" and "trang_chu" both match.
       qb.andWhere(
-        '(whyChooseUs.title ILIKE :search OR whyChooseUs.description ILIKE :search)',
+        `(whyChooseUs.title ILIKE :search
+          OR whyChooseUs.description ILIKE :search
+          OR REPLACE(whyChooseUs.type, '_', ' ') ILIKE :search)`,
         { search: `%${filterOptions.search}%` },
       );
     }

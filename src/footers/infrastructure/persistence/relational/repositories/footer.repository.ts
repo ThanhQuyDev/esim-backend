@@ -50,7 +50,8 @@ export class FooterRelationalRepository implements FooterRepository {
         qb.addOrderBy(`footer.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
       });
     } else {
-      qb.orderBy('footer.createdAt', 'DESC');
+      qb.orderBy('footer.sortOrder', 'ASC');
+      qb.addOrderBy('footer.createdAt', 'ASC');
       qb.addOrderBy('footer.id', 'ASC');
     }
 

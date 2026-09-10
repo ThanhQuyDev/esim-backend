@@ -23,6 +23,8 @@ export class FootersService {
     return this.footerRepository.create({
       // Do not remove comment below.
       // <creating-property-payload />
+      sortOrder: createFooterDto.sortOrder ?? 0,
+
       categories: createFooterDto.categories,
 
       url: createFooterDto.url,
@@ -73,6 +75,8 @@ export class FootersService {
     return this.footerRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
+      sortOrder: updateFooterDto.sortOrder,
+
       categories: updateFooterDto.categories,
 
       url: updateFooterDto.url,

@@ -77,6 +77,10 @@ export class AdminOrderItemPlanDto {
   @ApiPropertyOptional({ type: String })
   speed: string | null;
 
+  /** Throttled speed after the high-speed allowance runs out. */
+  @ApiPropertyOptional({ type: String })
+  fupSpeed: string | null;
+
   @ApiPropertyOptional({ type: String })
   operatorName: string | null;
 
@@ -170,6 +174,43 @@ export class AdminOrderInvoiceDto {
   updatedAt: Date;
 }
 
+/**
+ * The affiliate behind an order, and what the order earned them (#095).
+ * Null on an ordinary order — most orders have no partner.
+ */
+export class AdminOrderPartnerCommissionDto {
+  @ApiProperty({ type: Number })
+  partnerId: number;
+
+  @ApiPropertyOptional({ type: String })
+  partnerName?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  partnerStatus?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Referral link the buyer arrived through, when there was one.',
+  })
+  linkCode?: string | null;
+
+  @ApiProperty({ type: Number, description: 'Commission owed, in VND.' })
+  commissionVnd: number;
+
+  @ApiProperty({
+    type: Number,
+    description:
+      'Share of the order this commission came to, derived from the order value.',
+  })
+  commissionPercent: number;
+
+  @ApiProperty({ type: String, description: 'pending | credited | reversed' })
+  status: string;
+
+  @ApiPropertyOptional({ type: String })
+  tierSnapshot?: string | null;
+}
+
 export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   id: number;
@@ -206,6 +247,9 @@ export class AdminOrderDetailDto {
 
   @ApiProperty({ type: Number })
   referralDiscountVndAmount: number;
+
+  @ApiPropertyOptional({ type: () => AdminOrderPartnerCommissionDto })
+  partnerCommission?: AdminOrderPartnerCommissionDto | null;
 
   @ApiProperty({ type: Number })
   discountAmount: number;

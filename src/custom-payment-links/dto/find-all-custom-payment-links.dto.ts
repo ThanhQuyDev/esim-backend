@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { CustomPaymentLinkStatus } from '../custom-payment-links.enum';
 
 export class FindAllCustomPaymentLinksDto {
   @ApiPropertyOptional()
@@ -14,4 +15,16 @@ export class FindAllCustomPaymentLinksDto {
   @IsNumber()
   @IsOptional()
   limit?: number;
+
+  /** Narrow the history to one payment state (#084). */
+  @ApiPropertyOptional({ enum: CustomPaymentLinkStatus })
+  @IsOptional()
+  @IsEnum(CustomPaymentLinkStatus)
+  status?: CustomPaymentLinkStatus;
+
+  /** Matches the customer email, the description or the order number. */
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  search?: string;
 }

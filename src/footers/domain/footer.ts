@@ -4,8 +4,16 @@ export class Footer {
   @ApiProperty({
     type: () => String,
     nullable: true,
+    description: 'Column heading (default/English); also the grouping key.',
   })
   categories?: string | null;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: true,
+    description: 'Column heading in Vietnamese; falls back to categories.',
+  })
+  categoriesVi?: string | null;
 
   @ApiProperty({
     type: () => String,
@@ -30,6 +38,9 @@ export class Footer {
     nullable: true,
   })
   iconUrl?: string | null;
+
+  @ApiProperty({ type: Number, example: 10 })
+  sortOrder: number;
 
   @ApiProperty({
     type: String,

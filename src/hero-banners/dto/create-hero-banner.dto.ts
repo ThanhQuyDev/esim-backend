@@ -1,6 +1,6 @@
 import {
+  IsOptional,
   // decorators here
-
   IsBoolean,
   IsString,
   IsIn,
@@ -70,6 +70,15 @@ export class CreateHeroBannerDto {
   @IsString()
   @IsIn(['en', 'vi'])
   language: string;
+
+  /** Hero image URL; omit to keep the built-in picture (#089). */
+  @ApiProperty({
+    required: false,
+    type: () => String,
+  })
+  @IsOptional()
+  @IsString()
+  image?: string | null;
 
   // Don't forget to use the class-validator decorators in the DTO properties.
 }

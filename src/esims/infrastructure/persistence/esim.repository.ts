@@ -49,9 +49,18 @@ export abstract class EsimRepository {
 
   abstract markRefundedByOrderId(orderId: number): Promise<number>;
 
+  /**
+   * eSIMs worth asking the provider about: sold/active, not expired, and
+   * belonging to a provider that actually exposes a usage API.
+   */
+  abstract findDueForUsageRefresh(
+    providers: string[],
+    limit: number,
+  ): Promise<Esim[]>;
+
   abstract softDeleteByStatusOlderThan(
     status: string,
-    olderThan: Date,
+    olderThanDays: number,
   ): Promise<number>;
 
   abstract findAllForExport(

@@ -3,6 +3,8 @@ import {
 
   IsString,
   IsOptional,
+  IsInt,
+  Min,
 } from 'class-validator';
 
 import {
@@ -11,6 +13,13 @@ import {
 } from '@nestjs/swagger';
 
 export class CreateFooterDto {
+  @ApiProperty({ required: false, type: Number, example: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  /** Column heading (default/English) — also the grouping key (#088). */
   @ApiProperty({
     required: false,
     type: () => String,
@@ -18,6 +27,15 @@ export class CreateFooterDto {
   @IsOptional()
   @IsString()
   categories?: string | null;
+
+  /** Column heading in Vietnamese. */
+  @ApiProperty({
+    required: false,
+    type: () => String,
+  })
+  @IsOptional()
+  @IsString()
+  categoriesVi?: string | null;
 
   @ApiProperty({
     required: true,

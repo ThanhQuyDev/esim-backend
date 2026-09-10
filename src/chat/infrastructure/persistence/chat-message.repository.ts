@@ -3,6 +3,7 @@ import { NullableType } from '../../../utils/types/nullable.type';
 
 export abstract class ChatMessageRepository {
   abstract create(data: Partial<ChatMessage>): Promise<ChatMessage>;
+  abstract findById(id: number): Promise<NullableType<ChatMessage>>;
   abstract findByRoomId(
     chatRoomId: number,
     page: number,

@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { FindOptionsWhere, ILike, Repository, In } from 'typeorm';
 import { CustomPaymentLinkEntity } from '../entities/custom-payment-link.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { CustomPaymentLink } from '../../../../domain/custom-payment-link';
-import { CustomPaymentLinkRepository } from '../../custom-payment-link.repository';
+import {
+  CustomPaymentLinkFilter,
+  CustomPaymentLinkRepository,
+} from '../../custom-payment-link.repository';
 import { CustomPaymentLinkMapper } from '../mappers/custom-payment-link.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 
@@ -25,15 +28,43 @@ export class CustomPaymentLinkRelationalRepository implements CustomPaymentLinkR
 
   async findAllWithPagination({
     paginationOptions,
+    filterOptions,
   }: {
     paginationOptions: IPaginationOptions;
-  }): Promise<CustomPaymentLink[]> {
-    const entities = await this.customPaymentLinkRepository.find({
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-    });
+    filterOptions?: CustomPaymentLinkFilter | null;
+  }): Promise<[CustomPaymentLink[], number]> {
+    // No ORDER BY at all before (#084): Postgres was free to hand back rows
+    // in any order, so a history page was arbitrary and paging unstable.
+    const where: FindOptionsWhere<CustomPaymentLinkEntity>[] = [];
+    const base: FindOptionsWhere<CustomPaymentLinkEntity> = {};
+    if (filterOptions?.status) {
+      base.status = filterOptions.status;
+    }
 
-    return entities.map((entity) => CustomPaymentLinkMapper.toDomain(entity));
+    const search = filterOptions?.search?.trim();
+    if (search) {
+      const term = ILike(`%${search}%`);
+      where.push(
+        { ...base, customerEmail: term },
+        { ...base, description: term },
+        { ...base, virtualOrderId: term },
+      );
+    } else {
+      where.push(base);
+    }
+
+    const [entities, count] =
+      await this.customPaymentLinkRepository.findAndCount({
+        where,
+        order: { createdAt: 'DESC' },
+        skip: (paginationOptions.page - 1) * paginationOptions.limit,
+        take: paginationOptions.limit,
+      });
+
+    return [
+      entities.map((entity) => CustomPaymentLinkMapper.toDomain(entity)),
+      count,
+    ];
   }
 
   async findById(

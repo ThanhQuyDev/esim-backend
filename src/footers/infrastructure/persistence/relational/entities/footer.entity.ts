@@ -11,11 +11,22 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
   name: 'footer',
 })
 export class FooterEntity extends EntityRelationalHelper {
+  @Column({ type: 'int', default: 0 })
+  sortOrder: number;
+
+  /** Column heading, default (English) — also the grouping key (#088). */
   @Column({
     nullable: true,
     type: String,
   })
   categories?: string | null;
+
+  /** Column heading in Vietnamese; falls back to `categories`. */
+  @Column({
+    nullable: true,
+    type: String,
+  })
+  categoriesVi?: string | null;
 
   @Column({
     nullable: false,

@@ -60,6 +60,16 @@ export class HeroBannerEntity extends EntityRelationalHelper {
   })
   language: string;
 
+  /**
+   * Hero picture chosen by the admin (#089). Null keeps the built-in one,
+   * so a banner without an image behaves exactly as before.
+   */
+  @Column({
+    nullable: true,
+    type: String,
+  })
+  image?: string | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

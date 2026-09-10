@@ -18,23 +18,8 @@ import {
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
-import * as QRCode from 'qrcode';
-import sharp from 'sharp';
-import * as path from 'path';
-import * as fs from 'fs';
+import { renderEsimQrCode } from './esim-qrcode';
 
-let cachedLogoBuffer: Buffer | null = null;
-
-function getLogoBuffer(): Buffer | null {
-  if (cachedLogoBuffer) return cachedLogoBuffer;
-  try {
-    const logoPath = path.join(__dirname, '..', 'assets', 'logo-esimvn.png');
-    cachedLogoBuffer = fs.readFileSync(logoPath);
-    return cachedLogoBuffer;
-  } catch {
-    return null;
-  }
-}
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateEsimDto } from './dto/create-esim.dto';
 import { UpdateEsimDto } from './dto/update-esim.dto';
@@ -98,36 +83,8 @@ export class EsimsPublicController {
       throw new NotFoundException('eSIM or LPA not found');
     }
 
-    const qrBuffer = await QRCode.toBuffer(esim.lpa, {
-      width: 400,
-      margin: 2,
-      errorCorrectionLevel: 'H',
-    });
-
-    let buffer: Buffer;
-    try {
-      const logoBuffer = getLogoBuffer();
-      if (logoBuffer) {
-        const logoSize = 70;
-        const resizedLogo = await sharp(logoBuffer)
-          .resize(logoSize, logoSize)
-          .toBuffer();
-
-        buffer = await sharp(qrBuffer)
-          .composite([
-            {
-              input: resizedLogo,
-              gravity: 'centre',
-            },
-          ])
-          .png()
-          .toBuffer();
-      } else {
-        buffer = qrBuffer;
-      }
-    } catch {
-      buffer = qrBuffer;
-    }
+    // Branded QR: horizontal logo across the middle (#080).
+    const buffer = await renderEsimQrCode(esim.lpa);
 
     res.set({
       'Content-Type': 'image/png',
@@ -334,6 +291,7 @@ export class EsimsController {
         created: { type: 'number' },
         skipped: { type: 'number' },
         planCreated: { type: 'number' },
+        planUpdated: { type: 'number' },
         errors: {
           type: 'array',
           items: {

@@ -50,6 +50,14 @@ export class HeroBanner {
   language: string;
 
   @ApiProperty({
+    type: () => String,
+    nullable: true,
+    description:
+      'Hero image URL. Null falls back to the built-in picture (#089).',
+  })
+  image?: string | null;
+
+  @ApiProperty({
     type: String,
   })
   id: string;

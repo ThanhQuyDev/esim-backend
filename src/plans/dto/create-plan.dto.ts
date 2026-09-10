@@ -178,6 +178,15 @@ export class CreatePlanDto {
   @IsBoolean()
   isLocalInventory?: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Exit IP is local, not routed via Hong Kong (needed for TikTok/ChatGPT)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isNonHkIp?: boolean;
+
   @ApiPropertyOptional({ example: 'internet', type: String })
   @IsOptional()
   @IsString()

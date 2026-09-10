@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { UsersModule } from './users/users.module';
 import { FilesModule } from './files/files.module';
 import { AuthModule } from './auth/auth.module';
+import { EmailChangeModule } from './email-change/email-change.module';
 import databaseConfig from './database/config/database.config';
 import authConfig from './auth/config/auth.config';
 import appConfig from './config/app.config';
@@ -38,6 +39,8 @@ import { EsimsModule } from './esims/esims.module';
 import { ProviderSyncLogsModule } from './provider-sync-logs/provider-sync-logs.module';
 import { EsimProvidersModule } from './esim-providers/esim-providers.module';
 import { ProfitMarginsModule } from './profit-margins/profit-margins.module';
+import { ProviderDepositsModule } from './provider-deposits/provider-deposits.module';
+import { PartnersModule } from './partners/partners.module';
 
 const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
   useClass: TypeOrmConfigService,
@@ -142,6 +145,7 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     UsersModule,
     FilesModule,
     AuthModule,
+    EmailChangeModule,
     AuthGoogleModule,
     SessionModule,
     MailModule,
@@ -157,6 +161,7 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     ProviderSyncLogsModule,
     EsimProvidersModule,
     ProfitMarginsModule,
+    ProviderDepositsModule,
     CouponsModule,
     PaymentModule,
     WalletsModule,
@@ -169,6 +174,7 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     ChatAutomationsModule,
     OverviewModule,
     TicketsModule,
+    PartnersModule,
   ],
 })
 export class AppModule {}

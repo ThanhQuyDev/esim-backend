@@ -5,9 +5,16 @@ import { OnepayModule } from './onepay.module';
 import { OrdersModule } from '../orders/orders.module';
 import { CustomPaymentLinksModule } from '../custom-payment-links/custom-payment-links.module';
 import { TopupModule } from '../topup/topup.module';
+import { PartnersModule } from '../partners/partners.module';
 
 @Module({
-  imports: [OrdersModule, OnepayModule, CustomPaymentLinksModule, TopupModule],
+  imports: [
+    OrdersModule,
+    OnepayModule,
+    CustomPaymentLinksModule,
+    TopupModule,
+    PartnersModule,
+  ],
   controllers: [PaymentController],
   providers: [PaymentService],
 })

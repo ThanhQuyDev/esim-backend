@@ -103,6 +103,12 @@ export class BlogRelationalRepository implements BlogRepository {
       qb.andWhere('blog.language = :lang', { lang });
     }
 
+    if (filterOptions?.isPublished !== undefined) {
+      qb.andWhere('blog.isPublished = :isPublished', {
+        isPublished: filterOptions.isPublished,
+      });
+    }
+
     if (filterOptions?.authorSlug) {
       qb.andWhere('authorProfile.slug = :authorSlug', {
         authorSlug: filterOptions.authorSlug,

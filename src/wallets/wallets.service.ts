@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
 import { EsimsService } from '../esims/esims.service';
 import { Order } from '../orders/domain/order';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
@@ -47,6 +47,17 @@ import {
 } from './wallets.enum';
 
 const HOLD_MINUTES = 30;
+
+/**
+ * Order statuses that prove a buyer has already completed a purchase, so a
+ * referral code (first order only) must be refused. `paid` alone was too
+ * narrow: a refunded or completed order is still a prior purchase.
+ */
+export const REFERRAL_BLOCKING_ORDER_STATUSES = [
+  'paid',
+  'completed',
+  'refunded',
+] as const;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export type ReferralValidationResult = {
@@ -167,7 +178,7 @@ export class WalletsService {
     totalCount: number;
   }> {
     const page = options.page || 1;
-    const limit = Math.min(options.limit || 10, 50);
+    const limit = Math.min(Math.max(options.limit || 10, 1), 200);
 
     const queryBuilder = this.walletRepository
       .createQueryBuilder('wallet')
@@ -360,8 +371,12 @@ export class WalletsService {
       );
     }
 
+    // A referral is first-order-only, so any order the buyer has already
+    // settled disqualifies them — not just ones still sitting in `paid`.
+    // Refunded and completed orders were previously invisible to this check,
+    // which let returning buyers keep re-applying the discount.
     const paidOrders = await this.orderRepository.count({
-      where: { userId, status: 'paid' },
+      where: { userId, status: In([...REFERRAL_BLOCKING_ORDER_STATUSES]) },
     });
     if (paidOrders > 0) {
       throw new BadRequestException(
@@ -585,6 +600,13 @@ export class WalletsService {
       const user = await manager.getRepository(UserEntity).findOne({
         where: { id: order.userId },
         lock: { mode: 'pessimistic_write' },
+        // UserEntity has four eager relations, and a `find` loads them as LEFT
+        // JOINs. Postgres rejects `FOR UPDATE` over the nullable side of an
+        // outer join, so with the joins in place this row lock threw
+        // "FOR UPDATE cannot be applied to the nullable side of an outer join"
+        // and took the whole paid-order flow down with it. We only need the
+        // row locked, never its relations.
+        loadEagerRelations: false,
       });
       if (!user) throw new NotFoundException(`User ${order.userId} not found`);
 
@@ -645,6 +667,13 @@ export class WalletsService {
       const user = await manager.getRepository(UserEntity).findOne({
         where: { id: order.userId },
         lock: { mode: 'pessimistic_write' },
+        // UserEntity has four eager relations, and a `find` loads them as LEFT
+        // JOINs. Postgres rejects `FOR UPDATE` over the nullable side of an
+        // outer join, so with the joins in place this row lock threw
+        // "FOR UPDATE cannot be applied to the nullable side of an outer join"
+        // and took the whole paid-order flow down with it. We only need the
+        // row locked, never its relations.
+        loadEagerRelations: false,
       });
       if (!user) throw new NotFoundException(`User ${order.userId} not found`);
 

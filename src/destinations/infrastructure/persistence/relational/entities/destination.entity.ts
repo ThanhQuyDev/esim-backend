@@ -42,7 +42,7 @@ export class DestinationEntity extends EntityRelationalHelper {
   @JoinColumn({ name: 'parentId' })
   parent: DestinationEntity | null;
 
-  @ManyToMany(() => RegionEntity)
+  @ManyToMany(() => RegionEntity, (region) => region.destinations)
   @JoinTable({
     name: 'destination_region',
     joinColumn: { name: 'destinationId', referencedColumnName: 'id' },

@@ -42,6 +42,25 @@ const COL = {
 
 const PROVIDER = 'gadgetkorea';
 
+/** Longest plausible provider Option ID; anything longer is prose, not an id. */
+const MAX_OPTION_ID_LENGTH = 40;
+
+/**
+ * Reject a value that cannot be a provider Option ID.
+ *
+ * The sheet's columns have shifted before: `OPTION_ID` picked up the neighbouring
+ * INITIALIZE_POLICY text ("It will be initialized 24 hours after activation."),
+ * which imported cleanly and gave all 1786 plans the same unusable id. An id is
+ * a short token, so a sentence-shaped value is a mis-mapped column, not data.
+ */
+export function assertLooksLikeOptionId(value: string): void {
+  if (value.length > MAX_OPTION_ID_LENGTH || /\s/.test(value)) {
+    throw new Error(
+      `Option ID "${value}" is not an identifier — the Option ID column looks mis-mapped`,
+    );
+  }
+}
+
 @Injectable()
 export class PlansGadgetkoreaImportService {
   private readonly logger = new Logger(PlansGadgetkoreaImportService.name);
@@ -71,6 +90,10 @@ export class PlansGadgetkoreaImportService {
       errors: [],
       destinationNotFound: [],
     };
+
+    // Every accepted Option ID, so we can tell afterwards whether the column
+    // actually held ids — see the uniqueness check after the import loop.
+    const optionIds: string[] = [];
 
     const destinationCache = new Map<string, number | null>();
     const regionCache = new Map<string, number | null>();
@@ -140,6 +163,8 @@ export class PlansGadgetkoreaImportService {
           const providerPlanId =
             this.getString(row.getCell(COL.OPTION_ID).value) || '';
           if (!providerPlanId) throw new Error('Missing Option ID');
+          assertLooksLikeOptionId(providerPlanId);
+          optionIds.push(providerPlanId);
 
           const durationDays = this.parseDays(
             this.getString(row.getCell(COL.DAY).value),
@@ -238,6 +263,20 @@ export class PlansGadgetkoreaImportService {
 
     await this.plansService.markCheapestPlans();
     await this.plansService.updateVndPrices();
+
+    // A correctly-mapped file gives each row its own Option ID. If almost every
+    // row shares one value the sheet's columns have shifted and we just filled
+    // the catalogue with an unusable provider id — topup and provisioning would
+    // then fail at submit time, long after the import "succeeded".
+    const distinctOptionIds = new Set(optionIds).size;
+    if (optionIds.length > 1 && distinctOptionIds < optionIds.length / 2) {
+      const message =
+        `Option ID column looks wrong: only ${distinctOptionIds} distinct value(s) across ` +
+        `${optionIds.length} rows (e.g. "${optionIds[0]}"). Check that column ` +
+        `${COL.OPTION_ID} of the sheet is still Option ID.`;
+      this.logger.error(message);
+      result.errors.push({ row: 0, error: message });
+    }
 
     result.destinationNotFound = [...notFoundNames];
     return result;

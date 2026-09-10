@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { CartEntity } from '../entities/cart.entity';
 import { Cart } from '../../../../domain/cart';
 import { CartRepository } from '../../cart.repository';
@@ -22,12 +22,17 @@ export class CartsRelationalRepository implements CartRepository {
     return entities.map(CartMapper.toDomain);
   }
 
-  async findByUserIdAndPlanId(
+  async findByUserIdPlanIdAndPeriodNum(
     userId: number,
     planId: number,
+    periodNum: number | null,
   ): Promise<NullableType<Cart>> {
     const entity = await this.cartRepository.findOne({
-      where: { userId, planId },
+      where: {
+        userId,
+        planId,
+        periodNum: periodNum == null ? IsNull() : periodNum,
+      },
     });
     return entity ? CartMapper.toDomain(entity) : null;
   }

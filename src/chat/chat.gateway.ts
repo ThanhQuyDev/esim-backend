@@ -129,6 +129,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       fileName?: string;
       fileType?: string;
       fileSize?: number;
+      /** Quote an earlier message of the same room (#073). */
+      replyToId?: number;
     },
   ) {
     if (!data?.chatRoomId || !data?.message) {
@@ -149,6 +151,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    // A quote must point at a message of this same room — otherwise a client
+    // could pull a snippet of someone else's conversation into its own (#073).
+    if (data.replyToId != null) {
+      const quoted = await this.chatService.getMessageById(data.replyToId);
+      if (!quoted || quoted.chatRoomId !== data.chatRoomId) {
+        client.emit('error', {
+          message: 'Replied message not found in this room',
+        });
+        return;
+      }
+    }
+
     const attachment = data.fileUrl
       ? {
           fileUrl: data.fileUrl,
@@ -163,6 +177,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.data.userId,
       data.message,
       attachment,
+      data.replyToId ?? null,
     );
 
     const roomName = `chat_room_${data.chatRoomId}`;

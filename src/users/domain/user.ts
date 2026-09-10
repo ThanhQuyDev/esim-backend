@@ -70,6 +70,21 @@ export class User {
   @ApiProperty({ type: Number, example: 1000000 })
   lifetimeSpendVnd: number;
 
+  /**
+   * The customer's own referral code (`user_referral_profile.code`) — the code
+   * they hand out, not one they used. Filled in for the admin customer list
+   * (#056); undefined elsewhere.
+   */
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'ESIM8F2K' })
+  referralCode?: string | null;
+
+  /**
+   * How many orders this customer has actually paid for. Counted with the same
+   * status set the revenue dashboards use, so the two never disagree (#056).
+   */
+  @ApiPropertyOptional({ type: Number, example: 3 })
+  paidOrderCount?: number;
+
   @ApiPropertyOptional({ enum: MembershipTierEnum, nullable: true })
   tierOverride: MembershipTierEnum | null;
 

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, ILike, In, Repository } from 'typeorm';
+import { FindOptionsWhere, ILike, In, IsNull, Not, Repository } from 'typeorm';
 import { SeoConfigEntity } from '../entities/seo-config.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import {
@@ -43,6 +43,27 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
     if (filterOptions?.isActive !== undefined) {
       baseWhere.isActive = filterOptions.isActive;
     }
+    // Page type is not a column: it is which entity the config points at (#046).
+    // "other" means none of them — the hand-typed URLs (`/`, `/blog`, ...).
+    // Applied BEFORE the explicit ids, which are the more specific ask: asking
+    // for country #7 must not be widened back to "any country" by pageType.
+    switch (filterOptions?.pageType) {
+      case 'destination':
+        baseWhere.destinationId = Not(IsNull());
+        break;
+      case 'region':
+        baseWhere.regionId = Not(IsNull());
+        break;
+      case 'plan':
+        baseWhere.planId = Not(IsNull());
+        break;
+      case 'other':
+        baseWhere.destinationId = IsNull();
+        baseWhere.regionId = IsNull();
+        baseWhere.planId = IsNull();
+        break;
+    }
+
     if (filterOptions?.destinationId !== undefined) {
       baseWhere.destinationId = filterOptions.destinationId;
     }

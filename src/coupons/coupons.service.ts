@@ -16,6 +16,10 @@ import {
   ValidateCouponDto,
   ValidateCouponResponseDto,
 } from './dto/validate-coupon.dto';
+import {
+  computeCouponDiscount,
+  effectiveDiscountPercent,
+} from './coupon-discount';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
@@ -42,6 +46,9 @@ export class CouponsService {
     return this.couponRepository.create({
       code: createCouponDto.code.toUpperCase(),
       discountPercent: createCouponDto.discountPercent,
+      discountType: createCouponDto.discountType ?? 'percent',
+      discountAmount: createCouponDto.discountAmount ?? 0,
+      maxDiscountAmount: createCouponDto.maxDiscountAmount ?? null,
       maxUsage: createCouponDto.maxUsage ?? null,
       maxUsagePerUser: createCouponDto.maxUsagePerUser ?? null,
       usageCount: 0,
@@ -51,6 +58,9 @@ export class CouponsService {
         : null,
       isActive: createCouponDto.isActive ?? true,
       isPopular: createCouponDto.isPopular ?? false,
+      // Codes are listed on the cart page unless the admin says otherwise.
+      isPublic: createCouponDto.isPublic ?? true,
+      partnerId: createCouponDto.partnerId ?? null,
     } as Coupon);
   }
 
@@ -96,6 +106,12 @@ export class CouponsService {
     }
     if (updateCouponDto.discountPercent !== undefined)
       payload.discountPercent = updateCouponDto.discountPercent;
+    if (updateCouponDto.discountType !== undefined)
+      payload.discountType = updateCouponDto.discountType;
+    if (updateCouponDto.discountAmount !== undefined)
+      payload.discountAmount = updateCouponDto.discountAmount;
+    if (updateCouponDto.maxDiscountAmount !== undefined)
+      payload.maxDiscountAmount = updateCouponDto.maxDiscountAmount;
     if (updateCouponDto.maxUsage !== undefined)
       payload.maxUsage = updateCouponDto.maxUsage;
     if (updateCouponDto.maxUsagePerUser !== undefined)
@@ -110,6 +126,10 @@ export class CouponsService {
       payload.isActive = updateCouponDto.isActive;
     if (updateCouponDto.isPopular !== undefined)
       payload.isPopular = updateCouponDto.isPopular;
+    if (updateCouponDto.isPublic !== undefined)
+      payload.isPublic = updateCouponDto.isPublic;
+    if (updateCouponDto.partnerId !== undefined)
+      payload.partnerId = updateCouponDto.partnerId;
 
     return this.couponRepository.update(id, payload);
   }
@@ -157,14 +177,22 @@ export class CouponsService {
       );
     }
 
-    const discountAmount =
-      Math.round(dto.orderAmount * coupon.discountPercent) / 100;
+    // Percentage, flat amount and "percent up to X" all resolve here (#082).
+    const discountAmount = computeCouponDiscount(coupon, dto.orderAmount);
     const finalAmount =
       Math.round((dto.orderAmount - discountAmount) * 100) / 100;
 
     return {
       valid: true,
       discountPercent: coupon.discountPercent,
+      discountType: coupon.discountType ?? 'percent',
+      maxDiscountAmount: coupon.maxDiscountAmount ?? null,
+      // The share actually taken off — a capped or flat code is no longer
+      // described by its configured percentage.
+      effectiveDiscountPercent: effectiveDiscountPercent(
+        discountAmount,
+        dto.orderAmount,
+      ),
       discountAmount,
       finalAmount,
     };

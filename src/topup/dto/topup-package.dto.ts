@@ -28,9 +28,22 @@ export class TopupPackageDto {
     type: String,
     example: 'bonbon-mobile-30days-3gb-topup',
     description:
-      'Provider-specific package identifier; pass this back at checkout time',
+      'Stable identifier for this package; pass this back at checkout time. ' +
+      'For providers whose catalogue lives in our own `plan` table ' +
+      '(GADGET_KOREA / BILLION / MICRO_ESIM) this is the `plan.id`, because a ' +
+      "provider's own plan id is not guaranteed unique across our rows.",
   })
   packageId!: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'SKU-3GB-30D',
+    description:
+      'The id this package is known by on the provider side. Only differs ' +
+      'from `packageId` for DB-catalogued providers. Informational — checkout ' +
+      'resolves it server-side and never trusts it from the client.',
+  })
+  providerPackageId?: string;
 
   @ApiProperty({ type: String, example: '3 GB - 100 SMS - 100 Mins - 30 Days' })
   name!: string;

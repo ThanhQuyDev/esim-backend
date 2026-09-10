@@ -14,6 +14,31 @@ import { Plan } from '../plans/domain/plan';
 import { Faq } from '../faqs/domain/faq';
 import { AuthorsService } from '../authors/authors.service';
 
+/**
+ * Keep the publication date independent from updatedAt. The first transition
+ * to published gets a timestamp; later edits retain it unless CMS explicitly
+ * supplies another publication date.
+ */
+export function resolveBlogPublishedAt({
+  requestedPublishedAt,
+  requestedIsPublished,
+  currentPublishedAt,
+  currentIsPublished,
+  now = new Date(),
+}: {
+  requestedPublishedAt?: Date | null;
+  requestedIsPublished?: boolean;
+  currentPublishedAt?: Date | null;
+  currentIsPublished?: boolean;
+  now?: Date;
+}): Date | null | undefined {
+  if (requestedPublishedAt !== undefined) return requestedPublishedAt;
+  if (requestedIsPublished === true && currentIsPublished !== true) {
+    return currentPublishedAt ?? now;
+  }
+  return currentPublishedAt;
+}
+
 @Injectable()
 export class BlogsService {
   constructor(
@@ -55,7 +80,11 @@ export class BlogsService {
       // Do not remove comment below.
       // <creating-property-payload />
       language: createBlogDto.language,
-      publishedAt: createBlogDto.publishedAt,
+      publishedAt: resolveBlogPublishedAt({
+        requestedPublishedAt: createBlogDto.publishedAt,
+        requestedIsPublished: createBlogDto.isPublished,
+        currentIsPublished: false,
+      }),
       isPublished: createBlogDto.isPublished,
       authorProfile,
       authorProfileId: authorProfile.id,
@@ -148,7 +177,12 @@ export class BlogsService {
       // Do not remove comment below.
       // <updating-property-payload />
       language: updateBlogDto.language,
-      publishedAt: updateBlogDto.publishedAt,
+      publishedAt: resolveBlogPublishedAt({
+        requestedPublishedAt: updateBlogDto.publishedAt,
+        requestedIsPublished: updateBlogDto.isPublished,
+        currentPublishedAt: current.publishedAt,
+        currentIsPublished: current.isPublished,
+      }),
       isPublished: updateBlogDto.isPublished,
       authorProfile,
       authorProfileId: authorProfile.id,

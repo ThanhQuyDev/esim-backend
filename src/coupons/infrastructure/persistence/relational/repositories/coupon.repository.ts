@@ -44,6 +44,9 @@ export class CouponsRelationalRepository implements CouponRepository {
     if (filterOptions?.isPopular !== undefined) {
       where.isPopular = filterOptions.isPopular;
     }
+    if (filterOptions?.isPublic !== undefined) {
+      where.isPublic = filterOptions.isPublic;
+    }
     if (filterOptions?.search) {
       where.code = ILike(`%${filterOptions.search}%`);
     }
@@ -52,6 +55,9 @@ export class CouponsRelationalRepository implements CouponRepository {
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
       where,
+      // Owner is shown in the admin listing, so load it with the page rather
+      // than resolving names client-side from a separate partner list.
+      relations: { partner: true },
       order: sortOptions?.length
         ? sortOptions.reduce(
             (accumulator, sort) => ({
@@ -69,6 +75,7 @@ export class CouponsRelationalRepository implements CouponRepository {
   async findById(id: Coupon['id']): Promise<NullableType<Coupon>> {
     const entity = await this.couponRepository.findOne({
       where: { id: Number(id) },
+      relations: { partner: true },
     });
     return entity ? CouponMapper.toDomain(entity) : null;
   }

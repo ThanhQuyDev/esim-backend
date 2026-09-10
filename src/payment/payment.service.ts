@@ -11,6 +11,7 @@ import {
   TOPUP_ORDER_NUMBER_PREFIX,
   TOPUP_ORDER_STATUS,
 } from '../topup/topup.constants';
+import { PartnersService } from '../partners/partners.service';
 import {
   generateBankTransferCode,
   buildVietQrUrl,
@@ -28,6 +29,18 @@ export interface BankTransferCheckoutResult {
   bankCode: string;
 }
 
+/**
+ * Order statuses that already account for the customer's money, so a repeat
+ * SePay delivery for them is a plain no-op. Anything else that is not
+ * `pending` means a transfer landed on an order we had written off — see
+ * {@link PaymentService.handleSepayWebhook}.
+ */
+const SEPAY_SETTLED_ORDER_STATUSES: ReadonlySet<string> = new Set([
+  TOPUP_ORDER_STATUS.PAID,
+  TOPUP_ORDER_STATUS.COMPLETED,
+  TOPUP_ORDER_STATUS.MANUAL_INTERVENTION,
+]);
+
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
@@ -38,6 +51,7 @@ export class PaymentService {
     private readonly configService: ConfigService<AllConfigType>,
     private readonly customPaymentLinksService: CustomPaymentLinksService,
     private readonly topupService: TopupService,
+    private readonly partnersService: PartnersService,
   ) {}
 
   async createCheckout(
@@ -276,17 +290,41 @@ export class PaymentService {
 
     const order = await this.ordersService.findByBankTransferCode(code);
     if (!order) {
-      this.logger.warn(
-        `SePay webhook: no order for transfer code ${code} — needs manual reconciliation`,
+      return this.handleSepayDepositRequestWebhook(code, payload);
+    }
+
+    // Idempotency: SePay may deliver the same event more than once. These
+    // statuses all mean "money already accounted for", so a repeat delivery is
+    // a no-op.
+    if (SEPAY_SETTLED_ORDER_STATUSES.has(order.status)) {
+      this.logger.log(
+        `SePay webhook: order ${order.orderNumber} already processed (status=${order.status})`,
       );
       return { success: true };
     }
 
-    // Idempotency: SePay may deliver the same event more than once.
+    // Any other non-pending status (`failed` from the expiry cron or from the
+    // buyer cancelling, `cancelled`, …) means the money arrived for an order we
+    // had already written off. Returning success here silently kept the
+    // customer's transfer with nothing to show for it, so flag it instead: the
+    // payment reference is recorded and an admin must refund or fulfil.
     if (order.status !== 'pending') {
-      this.logger.log(
-        `SePay webhook: order ${order.orderNumber} already processed (status=${order.status})`,
+      this.logger.error(
+        `SePay webhook: payment landed on non-pending order ${order.orderNumber} ` +
+          `(status=${order.status}, amount=${payload.transferAmount ?? 0}, ref=${payload.referenceCode ?? payload.id ?? '-'}) ` +
+          `— flagging for manual reconciliation`,
       );
+      try {
+        await this.ordersService.update(order.id, {
+          status: TOPUP_ORDER_STATUS.MANUAL_INTERVENTION,
+          paymentMethod: 'bank_transfer',
+          paymentId: payload.referenceCode ?? String(payload.id ?? '') ?? null,
+        });
+      } catch (err) {
+        this.logger.error(
+          `SePay webhook: could not flag ${order.orderNumber} for reconciliation: ${(err as Error).message}`,
+        );
+      }
       return { success: true };
     }
 
@@ -350,6 +388,56 @@ export class PaymentService {
       );
     }
 
+    return { success: true };
+  }
+
+  /**
+   * Second-match branch of the SePay webhook: a transfer code that doesn't
+   * match any Order may belong to a partner's ký quỹ deposit request
+   * instead (see PartnersService.createDepositRequest). Same code space,
+   * same generator (`generateBankTransferCode`), disjoint by DB uniqueness.
+   */
+  private async handleSepayDepositRequestWebhook(
+    code: string,
+    payload: {
+      id?: number | string;
+      transferAmount?: number;
+      referenceCode?: string;
+    },
+  ): Promise<{ success: boolean }> {
+    const request =
+      await this.partnersService.findDepositRequestByBankTransferCode(code);
+    if (!request) {
+      this.logger.warn(
+        `SePay webhook: no order or deposit request for transfer code ${code} — needs manual reconciliation`,
+      );
+      return { success: true };
+    }
+
+    if (request.status !== 'pending') {
+      this.logger.log(
+        `SePay webhook: deposit request ${request.id} already processed (status=${request.status})`,
+      );
+      return { success: true };
+    }
+
+    const paidAmount = Number(payload.transferAmount ?? 0);
+    const expected = Number(request.amountVnd ?? 0);
+    if (paidAmount < expected) {
+      this.logger.warn(
+        `SePay webhook: underpaid deposit request ${request.id} — got ${paidAmount}, expected ${expected}. Left pending for manual review.`,
+      );
+      return { success: true };
+    }
+
+    const paymentId = payload.referenceCode ?? String(payload.id ?? '') ?? null;
+    await this.partnersService.confirmDepositRequestBySePay(
+      request.id,
+      paymentId,
+    );
+    this.logger.log(
+      `SePay webhook: partner deposit request ${request.id} confirmed (code=${code})`,
+    );
     return { success: true };
   }
 

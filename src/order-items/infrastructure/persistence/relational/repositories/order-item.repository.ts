@@ -103,6 +103,31 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     return result;
   }
 
+  /**
+   * How many eSIMs each order actually contains (#064).
+   *
+   * `countByOrderIds` counts LINES, so an order of one plan bought three times
+   * reports 1 — which reads as "1 sản phẩm" to a customer holding three eSIMs.
+   * This sums the quantities instead.
+   */
+  async sumQuantityByOrderIds(
+    orderIds: number[],
+  ): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    if (!orderIds.length) return result;
+    const rows = await this.orderItemsRepository
+      .createQueryBuilder('orderItem')
+      .select('orderItem.orderId', 'orderId')
+      .addSelect('SUM(orderItem.quantity)', 'quantity')
+      .where('orderItem.orderId IN (:...orderIds)', { orderIds })
+      .groupBy('orderItem.orderId')
+      .getRawMany<{ orderId: number; quantity: string }>();
+    for (const row of rows) {
+      result.set(Number(row.orderId), Number(row.quantity) || 0);
+    }
+    return result;
+  }
+
   async update(
     id: OrderItem['id'],
     payload: Partial<OrderItem>,

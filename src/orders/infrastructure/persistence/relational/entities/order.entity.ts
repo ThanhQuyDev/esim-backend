@@ -101,6 +101,17 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: Number, nullable: true })
   referrerUserId?: number | null;
 
+  // Partner-link (KOL marketing link) attribution — independent of the
+  // referral/coupon codes above. Set when the buyer arrived via a
+  // /go/[code] click on the public site within the attribution window.
+  @Index()
+  @Column({ type: String, nullable: true })
+  partnerLinkCode?: string | null;
+
+  @Index()
+  @Column({ type: Number, nullable: true })
+  attributedPartnerId?: number | null;
+
   @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
   referralDiscountVndAmount!: number;
 

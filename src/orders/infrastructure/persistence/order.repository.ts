@@ -4,6 +4,22 @@ import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { Order } from '../../domain/order';
 import { FilterOrderDto, SortOrderDto } from '../../dto/query-order.dto';
 
+export interface ReconciliationExportRow {
+  orderNumber: string;
+  orderStatus: string;
+  orderCreatedAt: Date;
+  customerEmail: string | null;
+  provider: string | null;
+  planName: string | null;
+  providerPlanId: string | null;
+  providerOrderRef: string | null;
+  itemStatus: string;
+  quantity: number;
+  vndCostPrice: number;
+  vndPrice: number;
+  iccids: string | null;
+}
+
 export abstract class OrderRepository {
   abstract create(data: Partial<Order>): Promise<Order>;
 
@@ -16,6 +32,15 @@ export abstract class OrderRepository {
     sortOptions?: SortOrderDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Order[], number]>;
+
+  /**
+   * Flat, unpaginated rows for the supplier-reconciliation export (#028):
+   * ONE ROW PER ORDER ITEM, because debt is settled per supplier and a single
+   * order can mix three of them.
+   */
+  abstract findAllForReconciliationExport(
+    filterOptions?: FilterOrderDto | null,
+  ): Promise<ReconciliationExportRow[]>;
 
   abstract findById(id: Order['id']): Promise<NullableType<Order>>;
 
@@ -43,6 +68,6 @@ export abstract class OrderRepository {
 
   abstract softDeleteByStatusOlderThan(
     status: string,
-    olderThan: Date,
+    olderThanDays: number,
   ): Promise<number>;
 }

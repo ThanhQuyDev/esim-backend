@@ -27,10 +27,21 @@ export class TicketsRelationalRepository implements TicketRepository {
     filterOptions,
     paginationOptions,
   }: {
-    filterOptions?: { status?: string; search?: string } | null;
+    filterOptions?: {
+      status?: string;
+      search?: string;
+      customerEmail?: string;
+    } | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Ticket[], number]> {
     const qb = this.ticketsRepository.createQueryBuilder('ticket');
+
+    // Scoping filter for the non-admin listing — see TicketsController.findMine.
+    if (filterOptions?.customerEmail) {
+      qb.andWhere('LOWER(ticket."customerEmail") = LOWER(:customerEmail)', {
+        customerEmail: filterOptions.customerEmail,
+      });
+    }
 
     if (filterOptions?.status) {
       qb.andWhere('ticket.status = :status', {

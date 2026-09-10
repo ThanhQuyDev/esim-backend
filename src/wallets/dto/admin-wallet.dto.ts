@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsEnum,
   IsInt,
   IsNumber,
@@ -7,7 +9,7 @@ import {
   IsString,
   Min,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { OrderRefundModeEnum, WalletStatusEnum } from '../wallets.enum';
 
 export class AdminWalletQueryDto {
@@ -71,4 +73,19 @@ export class RefundOrderDto {
   @IsOptional()
   @IsString()
   adminNote?: string;
+
+  /**
+   * Refund only these order items (#027). An order can mix suppliers, and only
+   * some of them refund — e.g. esimaccess and gadgetkorea do, airalo does not.
+   * When given, only these items are cancelled with their supplier and marked
+   * refunded; the rest of the order is left alone. Omit to refund the order as
+   * a whole, as before.
+   */
+  @ApiPropertyOptional({ type: [Number], example: [12, 13] })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsInt({ each: true })
+  @Type(() => Number)
+  orderItemIds?: number[];
 }

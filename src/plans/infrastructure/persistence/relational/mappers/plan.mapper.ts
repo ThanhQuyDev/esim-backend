@@ -37,6 +37,8 @@ export class PlanMapper {
     domainEntity.isCheapest = raw.isCheapest;
     domainEntity.discount = raw.discount;
     domainEntity.vndPrice = Number(raw.vndPrice);
+    domainEntity.usdPrice = Number(raw.usdPrice ?? 0);
+    domainEntity.isNonHkIp = !!raw.isNonHkIp;
     domainEntity.isKyc = raw.isKyc;
     domainEntity.isLocalInventory = raw.isLocalInventory;
     domainEntity.tags = raw.tags ?? null;
@@ -80,6 +82,8 @@ export class PlanMapper {
     persistenceEntity.isCheapest = domainEntity.isCheapest;
     persistenceEntity.discount = domainEntity.discount;
     persistenceEntity.vndPrice = domainEntity.vndPrice;
+    persistenceEntity.usdPrice = domainEntity.usdPrice;
+    persistenceEntity.isNonHkIp = domainEntity.isNonHkIp;
     persistenceEntity.isKyc = domainEntity.isKyc;
     persistenceEntity.isLocalInventory = domainEntity.isLocalInventory;
     persistenceEntity.tags = domainEntity.tags ?? null;

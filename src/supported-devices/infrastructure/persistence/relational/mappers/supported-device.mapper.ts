@@ -8,6 +8,8 @@ export class SupportedDeviceMapper {
     domain.device = raw.device;
     domain.manufacturer = raw.manufacturer;
     domain.type = raw.type;
+    domain.manufacturerOrder = raw.manufacturerOrder ?? 0;
+    domain.sortOrder = raw.sortOrder ?? 0;
     domain.createdAt = raw.createdAt;
     domain.updatedAt = raw.updatedAt;
     return domain;
@@ -19,6 +21,8 @@ export class SupportedDeviceMapper {
     entity.device = domain.device;
     entity.manufacturer = domain.manufacturer;
     entity.type = domain.type;
+    entity.manufacturerOrder = domain.manufacturerOrder ?? 0;
+    entity.sortOrder = domain.sortOrder ?? 0;
     return entity;
   }
 }

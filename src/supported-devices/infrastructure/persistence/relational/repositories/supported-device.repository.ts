@@ -46,7 +46,15 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
       where,
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
-      order: { type: 'ASC', manufacturer: 'ASC', device: 'ASC' },
+      // Admin order first, alphabetical as the tie-break — a row left at 0
+      // simply keeps its old place (#090).
+      order: {
+        type: 'ASC',
+        manufacturerOrder: 'ASC',
+        manufacturer: 'ASC',
+        sortOrder: 'ASC',
+        device: 'ASC',
+      },
     });
     return [entities.map(SupportedDeviceMapper.toDomain), count];
   }
@@ -57,7 +65,15 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
 
     const entities = await this.repo.find({
       where,
-      order: { type: 'ASC', manufacturer: 'ASC', device: 'ASC' },
+      // Admin order first, alphabetical as the tie-break — a row left at 0
+      // simply keeps its old place (#090).
+      order: {
+        type: 'ASC',
+        manufacturerOrder: 'ASC',
+        manufacturer: 'ASC',
+        sortOrder: 'ASC',
+        device: 'ASC',
+      },
     });
     return entities.map(SupportedDeviceMapper.toDomain);
   }
@@ -84,6 +100,13 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
       ),
     );
     return SupportedDeviceMapper.toDomain(updated);
+  }
+
+  async setManufacturerOrder(
+    manufacturer: string,
+    manufacturerOrder: number,
+  ): Promise<void> {
+    await this.repo.update({ manufacturer }, { manufacturerOrder });
   }
 
   async remove(id: SupportedDevice['id']): Promise<void> {

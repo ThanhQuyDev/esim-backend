@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type, plainToInstance } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -37,6 +38,21 @@ export class FilterSeoConfigDto {
   @IsNumber()
   @Type(() => Number)
   planId?: number;
+
+  /**
+   * Which kind of page the config is for, derived from which entity was picked
+   * when it was created: a destination, a region, a plan, or none of them
+   * ("other" — the manually typed URLs like `/`, `/blog`, `/coupon`).
+   *
+   * The admin list mixes all of them, which is what made it unreadable (#046).
+   */
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['destination', 'region', 'plan', 'other'],
+  })
+  @IsOptional()
+  @IsIn(['destination', 'region', 'plan', 'other'])
+  pageType?: 'destination' | 'region' | 'plan' | 'other';
 }
 
 export class SortSeoConfigDto {

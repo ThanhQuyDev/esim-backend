@@ -141,7 +141,7 @@ export class EsimAccessService {
 
     if (isRegionPackage) {
       const region = await this.resolveRegion(pkg, locationCodes);
-      await this.upsertPlan(pkg, null, region.id);
+      await this.upsertPlan(pkg, null, region.id, region.name ?? null);
     } else {
       const destination = await this.resolveDestination(pkg);
       await this.upsertPlan(pkg, destination.id, null);
@@ -214,7 +214,7 @@ export class EsimAccessService {
     const externalCode = `esimaccess-${pkg.locationCode.toLowerCase()}`;
     const existing = await this.regionsService.findByExternalCode(externalCode);
 
-    let region: { id: number };
+    let region: { id: number; name?: string };
     if (existing) {
       region = existing;
     } else {
@@ -311,6 +311,8 @@ export class EsimAccessService {
     pkg: EsimAccessPackage,
     destinationId: number | null,
     regionId: number | null,
+    /** Region display name, for regional packages only. */
+    regionName: string | null = null,
   ) {
     const dataTypeMap: Record<number, string> = {
       1: 'fixed',
@@ -321,6 +323,22 @@ export class EsimAccessService {
     const locationName =
       pkg.locationNetworkList?.[0]?.locationName || pkg.location;
     const dataMb = Math.round(pkg.volume / 1024 / 1024);
+
+    /*
+     * A regional package covers many countries, and `locationNetworkList[0]`
+     * is just whichever one the provider happened to list first. Naming the
+     * plan after it produced things like "Japan 5GB / 30day" for an Asia pack —
+     * unsearchable, because nobody can guess which country came first (#036).
+     * So a regional plan is named after its REGION.
+     *
+     * Only the display NAME changes here. The slug is built from
+     * `pkg.locationCode` (e.g. `eu-42-3gb-30days-fixed-es`), and the upsert
+     * matches existing plans by slug — so a re-sync renames the plans already
+     * in the catalogue instead of creating duplicates alongside them.
+     */
+    const displayLocationName = regionId
+      ? (regionName ?? locationName)
+      : locationName;
 
     let planType: string;
     if (pkg.dataType === 2) {
@@ -341,7 +359,7 @@ export class EsimAccessService {
     const existing = await this.plansService.findBySlug(slug);
 
     const planName = this.buildPlanName(
-      locationName,
+      displayLocationName,
       dataMb,
       pkg.duration,
       planType,
@@ -381,6 +399,12 @@ export class EsimAccessService {
       apn: null,
       hotSpot: true,
       hotSpotAllow: this.formatHotSpotAllow(planType, dataMb),
+      // The provider states this in the package name — "… (nonhkip)" — and
+      // our own name/slug are rebuilt from location+data+duration, so without
+      // capturing it here the distinction is lost for good (#041).
+      isNonHkIp:
+        pkg.name.toLowerCase().includes('nonhkip') ||
+        (pkg.slug ?? '').toLowerCase().includes('nonhkip'),
       lastSyncedAt: new Date(),
       isActive: true,
     };

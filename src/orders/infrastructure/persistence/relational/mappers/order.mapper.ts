@@ -29,6 +29,8 @@ export class OrderMapper {
     domainEntity.couponDiscountVndAmount = Number(raw.couponDiscountVndAmount);
     domainEntity.referralCode = raw.referralCode;
     domainEntity.referrerUserId = raw.referrerUserId;
+    domainEntity.partnerLinkCode = raw.partnerLinkCode;
+    domainEntity.attributedPartnerId = raw.attributedPartnerId;
     domainEntity.referralDiscountVndAmount = Number(
       raw.referralDiscountVndAmount,
     );
@@ -93,6 +95,8 @@ export class OrderMapper {
       domainEntity.couponDiscountVndAmount ?? 0;
     persistenceEntity.referralCode = domainEntity.referralCode;
     persistenceEntity.referrerUserId = domainEntity.referrerUserId;
+    persistenceEntity.partnerLinkCode = domainEntity.partnerLinkCode;
+    persistenceEntity.attributedPartnerId = domainEntity.attributedPartnerId;
     persistenceEntity.referralDiscountVndAmount =
       domainEntity.referralDiscountVndAmount ?? 0;
     persistenceEntity.walletSpentVndAmount =

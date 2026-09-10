@@ -48,6 +48,15 @@ export class DestinationsRelationalRepository implements DestinationRepository {
           .andWhere('plan."deletedAt" IS NULL');
       }, 'fromPrice');
 
+    if (filterOptions?.parentId !== undefined) {
+      if (filterOptions.parentId === null) {
+        qb.andWhere('destination.parentId IS NULL');
+      } else {
+        qb.andWhere('destination.parentId = :parentId', {
+          parentId: filterOptions.parentId,
+        });
+      }
+    }
     if (filterOptions?.isPopular !== undefined) {
       qb.andWhere('destination.isPopular = :isPopular', {
         isPopular: filterOptions.isPopular,
@@ -59,8 +68,17 @@ export class DestinationsRelationalRepository implements DestinationRepository {
       });
     }
     if (filterOptions?.search) {
+      // Match the localized titles too, not just the internal `name`: the
+      // storefront cards show `titleVi` / `title`, so a customer typing what
+      // they can see must find the destination.
+      // Slugs are deliberately NOT searched — every slug starts with "esim-",
+      // so "esim" or "sim" would match the entire catalogue.
       qb.andWhere(
-        '(destination.name ILIKE :search OR destination.keySearch ILIKE :search OR destination.countryCode ILIKE :search)',
+        `(destination.name ILIKE :search
+          OR destination.title ILIKE :search
+          OR destination.titleVi ILIKE :search
+          OR destination.keySearch ILIKE :search
+          OR destination.countryCode ILIKE :search)`,
         { search: `%${filterOptions.search}%` },
       );
     }

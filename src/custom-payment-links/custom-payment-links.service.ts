@@ -11,7 +11,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { CreateCustomPaymentLinkDto } from './dto/create-custom-payment-link.dto';
 import { UpdateCustomPaymentLinkDto } from './dto/update-custom-payment-link.dto';
-import { CustomPaymentLinkRepository } from './infrastructure/persistence/custom-payment-link.repository';
+import {
+  CustomPaymentLinkFilter,
+  CustomPaymentLinkRepository,
+} from './infrastructure/persistence/custom-payment-link.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { CustomPaymentLink } from './domain/custom-payment-link';
 import { OnepayService } from '../payment/onepay.service';
@@ -90,14 +93,17 @@ export class CustomPaymentLinksService {
 
   findAllWithPagination({
     paginationOptions,
+    filterOptions,
   }: {
     paginationOptions: IPaginationOptions;
+    filterOptions?: CustomPaymentLinkFilter | null;
   }) {
     return this.customPaymentLinkRepository.findAllWithPagination({
       paginationOptions: {
         page: paginationOptions.page,
         limit: paginationOptions.limit,
       },
+      filterOptions,
     });
   }
 

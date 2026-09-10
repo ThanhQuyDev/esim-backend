@@ -66,6 +66,8 @@ export class ChatService {
       fileType?: string;
       fileSize?: number;
     },
+    /** Quoted message id — validated by the caller to be in the same room (#073). */
+    replyToId?: number | null,
   ): Promise<ChatMessage> {
     return this.chatMessageRepository.create({
       chatRoomId,
@@ -75,7 +77,13 @@ export class ChatService {
       fileName: attachment?.fileName,
       fileType: attachment?.fileType,
       fileSize: attachment?.fileSize,
+      replyToId: replyToId ?? null,
     });
+  }
+
+  /** Used to check a quoted message exists and belongs to the room (#073). */
+  async getMessageById(id: number): Promise<ChatMessage | null> {
+    return this.chatMessageRepository.findById(id);
   }
 
   async markAsRead(chatRoomId: number, readerId: number): Promise<void> {

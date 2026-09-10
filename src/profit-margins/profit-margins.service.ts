@@ -1,6 +1,8 @@
 import {
   HttpStatus,
+  Inject,
   Injectable,
+  forwardRef,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { CreateProfitMarginTierDto } from './dto/create-profit-margin-tier.dto';
@@ -19,6 +21,7 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 export class ProfitMarginsService {
   constructor(
     private readonly tierRepository: ProfitMarginTierRepository,
+    @Inject(forwardRef(() => PlansService))
     private readonly plansService: PlansService,
   ) {}
 
@@ -151,6 +154,25 @@ export class ProfitMarginsService {
   async calculatePrice(costPrice: number, vndPrice: number): Promise<number> {
     const percentage = await this.getProfitPercentageForVndPrice(vndPrice);
     return Math.round(costPrice * (1 + percentage / 100) * 100) / 100;
+  }
+
+  /** Apply the active margin tier to a local-inventory cost already in VND. */
+  async calculateRetailVndFromLocalCost(costVnd: number): Promise<number> {
+    const tiers = await this.tierRepository.findAll();
+    let retailVnd = costVnd;
+
+    for (const tier of tiers) {
+      if (costVnd >= tier.minVnd && costVnd <= tier.maxVnd) {
+        const fixed = Number(tier.fixedAmountVnd) || 0;
+        retailVnd =
+          fixed > 0
+            ? costVnd + fixed
+            : costVnd * (1 + Number(tier.percentage) / 100);
+        break;
+      }
+    }
+
+    return Math.round(retailVnd / 1000) * 1000;
   }
 
   /**

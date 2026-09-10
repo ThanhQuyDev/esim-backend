@@ -11,7 +11,9 @@ import {
   HttpStatus,
   HttpCode,
   Request,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { SubmitOrderDto } from './dto/submit-order.dto';
@@ -32,6 +34,10 @@ import {
 import { QueryOrderDto } from './dto/query-order.dto';
 import { Order } from './domain/order';
 import { OrdersService } from './orders.service';
+import {
+  OrdersExportService,
+  exportFileTimestamp,
+} from './orders-export.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
@@ -47,7 +53,10 @@ import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
   version: '1',
 })
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly ordersExportService: OrdersExportService,
+  ) {}
 
   @ApiCreatedResponse({ type: Order })
   @Post()
@@ -92,7 +101,7 @@ export class OrdersController {
   ): Promise<InfinityPaginationResponseDto<Order>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
-    if (limit > 50) limit = 50;
+    if (limit > 200) limit = 200;
 
     const [data, count] = await this.ordersService.findManyWithPagination({
       filterOptions: { ...query?.filters, userId: req.user.id },
@@ -103,6 +112,29 @@ export class OrdersController {
     return infinityPagination(data, { page, limit }, count);
   }
 
+  /**
+   * Supplier-reconciliation export (#028): one row per order item, honouring
+   * the same filters as the list, named after the moment it was exported.
+   */
+  @Get('export-excel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Excel file download' })
+  async exportExcel(
+    @Query() query: QueryOrderDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const buffer = await this.ordersExportService.exportToExcel(query?.filters);
+    const filename = `don-hang-doi-soat-${exportFileTimestamp()}.xlsx`;
+
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   @ApiOkResponse({ type: InfinityPaginationResponse(Order) })
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -111,8 +143,8 @@ export class OrdersController {
   ): Promise<InfinityPaginationResponseDto<Order>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
-    if (limit > 50) {
-      limit = 50;
+    if (limit > 200) {
+      limit = 200;
     }
 
     const filters = { ...query?.filters };
@@ -135,6 +167,19 @@ export class OrdersController {
   @ApiParam({ name: 'id', type: String, required: true })
   findOne(@Param('id') id: Order['id']): Promise<AdminOrderDetailDto | null> {
     return this.ordersService.findDetailById(id);
+  }
+
+  /**
+   * Re-send the unfulfilled lines of a paid order to the supplier (#030),
+   * typically after topping the deposit back up. Lines that already have an
+   * eSIM — or that the supplier already accepted — are skipped, so pressing it
+   * twice cannot buy the same eSIM twice.
+   */
+  @Post(':id/retry-provisioning')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: String, required: true })
+  retryProvisioning(@Param('id') id: Order['id']) {
+    return this.ordersService.retryProvisioning(Number(id));
   }
 
   @Post(':id/refund')

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsDateString,
   IsEmail,
   IsNotEmpty,
   IsNumber,
@@ -102,6 +103,26 @@ export class SubmitOrderDto {
   @IsOptional()
   @IsString()
   referralCode?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: 'AB12CD34',
+    description:
+      'KOL marketing-link attribution code, read from the esim_partner_link cookie set by /go/[code] on the public site. Independent of referralCode/couponCode — grants the KOL commission, does not affect buyer pricing.',
+  })
+  @IsOptional()
+  @IsString()
+  partnerLinkCode?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '2026-08-15T09:30:00.000Z',
+    description:
+      'When the buyer last opened the marketing link, from the esim_partner_link_at cookie. An order only earns the KOL commission within 30 days of that visit; omitted for cookies set before this field existed, in which case the window is checked against the click log instead.',
+  })
+  @IsOptional()
+  @IsDateString()
+  partnerLinkClickedAt?: string;
 
   @ApiPropertyOptional({
     type: String,

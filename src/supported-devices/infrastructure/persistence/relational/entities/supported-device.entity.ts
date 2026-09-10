@@ -22,6 +22,14 @@ export class SupportedDeviceEntity extends EntityRelationalHelper {
   @Column({ nullable: false, type: 'enum', enum: DeviceType })
   type: DeviceType;
 
+  /** Where this device's BRAND sits in the list; 0 = alphabetical (#090). */
+  @Column({ type: 'int', default: 0 })
+  manufacturerOrder: number;
+
+  /** Where this model sits inside its brand; 0 = alphabetical (#090). */
+  @Column({ type: 'int', default: 0 })
+  sortOrder: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

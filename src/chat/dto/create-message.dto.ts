@@ -30,4 +30,9 @@ export class CreateMessageDto {
   @IsNumber()
   @IsOptional()
   fileSize?: number;
+
+  /** Id of the message being quoted; must belong to the same room (#073). */
+  @IsNumber()
+  @IsOptional()
+  replyToId?: number;
 }

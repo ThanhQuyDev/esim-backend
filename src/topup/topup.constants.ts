@@ -31,3 +31,20 @@ export enum OrderType {
   BUY_NEW = 'BUY_NEW',
   TOPUP = 'TOPUP',
 }
+
+/**
+ * `Order.paymentMethod` for a topup an admin applied without charging through
+ * a gateway (#026). Kept distinct so these orders can be told apart from real
+ * OnePay / bank-transfer payments when reconciling money.
+ */
+export const ADMIN_MANUAL_PAYMENT_METHOD = 'ADMIN_MANUAL';
+
+/**
+ * USD→VND rate used when the live rate is unavailable (#086).
+ *
+ * The same figure `PlanRepository.recalculatePricesByTiers` falls back to,
+ * so a topup priced while the FX API is down still lands in the same margin
+ * tier a SIM plan would. Checkout used to fall back to 26,000 here and the
+ * pricing SQL to 25,500, which quietly put the two out of step.
+ */
+export const FALLBACK_USD_VND_RATE = 25500;

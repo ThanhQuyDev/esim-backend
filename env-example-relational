@@ -70,6 +70,16 @@ AIRALO_BASE_URL=https://partners-api.airalo.com
 AIRALO_WEBHOOK_SECRET=
 GADGET_KOREA_WEBHOOK_SECRET=
 
+# BILLION Connect (BC). BILLION_BASE_URL is the full single-endpoint invoke URL:
+# test  -> https://api-flow-ts.billionconnect.com/Flow/saler/2.0/invoke
+# prod  -> https://apiint-flow.billionconnect.com/Flow/saler/2.0/invoke
 BILLION_CHANNEL_ID=
 BILLION_APP_SECRET=
 BILLION_BASE_URL=https://api-flow-ts.billionconnect.com/Flow/saler/2.0/invoke
+
+# MicroEsim (ME). Notifications carry no signature header, so there is no
+# webhook secret — see WebhooksController.microEsim.
+MICROESIM_ACCOUNT=
+MICROESIM_SECRET=
+MICROESIM_SALT=
+MICROESIM_BASE_URL=https://business.microesim.com

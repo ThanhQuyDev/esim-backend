@@ -29,6 +29,14 @@ export interface DataUsageResult {
   isUnlimited: boolean;
   status: string;
   lastUpdateTime: string | null;
+  /**
+   * When the eSIM first connected to a network. Null until it has been
+   * activated — which is exactly what the profile page needs to say "chưa kích
+   * hoạt" instead of showing a countdown that has not started (#062).
+   */
+  activatedAt?: string | null;
+  /** Plan length in days, so the page can draw a time bar like the data bar. */
+  durationDays?: number | null;
 }
 
 @Injectable()
@@ -45,6 +53,31 @@ export class EsimsService {
     @Inject(forwardRef(() => BillionService))
     private readonly billionService: BillionService,
   ) {}
+
+  /**
+   * An eSIM attached to an order item was created BECAUSE a customer bought it,
+   * so it must read as `sold` — never `available`.
+   *
+   * Only Viettel / local inventory is uploaded ahead of time and genuinely sits
+   * `available` until someone buys it. Every API provider (esimaccess, airalo,
+   * gadgetkorea, japantravelsim, billion, microesim) provisions on purchase,
+   * and each of those integrations passed `status: 'available'` — so the CMS
+   * listed sold eSIMs as unsold stock. Applying the rule here instead of at the
+   * dozen call sites means the next provider integration cannot get it wrong.
+   *
+   * `refunded` is never overwritten: a late provider callback must not
+   * resurrect an eSIM that has already been refunded.
+   */
+  private resolveDeliveredStatus(
+    status: string | null | undefined,
+    orderItemId: number | null | undefined,
+    currentStatus?: string | null,
+  ): string | undefined {
+    if (currentStatus === 'refunded') return undefined;
+    if (status === undefined || status === null) return status ?? undefined;
+    if (status === 'available' && orderItemId != null) return 'sold';
+    return status;
+  }
 
   async create(createEsimDto: CreateEsimDto): Promise<Esim> {
     const existingByIccid = await this.esimsRepository.findByIccid(
@@ -72,7 +105,11 @@ export class EsimsService {
         createEsimDto.directAppleInstallationUrl ?? null,
       apnValue: createEsimDto.apnValue ?? null,
       isRoaming: createEsimDto.isRoaming ?? null,
-      status: createEsimDto.status ?? 'available',
+      status:
+        this.resolveDeliveredStatus(
+          createEsimDto.status ?? 'available',
+          createEsimDto.orderItemId,
+        ) ?? 'available',
       dataUsed: createEsimDto.dataUsed ?? null,
       dataTotal: createEsimDto.dataTotal ?? null,
       expiresAt: createEsimDto.expiresAt ?? null,
@@ -135,6 +172,19 @@ export class EsimsService {
       }
     }
 
+    // Provider callbacks re-send `status: 'available'` when they refresh an
+    // eSIM's QR data, which would knock an already-sold eSIM back to unsold.
+    // Only look the row up when a status is actually being written.
+    let status = updateEsimDto.status;
+    if (status !== undefined) {
+      const current = await this.esimsRepository.findById(id);
+      status = this.resolveDeliveredStatus(
+        status,
+        updateEsimDto.orderItemId ?? current?.orderItemId,
+        current?.status,
+      );
+    }
+
     return this.esimsRepository.update(id, {
       orderItemId: updateEsimDto.orderItemId,
       userId: updateEsimDto.userId,
@@ -142,7 +192,7 @@ export class EsimsService {
       iccid: updateEsimDto.iccid,
       smdpAddress: updateEsimDto.smdpAddress,
       activationCode: updateEsimDto.activationCode,
-      status: updateEsimDto.status,
+      status,
       dataUsed: updateEsimDto.dataUsed,
       dataTotal: updateEsimDto.dataTotal,
       expiresAt: updateEsimDto.expiresAt,
@@ -169,7 +219,21 @@ export class EsimsService {
     return this.esimsRepository.markRefundedByOrderId(orderId);
   }
 
+  /**
+   * Data usage plus the activation timeline the profile page needs (#062).
+   *
+   * Providers report data, but most report nothing about WHEN the eSIM started
+   * — so the page had no way to show time remaining and always printed "—".
+   * The activation moment and the expiry are filled in here from what the cron
+   * has recorded, and derived from the plan length when the provider gives no
+   * expiry of its own.
+   */
   async getDataUsage(esim: Esim): Promise<DataUsageResult> {
+    const usage = await this.fetchProviderUsage(esim);
+    return this.withTimeline(esim, usage);
+  }
+
+  private async fetchProviderUsage(esim: Esim): Promise<DataUsageResult> {
     if (esim.provider === 'airalo') {
       try {
         const usage = await this.airaloService.getDataUsage(esim.iccid);
@@ -182,10 +246,7 @@ export class EsimsService {
           status: usage.status,
           lastUpdateTime: null,
         };
-        await this.esimsRepository.update(esim.id, {
-          dataUsed: String(result.dataUsed),
-          dataTotal: String(result.total),
-        });
+        await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
         return this.fallbackFromDb(esim);
@@ -208,13 +269,16 @@ export class EsimsService {
           dataUsed: bytesToMb(usage.dataUsage),
           expiredAt: null,
           isUnlimited: false,
-          status: 'ACTIVE',
+          // eSIM Access's usage endpoint reports no status, and hardcoding
+          // ACTIVE meant `persistUsageSnapshot` stamped an activation date the
+          // first time we merely POLLED — starting the customer's countdown
+          // before they had used the eSIM. Data actually consumed is the proof
+          // it connected; an eSIM already marked active stays active.
+          status:
+            usage.dataUsage > 0 || esim.activatedAt ? 'ACTIVE' : 'NOT_ACTIVE',
           lastUpdateTime: usage.lastUpdateTime,
         };
-        await this.esimsRepository.update(esim.id, {
-          dataUsed: String(result.dataUsed),
-          dataTotal: String(result.total),
-        });
+        await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
         return this.fallbackFromDb(esim);
@@ -237,18 +301,25 @@ export class EsimsService {
         const usage =
           await this.gadgetKoreaService.getDataUsage(orderRequestId);
         const dataUsedMb = parseFloat(usage.usage) || 0;
+        // Gadget Korea reports what has been USED but never the package size, so
+        // `total: 0` left the customer's page with an empty bar and "0 GB" — the
+        // plan is the only place that knows how big the package is (#065).
+        const totalMb = Number(esimWithRelations?.plan?.dataMb ?? 0) || 0;
         const result: DataUsageResult = {
-          remaining: null,
-          total: 0,
+          remaining: totalMb > 0 ? Math.max(0, totalMb - dataUsedMb) : null,
+          total: totalMb,
           dataUsed: dataUsedMb,
           expiredAt: usage.expireTime || null,
           isUnlimited: false,
-          status: usage.activeTime ? 'ACTIVE' : 'INACTIVE',
+          // `NOT_ACTIVE` is the wording every other provider uses, and what the
+          // profile page knows how to translate.
+          status: usage.activeTime ? 'ACTIVE' : 'NOT_ACTIVE',
+          // Gadget Korea is the one provider that reports the real activation
+          // moment; keep it instead of guessing "now" on the first poll.
+          activatedAt: usage.activeTime || null,
           lastUpdateTime: null,
         };
-        await this.esimsRepository.update(esim.id, {
-          dataUsed: String(result.dataUsed),
-        });
+        await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
         return this.fallbackFromDb(esim);
@@ -287,9 +358,7 @@ export class EsimsService {
               : 'INACTIVE',
           lastUpdateTime: null,
         };
-        await this.esimsRepository.update(esim.id, {
-          dataUsed: String(result.dataUsed),
-        });
+        await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
         return this.fallbackFromDb(esim);
@@ -335,9 +404,7 @@ export class EsimsService {
           status: planStatusMap[sub?.planStatus ?? ''] ?? 'UNKNOWN',
           lastUpdateTime: null,
         };
-        await this.esimsRepository.update(esim.id, {
-          dataUsed: String(result.dataUsed),
-        });
+        await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
         return this.fallbackFromDb(esim);
@@ -354,11 +421,141 @@ export class EsimsService {
       remaining: total - dataUsed,
       total,
       dataUsed,
-      expiredAt: null,
+      // The stored expiry is the last thing the cron learned from the provider;
+      // returning null here threw it away and left the page with no dates at all.
+      expiredAt: esim.expiresAt ? esim.expiresAt.toISOString() : null,
       isUnlimited: false,
       status: esim.status ?? 'UNKNOWN',
       lastUpdateTime: null,
     };
+  }
+
+  /**
+   * Fill in when the eSIM started and when it runs out (#062).
+   *
+   * Most providers report data but not time. What we do know is the moment the
+   * eSIM first showed as in use — recorded by the usage cron — and how long the
+   * plan lasts, and the plan's clock starts at that first connection. So an
+   * expiry the provider does not give is derived from those two, and the page
+   * can finally draw a time bar instead of printing "—".
+   */
+  private async withTimeline(
+    esim: Esim,
+    usage: DataUsageResult,
+  ): Promise<DataUsageResult> {
+    // Re-read: `persistUsageSnapshot` may have just stamped the activation, and
+    // the plan (for its duration) is not on the object the caller passed in.
+    const stored = await this.esimsRepository.findByIdWithRelations(esim.id);
+    const activatedAt = stored?.activatedAt ?? esim.activatedAt ?? null;
+    const durationDays = Number(stored?.plan?.durationDays ?? 0) || null;
+
+    let expiredAt =
+      usage.expiredAt ??
+      (stored?.expiresAt ? stored.expiresAt.toISOString() : null);
+
+    if (!expiredAt && activatedAt && durationDays) {
+      const expiry = new Date(activatedAt);
+      expiry.setDate(expiry.getDate() + durationDays);
+      expiredAt = expiry.toISOString();
+    }
+
+    return {
+      ...usage,
+      expiredAt,
+      activatedAt: activatedAt ? new Date(activatedAt).toISOString() : null,
+      durationDays,
+    };
+  }
+
+  /**
+   * Providers that expose a usage/status API. Viettel and other local
+   * inventory is uploaded from a spreadsheet and has nothing to poll.
+   */
+  private static readonly USAGE_REFRESH_PROVIDERS = [
+    'airalo',
+    'esimaccess',
+    'gadgetkorea',
+    'billion',
+    'microesim',
+  ];
+
+  /** Cap per run so one sweep cannot hammer the provider APIs. */
+  private static readonly USAGE_REFRESH_BATCH = 100;
+
+  /**
+   * Refresh data usage, activation time and expiry for live eSIMs.
+   *
+   * Until now these numbers were only fetched when somebody opened an eSIM,
+   * so the order screen showed whatever was written at purchase time — usually
+   * 0 used and no activation date. Polling on a schedule is what makes the
+   * order detail actually reflect reality.
+   *
+   * Errors are swallowed per eSIM: one provider being down must not stop the
+   * rest of the sweep.
+   */
+  @Cron(CronExpression.EVERY_30_MINUTES)
+  async refreshActiveEsimUsage(): Promise<void> {
+    const esims = await this.esimsRepository.findDueForUsageRefresh(
+      EsimsService.USAGE_REFRESH_PROVIDERS,
+      EsimsService.USAGE_REFRESH_BATCH,
+    );
+
+    if (!esims.length) return;
+
+    let refreshed = 0;
+    for (const esim of esims) {
+      try {
+        await this.getDataUsage(esim);
+        refreshed++;
+      } catch (error) {
+        this.logger.warn(
+          `Usage refresh failed for eSIM ${esim.id} (${esim.provider}): ${(error as Error).message}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Usage refresh: ${refreshed}/${esims.length} eSIMs updated`,
+    );
+  }
+
+  /**
+   * Persist whatever the provider told us about the lifecycle of an eSIM.
+   *
+   * `getDataUsage` used to store only the data counters, so the activation and
+   * expiry dates on the order screen stayed empty even after the provider
+   * started reporting them.
+   */
+  private async persistUsageSnapshot(
+    esim: Esim,
+    result: DataUsageResult,
+  ): Promise<void> {
+    const patch: Record<string, unknown> = {
+      dataUsed: String(result.dataUsed),
+    };
+
+    // Some providers do not report a package size; writing their 0 would wipe
+    // the total we already know from the plan.
+    if (result.total > 0) {
+      patch.dataTotal = String(result.total);
+    }
+
+    if (result.expiredAt) {
+      patch.expiresAt = new Date(result.expiredAt);
+    }
+
+    // A provider that reports the activation moment itself is always right;
+    // otherwise the first poll that shows the eSIM in use is the best estimate
+    // we have (#065).
+    const reported = result.activatedAt ? new Date(result.activatedAt) : null;
+    const isActive = (result.status ?? '').toUpperCase() === 'ACTIVE';
+    if (reported && !Number.isNaN(reported.getTime())) {
+      if (!esim.activatedAt) patch.activatedAt = reported;
+    } else if (isActive && !esim.activatedAt) {
+      patch.activatedAt = new Date();
+    }
+
+    await this.esimsRepository.update(esim.id, patch);
   }
 
   /**
@@ -367,18 +564,18 @@ export class EsimsService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async cleanupSoldEsims(): Promise<void> {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    // ~6 months; the exact boundary of a retention sweep is immaterial.
+    const SIX_MONTHS_IN_DAYS = 180;
 
     const deletedSold = await this.esimsRepository.softDeleteByStatusOlderThan(
       'sold',
-      sixMonthsAgo,
+      SIX_MONTHS_IN_DAYS,
     );
 
     const deletedRefunded =
       await this.esimsRepository.softDeleteByStatusOlderThan(
         'refunded',
-        sixMonthsAgo,
+        SIX_MONTHS_IN_DAYS,
       );
 
     const total = deletedSold + deletedRefunded;

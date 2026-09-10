@@ -190,18 +190,58 @@ export class EsimsRelationalRepository implements EsimRepository {
     await this.esimsRepository.restore(id);
   }
 
+  /**
+   * Soft-delete rows of `status` whose timestamp is older than
+   * `olderThanDays`. The cutoff is computed by Postgres (LOCALTIMESTAMP), not
+   * in Node: the timestamp columns are `timestamp without time zone` written
+   * by the DB's own clock, so passing a JS Date makes the driver serialize it
+   * in the app server's timezone and skews the window by the whole UTC offset.
+   */
   async softDeleteByStatusOlderThan(
     status: string,
-    olderThan: Date,
+    olderThanDays: number,
   ): Promise<number> {
     const result = await this.esimsRepository
       .createQueryBuilder()
       .softDelete()
       .where('status = :status', { status })
-      .andWhere('updatedAt < :olderThan', { olderThan })
-      .andWhere('deletedAt IS NULL')
+      // Quoted: an unquoted identifier is folded to lowercase by Postgres, so
+      // `updatedAt` would look for a non-existent `updatedat` column.
+      .andWhere(
+        `"updatedAt" < LOCALTIMESTAMP - (:olderThanDays * INTERVAL '1 day')`,
+        { olderThanDays },
+      )
+      .andWhere('"deletedAt" IS NULL')
       .execute();
     return result.affected ?? 0;
+  }
+
+  /**
+   * eSIMs the usage cron should ask the provider about.
+   *
+   * Ordered by `updatedAt` ascending so the stalest rows go first: with a
+   * per-run cap, every eSIM still comes round eventually instead of the same
+   * few being refreshed forever.
+   */
+  async findDueForUsageRefresh(
+    providers: string[],
+    limit: number,
+  ): Promise<Esim[]> {
+    if (!providers.length) return [];
+
+    const entities = await this.esimsRepository
+      .createQueryBuilder('esim')
+      .where('esim.provider IN (:...providers)', { providers })
+      .andWhere('esim.status IN (:...statuses)', {
+        statuses: ['sold', 'active'],
+      })
+      // An expired eSIM cannot use any more data, so stop polling it.
+      .andWhere('(esim."expiresAt" IS NULL OR esim."expiresAt" > NOW())')
+      .orderBy('esim.updatedAt', 'ASC')
+      .limit(limit)
+      .getMany();
+
+    return entities.map((entity) => EsimMapper.toDomain(entity));
   }
 
   async findAllForExport(

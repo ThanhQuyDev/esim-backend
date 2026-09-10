@@ -29,5 +29,11 @@ export abstract class SupportedDeviceRepository {
     payload: DeepPartial<SupportedDevice>,
   ): Promise<SupportedDevice | null>;
 
+  /** Apply one brand position to every device of that brand (#090). */
+  abstract setManufacturerOrder(
+    manufacturer: string,
+    manufacturerOrder: number,
+  ): Promise<void>;
+
   abstract remove(id: SupportedDevice['id']): Promise<void>;
 }

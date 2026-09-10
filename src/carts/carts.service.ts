@@ -13,15 +13,16 @@ export class CartsService {
   }
 
   async addItem(userId: number, dto: CreateCartItemDto): Promise<Cart> {
-    const existing = await this.cartRepository.findByUserIdAndPlanId(
+    const periodNum = dto.periodNum ?? null;
+    const existing = await this.cartRepository.findByUserIdPlanIdAndPeriodNum(
       userId,
       dto.planId,
+      periodNum,
     );
 
     if (existing) {
       const updated = await this.cartRepository.update(existing.id, {
         quantity: existing.quantity + (dto.quantity ?? 1),
-        periodNum: dto.periodNum ?? existing.periodNum,
       });
       return updated!;
     }
@@ -30,7 +31,7 @@ export class CartsService {
       userId,
       planId: dto.planId,
       quantity: dto.quantity ?? 1,
-      periodNum: dto.periodNum ?? null,
+      periodNum,
     });
   }
 

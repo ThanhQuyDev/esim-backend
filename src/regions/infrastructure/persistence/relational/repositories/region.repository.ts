@@ -83,9 +83,23 @@ export class RegionsRelationalRepository implements RegionRepository {
     }
 
     if (filterOptions?.search) {
-      qb.andWhere('(region.name ILIKE :search OR dest.name ILIKE :search)', {
-        search: `%${filterOptions.search}%`,
-      });
+      // Search the localized titles as well as `name` — the storefront shows
+      // `titleVi` / `title`, so "eSIM Châu Á" has to match even when the
+      // record's name is still the provider's "Asia". Member destinations keep
+      // matching by their own name/title, so searching a country still
+      // suggests the regions that cover it.
+      // Slugs are deliberately not searched (they all start with "esim-").
+      // `dest` is a raw table join (not an entity alias), so its camelCase
+      // columns must stay double-quoted or Postgres folds them to lowercase.
+      qb.andWhere(
+        `(region.name ILIKE :search
+          OR region.title ILIKE :search
+          OR region."titleVi" ILIKE :search
+          OR dest.name ILIKE :search
+          OR dest.title ILIKE :search
+          OR dest."titleVi" ILIKE :search)`,
+        { search: `%${filterOptions.search}%` },
+      );
     }
 
     qb.groupBy('region.id');

@@ -26,7 +26,11 @@ export class TicketsService {
     filterOptions,
     paginationOptions,
   }: {
-    filterOptions?: { status?: string; search?: string } | null;
+    filterOptions?: {
+      status?: string;
+      search?: string;
+      customerEmail?: string;
+    } | null;
     paginationOptions: IPaginationOptions;
   }) {
     return this.ticketRepository.findManyWithPagination({

@@ -4,9 +4,10 @@ import { Cart } from '../../domain/cart';
 export abstract class CartRepository {
   abstract findByUserId(userId: number): Promise<Cart[]>;
 
-  abstract findByUserIdAndPlanId(
+  abstract findByUserIdPlanIdAndPeriodNum(
     userId: number,
     planId: number,
+    periodNum: number | null,
   ): Promise<NullableType<Cart>>;
 
   abstract create(

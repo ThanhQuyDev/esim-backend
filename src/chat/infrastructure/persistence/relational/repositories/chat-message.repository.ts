@@ -23,10 +23,27 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
       fileName: data.fileName ?? null,
       fileType: data.fileType ?? null,
       fileSize: data.fileSize ?? null,
+      replyToId: data.replyToId ?? null,
       isRead: false,
     });
     const saved = await this.repo.save(entity);
+
+    // Re-read with the quote attached so the message broadcast over the socket
+    // already carries what the quote block renders (#073).
+    if (saved.replyToId) {
+      const withQuote = await this.repo.findOne({
+        where: { id: saved.id },
+        relations: { replyTo: true },
+      });
+      if (withQuote) return ChatMessageMapper.toDomain(withQuote);
+    }
+
     return ChatMessageMapper.toDomain(saved);
+  }
+
+  async findById(id: number): Promise<NullableType<ChatMessage>> {
+    const entity = await this.repo.findOne({ where: { id } });
+    return entity ? ChatMessageMapper.toDomain(entity) : null;
   }
 
   async findByRoomId(
@@ -39,6 +56,7 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
+      relations: { replyTo: true },
     });
     return entities.map(ChatMessageMapper.toDomain);
   }

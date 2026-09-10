@@ -14,7 +14,13 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { TopupService } from './topup.service';
 import { ListTopupPackagesQueryDto } from './dto/list-topup-packages-query.dto';
-import { TopupCheckoutDto } from './dto/topup-checkout.dto';
+import {
+  AdminManualTopupDto,
+  TopupCheckoutDto,
+} from './dto/topup-checkout.dto';
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 import { TopupPackageDto, TopupProvider } from './dto/topup-package.dto';
 
 class TopupListResponse {
@@ -22,6 +28,15 @@ class TopupListResponse {
   iccid!: string;
   provider!: TopupProvider;
   packages!: TopupPackageDto[];
+}
+
+class AdminManualTopupResponse {
+  /** True only when the provider actually applied the topup. */
+  success!: boolean;
+  orderNumber!: string;
+  /** Final order status — `completed` or `MANUAL_INTERVENTION`. */
+  status!: string;
+  vndAmount!: number;
 }
 
 class TopupCheckoutResponse {
@@ -81,6 +96,23 @@ export class TopupController {
    * plus the reference code to put in the transfer memo; the order is
    * finalized asynchronously by the SePay webhook.
    */
+  /**
+   * Admin tops an eSIM up for a customer without a gateway payment (#026).
+   * The order is attributed to the eSIM's owner and marked paid immediately,
+   * then the provider call runs synchronously so the admin sees the outcome.
+   */
+  @Post('admin/manual')
+  @Roles(RoleEnum.admin)
+  @UseGuards(RolesGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: AdminManualTopupResponse })
+  async adminManual(
+    @Request() req: { user: { id: number } },
+    @Body() dto: AdminManualTopupDto,
+  ): Promise<AdminManualTopupResponse> {
+    return this.topupService.adminManualTopup(dto, req.user.id);
+  }
+
   @Post('bank-transfer')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: TopupBankTransferResponse })

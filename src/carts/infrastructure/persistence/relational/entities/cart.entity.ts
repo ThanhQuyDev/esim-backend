@@ -13,7 +13,7 @@ import { PlanEntity } from '../../../../../plans/infrastructure/persistence/rela
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 
 @Entity({ name: 'cart' })
-@Index(['userId', 'planId'], { unique: true })
+@Index(['userId', 'planId', 'periodNum'])
 export class CartEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn()
   id: number;

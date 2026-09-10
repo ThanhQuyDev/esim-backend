@@ -61,15 +61,13 @@ export class CustomPaymentLinksController {
       limit = 50;
     }
 
-    return infinityPagination(
+    const [data, count] =
       await this.customPaymentLinksService.findAllWithPagination({
-        paginationOptions: {
-          page,
-          limit,
-        },
-      }),
-      { page, limit },
-    );
+        paginationOptions: { page, limit },
+        filterOptions: { status: query?.status, search: query?.search },
+      });
+
+    return infinityPagination(data, { page, limit }, count);
   }
 
   @Get(':id')

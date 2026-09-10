@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsString } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { DeviceType } from '../domain/supported-device';
 
 export class CreateSupportedDeviceDto {
@@ -22,4 +22,18 @@ export class CreateSupportedDeviceDto {
   })
   @IsEnum(DeviceType)
   type: DeviceType;
+
+  /** Brand position; 0 keeps the brand alphabetical (#090). */
+  @ApiProperty({ required: false, type: Number, example: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  manufacturerOrder?: number;
+
+  /** Model position inside the brand; 0 keeps it alphabetical (#090). */
+  @ApiProperty({ required: false, type: Number, example: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
 }

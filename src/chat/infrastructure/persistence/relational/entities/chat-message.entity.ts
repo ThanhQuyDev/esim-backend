@@ -52,6 +52,19 @@ export class ChatMessageEntity extends EntityRelationalHelper {
   @Column({ type: 'int', nullable: true })
   fileSize?: number | null;
 
+  /** The earlier message this one quotes, when it is a reply (#073). */
+  @Index()
+  @Column({ type: 'int', nullable: true })
+  replyToId?: number | null;
+
+  /**
+   * Loaded explicitly (`relations: { replyTo: true }`), never eagerly — an
+   * eager self-relation would walk the whole reply chain on every read.
+   */
+  @ManyToOne(() => ChatMessageEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'replyToId' })
+  replyTo?: ChatMessageEntity | null;
+
   @Column({ type: Boolean, default: false })
   isRead: boolean;
 

@@ -56,5 +56,20 @@ export class RoleSeedService {
         }),
       );
     }
+
+    const countPartner = await this.repository.count({
+      where: {
+        id: RoleEnum.partner,
+      },
+    });
+
+    if (!countPartner) {
+      await this.repository.save(
+        this.repository.create({
+          id: RoleEnum.partner,
+          name: 'Partner',
+        }),
+      );
+    }
   }
 }

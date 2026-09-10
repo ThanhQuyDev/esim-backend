@@ -1,9 +1,11 @@
 import {
   HttpStatus,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
   UnprocessableEntityException,
+  forwardRef,
 } from '@nestjs/common';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
@@ -14,6 +16,7 @@ import { Plan } from './domain/plan';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { DestinationsService } from '../destinations/destinations.service';
 import { RegionsService } from '../regions/regions.service';
+import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 
 type PlanGroups = {
   dataPlans: Plan[];
@@ -57,6 +60,8 @@ export class PlansService {
     private readonly plansRepository: PlanRepository,
     private readonly destinationsService: DestinationsService,
     private readonly regionsService: RegionsService,
+    @Inject(forwardRef(() => ProfitMarginsService))
+    private readonly profitMarginsService: ProfitMarginsService,
   ) {}
 
   async create(createPlanDto: CreatePlanDto): Promise<Plan> {
@@ -70,6 +75,16 @@ export class PlansService {
       });
     }
 
+    const isLocalInventory = createPlanDto.isLocalInventory ?? false;
+    // Local/Viettel costs and prices are VND. Apply existing Margin Tiers at
+    // creation time; previously tiers only recalculated plans that already
+    // existed when the tier was saved.
+    const localRetailVnd = isLocalInventory
+      ? await this.profitMarginsService.calculateRetailVndFromLocalCost(
+          createPlanDto.costPrice,
+        )
+      : null;
+
     return this.plansRepository.create({
       provider: createPlanDto.provider,
       providerPlanId: createPlanDto.providerPlanId,
@@ -81,8 +96,8 @@ export class PlansService {
       durationDays: createPlanDto.durationDays,
       dataMb: createPlanDto.dataMb,
       costPrice: createPlanDto.costPrice,
-      price: createPlanDto.price,
-      retailPrice: createPlanDto.retailPrice,
+      price: localRetailVnd ?? createPlanDto.price,
+      retailPrice: localRetailVnd ?? createPlanDto.retailPrice,
       currency: createPlanDto.currency,
       type: createPlanDto.type ?? 'data-in-total',
       topUp: createPlanDto.topUp ?? false,
@@ -92,11 +107,13 @@ export class PlansService {
       isAbleMultidate: createPlanDto.isAbleMultidate ?? false,
       isCheapest: false,
       discount: createPlanDto.discount ?? 0,
-      vndPrice: createPlanDto.isLocalInventory
-        ? createPlanDto.price
-        : (createPlanDto.vndPrice ?? 0),
+      vndPrice: localRetailVnd ?? createPlanDto.vndPrice ?? 0,
+      // Local inventory is priced in VND, so `price` is NOT dollars for it;
+      // the hourly exchange-rate job fills usdPrice in on its next run.
+      usdPrice: isLocalInventory ? 0 : (createPlanDto.price ?? 0),
+      isNonHkIp: createPlanDto.isNonHkIp ?? false,
       isKyc: createPlanDto.isKyc ?? false,
-      isLocalInventory: createPlanDto.isLocalInventory ?? false,
+      isLocalInventory,
       tags: createPlanDto.tags ?? null,
       apn: createPlanDto.apn ?? null,
       hotSpot: createPlanDto.hotSpot ?? false,
@@ -271,6 +288,30 @@ export class PlansService {
     }
   }
 
+  /**
+   * Tag local-inventory plans with how many unsold eSIMs are left (#040).
+   *
+   * Only local inventory can run out: every other provider mints an eSIM on
+   * demand, so their plans are left without a stock figure rather than being
+   * reported as "0 left" and dimmed by mistake.
+   */
+  private async attachLocalStock(plans: Plan[]): Promise<Plan[]> {
+    const localPlanIds = plans
+      .filter((plan) => plan.isLocalInventory)
+      .map((plan) => Number(plan.id));
+
+    if (localPlanIds.length === 0) return plans;
+
+    const stock =
+      await this.plansRepository.countAvailableEsimsByPlanIds(localPlanIds);
+
+    return plans.map((plan) =>
+      plan.isLocalInventory
+        ? { ...plan, availableStock: stock[Number(plan.id)] ?? 0 }
+        : plan,
+    );
+  }
+
   async findPlansByDestination(slug: string): Promise<PlanGroups> {
     const destination = await this.destinationsService.findBySlug(slug);
     if (!destination) {
@@ -283,7 +324,7 @@ export class PlansService {
       paginationOptions: { page: 1, limit: 1000 },
     });
 
-    return groupPlansBySimType(all);
+    return groupPlansBySimType(await this.attachLocalStock(all));
   }
 
   async findPlansByRegion(slug: string): Promise<PlanGroups> {
@@ -298,7 +339,7 @@ export class PlansService {
       paginationOptions: { page: 1, limit: 1000 },
     });
 
-    return groupPlansBySimType(all);
+    return groupPlansBySimType(await this.attachLocalStock(all));
   }
 
   /**
@@ -335,7 +376,7 @@ export class PlansService {
       );
     }
 
-    return groupPlansBySimType(all);
+    return groupPlansBySimType(await this.attachLocalStock(all));
   }
 
   async batchUpdateDiscount(ids: number[], discount: number): Promise<void> {

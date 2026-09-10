@@ -22,6 +22,7 @@ import {
 import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { AuthGuard } from '@nestjs/passport';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../roles/roles.guard';
 import {
   InfinityPaginationResponse,
@@ -53,18 +54,33 @@ export class CouponsController {
     return this.couponsService.create(createCouponDto);
   }
 
+  /**
+   * Public listing — this is what the cart page reads, with no token.
+   *
+   * Anyone but an admin sees public codes only (#081): a private code is
+   * meant for one campaign, one customer or one partner, and listing it
+   * here hands it to every shopper. Admins keep the unfiltered view, so
+   * the CMS listing still shows both kinds.
+   */
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOkResponse({ type: InfinityPaginationResponse(Coupon) })
   @Get()
   @HttpCode(HttpStatus.OK)
   async findAll(
+    @Request() request: { user?: { role?: { id?: number | string } } },
     @Query() query: QueryCouponDto,
   ): Promise<InfinityPaginationResponseDto<Coupon>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
     if (limit > 50) limit = 50;
 
+    const isAdmin = String(request?.user?.role?.id) === String(RoleEnum.admin);
+    const filterOptions = isAdmin
+      ? query?.filters
+      : { ...(query?.filters ?? {}), isPublic: true };
+
     const [data, count] = await this.couponsService.findManyWithPagination({
-      filterOptions: query?.filters,
+      filterOptions,
       sortOptions: query?.sort,
       paginationOptions: { page, limit },
     });

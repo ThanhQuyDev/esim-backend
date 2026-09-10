@@ -20,6 +20,18 @@ export class SupportedDevice {
   @ApiProperty({ enum: DeviceType })
   type: DeviceType;
 
+  @ApiProperty({
+    type: Number,
+    description: 'Brand position in the list; 0 keeps it alphabetical.',
+  })
+  manufacturerOrder: number;
+
+  @ApiProperty({
+    type: Number,
+    description: 'Model position inside its brand; 0 keeps it alphabetical.',
+  })
+  sortOrder: number;
+
   @ApiProperty()
   createdAt: Date;
 

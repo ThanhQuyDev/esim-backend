@@ -10,6 +10,8 @@ export interface EsimImportResult {
   created: number;
   skipped: number;
   planCreated: number;
+  /** Existing plans whose prices were refreshed from the file. */
+  planUpdated: number;
   errors: Array<{ row: number; iccid: string; error: string }>;
 }
 
@@ -58,6 +60,7 @@ export class EsimsImportService {
       created: 0,
       skipped: 0,
       planCreated: 0,
+      planUpdated: 0,
       errors: [],
     };
 
@@ -235,15 +238,54 @@ export class EsimsImportService {
               planId = existingPlan.id;
               planCache.set(planSlug, planId);
 
+              const planPatch: Record<string, unknown> = {};
+
               // Backfill destinationId on existing plan if it was NULL
               if (!existingPlan.destinationId && destinationId) {
-                await this.planRepository.update(existingPlan.id, {
-                  destinationId,
-                  countryCode: rowCountryCode.toUpperCase(),
-                });
-                this.logger.log(
-                  `Backfilled destinationId=${destinationId} on plan "${planSlug}" (id=${existingPlan.id})`,
-                );
+                planPatch.destinationId = destinationId;
+                planPatch.countryCode = rowCountryCode.toUpperCase();
+              }
+
+              // Re-upload with new prices must actually change the plan.
+              // Previously only the destination was backfilled, so a price
+              // change in the file was silently ignored after the first upload
+              // and the plan kept selling at the old cost.
+              //
+              // A blank/zero cell means "not supplied", never "free": leaving
+              // the column out must not wipe a price that is already set.
+              if (
+                costPrice > 0 &&
+                Number(existingPlan.costPrice) !== costPrice
+              ) {
+                planPatch.costPrice = costPrice;
+                // Same rule as on create: import stores cost as the base price;
+                // the margin tiers are applied later by
+                // recalculateAllPlanPrices().
+                planPatch.price = price;
+                planPatch.vndPrice = price;
+              }
+
+              if (
+                sellPrice > 0 &&
+                Number(existingPlan.retailPrice) !== sellPrice
+              ) {
+                planPatch.retailPrice = sellPrice;
+              }
+
+              if (Object.keys(planPatch).length > 0) {
+                await this.planRepository.update(existingPlan.id, planPatch);
+                if (planPatch.costPrice || planPatch.retailPrice) {
+                  result.planUpdated++;
+                  this.logger.log(
+                    `Updated prices on plan "${planSlug}" (id=${existingPlan.id}): ` +
+                      `cost ${existingPlan.costPrice} → ${planPatch.costPrice ?? existingPlan.costPrice}, ` +
+                      `sell ${existingPlan.retailPrice} → ${planPatch.retailPrice ?? existingPlan.retailPrice}`,
+                  );
+                } else {
+                  this.logger.log(
+                    `Backfilled destinationId=${destinationId} on plan "${planSlug}" (id=${existingPlan.id})`,
+                  );
+                }
               }
             } else {
               const newPlan = await this.plansService.create({
