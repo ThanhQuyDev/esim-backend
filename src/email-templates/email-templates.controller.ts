@@ -7,6 +7,7 @@ import {
   UseGuards,
   HttpStatus,
   HttpCode,
+  Param,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../roles/roles.decorator';
@@ -52,5 +53,44 @@ export class EmailTemplatesController {
     @Body() dto: PreviewEmailTemplateDto,
   ): Promise<PreviewEmailTemplateResponseDto> {
     return this.emailTemplatesService.previewByName('esim_purchase', dto);
+  }
+
+  /**
+   * Every seeded template (#L020). The routes above only ever exposed
+   * `esim_purchase`, so the partner approval/rejection and invoice emails sat
+   * in the database with no way to edit them from the CMS.
+   */
+  @ApiOkResponse({ type: [EmailTemplate] })
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  findAll(): Promise<EmailTemplate[]> {
+    return this.emailTemplatesService.findAll();
+  }
+
+  @ApiOkResponse({ type: EmailTemplate })
+  @Get(':name')
+  @HttpCode(HttpStatus.OK)
+  findOne(@Param('name') name: string): Promise<EmailTemplate> {
+    return this.emailTemplatesService.getByName(name);
+  }
+
+  @ApiOkResponse({ type: EmailTemplate })
+  @Patch(':name')
+  @HttpCode(HttpStatus.OK)
+  update(
+    @Param('name') name: string,
+    @Body() dto: UpdateEmailTemplateDto,
+  ): Promise<EmailTemplate> {
+    return this.emailTemplatesService.updateByName(name, dto);
+  }
+
+  @ApiOkResponse({ type: PreviewEmailTemplateResponseDto })
+  @Post(':name/preview')
+  @HttpCode(HttpStatus.OK)
+  preview(
+    @Param('name') name: string,
+    @Body() dto: PreviewEmailTemplateDto,
+  ): Promise<PreviewEmailTemplateResponseDto> {
+    return this.emailTemplatesService.previewByName(name, dto);
   }
 }

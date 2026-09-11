@@ -147,10 +147,11 @@ export class OrdersController {
       limit = 200;
     }
 
+    // No default status: the admin's "Tất cả" filter sends none and must list
+    // every order, pending and failed included. Defaulting to paid/refunded
+    // hid unpaid orders from support and made this list disagree with the
+    // reconciliation export above, which applies the same filters verbatim.
     const filters = { ...query?.filters };
-    if (!filters.status) {
-      filters.status = ['paid', 'refunded'];
-    }
 
     const [data, count] = await this.ordersService.findManyWithPagination({
       filterOptions: filters,

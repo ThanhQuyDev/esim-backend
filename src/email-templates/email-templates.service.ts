@@ -19,6 +19,9 @@ const SAMPLE_CONTEXT = {
   orderNumber: 'ORD-1234567890-ABCDEF',
   qrCodeBase64:
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  // Partner decision emails (approved / rejected).
+  contactName: 'Nguyen Van A',
+  reason: 'Kenh chua dap ung tieu chi cua chuong trinh.',
   logoUrl: '',
   app_name: '',
   subject: '',
@@ -33,6 +36,16 @@ export class EmailTemplatesService {
 
   findByName(name: string): Promise<NullableType<EmailTemplate>> {
     return this.emailTemplateRepository.findByName(name);
+  }
+
+  findAll(): Promise<EmailTemplate[]> {
+    return this.emailTemplateRepository.findAll();
+  }
+
+  async getByName(name: string): Promise<EmailTemplate> {
+    const existing = await this.emailTemplateRepository.findByName(name);
+    if (!existing) throw new NotFoundException('Email template not found');
+    return existing;
   }
 
   async updateByName(

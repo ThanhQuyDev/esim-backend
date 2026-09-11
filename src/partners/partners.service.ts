@@ -669,15 +669,24 @@ export class PartnersService {
     // page after the fact would look sorted while page 2 held bigger partners
     // than page 1. Newest-first stays as the tie-breaker so partners with no
     // sales yet still appear in a sensible order.
-    qb.orderBy(
+    //
+    // The subquery is selected under an alias and ordered by that alias:
+    // `orderBy()` given the raw subquery splits it at the first dot and looks
+    // for an alias named `(SELECT COALESCE(SUM(o`, failing the whole list.
+    // `offset/limit` rather than `skip/take`: `user` is many-to-one, so rows
+    // never multiply, and skip/take's distinct-id wrapper cannot see the alias.
+    const totalCount = await qb.getCount();
+    qb.addSelect(
       `(SELECT COALESCE(SUM(o."vndPrice"), 0) FROM "order" o
         WHERE o."attributedPartnerId" = partner.id
           AND o."deletedAt" IS NULL
           AND o.status IN ('paid', 'completed'))`,
-      'DESC',
-    ).addOrderBy('partner.createdAt', 'DESC');
-    const totalCount = await qb.getCount();
-    qb.skip((page - 1) * limit).take(limit);
+      'revenue_sort',
+    )
+      .orderBy('revenue_sort', 'DESC')
+      .addOrderBy('partner.createdAt', 'DESC')
+      .offset((page - 1) * limit)
+      .limit(limit);
     const data = await qb.getMany();
 
     // The list is an operations screen: 30-day value, money held and last
