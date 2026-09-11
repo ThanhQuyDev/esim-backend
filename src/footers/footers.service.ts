@@ -27,6 +27,8 @@ export class FootersService {
 
       categories: createFooterDto.categories,
 
+      categoriesVi: createFooterDto.categoriesVi,
+
       url: createFooterDto.url,
 
       title: createFooterDto.title,
@@ -78,6 +80,8 @@ export class FootersService {
       sortOrder: updateFooterDto.sortOrder,
 
       categories: updateFooterDto.categories,
+
+      categoriesVi: updateFooterDto.categoriesVi,
 
       url: updateFooterDto.url,
 
