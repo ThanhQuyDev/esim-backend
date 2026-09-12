@@ -338,11 +338,20 @@ export class BillionService {
     // 16-char skuId there aborted the whole catalogue sync partway through.
     const locationCode = codes[0] || product.skuId;
     const mccCode = codes[0] && codes[0].length <= 10 ? codes[0] : null;
-    const slug = this.buildPlanSlug(
-      regionId ? codes.join('-') : locationCode,
-      dataMb,
-      days,
-      type,
+    const highFlowMb = Math.round(
+      (parseFloat(product.highFlowSize ?? '') || 0) / 1024,
+    );
+    const throttleKbps = parseFloat(product.limitFlowSpeed ?? '') || 0;
+    const slug = await this.uniquePlanSlug(
+      this.buildPlanSlug(
+        regionId ? codes.join('-') : locationCode,
+        dataMb,
+        days,
+        type,
+        highFlowMb,
+        throttleKbps,
+      ),
+      product.skuId,
     );
 
     const existing = await this.plansService.findBySlug(slug);
@@ -454,13 +463,38 @@ export class BillionService {
     dataMb: number,
     days: number,
     type: string,
+    highFlowMb = 0,
+    throttleKbps = 0,
   ): string {
     const code = locationCode.toLowerCase().replace(/[^a-z0-9-]/g, '');
-    const dataLabel =
-      dataMb > 0
-        ? `-${dataMb >= 1024 ? `${dataMb / 1024}gb` : `${dataMb}mb`}`
-        : '';
-    return `${code}${dataLabel}-${days}days-${type}-bl`;
+    const size = (mb: number) => (mb >= 1024 ? `${mb / 1024}gb` : `${mb}mb`);
+    const dataLabel = dataMb > 0 ? `-${size(dataMb)}` : '';
+    // A daily plan carries no total quota, so without its daily allowance and
+    // throttle every such SKU of one country produced the same slug.
+    const dailyLabel =
+      dataMb === 0 && highFlowMb > 0 ? `-${size(highFlowMb)}day` : '';
+    const throttleLabel =
+      dataMb === 0 && throttleKbps > 0 ? `-${throttleKbps}kbps` : '';
+    return `${code}${dataLabel}${dailyLabel}${throttleLabel}-${days}days-${type}-bl`;
+  }
+
+  /**
+   * BILLION reuses (country, days, type) across dozens of SKUs that differ only
+   * in daily allowance, throttle or carrier validity, so one descriptive slug
+   * was shared by many products and every sync overwrote the same row —
+   * 1866 products collapsed into 211. Keep the readable slug where it is free,
+   * and fall back to a SKU-derived suffix so no product is lost.
+   */
+  private async uniquePlanSlug(
+    baseSlug: string,
+    skuId: string,
+  ): Promise<string> {
+    for (const suffix of ['', `-${skuId.slice(-6)}`, `-${skuId}`]) {
+      const slug = `${baseSlug}${suffix}`;
+      const existing = await this.plansService.findBySlug(slug);
+      if (!existing || existing.providerPlanId === skuId) return slug;
+    }
+    return `${baseSlug}-${skuId}`;
   }
 
   private toSlug(name: string): string {

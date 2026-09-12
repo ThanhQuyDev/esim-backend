@@ -438,8 +438,13 @@ export class PlansRelationalRepository implements PlanRepository {
 
     // Local plans have no supplier dollar price at all, so derive one from the
     // VND price. Without this they reported their đồng figure as dollars.
+    // `$1::numeric` on both uses: with a bare `$1 > 0` Postgres infers the
+    // parameter as integer from the literal, so a real exchange rate
+    // (25887.097637) was rejected and this whole method threw. The caller
+    // logs and swallows that, so the failure was invisible while local plans
+    // silently kept a stale usdPrice.
     await this.plansRepository.query(
-      `UPDATE "plan" SET "usdPrice" = ROUND("vndPrice"::numeric / $1, 2) WHERE "deletedAt" IS NULL AND "isLocalInventory" = true AND $1 > 0`,
+      `UPDATE "plan" SET "usdPrice" = ROUND("vndPrice"::numeric / $1::numeric, 2) WHERE "deletedAt" IS NULL AND "isLocalInventory" = true AND $1::numeric > 0`,
       [rate],
     );
   }
