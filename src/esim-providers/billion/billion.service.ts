@@ -247,9 +247,17 @@ export class BillionService {
     if (isRegion) {
       const region = await this.resolveRegion(product, codes);
       await this.upsertPlan(product, null, region.id, cost);
-    } else {
-      const destination = await this.resolveDestinationByCode(codes[0] || '');
+    } else if (codes[0]) {
+      const destination = await this.resolveDestinationByCode(codes[0]);
       await this.upsertPlan(product, destination.id, null, cost);
+    } else {
+      // A global product carries no country list. Resolving that empty string
+      // used to create one nameless destination that every such plan hung off;
+      // leave them unattached instead until the CMS gives them a home.
+      this.logger.warn(
+        `Billion product ${product.skuId} (${product.name}) has no country code — plan left without a destination`,
+      );
+      await this.upsertPlan(product, null, null, cost);
     }
   }
 
@@ -325,7 +333,11 @@ export class BillionService {
     const codes = (product.country ?? [])
       .map((c) => (c.mcc ?? '').trim())
       .filter(Boolean);
+    // A global product carries no country list, so the slug falls back to the
+    // skuId. `plan.countryCode` cannot: it is varchar(10), and writing the
+    // 16-char skuId there aborted the whole catalogue sync partway through.
     const locationCode = codes[0] || product.skuId;
+    const mccCode = codes[0] && codes[0].length <= 10 ? codes[0] : null;
     const slug = this.buildPlanSlug(
       regionId ? codes.join('-') : locationCode,
       dataMb,
@@ -348,7 +360,7 @@ export class BillionService {
       provider: PROVIDER,
       providerPlanId: product.skuId,
       name: product.name,
-      countryCode: destinationId ? locationCode : null,
+      countryCode: destinationId ? mccCode : null,
       destinationId,
       regionId,
       durationDays: days,
