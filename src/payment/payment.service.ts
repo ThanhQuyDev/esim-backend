@@ -113,7 +113,7 @@ export class PaymentService {
   }
 
   /**
-   * Bank-transfer checkout (SePay / Techcombank) for a BUY_NEW order.
+   * Bank-transfer checkout (SePay) for a BUY_NEW order.
    *
    * Creates the same pending order as {@link createCheckout} but skips OnePay:
    * instead we attach a short {@link generateBankTransferCode} reference, and

@@ -44,7 +44,7 @@ export class PaymentController {
   }
 
   /**
-   * Bank-transfer checkout (SePay / Techcombank). Returns the VietQR image URL
+   * Bank-transfer checkout (SePay). Returns the VietQR image URL
    * plus the reference code the buyer must put in the transfer memo. The order
    * stays `pending` until SePay's webhook confirms the money arrived.
    */
@@ -78,7 +78,7 @@ export class PaymentController {
   }
 
   /**
-   * SePay webhook — fired when money lands in the Techcombank account.
+   * SePay webhook — fired when money lands in the receiving bank account.
    * Authenticated by the `Authorization: Apikey <token>` header.
    */
   @Post('sepay/webhook')

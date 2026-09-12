@@ -1,5 +1,6 @@
 /**
- * Helpers for the bank-transfer (SePay / Techcombank) payment flow.
+ * Helpers for the SePay bank-transfer payment flow. The receiving bank comes
+ * from `SEPAY_BANK_CODE`, so nothing here is tied to one bank.
  *
  * The transfer *content* (memo) is the only reliable field we can match an
  * incoming transfer back to an order with, so we embed a short, bank-safe code
