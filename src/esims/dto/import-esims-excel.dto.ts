@@ -4,9 +4,9 @@ import { IsOptional, IsString } from 'class-validator';
 export class ImportEsimsExcelDto {
   @ApiPropertyOptional({
     type: String,
-    example: 'esimvn',
+    example: 'Wintel',
     description:
-      'Provider name. If omitted, read from "Carrier" column in Excel.',
+      'Local carrier for every row, e.g. "Viettel", "Wintel". Takes precedence over the "Carrier" column, which is only used when this is omitted.',
   })
   @IsOptional()
   @IsString()

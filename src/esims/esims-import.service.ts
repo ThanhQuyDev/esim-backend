@@ -127,9 +127,15 @@ export class EsimsImportService {
           continue;
         }
 
-        // Resolve provider from Carrier column (DTO `provider` is a fallback only)
+        // The carrier chosen in the import dialog wins over the file's Carrier
+        // column. Admins reuse the Viettel template for other local carriers,
+        // and that column still reads "Viettel", so the column used to win and
+        // every row landed on the wrong provider. The column is only a fallback.
+        const chosenCarrier = provider?.trim() || null;
         const carrier = this.cellStr(row.getCell(col('carrier') ?? 9).value);
-        const rowProvider = this.normalizeProvider(carrier ?? provider ?? '');
+        const rowProvider = this.normalizeProvider(
+          chosenCarrier ?? carrier ?? '',
+        );
         if (!rowProvider) {
           result.skipped++;
           result.errors.push({
@@ -188,9 +194,8 @@ export class EsimsImportService {
         const expiredTimeRaw = row.getCell(col('expried time') ?? 8).value;
         const expiresAt = this.parseDate(expiredTimeRaw);
 
-        const operatorName = this.cellStr(
-          row.getCell(col('carrier') ?? 9).value,
-        );
+        // Keep the carrier's display name as typed ("Wintel"), not its slug.
+        const operatorName = chosenCarrier ?? carrier;
         const speed = this.cellStr(row.getCell(col('network') ?? 10).value);
         const fupSpeed = this.cellStr(
           row.getCell(col('throttled speed') ?? 11).value,

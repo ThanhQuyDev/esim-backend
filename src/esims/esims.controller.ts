@@ -265,9 +265,9 @@ export class EsimsController {
         },
         provider: {
           type: 'string',
-          example: 'esimvn',
+          example: 'Wintel',
           description:
-            'Optional provider name override. If omitted, read from the "Carrier" column of each row.',
+            'Local carrier for every row, e.g. "Viettel", "Wintel". Takes precedence over the "Carrier" column, which is only used when this is omitted.',
         },
         countryCode: {
           type: 'string',
