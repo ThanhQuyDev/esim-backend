@@ -45,6 +45,14 @@ export class FooterRelationalRepository implements FooterRepository {
       );
     }
 
+    // The CMS list's "Tiêu đề cột" search (#045): either language's heading.
+    if (filterOptions?.category?.trim()) {
+      qb.andWhere(
+        '(footer.categories ILIKE :category OR footer.categoriesVi ILIKE :category)',
+        { category: `%${filterOptions.category.trim()}%` },
+      );
+    }
+
     if (sortOptions?.length) {
       sortOptions.forEach((sort) => {
         qb.addOrderBy(`footer.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');

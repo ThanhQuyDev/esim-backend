@@ -62,6 +62,7 @@ export class FootersController {
     const filterOptions = {
       ...query?.filters,
       search: query?.search || query?.filters?.search,
+      category: query?.category || query?.filters?.category,
     };
 
     const [data, count] = await this.footersService.findAllWithPagination({

@@ -12,6 +12,12 @@ export class FilterFooterDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  /** Column heading, matched in either language (#045). */
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  category?: string;
 }
 
 export class SortFooterDto {
@@ -42,6 +48,14 @@ export class QueryFooterDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Search by column heading (English or Vietnamese)',
+  })
+  @IsOptional()
+  @IsString()
+  category?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
