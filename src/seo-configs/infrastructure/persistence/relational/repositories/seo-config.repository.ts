@@ -74,20 +74,14 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
       baseWhere.planId = filterOptions.planId;
     }
 
-    // When `search` is provided, match across url / metaTitle / metaDescription
-    // using an array of where clauses (TypeORM treats this as OR).
-    let where:
-      | FindOptionsWhere<SeoConfigEntity>
-      | FindOptionsWhere<SeoConfigEntity>[] = baseWhere;
-
-    if (filterOptions?.search) {
-      const term = `%${filterOptions.search}%`;
-      where = [
-        { ...baseWhere, url: ILike(term) },
-        { ...baseWhere, metaTitle: ILike(term) },
-        { ...baseWhere, metaDescription: ILike(term) },
-      ];
-    }
+    // Search is by page URL only (#005): the admin types a page ("/home",
+    // "destination") to edit that page's config. Also matching the meta
+    // title/description surfaced unrelated pages whose copy merely contained
+    // the word — searching "destination" returned "/en/home".
+    const search = filterOptions?.search?.trim();
+    const where: FindOptionsWhere<SeoConfigEntity> = search
+      ? { ...baseWhere, url: ILike(`%${search}%`) }
+      : baseWhere;
 
     const [entities, count] = await this.seoConfigsRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,

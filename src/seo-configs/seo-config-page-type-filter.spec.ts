@@ -96,19 +96,26 @@ describe('SEO config list filtered by page type', () => {
     expect(where.planId).toBeUndefined();
   });
 
-  it('should apply the page type to every branch of a search', async () => {
+  it('should combine the page type with a URL search', async () => {
     const where = (await whereFor({
       pageType: 'region',
       search: 'chau-au',
-    })) as Where[];
+    })) as Where;
 
-    // url / metaTitle / metaDescription are OR-ed; each branch must still be
-    // restricted to region pages.
-    expect(Array.isArray(where)).toBe(true);
-    expect(where).toHaveLength(3);
-    for (const branch of where) {
-      expect(isNotNull(branch.regionId)).toBe(true);
-    }
+    expect(Array.isArray(where)).toBe(false);
+    expect(isNotNull(where.regionId)).toBe(true);
+    expect(operatorType(where.url)).toBe('ilike');
+    expect((where.url as FindOperator<string>).value).toBe('%chau-au%');
+  });
+
+  it('should search by page URL only, never by meta copy (#005)', async () => {
+    // "destination" used to return "/en/home" because its meta description
+    // contained the word.
+    const where = (await whereFor({ search: ' destination ' })) as Where;
+
+    expect((where.url as FindOperator<string>).value).toBe('%destination%');
+    expect(where.metaTitle).toBeUndefined();
+    expect(where.metaDescription).toBeUndefined();
   });
 
   it('should combine with the active filter rather than replacing it', async () => {

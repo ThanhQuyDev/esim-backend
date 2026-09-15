@@ -53,7 +53,8 @@ export class QueryWhyChooseUsDto {
 
   @ApiPropertyOptional({
     type: String,
-    description: 'Filter by type classification',
+    description:
+      'Filter by page type; several comma-separated types match rows of any of them (e.g. "trang_chu,quoc_gia")',
   })
   @IsOptional()
   @IsString()

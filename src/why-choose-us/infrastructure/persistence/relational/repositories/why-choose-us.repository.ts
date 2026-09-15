@@ -12,6 +12,33 @@ import {
   SortWhyChooseUsDto,
 } from '../../../../dto/find-all-why-choose-us.dto';
 
+/** English page names an admin may type, in the stored types' wording. */
+const TYPE_ALIASES: Record<string, string> = {
+  home: 'trang chu',
+  homepage: 'trang chu',
+  country: 'quoc gia',
+  countries: 'quoc gia',
+  region: 'khu vuc',
+  regions: 'khu vuc',
+};
+
+/**
+ * The search term to match against a row's page type (`trang_chu`, …). Types
+ * are stored without accents, so the CMS labels typed as shown ("Quốc gia",
+ * "Trang chủ") never matched (#005): accents are folded away, `_` and spaces
+ * are treated alike, and the English page names map to the stored ones.
+ */
+export function typeSearchTerm(search: string): string {
+  const folded = search
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/[_\s]+/g, ' ')
+    .trim();
+  return TYPE_ALIASES[folded] ?? folded;
+}
+
 @Injectable()
 export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
   constructor(
@@ -44,27 +71,40 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
       qb.andWhere('whyChooseUs.language = :lang', { lang });
     }
 
-    if (filterOptions?.search) {
+    const search = filterOptions?.search?.trim();
+    if (search) {
       // Match the page type as well as title/description, so an admin can
-      // narrow to a single page by TYPING it ("trang chu") instead of only
+      // narrow to a single page by TYPING it ("Quốc gia") instead of only
       // picking it from the dropdown — same idea as searching FAQ/SEO rows by
-      // their url. Underscores are normalised away, and `_` is a single-char
-      // wildcard in LIKE anyway, so "trang chu" and "trang_chu" both match.
+      // their url. Title/description keep the term as typed (they hold
+      // Vietnamese text); the type is matched on its folded form.
       qb.andWhere(
         `(whyChooseUs.title ILIKE :search
           OR whyChooseUs.description ILIKE :search
-          OR REPLACE(whyChooseUs.type, '_', ' ') ILIKE :search)`,
-        { search: `%${filterOptions.search}%` },
+          OR REPLACE(whyChooseUs.type, '_', ' ') ILIKE :typeSearch)`,
+        { search: `%${search}%`, typeSearch: `%${typeSearchTerm(search)}%` },
       );
     }
 
-    if (filterOptions?.type) {
-      // Support filtering items that contain the given type within a
-      // comma-separated list (e.g. "homepage,country,region").
-      // This allows one item to appear in multiple places simultaneously.
+    // One or more page types, comma-separated ("trang_chu,quoc_gia"): a row
+    // matches when its own comma-separated type list holds ANY of them, so the
+    // CMS can show several pages' reasons at once (#005). A row can itself
+    // belong to several pages.
+    const types = (filterOptions?.type ?? '')
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    if (types.length > 0) {
       qb.andWhere(
-        `(',' || LOWER(REPLACE(whyChooseUs.type, ' ', '')) || ',') LIKE :typePattern`,
-        { typePattern: `%,${filterOptions.type.trim().toLowerCase()},%` },
+        `(${types
+          .map(
+            (_, i) =>
+              `(',' || LOWER(REPLACE(whyChooseUs.type, ' ', '')) || ',') LIKE :typePattern${i}`,
+          )
+          .join(' OR ')})`,
+        Object.fromEntries(
+          types.map((t, i) => [`typePattern${i}`, `%,${t},%`]),
+        ),
       );
     }
 
