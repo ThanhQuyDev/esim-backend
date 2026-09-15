@@ -5,6 +5,11 @@ import { PlanMapper } from '../../../../../plans/infrastructure/persistence/rela
 import { FaqMapper } from '../../../../../faqs/infrastructure/persistence/relational/mappers/faq.mapper';
 import { AuthorProfileMapper } from '../../../../../authors/infrastructure/persistence/relational/mappers/author-profile.mapper';
 import { toAuthorSlug } from '../../../../../authors/author-slug';
+import {
+  parsePlanOrder,
+  serializePlanOrder,
+  sortByPlanOrder,
+} from '../../../../blog-plan-order';
 
 export class BlogMapper {
   static toDomain(raw: BlogEntity): Blog {
@@ -47,7 +52,11 @@ export class BlogMapper {
     domainEntity.miniTag = raw.miniTag
       ? MiniTagMapper.toDomain(raw.miniTag)
       : null;
-    domainEntity.plans = raw.plans?.map((plan) => PlanMapper.toDomain(plan));
+    // In the order the admin typed the ids, not the join table's order (#057).
+    domainEntity.plans = sortByPlanOrder(
+      raw.plans?.map((plan) => PlanMapper.toDomain(plan)),
+      parsePlanOrder(raw.planOrder),
+    );
     domainEntity.faqs = raw.faqs?.map((faq) => FaqMapper.toDomain(faq));
     domainEntity.faqEnabled = raw.faqEnabled;
     domainEntity.isPopular = raw.isPopular;
@@ -82,6 +91,10 @@ export class BlogMapper {
     persistenceEntity.plans = domainEntity.plans?.map((plan) =>
       PlanMapper.toPersistence(plan),
     );
+    // Remember the typed order; leave it alone when the plans were not loaded.
+    if (domainEntity.plans !== undefined) {
+      persistenceEntity.planOrder = serializePlanOrder(domainEntity.plans);
+    }
     persistenceEntity.faqs = domainEntity.faqs?.map((faq) =>
       FaqMapper.toPersistence(faq),
     );

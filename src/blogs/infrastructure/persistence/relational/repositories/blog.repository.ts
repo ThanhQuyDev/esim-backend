@@ -12,6 +12,7 @@ import { FilterBlogDto, SortBlogDto } from '../../../../dto/find-all-blogs.dto';
 import { BlogRepository, LegacyBlogAuthor } from '../../blog.repository';
 import { BlogMapper } from '../mappers/blog.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { parsePlanOrder, sortByPlanOrder } from '../../../../blog-plan-order';
 
 @Injectable()
 export class BlogRelationalRepository implements BlogRepository {
@@ -89,6 +90,7 @@ export class BlogRelationalRepository implements BlogRepository {
         'authorProfile',
         'blog.category',
         'blog.parent',
+        'blog.planOrder',
         'blog.timeRead',
         'blog.isPublished',
         'blog.publishedAt',
@@ -216,7 +218,13 @@ export class BlogRelationalRepository implements BlogRepository {
     return [
       entities.map((entity) => {
         const blog = BlogMapper.toDomain(entity);
-        blog.planIds = planIdsMap.get(entity.id) ?? [];
+        // Same typed order as the post's plans (#057).
+        blog.planIds = (
+          sortByPlanOrder(
+            (planIdsMap.get(entity.id) ?? []).map((id) => ({ id })),
+            parsePlanOrder(entity.planOrder),
+          ) ?? []
+        ).map(({ id }) => id);
         blog.faqIds = faqIdsMap.get(entity.id) ?? [];
         return blog;
       }),

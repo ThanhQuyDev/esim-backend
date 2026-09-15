@@ -93,6 +93,10 @@ export class BlogEntity extends EntityRelationalHelper {
   @JoinTable({ name: 'blog_plans' })
   plans?: PlanEntity[];
 
+  /** Plan ids in the order the admin typed them; `blog_plans` has none (#057). */
+  @Column({ type: 'simple-array', nullable: true })
+  planOrder?: string[] | null;
+
   @ManyToMany(() => FaqEntity, { eager: false })
   @JoinTable({ name: 'blog_faqs' })
   faqs?: FaqEntity[];
