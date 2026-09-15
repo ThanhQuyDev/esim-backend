@@ -137,6 +137,8 @@ interface FinancialValue {
   totalRevenue: number;
   profit: number;
   profitMarginPercent: number;
+  /** Plans delivered (sum of item quantity) behind these figures. */
+  plansSold: number;
 }
 
 interface FinancialGroupValue extends FinancialValue {
@@ -386,29 +388,21 @@ export class OverviewService {
     };
   }
 
+  /**
+   * Summed per delivered line, never per order. A partial refund (#014) marks
+   * only the refunded lines `refunded` and leaves the order `paid`, so the
+   * order-level total kept the refunded money in the "Tổng doanh thu" card
+   * (#009). Summing completed lines drops it, and makes the card match the
+   * revenue in the financial chart, which was always line-based.
+   */
   private async getSummaryTotalRevenue(
     query: OverviewProviderFilterQueryDto,
   ): Promise<number> {
-    if (query.provider) {
-      const raw = await this.createCompletedItemsQuery(ORDER_ITEM_ALIAS, query)
-        .select(
-          `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
-          'totalRevenue',
-        )
-        .getRawOne<{ totalRevenue?: RawValue }>();
-
-      return this.toNumber(raw?.totalRevenue);
-    }
-
-    const revenueQb = this.ordersRepository.createQueryBuilder(ORDER_ALIAS);
-    this.applyDateRange(revenueQb, ORDER_ALIAS, query);
-
-    const raw = await revenueQb
+    const raw = await this.createCompletedItemsQuery(ORDER_ITEM_ALIAS, query)
       .select(
-        `COALESCE(SUM(CASE WHEN ${ORDER_ALIAS}.status IN (:...completedOrderStatuses) THEN ${this.orderNetRevenueExpression()} ELSE 0 END), 0)`,
+        `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
         'totalRevenue',
       )
-      .setParameter('completedOrderStatuses', [...COMPLETED_ORDER_STATUSES])
       .getRawOne<{ totalRevenue?: RawValue }>();
 
     return this.toNumber(raw?.totalRevenue);
@@ -531,17 +525,23 @@ export class OverviewService {
         `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
         'totalRevenue',
       )
+      .addSelect(`COALESCE(SUM(${ORDER_ITEM_ALIAS}.quantity), 0)`, 'plansSold')
       .groupBy('bucket')
       .orderBy('bucket', 'ASC')
       .getRawMany<{
         bucket: RawValue;
         costPrice: RawValue;
         totalRevenue: RawValue;
+        plansSold: RawValue;
       }>();
 
     return rawRows.map((row) => ({
       date: this.formatBucket(row.bucket),
-      ...this.createFinancialValue(row.costPrice, row.totalRevenue),
+      ...this.createFinancialValue(
+        row.costPrice,
+        row.totalRevenue,
+        row.plansSold,
+      ),
     }));
   }
 
@@ -562,12 +562,17 @@ export class OverviewService {
           `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
           'totalRevenue',
         )
+        .addSelect(
+          `COALESCE(SUM(${ORDER_ITEM_ALIAS}.quantity), 0)`,
+          'plansSold',
+        )
         .groupBy(`${PLAN_ALIAS}.provider`)
         .orderBy('"totalRevenue"', 'DESC')
         .getRawMany<{
           group: OverviewProvider;
           costPrice: RawValue;
           totalRevenue: RawValue;
+          plansSold: RawValue;
         }>();
 
       const byProvider = new Map<string, FinancialGroupValue>(
@@ -575,7 +580,11 @@ export class OverviewService {
           row.group,
           {
             group: row.group,
-            ...this.createFinancialValue(row.costPrice, row.totalRevenue),
+            ...this.createFinancialValue(
+              row.costPrice,
+              row.totalRevenue,
+              row.plansSold,
+            ),
           },
         ]),
       );
@@ -606,6 +615,7 @@ export class OverviewService {
         `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
         'totalRevenue',
       )
+      .addSelect(`COALESCE(SUM(${ORDER_ITEM_ALIAS}.quantity), 0)`, 'plansSold')
       .groupBy(destinationGroupExpression)
       .addGroupBy(destinationNameExpression)
       .orderBy('"totalRevenue"', 'DESC')
@@ -614,11 +624,16 @@ export class OverviewService {
         group: string;
         costPrice: RawValue;
         totalRevenue: RawValue;
+        plansSold: RawValue;
       }>();
 
     return rows.map((row) => ({
       group: row.group,
-      ...this.createFinancialValue(row.costPrice, row.totalRevenue),
+      ...this.createFinancialValue(
+        row.costPrice,
+        row.totalRevenue,
+        row.plansSold,
+      ),
     }));
   }
 
@@ -746,10 +761,6 @@ export class OverviewService {
     return `COALESCE(SUM(CASE WHEN ${ORDER_ALIAS}.status IN (:...completedOrderStatuses) AND ${ORDER_ITEM_ALIAS}.status IN (:...completedOrderItemStatuses) THEN ${columnExpression} ELSE 0 END), 0)`;
   }
 
-  private orderNetRevenueExpression(): string {
-    return orderNetRevenueSql(ORDER_ALIAS);
-  }
-
   private itemNetRevenueExpression(): string {
     return itemNetRevenueSql(ORDER_ALIAS, ORDER_ITEM_ALIAS);
   }
@@ -842,16 +853,20 @@ export class OverviewService {
   }
 
   private calculateFinancialTotals(
-    rows: Array<Pick<FinancialValue, 'costPrice' | 'totalRevenue'>>,
+    rows: Array<
+      Pick<FinancialValue, 'costPrice' | 'totalRevenue' | 'plansSold'>
+    >,
   ): FinancialComparisonTotalsDto {
     const costPrice = rows.reduce((sum, row) => sum + row.costPrice, 0);
     const totalRevenue = rows.reduce((sum, row) => sum + row.totalRevenue, 0);
-    return this.createFinancialValue(costPrice, totalRevenue);
+    const plansSold = rows.reduce((sum, row) => sum + row.plansSold, 0);
+    return this.createFinancialValue(costPrice, totalRevenue, plansSold);
   }
 
   private createFinancialValue(
     costPriceValue: RawValue,
     totalRevenueValue: RawValue,
+    plansSoldValue: RawValue = 0,
   ): FinancialComparisonTotalsDto {
     const costPrice = this.toNumber(costPriceValue);
     const totalRevenue = this.toNumber(totalRevenueValue);
@@ -863,6 +878,7 @@ export class OverviewService {
       profit: this.roundMoney(profit),
       profitMarginPercent:
         totalRevenue > 0 ? this.roundMoney((profit / totalRevenue) * 100) : 0,
+      plansSold: this.toNumber(plansSoldValue),
     };
   }
 

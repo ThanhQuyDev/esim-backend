@@ -286,6 +286,13 @@ export class FinancialComparisonTotalsDto {
 
   @ApiProperty({ type: Number, example: 33.33 })
   profitMarginPercent!: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 150,
+    description: 'Plans delivered (item quantity), refunded items excluded.',
+  })
+  plansSold!: number;
 }
 
 export class FinancialComparisonSeriesItemDto {
@@ -300,6 +307,9 @@ export class FinancialComparisonSeriesItemDto {
 
   @ApiProperty({ type: Number, example: 3000000 })
   profit!: number;
+
+  @ApiProperty({ type: Number, example: 12 })
+  plansSold!: number;
 }
 
 export class FinancialComparisonGroupItemDto {
@@ -317,6 +327,9 @@ export class FinancialComparisonGroupItemDto {
 
   @ApiProperty({ type: Number, example: 33.33 })
   profitMarginPercent!: number;
+
+  @ApiProperty({ type: Number, example: 12 })
+  plansSold!: number;
 }
 
 export class FinancialComparisonResponseDto {

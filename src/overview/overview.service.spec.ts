@@ -167,3 +167,86 @@ describe('Refunded orders are excluded from the overview figures', () => {
     expect(params.completedOrderItemStatuses).toEqual(['completed']);
   });
 });
+
+/**
+ * #009 — a partial refund marks only the refunded lines `refunded` and leaves
+ * the order `paid`. Every figure therefore has to be built from completed
+ * LINES, or the refunded money and plans stay on the Tổng quan screen.
+ */
+describe('Partial refunds on the overview (#009)', () => {
+  function fakeItemsQuery(rawMany: unknown[] = []) {
+    const conditions: string[] = [];
+    const selects: string[] = [];
+    const qb: Record<string, jest.Mock> = {};
+    const chain =
+      (fn?: (...args: unknown[]) => void) =>
+      (...args: unknown[]) => {
+        fn?.(...args);
+        return qb;
+      };
+
+    qb.innerJoin = jest.fn(chain());
+    qb.leftJoin = jest.fn(chain());
+    qb.where = jest.fn(chain((sql) => conditions.push(String(sql))));
+    qb.andWhere = jest.fn(chain((sql) => conditions.push(String(sql))));
+    qb.select = jest.fn(chain((sql) => selects.push(String(sql))));
+    qb.addSelect = jest.fn(chain((sql) => selects.push(String(sql))));
+    qb.groupBy = jest.fn(chain());
+    qb.addGroupBy = jest.fn(chain());
+    qb.orderBy = jest.fn(chain());
+    qb.limit = jest.fn(chain());
+    qb.getRawMany = jest.fn().mockResolvedValue(rawMany);
+    qb.getRawOne = jest.fn().mockResolvedValue({ totalRevenue: '150000' });
+
+    const ordersRepository = { createQueryBuilder: jest.fn() };
+    const service = new OverviewService(
+      ordersRepository as never,
+      { createQueryBuilder: () => qb } as never,
+      {} as never,
+      {} as never,
+    );
+
+    return { service, conditions, selects, ordersRepository };
+  }
+
+  it('should take total revenue from completed lines, so a refunded line drops out', async () => {
+    const { service, conditions, selects, ordersRepository } = fakeItemsQuery();
+
+    const revenue = await (
+      service as unknown as {
+        getSummaryTotalRevenue: (q: object) => Promise<number>;
+      }
+    ).getSummaryTotalRevenue({});
+
+    expect(revenue).toBe(150000);
+    // Line status is part of the gate — `refunded` lines are not `completed`.
+    expect(conditions.join(' ')).toContain('completedOrderItemStatuses');
+    // The line's share of the order, not the whole order total.
+    expect(selects.join(' ')).toContain('order_item."vndPrice" * ');
+    // The order-level sum that ignored refunded lines is gone.
+    expect(ordersRepository.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('should report real plans sold per provider and in total, not the row count', async () => {
+    const { service, selects } = fakeItemsQuery([
+      {
+        group: 'airalo',
+        costPrice: '100',
+        totalRevenue: '150',
+        plansSold: '3',
+      },
+      { group: 'billion', costPrice: '40', totalRevenue: '60', plansSold: '2' },
+    ]);
+
+    const result = await service.getFinancialComparison({
+      groupBy: 'provider',
+    } as never);
+
+    expect(selects.join(' ')).toContain('SUM(order_item.quantity)');
+    expect(result.totals.plansSold).toBe(5);
+    const byProvider = new Map(result.data!.map((row) => [row.group, row]));
+    expect(byProvider.get('airalo')?.plansSold).toBe(3);
+    // Providers with nothing sold are still listed, at zero.
+    expect(byProvider.get('viettel')?.plansSold).toBe(0);
+  });
+});
