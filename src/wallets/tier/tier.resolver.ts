@@ -1,5 +1,6 @@
-import { TIER_BENEFITS, TIER_ORDER, TierBenefits } from './tier.constants';
+import { TIER_ORDER, TierBenefits } from './tier.constants';
 import { MembershipTierEnum, TierSourceEnum } from './tier.enum';
+import { currentTierBenefits } from './tier.registry';
 
 export type TierSummary = {
   automaticTier: MembershipTierEnum;
@@ -18,14 +19,14 @@ export function resolveAutomaticTier(
 
   for (let index = TIER_ORDER.length - 1; index >= 0; index -= 1) {
     const tier = TIER_ORDER[index];
-    if (spend >= TIER_BENEFITS[tier].minimumSpendVnd) return tier;
+    if (spend >= currentTierBenefits()[tier].minimumSpendVnd) return tier;
   }
 
   return MembershipTierEnum.TRAVELER;
 }
 
 export function getTierBenefits(tier: MembershipTierEnum): TierBenefits {
-  return TIER_BENEFITS[tier];
+  return { ...currentTierBenefits()[tier] };
 }
 
 export function resolveTierSummary(
@@ -37,10 +38,9 @@ export function resolveTierSummary(
   const membershipTier = tierOverride ?? automaticTier;
   const currentAutomaticIndex = TIER_ORDER.indexOf(automaticTier);
   const nextTier = TIER_ORDER[currentAutomaticIndex + 1] ?? null;
-  const currentThreshold = TIER_BENEFITS[automaticTier].minimumSpendVnd;
-  const nextThreshold = nextTier
-    ? TIER_BENEFITS[nextTier].minimumSpendVnd
-    : null;
+  const table = currentTierBenefits();
+  const currentThreshold = table[automaticTier].minimumSpendVnd;
+  const nextThreshold = nextTier ? table[nextTier].minimumSpendVnd : null;
   const progressPercent = nextThreshold
     ? Math.min(
         100,

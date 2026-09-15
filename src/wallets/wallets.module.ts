@@ -13,6 +13,9 @@ import { WalletHoldEntity } from './infrastructure/persistence/relational/entiti
 import { WalletTransactionEntity } from './infrastructure/persistence/relational/entities/wallet-transaction.entity';
 import { UserSpendTransactionEntity } from './infrastructure/persistence/relational/entities/user-spend-transaction.entity';
 import { EsimsModule } from '../esims/esims.module';
+import { MembershipTierConfigEntity } from './infrastructure/persistence/relational/entities/membership-tier-config.entity';
+import { AdminMembershipTiersController } from './tier/admin-membership-tiers.controller';
+import { MembershipTierConfigService } from './tier/membership-tier-config.service';
 
 @Module({
   imports: [
@@ -26,11 +29,16 @@ import { EsimsModule } from '../esims/esims.module';
       OrderEntity,
       UserEntity,
       UserSpendTransactionEntity,
+      MembershipTierConfigEntity,
     ]),
     forwardRef(() => EsimsModule),
   ],
-  controllers: [WalletsController, MembershipTiersController],
-  providers: [WalletsService],
-  exports: [WalletsService],
+  controllers: [
+    WalletsController,
+    MembershipTiersController,
+    AdminMembershipTiersController,
+  ],
+  providers: [WalletsService, MembershipTierConfigService],
+  exports: [WalletsService, MembershipTierConfigService],
 })
 export class WalletsModule {}
