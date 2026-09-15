@@ -44,6 +44,19 @@ export class MiniTagEntity extends EntityRelationalHelper {
   })
   linkUrl?: string | null;
 
+  // English copy for English blog posts; each falls back to the field above (#059).
+  @Column({ nullable: true, type: String })
+  titleEn?: string | null;
+
+  @Column({ nullable: true, type: String })
+  descriptionEn?: string | null;
+
+  @Column({ nullable: true, type: String })
+  contentButtonEn?: string | null;
+
+  @Column({ nullable: true, type: String })
+  linkUrlEn?: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

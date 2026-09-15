@@ -10,6 +10,10 @@ export class MiniTagMapper {
     domainEntity.description = raw.description;
     domainEntity.contentButton = raw.contentButton;
     domainEntity.linkUrl = raw.linkUrl;
+    domainEntity.titleEn = raw.titleEn ?? null;
+    domainEntity.descriptionEn = raw.descriptionEn ?? null;
+    domainEntity.contentButtonEn = raw.contentButtonEn ?? null;
+    domainEntity.linkUrlEn = raw.linkUrlEn ?? null;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     return domainEntity;
@@ -25,6 +29,10 @@ export class MiniTagMapper {
     persistenceEntity.description = domainEntity.description;
     persistenceEntity.contentButton = domainEntity.contentButton;
     persistenceEntity.linkUrl = domainEntity.linkUrl;
+    persistenceEntity.titleEn = domainEntity.titleEn;
+    persistenceEntity.descriptionEn = domainEntity.descriptionEn;
+    persistenceEntity.contentButtonEn = domainEntity.contentButtonEn;
+    persistenceEntity.linkUrlEn = domainEntity.linkUrlEn;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     return persistenceEntity;

@@ -17,6 +17,10 @@ export class MiniTagsService {
       description: createMiniTagDto.description,
       contentButton: createMiniTagDto.contentButton,
       linkUrl: createMiniTagDto.linkUrl,
+      titleEn: createMiniTagDto.titleEn,
+      descriptionEn: createMiniTagDto.descriptionEn,
+      contentButtonEn: createMiniTagDto.contentButtonEn,
+      linkUrlEn: createMiniTagDto.linkUrlEn,
     });
   }
 
@@ -51,6 +55,10 @@ export class MiniTagsService {
       description: updateMiniTagDto.description,
       contentButton: updateMiniTagDto.contentButton,
       linkUrl: updateMiniTagDto.linkUrl,
+      titleEn: updateMiniTagDto.titleEn,
+      descriptionEn: updateMiniTagDto.descriptionEn,
+      contentButtonEn: updateMiniTagDto.contentButtonEn,
+      linkUrlEn: updateMiniTagDto.linkUrlEn,
     });
   }
 

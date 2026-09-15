@@ -40,4 +40,25 @@ export class CreateMiniTagDto {
   @IsOptional()
   @IsString()
   linkUrl?: string | null;
+
+  // English copy (#059); empty keeps the Vietnamese one on English posts.
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  titleEn?: string | null;
+
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  descriptionEn?: string | null;
+
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  contentButtonEn?: string | null;
+
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  linkUrlEn?: string | null;
 }

@@ -36,6 +36,26 @@ export class MiniTag {
   })
   linkUrl?: string | null;
 
+  @ApiProperty({
+    type: () => String,
+    nullable: true,
+    description: 'English title; English posts fall back to title (#059).',
+  })
+  titleEn?: string | null;
+
+  @ApiProperty({ type: () => String, nullable: true })
+  descriptionEn?: string | null;
+
+  @ApiProperty({ type: () => String, nullable: true })
+  contentButtonEn?: string | null;
+
+  @ApiProperty({
+    type: () => String,
+    nullable: true,
+    description: 'Link for English posts, e.g. the /en page (#059).',
+  })
+  linkUrlEn?: string | null;
+
   @ApiProperty()
   createdAt: Date;
 
