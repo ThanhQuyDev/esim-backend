@@ -23,6 +23,13 @@ import {
   BillionQrNotification,
   BillionUsageResult,
 } from './billion-api.types';
+import {
+  BillionPlanVariant,
+  billionPlanVariants,
+  billionRegionName,
+  isRawBillionRegionName,
+  parseBillionPlanId,
+} from './billion-catalogue';
 
 const PROVIDER = 'billion';
 
@@ -177,16 +184,18 @@ export class BillionService {
       let itemsSynced = 0;
       for (const product of esimProducts) {
         try {
-          const price = priceBySku.get(product.skuId);
-          const cost = this.baseCost(price);
-          if (cost == null) {
+          const variants = billionPlanVariants(
+            product,
+            priceBySku.get(product.skuId),
+          );
+          if (variants.length === 0) {
             this.logger.warn(
               `Skipping billion sku ${product.skuId} (${product.name}): no price`,
             );
             continue;
           }
-          await this.processPlan(product, cost);
-          itemsSynced++;
+          await this.processPlan(product, variants);
+          itemsSynced += variants.length;
         } catch (error: any) {
           this.logger.error(
             `Failed to process billion plan ${product.skuId} (${product.name}): ${error.message}`,
@@ -214,7 +223,7 @@ export class BillionService {
       );
 
       this.logger.log(
-        `Billion plan sync completed. ${itemsSynced}/${esimProducts.length} eSIM plans synced.`,
+        `Billion plan sync completed. ${itemsSynced} plans synced from ${esimProducts.length} eSIM products.`,
       );
     } catch (error: any) {
       await this.providerSyncLogsService.update(syncLog.id, {
@@ -226,30 +235,20 @@ export class BillionService {
     }
   }
 
-  /** Base cost = settlement price for the single-copy (`copies === '1'`) row. */
-  private baseCost(price: BillionPrice | undefined): number | null {
-    if (!price?.price?.length) return null;
-    const single =
-      price.price.find((row) => row.copies === '1') ?? price.price[0];
-    const value = parseFloat(single.settlementPrice);
-    return Number.isFinite(value) ? value : null;
-  }
-
   private async processPlan(
     product: BillionProduct,
-    cost: number,
+    variants: BillionPlanVariant[],
   ): Promise<void> {
     const codes = (product.country ?? [])
       .map((c) => (c.mcc ?? '').trim())
       .filter(Boolean);
-    const isRegion = codes.length > 1;
+    let destinationId: number | null = null;
+    let regionId: number | null = null;
 
-    if (isRegion) {
-      const region = await this.resolveRegion(product, codes);
-      await this.upsertPlan(product, null, region.id, cost);
+    if (codes.length > 1) {
+      regionId = (await this.resolveRegion(product, codes)).id;
     } else if (codes[0]) {
-      const destination = await this.resolveDestinationByCode(codes[0]);
-      await this.upsertPlan(product, destination.id, null, cost);
+      destinationId = (await this.resolveDestinationByCode(codes[0])).id;
     } else {
       // A global product carries no country list. Resolving that empty string
       // used to create one nameless destination that every such plan hung off;
@@ -257,7 +256,10 @@ export class BillionService {
       this.logger.warn(
         `Billion product ${product.skuId} (${product.name}) has no country code — plan left without a destination`,
       );
-      await this.upsertPlan(product, null, null, cost);
+    }
+
+    for (const variant of variants) {
+      await this.upsertPlan(product, variant, destinationId, regionId);
     }
   }
 
@@ -291,13 +293,20 @@ export class BillionService {
       .join('-')}`;
     const existing = await this.regionsService.findByExternalCode(externalCode);
 
+    const name = billionRegionName(product);
     let region: { id: number };
     if (existing) {
       region = existing;
+      // Regions the first syncs created were named after whichever product
+      // came first ("Global 67-3GB/day,128kbps-eSIM Carrier of 90 days").
+      // Rename those; a name the CMS set is left alone.
+      if (name && isRawBillionRegionName(existing.name)) {
+        await this.regionsService.update(existing.id, { name });
+      }
     } else {
       try {
         region = await this.regionsService.create({
-          name: product.name,
+          name,
           slug: externalCode,
           externalCode,
           isActive: true,
@@ -323,12 +332,11 @@ export class BillionService {
 
   private async upsertPlan(
     product: BillionProduct,
+    variant: BillionPlanVariant,
     destinationId: number | null,
     regionId: number | null,
-    cost: number,
   ) {
-    const { type, dataMb } = this.parseDataAndType(product);
-    const days = parseInt(product.days ?? '0', 10) || 0;
+    const { type, dataMb, durationDays: days } = variant;
 
     const codes = (product.country ?? [])
       .map((c) => (c.mcc ?? '').trim())
@@ -338,9 +346,6 @@ export class BillionService {
     // 16-char skuId there aborted the whole catalogue sync partway through.
     const locationCode = codes[0] || product.skuId;
     const mccCode = codes[0] && codes[0].length <= 10 ? codes[0] : null;
-    const highFlowMb = Math.round(
-      (parseFloat(product.highFlowSize ?? '') || 0) / 1024,
-    );
     const throttleKbps = parseFloat(product.limitFlowSpeed ?? '') || 0;
     const slug = await this.uniquePlanSlug(
       this.buildPlanSlug(
@@ -348,16 +353,17 @@ export class BillionService {
         dataMb,
         days,
         type,
-        highFlowMb,
         throttleKbps,
       ),
-      product.skuId,
+      variant.providerPlanId,
     );
 
     const existing = await this.plansService.findBySlug(slug);
 
     // Cost currency is unknown per docs; assumed USD (see BILLION_PRICE_IS_USD).
-    const costPrice = BILLION_PRICE_IS_USD ? cost : cost * RMB_TO_USD;
+    const costPrice = BILLION_PRICE_IS_USD
+      ? variant.cost
+      : variant.cost * RMB_TO_USD;
 
     const apn = product.apn || product.country?.[0]?.apn || null;
     const operator = product.country
@@ -367,8 +373,8 @@ export class BillionService {
 
     const planData = {
       provider: PROVIDER,
-      providerPlanId: product.skuId,
-      name: product.name,
+      providerPlanId: variant.providerPlanId,
+      name: variant.name,
       countryCode: destinationId ? mccCode : null,
       destinationId,
       regionId,
@@ -384,7 +390,7 @@ export class BillionService {
       topUp: false,
       speed: null,
       operatorName: operator || null,
-      fupSpeed: null,
+      fupSpeed: variant.fupSpeed,
       isAbleMultidate: false,
       isKyc: false,
       apn,
@@ -398,55 +404,6 @@ export class BillionService {
       return this.plansService.update(existing.id, planData);
     }
     return this.plansService.create({ ...planData, slug });
-  }
-
-  /**
-   * Derive the plan `type` and `dataMb`. BILLION expresses the high-speed daily
-   * allowance in `highFlowSize` (KB/day) and total quota in `capacity` (KB); a
-   * throttled peak (`limitFlowSpeed`) with no fixed total signals an unlimited
-   * (reduce-after) plan. Falls back to parsing the product name.
-   */
-  private parseDataAndType(product: BillionProduct): {
-    type: string;
-    dataMb: number;
-  } {
-    const capacityKb = parseFloat(product.capacity ?? '') || 0;
-    const highFlowKb = parseFloat(product.highFlowSize ?? '') || 0;
-    const hasThrottle = (parseFloat(product.limitFlowSpeed ?? '') || 0) > 0;
-
-    // Fixed total quota present → fixed plan.
-    if (capacityKb > 0) {
-      return { type: 'fixed', dataMb: Math.round(capacityKb / 1024) };
-    }
-
-    // Daily high-speed allowance + throttle after → unlimited (reduced speed).
-    if (highFlowKb > 0 && hasThrottle) {
-      return { type: 'unlimited-reduce', dataMb: 0 };
-    }
-
-    // Daily high-speed allowance, no explicit total → treat as fixed daily.
-    if (highFlowKb > 0) {
-      return { type: 'fixed', dataMb: Math.round(highFlowKb / 1024) };
-    }
-
-    // Last resort: parse the name (e.g. '...-1GB', '...-500MB').
-    const dataMb = this.parseDataMb(product.name);
-    if (dataMb > 0) return { type: 'fixed', dataMb };
-
-    return hasThrottle
-      ? { type: 'unlimited-reduce', dataMb: 0 }
-      : { type: 'unlimited', dataMb: 0 };
-  }
-
-  /** Parse a data allowance like '1GB', '500MB' → MB. */
-  private parseDataMb(text: string | undefined): number {
-    if (!text) return 0;
-    const match = text.match(/([\d.]+)\s*(gb|mb)/i);
-    if (!match) return 0;
-    const value = parseFloat(match[1]);
-    return match[2].toLowerCase() === 'gb'
-      ? Math.round(value * 1024)
-      : Math.round(value);
   }
 
   private formatHotSpotAllow(type: string, dataMb: number): string | null {
@@ -463,19 +420,16 @@ export class BillionService {
     dataMb: number,
     days: number,
     type: string,
-    highFlowMb = 0,
     throttleKbps = 0,
   ): string {
     const code = locationCode.toLowerCase().replace(/[^a-z0-9-]/g, '');
     const size = (mb: number) => (mb >= 1024 ? `${mb / 1024}gb` : `${mb}mb`);
-    const dataLabel = dataMb > 0 ? `-${size(dataMb)}` : '';
-    // A daily plan carries no total quota, so without its daily allowance and
-    // throttle every such SKU of one country produced the same slug.
-    const dailyLabel =
-      dataMb === 0 && highFlowMb > 0 ? `-${size(highFlowMb)}day` : '';
+    const perDay = type === 'fixed' ? '' : 'day';
+    const dataLabel = dataMb > 0 ? `-${size(dataMb)}${perDay}` : '';
+    // Daily skus of one country differ by their after-quota speed too.
     const throttleLabel =
-      dataMb === 0 && throttleKbps > 0 ? `-${throttleKbps}kbps` : '';
-    return `${code}${dataLabel}${dailyLabel}${throttleLabel}-${days}days-${type}-bl`;
+      type !== 'fixed' && throttleKbps > 0 ? `-${throttleKbps}kbps` : '';
+    return `${code}${dataLabel}${throttleLabel}-${days}days-${type}-bl`;
   }
 
   /**
@@ -487,12 +441,13 @@ export class BillionService {
    */
   private async uniquePlanSlug(
     baseSlug: string,
-    skuId: string,
+    providerPlanId: string,
   ): Promise<string> {
+    const { skuId } = parseBillionPlanId(providerPlanId);
     for (const suffix of ['', `-${skuId.slice(-6)}`, `-${skuId}`]) {
       const slug = `${baseSlug}${suffix}`;
       const existing = await this.plansService.findBySlug(slug);
-      if (!existing || existing.providerPlanId === skuId) return slug;
+      if (!existing || existing.providerPlanId === providerPlanId) return slug;
     }
     return `${baseSlug}-${skuId}`;
   }

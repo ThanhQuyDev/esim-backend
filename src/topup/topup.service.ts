@@ -15,6 +15,7 @@ import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
+import { parseBillionPlanId } from '../esim-providers/billion/billion-catalogue';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { AiraloTopupPackage } from '../esim-providers/airalo/airalo-api.types';
 import { EsimAccessPackage } from '../esim-providers/esimaccess/esimaccess-api.types';
@@ -522,13 +523,15 @@ export class TopupService {
         });
       } else if (provider === TopupProvider.BILLION) {
         // BILLION recharge (F007) keys directly on the ICCID + plan skuId — it
-        // does NOT reference the original F040 order. packageId is the skuId.
+        // does NOT reference the original F040 order. The plan id is the skuId,
+        // plus the copies for a per-duration plan ("skuId:7").
+        const { skuId, copies } = parseBillionPlanId(providerPackageId);
         await this.billionService.submitTopup({
           channelOrderId: `${orderNumber}-tu`,
           channelSubOrderId: `${orderNumber}-tu-1`,
           iccid,
-          skuId: providerPackageId,
-          copies: 1,
+          skuId,
+          copies,
         });
       } else if (provider === TopupProvider.MICRO_ESIM) {
         // MicroEsim recharge is keyed on the provider order (topup_id, stored as

@@ -60,6 +60,8 @@ export interface BillionProduct {
 /** Price row within a F003 price array (one per number-of-copies). */
 export interface BillionPriceCopy {
   copies: string;
+  /** Validity bought with these copies (equals `copies` for 3105 skus). */
+  days?: string;
   retailPrice: string;
   settlementPrice: string;
 }

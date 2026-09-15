@@ -25,6 +25,7 @@ import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.se
 import { JapanTravelSimService } from '../esim-providers/japantravelsim/japantravelsim.service';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
+import { parseBillionPlanId } from '../esim-providers/billion/billion-catalogue';
 import { AllConfigType } from '../config/config.type';
 import { CouponsService } from '../coupons/coupons.service';
 import { EsimsService } from '../esims/esims.service';
@@ -1315,12 +1316,19 @@ export class OrdersService {
         const result = await this.billionService.submitOrder({
           channelOrderId,
           email,
-          subOrderList: billionItems.map((item) => ({
-            channelSubOrderId: `${order.orderNumber}-bl-${item.id}`,
-            deviceSkuId: item.plan.providerPlanId,
-            planSkuCopies: 1,
-            number: item.quantity,
-          })),
+          subOrderList: billionItems.map((item) => {
+            // A per-duration plan of a self-selected sku stores its copies in
+            // the plan id ("skuId:7" = buy 7 days).
+            const { skuId, copies } = parseBillionPlanId(
+              item.plan.providerPlanId,
+            );
+            return {
+              channelSubOrderId: `${order.orderNumber}-bl-${item.id}`,
+              deviceSkuId: skuId,
+              planSkuCopies: copies,
+              number: item.quantity,
+            };
+          }),
         });
 
         // Every order-item in this BILLION order shares the main orderId, which
