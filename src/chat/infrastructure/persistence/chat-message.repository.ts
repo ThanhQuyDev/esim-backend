@@ -11,6 +11,11 @@ export abstract class ChatMessageRepository {
   ): Promise<ChatMessage[]>;
   abstract markRoomAsRead(chatRoomId: number, senderId: number): Promise<void>;
   abstract countUnread(chatRoomId: number, senderId: number): Promise<number>;
+  /** Unread messages written BY `senderId` — the customer, for the admin view (#032). */
+  abstract countUnreadFrom(
+    chatRoomId: number,
+    senderId: number,
+  ): Promise<number>;
   abstract findLastByRoomId(
     chatRoomId: number,
   ): Promise<NullableType<ChatMessage>>;

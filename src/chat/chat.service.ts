@@ -37,11 +37,13 @@ export class ChatService {
         const lastMessage = await this.chatMessageRepository.findLastByRoomId(
           room.id,
         );
-        // unread for admin = messages sent by user (not admin) that are unread
-        // senderId !== adminId, but we don't know adminId here, so count all unread
-        const unreadCount = await this.chatMessageRepository.countUnread(
+        // What the admin still has to answer: unread messages the CUSTOMER wrote.
+        // Counting every unread message also counted the admin's own replies
+        // the customer had not opened yet, so a conversation waiting on the
+        // customer showed up as waiting on the admin (#032).
+        const unreadCount = await this.chatMessageRepository.countUnreadFrom(
           room.id,
-          0,
+          room.userId,
         );
         return { ...room, lastMessage, unreadCount };
       }),

@@ -14,6 +14,13 @@ import { AllConfigType } from '../config/config.type';
 import { ChatService } from './chat.service';
 import { ChatAutomationsService } from '../chat-automations/chat-automations.service';
 
+/**
+ * Every connected admin socket (#032). A customer who opens a conversation after
+ * an admin subscribed to all rooms was never heard by that admin — no badge, no
+ * notification — until the chat page was reloaded.
+ */
+export const ADMINS_CHANNEL = 'admins';
+
 interface AuthenticatedSocket extends Socket {
   data: {
     userId: number;
@@ -51,6 +58,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.data.userId = payload.id;
       client.data.roleId = payload.role?.id;
       client.data.sessionId = payload.sessionId;
+
+      if (client.data.roleId === 1) {
+        void client.join(ADMINS_CHANNEL);
+      }
     } catch {
       client.disconnect();
     }
@@ -81,8 +92,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     client.emit('joinedRoom', { roomId: room.id, userId: targetUserId });
 
-    // Trigger 1: Send welcome message when a non-admin user joins a room
     if (!isAdmin) {
+      // Bring every connected admin into this conversation, and tell them the
+      // room list changed, so a brand-new chat reaches the badge (#032).
+      this.server.in(ADMINS_CHANNEL).socketsJoin(roomName);
+      this.server.to(ADMINS_CHANNEL).emit('roomsChanged');
+
+      // Trigger 1: Send welcome message when a non-admin user joins a room
       void this.sendWelcomeMessage(room.id, roomName);
     }
   }

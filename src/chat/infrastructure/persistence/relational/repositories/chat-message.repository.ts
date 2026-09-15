@@ -74,6 +74,12 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
     });
   }
 
+  async countUnreadFrom(chatRoomId: number, senderId: number): Promise<number> {
+    return this.repo.count({
+      where: { chatRoomId, isRead: false, senderId },
+    });
+  }
+
   async findLastByRoomId(
     chatRoomId: number,
   ): Promise<NullableType<ChatMessage>> {
