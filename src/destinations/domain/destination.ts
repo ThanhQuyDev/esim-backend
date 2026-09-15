@@ -118,6 +118,15 @@ export class Destination {
   @ApiPropertyOptional({ type: Number, example: 100000 })
   fromPrice?: number | null;
 
+  @ApiProperty({
+    type: Number,
+    example: 350,
+    description:
+      "Units sold across this destination's plans, recounted hourly (#053).",
+  })
+  /** Written by the recount job only, so new destinations leave it to the DB default. */
+  soldCount?: number;
+
   @ApiProperty()
   createdAt: Date;
 

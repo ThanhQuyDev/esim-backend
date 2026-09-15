@@ -67,6 +67,10 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   titleVi: string | null;
 
+  /** Units sold across this region's plans, recounted hourly (#053). */
+  @Column({ type: 'int', default: 0 })
+  soldCount: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

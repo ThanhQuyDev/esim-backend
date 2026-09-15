@@ -72,6 +72,15 @@ export class Region {
   @ApiProperty({ type: Boolean, example: false })
   isPopular: boolean;
 
+  @ApiProperty({
+    type: Number,
+    example: 120,
+    description:
+      "Units sold across this region's plans, recounted hourly (#053).",
+  })
+  /** Written by the recount job only, so new regions leave it to the DB default. */
+  soldCount?: number;
+
   @ApiProperty()
   createdAt: Date;
 

@@ -25,6 +25,7 @@ export class RegionMapper {
     domainEntity.titleVi = raw.titleVi ?? null;
     domainEntity.isActive = raw.isActive;
     domainEntity.isPopular = raw.isPopular;
+    domainEntity.soldCount = Number(raw.soldCount ?? 0);
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
@@ -49,6 +50,10 @@ export class RegionMapper {
     persistenceEntity.titleVi = domainEntity.titleVi ?? null;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.isPopular = domainEntity.isPopular;
+    // Owned by the recount job; an ordinary save keeps whatever it last wrote.
+    if (domainEntity.soldCount !== undefined) {
+      persistenceEntity.soldCount = domainEntity.soldCount;
+    }
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     persistenceEntity.deletedAt = domainEntity.deletedAt;

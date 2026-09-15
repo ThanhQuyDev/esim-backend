@@ -35,6 +35,7 @@ export class PlanMapper {
     domainEntity.fupSpeed = raw.fupSpeed;
     domainEntity.isAbleMultidate = raw.isAbleMultidate;
     domainEntity.isCheapest = raw.isCheapest;
+    domainEntity.soldCount = Number(raw.soldCount ?? 0);
     domainEntity.discount = raw.discount;
     domainEntity.vndPrice = Number(raw.vndPrice);
     domainEntity.usdPrice = Number(raw.usdPrice ?? 0);
@@ -80,6 +81,10 @@ export class PlanMapper {
     persistenceEntity.fupSpeed = domainEntity.fupSpeed;
     persistenceEntity.isAbleMultidate = domainEntity.isAbleMultidate;
     persistenceEntity.isCheapest = domainEntity.isCheapest;
+    // Owned by the recount job; an ordinary save keeps whatever it last wrote.
+    if (domainEntity.soldCount !== undefined) {
+      persistenceEntity.soldCount = domainEntity.soldCount;
+    }
     persistenceEntity.discount = domainEntity.discount;
     persistenceEntity.vndPrice = domainEntity.vndPrice;
     persistenceEntity.usdPrice = domainEntity.usdPrice;

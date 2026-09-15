@@ -82,6 +82,15 @@ export class Plan {
 
   @ApiProperty({
     type: Number,
+    example: 128,
+    description:
+      'Units sold (completed items of paid orders), recounted hourly (#053).',
+  })
+  /** Written by the recount job only, so new plans leave it to the DB default. */
+  soldCount?: number;
+
+  @ApiProperty({
+    type: Number,
     example: 10,
     description: 'Discount percentage',
   })

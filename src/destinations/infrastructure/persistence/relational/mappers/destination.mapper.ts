@@ -20,6 +20,7 @@ export class DestinationMapper {
     domainEntity.providers = raw.providers ?? null;
     domainEntity.title = raw.title ?? null;
     domainEntity.titleVi = raw.titleVi ?? null;
+    domainEntity.soldCount = Number(raw.soldCount ?? 0);
     if (raw.regions) {
       domainEntity.regions = raw.regions.map((r) => {
         const ref = new RegionRef();
@@ -57,6 +58,10 @@ export class DestinationMapper {
     persistenceEntity.providers = domainEntity.providers ?? null;
     persistenceEntity.title = domainEntity.title ?? null;
     persistenceEntity.titleVi = domainEntity.titleVi ?? null;
+    // Owned by the recount job; an ordinary save keeps whatever it last wrote.
+    if (domainEntity.soldCount !== undefined) {
+      persistenceEntity.soldCount = domainEntity.soldCount;
+    }
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     persistenceEntity.deletedAt = domainEntity.deletedAt;

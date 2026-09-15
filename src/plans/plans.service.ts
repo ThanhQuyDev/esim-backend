@@ -241,6 +241,11 @@ export class PlansService {
     });
   }
 
+  /** Recount units sold per plan, destination and region (#053). */
+  async recalculateSoldCounts(): Promise<void> {
+    await this.plansRepository.recalculateSoldCounts();
+  }
+
   async markCheapestPlans(): Promise<void> {
     await this.plansRepository.markCheapestPlans();
   }

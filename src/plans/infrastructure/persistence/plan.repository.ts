@@ -38,6 +38,9 @@ export abstract class PlanRepository {
 
   abstract markCheapestPlans(): Promise<void>;
 
+  /** Recount units sold per plan, destination and region (#053). */
+  abstract recalculateSoldCounts(): Promise<void>;
+
   abstract batchUpdateDiscount(ids: number[], discount: number): Promise<void>;
 
   abstract recalculatePricesByTiers(

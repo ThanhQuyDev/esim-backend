@@ -8,6 +8,10 @@ import { Plan } from '../../../../domain/plan';
 import { PlanRepository } from '../../plan.repository';
 import { PlanMapper } from '../mappers/plan.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import {
+  COMPLETED_ORDER_ITEM_STATUSES,
+  COMPLETED_ORDER_STATUSES,
+} from '../../../../../overview/dto/overview.dto';
 
 @Injectable()
 export class PlansRelationalRepository implements PlanRepository {
@@ -336,6 +340,56 @@ export class PlansRelationalRepository implements PlanRepository {
           p."costPrice" * (1 + COALESCE(s."percentage", 0) / 100) ASC
       )
     `);
+  }
+
+  /**
+   * Units sold per plan, then totals per destination and region (#053).
+   *
+   * Recounted from completed items of paid orders rather than incremented
+   * where an item completes: that happens in every provider integration and
+   * webhook, and a refund or failed delivery would leave a counter wrong for
+   * good. A recount simply drops those out. Only rows whose number changed are
+   * written, and `updatedAt` is left alone.
+   */
+  async recalculateSoldCounts(): Promise<void> {
+    const params = [
+      [...COMPLETED_ORDER_ITEM_STATUSES],
+      [...COMPLETED_ORDER_STATUSES],
+    ];
+
+    await this.plansRepository.manager.transaction(async (manager) => {
+      await manager.query(
+        `WITH sold AS (
+          SELECT oi."planId" AS "planId", SUM(oi."quantity")::int AS "qty"
+          FROM "order_item" oi
+          INNER JOIN "order" o ON o."id" = oi."orderId"
+          WHERE oi."status" = ANY($1) AND o."status" = ANY($2)
+            AND o."deletedAt" IS NULL
+          GROUP BY oi."planId"
+        )
+        UPDATE "plan" p SET "soldCount" = COALESCE(s."qty", 0)
+        FROM "plan" p2
+        LEFT JOIN sold s ON s."planId" = p2."id"
+        WHERE p."id" = p2."id" AND p."soldCount" <> COALESCE(s."qty", 0)`,
+        params,
+      );
+
+      for (const [table, key] of [
+        ['destination', 'destinationId'],
+        ['region', 'regionId'],
+      ] as const) {
+        await manager.query(
+          `UPDATE "${table}" t SET "soldCount" = x."qty"
+          FROM (
+            SELECT t2."id", COALESCE(SUM(p."soldCount"), 0)::int AS "qty"
+            FROM "${table}" t2
+            LEFT JOIN "plan" p ON p."${key}" = t2."id"
+            GROUP BY t2."id"
+          ) x
+          WHERE t."id" = x."id" AND t."soldCount" <> x."qty"`,
+        );
+      }
+    });
   }
 
   async batchUpdateDiscount(ids: number[], discount: number): Promise<void> {

@@ -6,6 +6,7 @@ import { PlansExportService } from './plans-export.service';
 import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
 import { PlansJapantravelsimImportService } from './plans-japantravelsim-import.service';
 import { ExchangeRateCronService } from './exchange-rate-cron.service';
+import { SoldCountCronService } from './sold-count-cron.service';
 import { RelationalPlanPersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
 import { DestinationsModule } from '../destinations/destinations.module';
 import { RegionsModule } from '../regions/regions.module';
@@ -28,6 +29,7 @@ const infrastructurePersistenceModule = RelationalPlanPersistenceModule;
     PlansGadgetkoreaImportService,
     PlansJapantravelsimImportService,
     ExchangeRateCronService,
+    SoldCountCronService,
   ],
   exports: [PlansService, infrastructurePersistenceModule],
 })

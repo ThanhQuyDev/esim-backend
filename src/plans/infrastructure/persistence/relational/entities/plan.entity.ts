@@ -104,6 +104,10 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isCheapest: boolean;
 
+  /** Units sold: completed items of paid orders, recounted hourly (#053). */
+  @Column({ type: 'int', default: 0 })
+  soldCount: number;
+
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   discount: number;
 
