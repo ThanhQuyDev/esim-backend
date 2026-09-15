@@ -3,7 +3,6 @@ import {
   Inject,
   Injectable,
   Logger,
-  NotFoundException,
   UnprocessableEntityException,
   forwardRef,
 } from '@nestjs/common';
@@ -37,6 +36,12 @@ export interface DataUsageResult {
   activatedAt?: string | null;
   /** Plan length in days, so the page can draw a time bar like the data bar. */
   durationDays?: number | null;
+  /**
+   * False when nothing real is known about consumption — the provider has no
+   * usage API (Viettel and other local inventory) or the eSIM lacks the ids
+   * needed to ask. The page then says so instead of drawing a full bar (#027).
+   */
+  usageAvailable?: boolean;
 }
 
 @Injectable()
@@ -237,10 +242,20 @@ export class EsimsService {
     if (esim.provider === 'airalo') {
       try {
         const usage = await this.airaloService.getDataUsage(esim.iccid);
+        const airaloTotal = Number(usage.total) || 0;
+        const airaloRemaining = Number(usage.remaining);
         const result: DataUsageResult = {
-          remaining: usage.remaining,
-          total: usage.total,
-          dataUsed: usage.total - usage.remaining,
+          remaining:
+            usage.is_unlimited || !Number.isFinite(airaloRemaining)
+              ? null
+              : Math.max(0, airaloRemaining),
+          total: airaloTotal,
+          // An unlimited plan reports no meaningful remaining figure; subtracting
+          // it produced NaN or a negative "used" (#027).
+          dataUsed:
+            Number.isFinite(airaloRemaining) && airaloTotal > 0
+              ? Math.max(0, airaloTotal - airaloRemaining)
+              : 0,
           expiredAt: usage.expired_at,
           isUnlimited: usage.is_unlimited,
           status: usage.status,
@@ -255,7 +270,9 @@ export class EsimsService {
 
     if (esim.provider === 'esimaccess') {
       if (!esim.esimTranNo) {
-        throw new NotFoundException('esimTranNo not found for this eSIM');
+        // Without the id the provider cannot be asked; show what we stored
+        // rather than an error panel (#027).
+        return this.fallbackFromDb(esim);
       }
       try {
         const usage = await this.esimAccessService.getDataUsage(
@@ -293,9 +310,7 @@ export class EsimsService {
       const orderRequestId =
         (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
       if (!orderRequestId) {
-        throw new NotFoundException(
-          'orderRequestId (topupId) not found for this eSIM',
-        );
+        return this.fallbackFromDb(esim);
       }
       try {
         const usage =
@@ -335,9 +350,7 @@ export class EsimsService {
         (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
       const deviceId = esim.esimTranNo;
       if (!topupId || !deviceId) {
-        throw new NotFoundException(
-          'topup_id or device_id not found for this eSIM',
-        );
+        return this.fallbackFromDb(esim);
       }
       try {
         const detail = await this.microEsimService.getDeviceDetail(
@@ -375,7 +388,7 @@ export class EsimsService {
         (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
       const iccid = esim.iccid;
       if (!orderId || !iccid) {
-        throw new NotFoundException('orderId or iccid not found for this eSIM');
+        return this.fallbackFromDb(esim);
       }
       try {
         const detail = await this.billionService.getUsage(orderId, iccid);
@@ -411,22 +424,39 @@ export class EsimsService {
       }
     }
 
-    throw new NotFoundException('Provider not supported or not set');
+    // Viettel and other local inventory have no usage API at all. Answering 404
+    // left the customer's tab reading "Không thể tải dữ liệu sử dụng" (#027).
+    return this.fallbackFromDb(esim, false);
   }
 
-  private fallbackFromDb(esim: Esim): DataUsageResult {
-    const total = esim.dataTotal ? parseFloat(esim.dataTotal) : 0;
-    const dataUsed = esim.dataUsed ? parseFloat(esim.dataUsed) : 0;
+  /**
+   * What we last stored, for when the provider cannot be asked right now.
+   *
+   * `usageAvailable` defaults to whether a usage figure was ever recorded: an
+   * eSIM the cron has polled before still has real numbers, one it never could
+   * poll does not.
+   */
+  private fallbackFromDb(
+    esim: Esim,
+    usageAvailable: boolean = esim.dataUsed !== null &&
+      esim.dataUsed !== undefined &&
+      esim.dataUsed !== '',
+  ): DataUsageResult {
+    const total = esim.dataTotal ? parseFloat(esim.dataTotal) || 0 : 0;
+    const dataUsed = esim.dataUsed ? parseFloat(esim.dataUsed) || 0 : 0;
     return {
-      remaining: total - dataUsed,
+      // Unknown, not zero, when the package size is unknown.
+      remaining: total > 0 ? Math.max(0, total - dataUsed) : null,
       total,
       dataUsed,
       // The stored expiry is the last thing the cron learned from the provider;
       // returning null here threw it away and left the page with no dates at all.
       expiredAt: esim.expiresAt ? esim.expiresAt.toISOString() : null,
       isUnlimited: false,
-      status: esim.status ?? 'UNKNOWN',
+      // The order status ("sold") is not a usage status; the page printed it raw.
+      status: esim.activatedAt ? 'ACTIVE' : 'NOT_ACTIVE',
       lastUpdateTime: null,
+      usageAvailable,
     };
   }
 
