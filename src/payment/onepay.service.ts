@@ -15,6 +15,10 @@ export interface OnePayCheckoutParams {
   // the configured `onepay.returnUrl` env value. Pass a locale-aware URL so the
   // buyer lands on the result page in the same language they checked out in.
   returnUrl?: string;
+  // OnePay `vpc_CardList`: skip the method picker and open one method directly
+  // (INTERNATIONAL = Visa/Master/JCB card form, DOMESTIC = ATM). Unknown values
+  // are rejected by OnePay with "Phương thức thanh toán không hợp lệ".
+  cardList?: string;
 }
 
 @Injectable()
@@ -40,6 +44,7 @@ export class OnepayService {
       vpc_Currency: 'VND',
       vpc_TicketNo: params.clientIp,
     };
+    if (params.cardList) vpcParams.vpc_CardList = params.cardList;
 
     const hash = this.createSecureHash(vpcParams, cfg.hashSecret);
 

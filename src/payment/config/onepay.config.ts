@@ -39,5 +39,9 @@ export default registerAs<OnepayConfig>('onepay', () => {
     payUrl: process.env.ONEPAY_PAY_URL!,
     returnUrl: process.env.ONEPAY_RETURN_URL!,
     ipnUrl: process.env.ONEPAY_IPN_URL!,
+    // Set ONEPAY_CUSTOM_LINK_CARD_LIST= (empty) to show every method again.
+    customLinkCardList: (
+      process.env.ONEPAY_CUSTOM_LINK_CARD_LIST ?? 'INTERNATIONAL'
+    ).trim(),
   };
 });

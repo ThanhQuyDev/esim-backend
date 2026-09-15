@@ -209,6 +209,8 @@ export class CustomPaymentLinksService {
       orderInfo: input.description.slice(0, 200),
       againLink: onepayCfg.returnUrl,
       title: 'esim.vn — Custom Payment',
+      // #041: open OnePay's card form directly instead of the method list.
+      cardList: onepayCfg.customLinkCardList || undefined,
     });
 
     const created = await this.customPaymentLinkRepository.create({
