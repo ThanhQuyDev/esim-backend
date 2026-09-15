@@ -4,7 +4,16 @@ import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { Blog } from '../../domain/blog';
 import { FilterBlogDto, SortBlogDto } from '../../dto/find-all-blogs.dto';
 
+/** A byline on published articles that no author profile backs (#030). */
+export type LegacyBlogAuthor = {
+  name: string;
+  avatar: string | null;
+  blogs: number;
+};
+
 export abstract class BlogRepository {
+  abstract findLegacyAuthors(): Promise<LegacyBlogAuthor[]>;
+
   abstract create(
     data: Omit<Blog, 'id' | 'createdAt' | 'updatedAt'>,
   ): Promise<Blog>;

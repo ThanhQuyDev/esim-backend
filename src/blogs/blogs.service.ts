@@ -6,7 +6,20 @@ import {
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
 import { FilterBlogDto, SortBlogDto } from './dto/find-all-blogs.dto';
-import { BlogRepository } from './infrastructure/persistence/blog.repository';
+import {
+  BlogRepository,
+  LegacyBlogAuthor,
+} from './infrastructure/persistence/blog.repository';
+import { toAuthorSlug } from '../authors/author-slug';
+import { AuthorProfile } from '../authors/domain/author-profile';
+
+/**
+ * What `/blogs/authors/:slug` returns: a real author profile, or a stand-in for
+ * a byline on articles that predate profiles — which has no ids (#030).
+ */
+export type BlogAuthorView =
+  | AuthorProfile
+  | (Omit<AuthorProfile, 'id' | 'userId'> & { id: null; userId: null });
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { Blog } from './domain/blog';
 import { MiniTagsService } from '../mini-tags/mini-tags.service';
@@ -106,7 +119,7 @@ export class BlogsService {
     });
   }
 
-  findAllWithPagination({
+  async findAllWithPagination({
     filterOptions,
     sortOptions,
     paginationOptions,
@@ -117,8 +130,20 @@ export class BlogsService {
     paginationOptions: IPaginationOptions;
     lang?: string;
   }) {
+    let filters = filterOptions;
+    if (filterOptions?.authorSlug) {
+      const slug =
+        toAuthorSlug(filterOptions.authorSlug) || filterOptions.authorSlug;
+      const legacy = await this.legacyAuthorsFor(slug);
+      filters = {
+        ...filterOptions,
+        authorSlug: slug,
+        legacyAuthorNames: legacy.map((author) => author.name),
+      };
+    }
+
     return this.blogRepository.findAllWithPagination({
-      filterOptions,
+      filterOptions: filters,
       sortOptions,
       paginationOptions: {
         page: paginationOptions.page,
@@ -126,6 +151,42 @@ export class BlogsService {
       },
       lang,
     });
+  }
+
+  /**
+   * The author behind `/blog/author/<slug>` (#030).
+   *
+   * Every article published before author profiles existed carries only a
+   * byline ("Duc Tho"), so its author link led to a 404 and the author page
+   * never listed anything. A profile still wins; otherwise the byline whose slug
+   * matches stands in, taking the name used on the most articles.
+   */
+  async findAuthorBySlug(slug: string): Promise<BlogAuthorView | null> {
+    const profile = await this.authorsService.findBySlug(slug);
+    if (profile) return profile;
+
+    const [legacy] = await this.legacyAuthorsFor(slug);
+    if (!legacy) return null;
+
+    return {
+      id: null,
+      userId: null,
+      name: legacy.name,
+      nameEn: null,
+      slug: toAuthorSlug(slug),
+      avatar: legacy.avatar,
+      description: null,
+      descriptionEn: null,
+    };
+  }
+
+  private async legacyAuthorsFor(slug: string): Promise<LegacyBlogAuthor[]> {
+    const target = toAuthorSlug(slug);
+    if (!target) return [];
+    const authors = await this.blogRepository.findLegacyAuthors();
+    return authors
+      .filter((author) => toAuthorSlug(author.name) === target)
+      .sort((a, b) => b.blogs - a.blogs);
   }
 
   findById(id: Blog['id']) {

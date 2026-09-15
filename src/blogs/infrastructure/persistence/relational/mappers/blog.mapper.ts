@@ -4,6 +4,7 @@ import { MiniTagMapper } from '../../../../../mini-tags/infrastructure/persisten
 import { PlanMapper } from '../../../../../plans/infrastructure/persistence/relational/mappers/plan.mapper';
 import { FaqMapper } from '../../../../../faqs/infrastructure/persistence/relational/mappers/faq.mapper';
 import { AuthorProfileMapper } from '../../../../../authors/infrastructure/persistence/relational/mappers/author-profile.mapper';
+import { toAuthorSlug } from '../../../../../authors/author-slug';
 
 export class BlogMapper {
   static toDomain(raw: BlogEntity): Blog {
@@ -16,7 +17,11 @@ export class BlogMapper {
     domainEntity.authorProfile = raw.authorProfile
       ? AuthorProfileMapper.toDomain(raw.authorProfile)
       : null;
-    domainEntity.authorSlug = raw.authorProfile?.slug ?? null;
+    // A pre-profile article links to its byline's slug, which the author page
+    // now resolves (#030).
+    domainEntity.authorSlug =
+      raw.authorProfile?.slug ??
+      (raw.author ? toAuthorSlug(raw.author) || null : null);
     // The byline and bio follow the article's language, falling back to the
     // Vietnamese text until an English one is written (#025).
     const english = raw.language === 'en';

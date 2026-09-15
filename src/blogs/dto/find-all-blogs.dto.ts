@@ -34,6 +34,13 @@ export class FilterBlogDto {
   @IsOptional()
   @IsString()
   authorSlug?: string;
+
+  /**
+   * Bylines of pre-profile articles that share `authorSlug` (#030). Filled in by
+   * the service, never read from the request — undecorated, so the validation
+   * whitelist strips it from any query that tries to send it.
+   */
+  legacyAuthorNames?: string[];
 }
 
 export class SortBlogDto {

@@ -6,6 +6,7 @@ import {
 import { AuthorProfile } from './domain/author-profile';
 import { AuthorProfileDto } from './dto/author-profile.dto';
 import { AuthorProfileRepository } from './infrastructure/persistence/relational/repositories/author-profile.repository';
+import { toAuthorSlug } from './author-slug';
 
 @Injectable()
 export class AuthorsService {
@@ -46,13 +47,6 @@ export class AuthorsService {
   }
 
   private normalizeSlug(value: string): string {
-    return value
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+    return toAuthorSlug(value);
   }
 }

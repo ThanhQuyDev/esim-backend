@@ -9,7 +9,7 @@ import { AuthorProfileEntity } from '../../../../../authors/infrastructure/persi
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { Blog } from '../../../../domain/blog';
 import { FilterBlogDto, SortBlogDto } from '../../../../dto/find-all-blogs.dto';
-import { BlogRepository } from '../../blog.repository';
+import { BlogRepository, LegacyBlogAuthor } from '../../blog.repository';
 import { BlogMapper } from '../mappers/blog.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 
@@ -110,9 +110,22 @@ export class BlogRelationalRepository implements BlogRepository {
     }
 
     if (filterOptions?.authorSlug) {
-      qb.andWhere('authorProfile.slug = :authorSlug', {
-        authorSlug: filterOptions.authorSlug,
-      });
+      const legacyNames = filterOptions.legacyAuthorNames ?? [];
+      qb.andWhere(
+        new Brackets((sub) => {
+          sub.where('authorProfile.slug = :authorSlug', {
+            authorSlug: filterOptions.authorSlug,
+          });
+          // Articles written before author profiles existed carry only a
+          // byline; they belong to this author when the byline's slug matches.
+          if (legacyNames.length) {
+            sub.orWhere(
+              'blog.authorProfileId IS NULL AND blog.author IN (:...legacyNames)',
+              { legacyNames },
+            );
+          }
+        }),
+      );
     }
 
     if (filterOptions?.category) {
@@ -209,6 +222,25 @@ export class BlogRelationalRepository implements BlogRepository {
       }),
       count,
     ];
+  }
+
+  async findLegacyAuthors(): Promise<LegacyBlogAuthor[]> {
+    const rows = await this.blogRepository
+      .createQueryBuilder('blog')
+      .select('blog.author', 'name')
+      .addSelect('MAX(blog.authorAvatar)', 'avatar')
+      .addSelect('COUNT(*)', 'blogs')
+      .where('blog.authorProfileId IS NULL')
+      .andWhere('blog.author IS NOT NULL')
+      .andWhere('blog.isPublished = true')
+      .groupBy('blog.author')
+      .getRawMany<{ name: string; avatar: string | null; blogs: string }>();
+
+    return rows.map((row) => ({
+      name: row.name,
+      avatar: row.avatar ?? null,
+      blogs: Number(row.blogs) || 0,
+    }));
   }
 
   async findById(id: Blog['id']): Promise<NullableType<Blog>> {

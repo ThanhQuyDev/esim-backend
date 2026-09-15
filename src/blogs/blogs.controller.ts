@@ -132,7 +132,8 @@ export class BlogsController {
 
   @Get('authors/:slug')
   async findAuthor(@Param('slug') slug: string) {
-    const author = await this.authorsService.findBySlug(slug);
+    // Falls back to a byline for articles that predate author profiles (#030).
+    const author = await this.blogsService.findAuthorBySlug(slug);
     if (!author) throw new NotFoundException();
     return author;
   }
