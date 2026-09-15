@@ -57,4 +57,17 @@ export class CreateTicketDto {
   @IsArray()
   @IsString({ each: true })
   attachments?: string[];
+
+  /**
+   * Honeypot (#033): the form's hidden "website" field. People never see it and
+   * leave it empty; a script that fills every input gives itself away.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Leave empty. A filled value marks the request as spam.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  website?: string;
 }

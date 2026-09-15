@@ -69,6 +69,36 @@ export class TicketsRelationalRepository implements TicketRepository {
     return entity ? TicketMapper.toDomain(entity) : null;
   }
 
+  async countByEmailSince(email: string, since: Date): Promise<number> {
+    return this.ticketsRepository
+      .createQueryBuilder('ticket')
+      .where('LOWER(ticket."customerEmail") = LOWER(:email)', { email })
+      .andWhere('ticket.createdAt >= :since', { since })
+      .getCount();
+  }
+
+  async existsDuplicate(input: {
+    customerEmail: string;
+    subject: string;
+    description: string;
+    since: Date;
+  }): Promise<boolean> {
+    const count = await this.ticketsRepository
+      .createQueryBuilder('ticket')
+      .where('LOWER(ticket."customerEmail") = LOWER(:email)', {
+        email: input.customerEmail,
+      })
+      .andWhere('LOWER(TRIM(ticket.subject)) = LOWER(TRIM(:subject))', {
+        subject: input.subject,
+      })
+      .andWhere('LOWER(TRIM(ticket.description)) = LOWER(TRIM(:description))', {
+        description: input.description,
+      })
+      .andWhere('ticket.createdAt >= :since', { since: input.since })
+      .getCount();
+    return count > 0;
+  }
+
   async update(
     id: Ticket['id'],
     payload: Partial<Ticket>,

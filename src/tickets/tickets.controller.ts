@@ -33,6 +33,7 @@ import { Roles } from '../roles/roles.decorator';
 import { RolesGuard } from '../roles/roles.guard';
 import { RoleEnum } from '../roles/roles.enum';
 import { UsersService } from '../users/users.service';
+import { clientIp } from './ticket-spam-guard';
 
 @ApiTags('Tickets')
 @Controller({
@@ -48,8 +49,12 @@ export class TicketsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiCreatedResponse({ type: Ticket })
-  create(@Body() createTicketDto: CreateTicketDto): Promise<Ticket> {
-    return this.ticketsService.create(createTicketDto);
+  create(
+    @Body() createTicketDto: CreateTicketDto,
+    @Request() req: Parameters<typeof clientIp>[0],
+  ): Promise<Ticket> {
+    // The IP feeds the server-side spam limit (#033).
+    return this.ticketsService.create(createTicketDto, clientIp(req));
   }
 
   /**

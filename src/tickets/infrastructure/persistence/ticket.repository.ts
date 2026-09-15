@@ -21,6 +21,17 @@ export abstract class TicketRepository {
 
   abstract findById(id: Ticket['id']): Promise<NullableType<Ticket>>;
 
+  /** Tickets opened with this email since `since` — the per-email spam limit (#033). */
+  abstract countByEmailSince(email: string, since: Date): Promise<number>;
+
+  /** Whether the exact same request was already filed since `since` (#033). */
+  abstract existsDuplicate(input: {
+    customerEmail: string;
+    subject: string;
+    description: string;
+    since: Date;
+  }): Promise<boolean>;
+
   abstract update(
     id: Ticket['id'],
     payload: Partial<Ticket>,
