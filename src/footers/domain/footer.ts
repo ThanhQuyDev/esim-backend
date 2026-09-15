@@ -23,6 +23,13 @@ export class Footer {
 
   @ApiProperty({
     type: () => String,
+    nullable: true,
+    description: 'URL on the English site; falls back to url (Vietnamese).',
+  })
+  urlEn?: string | null;
+
+  @ApiProperty({
+    type: () => String,
     nullable: false,
   })
   title: string;

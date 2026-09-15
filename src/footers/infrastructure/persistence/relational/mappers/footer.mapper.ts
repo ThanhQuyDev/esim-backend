@@ -10,6 +10,7 @@ export class FooterMapper {
     domainEntity.categoriesVi = raw.categoriesVi;
 
     domainEntity.url = raw.url;
+    domainEntity.urlEn = raw.urlEn;
 
     domainEntity.title = raw.title;
 
@@ -31,6 +32,7 @@ export class FooterMapper {
     persistenceEntity.categoriesVi = domainEntity.categoriesVi;
 
     persistenceEntity.url = domainEntity.url;
+    persistenceEntity.urlEn = domainEntity.urlEn;
 
     persistenceEntity.title = domainEntity.title;
 

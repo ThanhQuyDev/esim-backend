@@ -34,6 +34,13 @@ export class FooterEntity extends EntityRelationalHelper {
   })
   url: string;
 
+  /** URL on the English site (#043); falls back to `url` (Vietnamese). */
+  @Column({
+    nullable: true,
+    type: String,
+  })
+  urlEn?: string | null;
+
   @Column({
     nullable: false,
     type: String,

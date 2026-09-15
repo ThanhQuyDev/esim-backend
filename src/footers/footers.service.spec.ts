@@ -27,6 +27,25 @@ describe('FootersService', () => {
     );
   });
 
+  // #043: the English site links to its own URLs.
+  it('should save urlEn on create and update', async () => {
+    await service.create({
+      url: 'https://esim.vn/ho-tro',
+      urlEn: 'https://esim.vn/en/help',
+      title: 'Help',
+      titleVi: 'Trợ giúp',
+    });
+    await service.update('id-1', { urlEn: 'https://esim.vn/en/support' });
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ urlEn: 'https://esim.vn/en/help' }),
+    );
+    expect(repository.update).toHaveBeenCalledWith(
+      'id-1',
+      expect.objectContaining({ urlEn: 'https://esim.vn/en/support' }),
+    );
+  });
+
   it('should save categoriesVi on update', async () => {
     await service.update('id-1', { categoriesVi: 'Theo dõi' });
 

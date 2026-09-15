@@ -44,6 +44,15 @@ export class CreateFooterDto {
   @IsString()
   url: string;
 
+  /** URL on the English site (#043); empty = use `url`. */
+  @ApiProperty({
+    required: false,
+    type: () => String,
+  })
+  @IsOptional()
+  @IsString()
+  urlEn?: string | null;
+
   @ApiProperty({
     required: true,
     type: () => String,

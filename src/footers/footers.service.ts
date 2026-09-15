@@ -31,6 +31,8 @@ export class FootersService {
 
       url: createFooterDto.url,
 
+      urlEn: createFooterDto.urlEn,
+
       title: createFooterDto.title,
 
       titleVi: createFooterDto.titleVi,
@@ -84,6 +86,8 @@ export class FootersService {
       categoriesVi: updateFooterDto.categoriesVi,
 
       url: updateFooterDto.url,
+
+      urlEn: updateFooterDto.urlEn,
 
       title: updateFooterDto.title,
 
