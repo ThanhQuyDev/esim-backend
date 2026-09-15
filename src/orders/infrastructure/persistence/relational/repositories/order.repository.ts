@@ -41,7 +41,9 @@ export class OrdersRelationalRepository implements OrderRepository {
       filterOptions?.iccid ||
       filterOptions?.planName ||
       filterOptions?.userEmail ||
-      filterOptions?.orderNumber
+      filterOptions?.orderNumber ||
+      filterOptions?.hasInvoice !== undefined ||
+      filterOptions?.invoiceStatus
     ) {
       return this.findManyWithAdvancedFilters(
         filterOptions,
@@ -155,6 +157,28 @@ export class OrdersRelationalRepository implements OrderRepository {
       qb.andWhere('"order"."orderNumber" ILIKE :orderNumber', {
         orderNumber: `%${filterOptions.orderNumber}%`,
       });
+    }
+
+    // VAT invoice requests live in their own table (#051): the customer ticks
+    // "Xuất hóa đơn" at checkout, or an admin adds one to the order later.
+    if (filterOptions.hasInvoice !== undefined) {
+      const hasInvoiceSql = `"order"."id" IN (
+          SELECT "inv"."orderId" FROM "invoice" "inv"
+          WHERE "inv"."orderId" IS NOT NULL
+        )`;
+      qb.andWhere(
+        filterOptions.hasInvoice ? hasInvoiceSql : `NOT ${hasInvoiceSql}`,
+      );
+    }
+
+    if (filterOptions.invoiceStatus) {
+      qb.andWhere(
+        `"order"."id" IN (
+          SELECT "inv"."orderId" FROM "invoice" "inv"
+          WHERE "inv"."status" = :invoiceStatus
+        )`,
+        { invoiceStatus: filterOptions.invoiceStatus },
+      );
     }
   }
 

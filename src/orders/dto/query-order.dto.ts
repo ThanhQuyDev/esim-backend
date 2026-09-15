@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -7,6 +9,7 @@ import {
 } from 'class-validator';
 import { Transform, Type, plainToInstance } from 'class-transformer';
 import { Order } from '../domain/order';
+import { InvoiceStatus } from '../../invoices/invoices.enum';
 
 export class FilterOrderDto {
   @ApiPropertyOptional({
@@ -53,6 +56,23 @@ export class FilterOrderDto {
   @IsOptional()
   @IsString()
   orderNumber?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'true = orders with a VAT invoice request, false = orders without one (#051)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  hasInvoice?: boolean;
+
+  @ApiPropertyOptional({
+    enum: InvoiceStatus,
+    description: 'Orders whose invoice request is in this status (#051)',
+  })
+  @IsOptional()
+  @IsIn(Object.values(InvoiceStatus))
+  invoiceStatus?: InvoiceStatus;
 }
 
 export class SortOrderDto {
