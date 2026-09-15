@@ -308,12 +308,15 @@ export class PlansRelationalRepository implements PlanRepository {
     await this.plansRepository.query(`
       UPDATE "plan" SET "isCheapest" = true
       WHERE id IN (
-        SELECT DISTINCT ON ("destinationId", "type", "dataMb", "durationDays") id
-        FROM "plan"
-        WHERE "deletedAt" IS NULL
-          AND "isActive" = true
-          AND "destinationId" IS NOT NULL
-        ORDER BY "destinationId", "type", "dataMb", "durationDays", "costPrice" ASC
+        SELECT DISTINCT ON (p."destinationId", p."type", p."dataMb", p."durationDays") p.id
+        FROM "plan" p
+        LEFT JOIN "provider_surcharge" s ON s."provider" = p."provider"
+        WHERE p."deletedAt" IS NULL
+          AND p."isActive" = true
+          AND p."destinationId" IS NOT NULL
+        -- Compare cost WITH the supplier's tax / fee (#049); none = listed cost.
+        ORDER BY p."destinationId", p."type", p."dataMb", p."durationDays",
+          p."costPrice" * (1 + COALESCE(s."percentage", 0) / 100) ASC
       )
     `);
 
@@ -322,12 +325,15 @@ export class PlansRelationalRepository implements PlanRepository {
     await this.plansRepository.query(`
       UPDATE "plan" SET "isCheapest" = true
       WHERE id IN (
-        SELECT DISTINCT ON ("regionId", "type", "dataMb", "durationDays") id
-        FROM "plan"
-        WHERE "deletedAt" IS NULL
-          AND "isActive" = true
-          AND "regionId" IS NOT NULL
-        ORDER BY "regionId", "type", "dataMb", "durationDays", "costPrice" ASC
+        SELECT DISTINCT ON (p."regionId", p."type", p."dataMb", p."durationDays") p.id
+        FROM "plan" p
+        LEFT JOIN "provider_surcharge" s ON s."provider" = p."provider"
+        WHERE p."deletedAt" IS NULL
+          AND p."isActive" = true
+          AND p."regionId" IS NOT NULL
+        -- Compare cost WITH the supplier's tax / fee (#049); none = listed cost.
+        ORDER BY p."regionId", p."type", p."dataMb", p."durationDays",
+          p."costPrice" * (1 + COALESCE(s."percentage", 0) / 100) ASC
       )
     `);
   }

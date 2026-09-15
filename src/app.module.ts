@@ -40,6 +40,7 @@ import { ProviderSyncLogsModule } from './provider-sync-logs/provider-sync-logs.
 import { EsimProvidersModule } from './esim-providers/esim-providers.module';
 import { ProfitMarginsModule } from './profit-margins/profit-margins.module';
 import { ProviderDepositsModule } from './provider-deposits/provider-deposits.module';
+import { ProviderSurchargesModule } from './provider-surcharges/provider-surcharges.module';
 import { PartnersModule } from './partners/partners.module';
 
 const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
@@ -162,6 +163,7 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     EsimProvidersModule,
     ProfitMarginsModule,
     ProviderDepositsModule,
+    ProviderSurchargesModule,
     CouponsModule,
     PaymentModule,
     WalletsModule,
