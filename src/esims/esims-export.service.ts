@@ -4,6 +4,41 @@ import { EsimRepository } from './infrastructure/persistence/esim.repository';
 import { FilterEsimDto } from './dto/query-esim.dto';
 import { Esim } from './domain/esim';
 
+/**
+ * Same wording as the CMS eSIM table (`esims-table/columns.tsx` and
+ * `lib/esim-status.ts`), so the exported file reads like the screen it came
+ * from.
+ */
+export const EXPORT_PLAN_TYPE_LABELS: Record<string, string> = {
+  fixed: 'Cố định',
+  daily: 'Theo ngày',
+  unlimited: 'Không giới hạn',
+  'unlimited-reduce': 'Không giới hạn giảm tốc',
+};
+
+export const EXPORT_SALE_STATUS_LABELS: Record<string, string> = {
+  available: 'Chưa bán',
+  sold: 'Đã bán',
+  active: 'Đang dùng',
+  expired: 'Hết hạn',
+  deactivated: 'Đã huỷ kích hoạt',
+  refunded: 'Đã hoàn tiền',
+};
+
+/** Plan type as the CMS labels it; unknown types pass through unchanged. */
+export function exportPlanTypeLabel(type: string | null | undefined): string {
+  if (!type) return '';
+  return EXPORT_PLAN_TYPE_LABELS[type] ?? type;
+}
+
+/** Sale status as the CMS labels it; unknown statuses pass through unchanged. */
+export function exportSaleStatusLabel(
+  status: string | null | undefined,
+): string {
+  if (!status) return '';
+  return EXPORT_SALE_STATUS_LABELS[status] ?? status;
+}
+
 @Injectable()
 export class EsimsExportService {
   constructor(private readonly esimsRepository: EsimRepository) {}
@@ -17,10 +52,17 @@ export class EsimsExportService {
 
     const worksheet = workbook.addWorksheet('eSIM Data');
 
+    // Plan name, validity, plan type and sale status sit right after the
+    // supplier (#011): they are what an admin sorts and filters the file by,
+    // and without them every row was an ICCID with a bare plan id.
     worksheet.columns = [
       { header: 'ID', key: 'id', width: 8 },
       { header: 'ICCID', key: 'iccid', width: 25 },
       { header: 'Provider', key: 'provider', width: 15 },
+      { header: 'Tên gói', key: 'planName', width: 32 },
+      { header: 'Thời hạn (ngày)', key: 'durationDays', width: 15 },
+      { header: 'Loại gói', key: 'planType', width: 24 },
+      { header: 'Trạng thái bán', key: 'saleStatus', width: 18 },
       { header: 'Status', key: 'status', width: 12 },
       { header: 'Phone Number', key: 'phoneNumber', width: 18 },
       { header: 'eSIM Tran No', key: 'esimTranNo', width: 20 },
@@ -55,6 +97,10 @@ export class EsimsExportService {
         id: esim.id,
         iccid: esim.iccid,
         provider: esim.provider ?? '',
+        planName: esim.plan?.name ?? '',
+        durationDays: esim.plan?.durationDays ?? '',
+        planType: exportPlanTypeLabel(esim.plan?.type),
+        saleStatus: exportSaleStatusLabel(esim.status),
         status: esim.status,
         phoneNumber: esim.phoneNumber ?? '',
         esimTranNo: esim.esimTranNo ?? '',
@@ -75,10 +121,11 @@ export class EsimsExportService {
       });
     });
 
-    // Auto-filter
+    // Auto-filter across every column. Sized from the column list rather than
+    // a hard-coded last letter, which went stale as soon as a column was added.
     worksheet.autoFilter = {
-      from: 'A1',
-      to: `S${esims.length + 1}`,
+      from: { row: 1, column: 1 },
+      to: { row: esims.length + 1, column: worksheet.columns.length },
     };
 
     const buffer = await workbook.xlsx.writeBuffer();
