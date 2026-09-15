@@ -24,6 +24,9 @@ export class AuthorProfileEntity {
   @Column({ type: String })
   name: string;
 
+  @Column({ type: String, nullable: true })
+  nameEn?: string | null;
+
   @Index({ unique: true })
   @Column({ type: String })
   slug: string;
@@ -33,4 +36,7 @@ export class AuthorProfileEntity {
 
   @Column({ type: String, nullable: true })
   description?: string | null;
+
+  @Column({ type: String, nullable: true })
+  descriptionEn?: string | null;
 }

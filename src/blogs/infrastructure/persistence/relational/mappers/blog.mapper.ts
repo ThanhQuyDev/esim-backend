@@ -11,14 +11,23 @@ export class BlogMapper {
     domainEntity.language = raw.language;
     domainEntity.publishedAt = raw.publishedAt;
     domainEntity.isPublished = raw.isPublished;
-    domainEntity.author = raw.author;
     domainEntity.authorAvatar = raw.authorAvatar;
     domainEntity.authorProfileId = raw.authorProfileId ?? null;
     domainEntity.authorProfile = raw.authorProfile
       ? AuthorProfileMapper.toDomain(raw.authorProfile)
       : null;
     domainEntity.authorSlug = raw.authorProfile?.slug ?? null;
-    domainEntity.authorBio = raw.authorProfile?.description ?? null;
+    // The byline and bio follow the article's language, falling back to the
+    // Vietnamese text until an English one is written (#025).
+    const english = raw.language === 'en';
+    domainEntity.author = raw.authorProfile
+      ? (english && raw.authorProfile.nameEn) || raw.authorProfile.name
+      : raw.author;
+    domainEntity.authorBio = raw.authorProfile
+      ? (english && raw.authorProfile.descriptionEn) ||
+        raw.authorProfile.description ||
+        null
+      : null;
     domainEntity.category = raw.category;
     domainEntity.parent = raw.parent;
     domainEntity.coverImage = raw.coverImage;

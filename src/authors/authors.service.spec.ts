@@ -101,6 +101,29 @@ describe('Saving an author profile', () => {
     expect(saved[0].description).toBe('Đã sửa');
   });
 
+  it('should keep the English name and summary, blank ones as null (#025)', async () => {
+    const { service, saved } = makeService();
+
+    await service.upsertForUser(7, {
+      ...PROFILE,
+      nameEn: '  Nguyen Van A ',
+      descriptionEn: 'Travel editor',
+    });
+    await service.upsertForUser(8, {
+      ...PROFILE,
+      slug: 'other',
+      nameEn: '  ',
+      descriptionEn: '',
+    });
+
+    expect(saved[0]).toMatchObject({
+      nameEn: 'Nguyen Van A',
+      descriptionEn: 'Travel editor',
+    });
+    expect(saved[1].nameEn).toBeNull();
+    expect(saved[1].descriptionEn).toBeNull();
+  });
+
   it('should trim a pasted name instead of saving the spaces', async () => {
     const { service, saved } = makeService();
 

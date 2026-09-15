@@ -37,9 +37,11 @@ export class AuthorsService {
       id: existing?.id,
       userId,
       name: payload.name.trim(),
+      nameEn: payload.nameEn?.trim() || null,
       slug,
       avatar: payload.avatar?.trim() || null,
       description: payload.description?.trim() || null,
+      descriptionEn: payload.descriptionEn?.trim() || null,
     } as AuthorProfile);
   }
 

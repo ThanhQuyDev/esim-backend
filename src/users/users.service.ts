@@ -216,7 +216,10 @@ export class UsersService {
         updateUserDto.email,
       );
 
-      if (userObject && userObject.id !== id) {
+      // The route param arrives as a string ("5") while the stored id is a
+      // number (5); comparing them strictly flagged every admin edit that kept
+      // the user's own email as "emailAlreadyExists" (#025).
+      if (userObject && String(userObject.id) !== String(id)) {
         throw new UnprocessableEntityException({
           status: HttpStatus.UNPROCESSABLE_ENTITY,
           errors: {

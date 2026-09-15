@@ -10,6 +10,7 @@ import {
   IsNotEmpty,
   IsOptional,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { FileDto } from '../../files/dto/file.dto';
 import { RoleDto } from '../../roles/dto/role.dto';
@@ -50,6 +51,7 @@ export class CreateUserDto {
 
   @ApiPropertyOptional({ type: () => AuthorProfileDto })
   @IsOptional()
+  @ValidateNested()
   @Type(() => AuthorProfileDto)
   authorProfile?: AuthorProfileDto | null;
 
