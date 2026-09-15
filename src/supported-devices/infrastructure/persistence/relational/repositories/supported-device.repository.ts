@@ -10,6 +10,7 @@ import { SupportedDeviceRepository } from '../../supported-device.repository';
 import { SupportedDeviceMapper } from '../mappers/supported-device.mapper';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { compareDisplayOrder } from '../../../../supported-device-order';
 
 @Injectable()
 export class SupportedDeviceRelationalRepository implements SupportedDeviceRepository {
@@ -29,6 +30,18 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
     return SupportedDeviceMapper.toDomain(newEntity);
   }
 
+  /**
+   * Sorted in code, not SQL (#047): an unset position (0) must sort AFTER the
+   * numbered ones, which a plain ORDER BY cannot say. The whole table is a few
+   * hundred rows, so loading it and slicing the page is cheap.
+   */
+  private async findSorted(where: Record<string, unknown>) {
+    const entities = await this.repo.find({ where });
+    return entities
+      .map(SupportedDeviceMapper.toDomain)
+      .sort(compareDisplayOrder);
+  }
+
   async findAllWithPagination({
     paginationOptions,
     type,
@@ -42,40 +55,18 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
     if (type) where.type = type;
     if (search) where.device = ILike(`%${search}%`);
 
-    const [entities, count] = await this.repo.findAndCount({
-      where,
-      skip: (paginationOptions.page - 1) * paginationOptions.limit,
-      take: paginationOptions.limit,
-      // Admin order first, alphabetical as the tie-break — a row left at 0
-      // simply keeps its old place (#090).
-      order: {
-        type: 'ASC',
-        manufacturerOrder: 'ASC',
-        manufacturer: 'ASC',
-        sortOrder: 'ASC',
-        device: 'ASC',
-      },
-    });
-    return [entities.map(SupportedDeviceMapper.toDomain), count];
+    const sorted = await this.findSorted(where);
+    const start = (paginationOptions.page - 1) * paginationOptions.limit;
+    return [
+      sorted.slice(start, start + paginationOptions.limit),
+      sorted.length,
+    ];
   }
 
   async findGrouped(search?: string): Promise<SupportedDevice[]> {
     const where: Record<string, unknown> = {};
     if (search) where.device = ILike(`%${search}%`);
-
-    const entities = await this.repo.find({
-      where,
-      // Admin order first, alphabetical as the tie-break — a row left at 0
-      // simply keeps its old place (#090).
-      order: {
-        type: 'ASC',
-        manufacturerOrder: 'ASC',
-        manufacturer: 'ASC',
-        sortOrder: 'ASC',
-        device: 'ASC',
-      },
-    });
-    return entities.map(SupportedDeviceMapper.toDomain);
+    return this.findSorted(where);
   }
 
   async findById(
@@ -107,6 +98,32 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
     manufacturerOrder: number,
   ): Promise<void> {
     await this.repo.update({ manufacturer }, { manufacturerOrder });
+  }
+
+  async findManufacturerOrder(
+    manufacturer: string,
+  ): Promise<number | undefined> {
+    // Highest first, so one numbered row wins over any stray unset ones.
+    const row = await this.repo.findOne({
+      where: { manufacturer },
+      order: { manufacturerOrder: 'DESC' },
+    });
+    return row?.manufacturerOrder;
+  }
+
+  async setSortOrders(
+    items: { id: SupportedDevice['id']; sortOrder: number }[],
+  ): Promise<void> {
+    if (items.length === 0) return;
+    await this.repo.manager.transaction(async (manager) => {
+      for (const item of items) {
+        await manager.update(
+          SupportedDeviceEntity,
+          { id: item.id },
+          { sortOrder: item.sortOrder },
+        );
+      }
+    });
   }
 
   async remove(id: SupportedDevice['id']): Promise<void> {

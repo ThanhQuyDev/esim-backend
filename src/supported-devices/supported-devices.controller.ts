@@ -14,6 +14,7 @@ import { SupportedDevicesService } from './supported-devices.service';
 import { CreateSupportedDeviceDto } from './dto/create-supported-device.dto';
 import { UpdateSupportedDeviceDto } from './dto/update-supported-device.dto';
 import { FindAllSupportedDevicesDto } from './dto/find-all-supported-devices.dto';
+import { SaveSupportedDeviceOrderingDto } from './dto/save-supported-device-ordering.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -84,6 +85,24 @@ export class SupportedDevicesController {
   @ApiOkResponse()
   async findGrouped(@Query('search') search?: string) {
     return { data: await this.supportedDevicesService.findGrouped(search) };
+  }
+
+  /** Brands with their models, for the CMS ordering screen (#047). */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Get('ordering')
+  @ApiOkResponse()
+  async findOrdering() {
+    return { data: await this.supportedDevicesService.findOrdering() };
+  }
+
+  /** Save brand and model positions in bulk (#047). Declared before `:id`. */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('ordering')
+  @ApiOkResponse()
+  async saveOrdering(@Body() dto: SaveSupportedDeviceOrderingDto) {
+    return { data: await this.supportedDevicesService.saveOrdering(dto) };
   }
 
   @ApiBearerAuth()

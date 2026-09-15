@@ -18,6 +18,7 @@ export abstract class SupportedDeviceRepository {
     search?: string;
   }): Promise<[SupportedDevice[], number]>;
 
+  /** Every matching device, in display order (#047). */
   abstract findGrouped(search?: string): Promise<SupportedDevice[]>;
 
   abstract findById(
@@ -33,6 +34,16 @@ export abstract class SupportedDeviceRepository {
   abstract setManufacturerOrder(
     manufacturer: string,
     manufacturerOrder: number,
+  ): Promise<void>;
+
+  /** The brand's current position, if the brand already has devices (#047). */
+  abstract findManufacturerOrder(
+    manufacturer: string,
+  ): Promise<number | undefined>;
+
+  /** Set many model positions in one go (#047). */
+  abstract setSortOrders(
+    items: { id: SupportedDevice['id']; sortOrder: number }[],
   ): Promise<void>;
 
   abstract remove(id: SupportedDevice['id']): Promise<void>;

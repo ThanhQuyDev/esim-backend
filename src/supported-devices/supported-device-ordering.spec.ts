@@ -32,8 +32,15 @@ describe('SupportedDevicesService — display order', () => {
       });
     });
     const setManufacturerOrder = jest.fn().mockResolvedValue(undefined);
+    // A brand nobody has positioned yet (#047 inherits an existing one).
+    const findManufacturerOrder = jest.fn().mockResolvedValue(undefined);
 
-    const repository = { create, update, setManufacturerOrder };
+    const repository = {
+      create,
+      update,
+      setManufacturerOrder,
+      findManufacturerOrder,
+    };
     const service = new SupportedDevicesService(repository as never);
 
     return { service, create, update, setManufacturerOrder };
