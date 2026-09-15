@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateBlogDto } from './dto/create-blog.dto';
@@ -26,6 +27,8 @@ import { MiniTagsService } from '../mini-tags/mini-tags.service';
 import { Plan } from '../plans/domain/plan';
 import { Faq } from '../faqs/domain/faq';
 import { AuthorsService } from '../authors/authors.service';
+import { SeoConfigsService } from '../seo-configs/seo-configs.service';
+import { blogSeoUrls } from './blog-seo-urls';
 
 /**
  * Keep the publication date independent from updatedAt. The first transition
@@ -54,10 +57,13 @@ export function resolveBlogPublishedAt({
 
 @Injectable()
 export class BlogsService {
+  private readonly logger = new Logger(BlogsService.name);
+
   constructor(
     private readonly blogRepository: BlogRepository,
     private readonly miniTagsService: MiniTagsService,
     private readonly authorsService: AuthorsService,
+    private readonly seoConfigsService: SeoConfigsService,
   ) {}
 
   async create(createBlogDto: CreateBlogDto, userId: number) {
@@ -265,10 +271,25 @@ export class BlogsService {
     });
   }
 
-  remove(id: Blog['id'], userId: number) {
-    return this.updateOwnership(id, userId).then(() =>
-      this.blogRepository.remove(id),
-    );
+  async remove(id: Blog['id'], userId: number): Promise<void> {
+    const current = await this.updateOwnership(id, userId);
+    await this.blogRepository.remove(id);
+
+    // The post's SEO config would otherwise stay behind in the CMS as clutter
+    // (#055). The post is already gone, so a failure here only gets logged.
+    const urls = blogSeoUrls(current);
+    try {
+      const removed = await this.seoConfigsService.removeByUrls(urls);
+      if (removed > 0) {
+        this.logger.log(
+          `Removed ${removed} SEO config(s) of deleted blog ${id}: ${urls.join(', ')}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Blog ${id} deleted but its SEO config could not be removed: ${(error as Error).message}`,
+      );
+    }
   }
 
   private async updateOwnership(id: Blog['id'], userId: number) {
@@ -277,6 +298,7 @@ export class BlogsService {
     if (!current || !profile || current.authorProfileId !== profile.id) {
       throw new ForbiddenException();
     }
+    return current;
   }
 
   findCategories(lang?: string) {

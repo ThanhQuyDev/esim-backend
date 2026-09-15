@@ -29,6 +29,7 @@ function makeService(opts: {
     blogRepository as never,
     {} as never,
     authorsService as never,
+    {} as never,
   );
   return { service, blogRepository };
 }

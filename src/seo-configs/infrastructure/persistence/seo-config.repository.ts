@@ -36,4 +36,7 @@ export abstract class SeoConfigRepository {
   ): Promise<SeoConfig | null>;
 
   abstract remove(id: SeoConfig['id']): Promise<void>;
+
+  /** Soft-delete every config for these exact URLs; returns how many (#055). */
+  abstract removeByUrls(urls: SeoConfig['url'][]): Promise<number>;
 }

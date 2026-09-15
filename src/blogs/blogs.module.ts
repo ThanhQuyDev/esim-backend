@@ -8,6 +8,7 @@ import { RelationalBlogPersistenceModule } from './infrastructure/persistence/re
 import { MiniTagsModule } from '../mini-tags/mini-tags.module';
 import { UsersModule } from '../users/users.module';
 import { AuthorsModule } from '../authors/authors.module';
+import { SeoConfigsModule } from '../seo-configs/seo-configs.module';
 
 @Module({
   imports: [
@@ -16,6 +17,8 @@ import { AuthorsModule } from '../authors/authors.module';
     MiniTagsModule,
     UsersModule,
     AuthorsModule,
+    // Deleting a post removes its SEO config (#055).
+    SeoConfigsModule,
   ],
   controllers: [BlogsController],
   providers: [BlogsService],

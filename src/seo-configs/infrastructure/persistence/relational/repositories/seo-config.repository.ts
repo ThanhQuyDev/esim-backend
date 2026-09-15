@@ -169,4 +169,13 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
   async remove(id: SeoConfig['id']): Promise<void> {
     await this.seoConfigsRepository.softDelete(id);
   }
+
+  async removeByUrls(urls: SeoConfig['url'][]): Promise<number> {
+    const unique = Array.from(new Set(urls.filter(Boolean)));
+    if (!unique.length) return 0;
+    const result = await this.seoConfigsRepository.softDelete({
+      url: In(unique),
+    });
+    return result.affected ?? 0;
+  }
 }

@@ -113,4 +113,12 @@ export class SeoConfigsService {
   async remove(id: SeoConfig['id']): Promise<void> {
     await this.seoConfigsRepository.remove(id);
   }
+
+  /**
+   * Remove the configs of pages that no longer exist, e.g. a deleted blog
+   * post (#055). Exact URLs only — never an ancestor like `/blog`.
+   */
+  removeByUrls(urls: SeoConfig['url'][]): Promise<number> {
+    return this.seoConfigsRepository.removeByUrls(urls);
+  }
 }
