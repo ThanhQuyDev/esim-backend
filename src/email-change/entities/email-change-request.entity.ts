@@ -9,8 +9,10 @@ import {
 import { EntityRelationalHelper } from '../../utils/relational-entity-helper';
 
 /**
- * A customer's pending email change, waiting for the code sent to the NEW
- * address (#057).
+ * A customer's pending email change (#057, #023).
+ *
+ * Two stages: `current` waits for the code mailed to the address the account
+ * already has, then `new` waits for the code mailed to the new address.
  *
  * Kept apart from the `otp` table on purpose: that one holds login codes, and a
  * login code must never be usable to move someone's account to another address.
@@ -27,6 +29,10 @@ export class EmailChangeRequestEntity extends EntityRelationalHelper {
 
   @Column({ type: String, length: 255 })
   newEmail!: string;
+
+  /** Which address the stored code was mailed to: `current` or `new`. */
+  @Column({ type: String, length: 16, default: 'new' })
+  stage!: string;
 
   @Column({ type: String, length: 255 })
   codeHash!: string;

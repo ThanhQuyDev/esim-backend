@@ -12,6 +12,15 @@ export class RequestEmailChangeDto {
   email!: string;
 }
 
+export class VerifyCurrentEmailChangeDto {
+  /** 6-digit code mailed to the account's CURRENT address (#023). */
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  @Length(6, 6)
+  code!: string;
+}
+
 export class ConfirmEmailChangeDto {
   @ApiProperty({ example: 'new.email@example.com' })
   @Transform(lower)
