@@ -125,6 +125,15 @@ export class PlansService {
     });
   }
 
+  /**
+   * Retail VND for a local-inventory plan at this cost, with the current margin
+   * tier applied — the same price {@link create} gives a brand-new plan. Used
+   * when an eSIM re-upload changes the cost of a plan that already exists.
+   */
+  localRetailVnd(costVnd: number): Promise<number> {
+    return this.profitMarginsService.calculateRetailVndFromLocalCost(costVnd);
+  }
+
   async findManyWithPagination({
     filterOptions,
     sortOptions,

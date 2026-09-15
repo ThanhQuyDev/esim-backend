@@ -78,6 +78,8 @@ function makeService(existingPlan: Record<string, unknown> | null) {
       planCreates.push(payload);
       return Promise.resolve({ id: 99 });
     }),
+    // Stand-in margin tier: +20.000đ on top of the cost.
+    localRetailVnd: jest.fn((cost: number) => Promise.resolve(cost + 20000)),
   };
   const planRepository = {
     findBySlug: jest.fn().mockResolvedValue(existingPlan),
@@ -98,7 +100,7 @@ function makeService(existingPlan: Record<string, unknown> | null) {
     destinationsService as never,
   );
 
-  return { service, planUpdates, planCreates };
+  return { service, planUpdates, planCreates, plansService };
 }
 
 const EXISTING_PLAN = {
@@ -122,10 +124,25 @@ describe('Re-uploading the eSIM file with new prices', () => {
     expect(planUpdates).toHaveLength(1);
     expect(planUpdates[0].costPrice).toBe(75000);
     expect(planUpdates[0].retailPrice).toBe(99000);
-    // Import stores cost as the base price; margin tiers are applied later.
-    expect(planUpdates[0].price).toBe(75000);
-    expect(planUpdates[0].vndPrice).toBe(75000);
     expect(result.planUpdated).toBe(1);
+  });
+
+  it('should price the new cost with the margin tier straight away (#010)', async () => {
+    const { service, planUpdates, plansService } = makeService(EXISTING_PLAN);
+
+    const buffer = await buildWorkbook({
+      iccid: '8934079000000000005',
+      costPrice: 75000,
+      sellPrice: 99000,
+    });
+    await service.importFromExcel(buffer);
+
+    // The tier is looked up for the NEW cost…
+    expect(plansService.localRetailVnd).toHaveBeenCalledWith(75000);
+    // …and the selling price includes it, instead of the bare cost that sold
+    // the plan with no profit until a later sync recalculated it.
+    expect(planUpdates[0].price).toBe(95000);
+    expect(planUpdates[0].vndPrice).toBe(95000);
   });
 
   it('should not touch the plan when the prices are unchanged', async () => {

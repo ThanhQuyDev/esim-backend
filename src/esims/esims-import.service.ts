@@ -224,8 +224,9 @@ export class EsimsImportService {
           this.cellNum(row.getCell(col('cost price') ?? 25).value) ?? 0;
         const sellPrice =
           this.cellNum(row.getCell(col('sell price') ?? 26).value) ?? 0;
-        // During import, set price = costPrice (no profit).
-        // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
+        // Base price is the cost. The margin tier is applied on top for local
+        // plans: by PlansService.create for a new plan, and below when a
+        // re-upload changes the cost of an existing one.
         const price = costPrice;
 
         // Find or create plan
@@ -263,11 +264,16 @@ export class EsimsImportService {
                 Number(existingPlan.costPrice) !== costPrice
               ) {
                 planPatch.costPrice = costPrice;
-                // Same rule as on create: import stores cost as the base price;
-                // the margin tiers are applied later by
-                // recalculateAllPlanPrices().
-                planPatch.price = price;
-                planPatch.vndPrice = price;
+                // Priced with the current margin tier, exactly like a newly
+                // created plan. Storing the bare cost here left a re-priced
+                // plan selling at cost — no profit — until the next full sync
+                // happened to recalculate it (#010).
+                const retailVnd =
+                  existingPlan.isLocalInventory === false
+                    ? price
+                    : await this.plansService.localRetailVnd(costPrice);
+                planPatch.price = retailVnd;
+                planPatch.vndPrice = retailVnd;
               }
 
               if (
