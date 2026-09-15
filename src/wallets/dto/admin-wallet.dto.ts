@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
@@ -51,6 +52,14 @@ export class UpdateWalletStatusDto {
 export class UpdateReferralCodeDto {
   @ApiProperty({ type: String, example: 'MYCODE1234' })
   @IsString()
+  code!: string;
+}
+
+/** Admin edit of a customer's referral code — any length from 3 to 50 (#026). */
+export class AdminUpdateReferralCodeDto {
+  @ApiProperty({ type: String, example: 'VIP' })
+  @IsString()
+  @MaxLength(50)
   code!: string;
 }
 

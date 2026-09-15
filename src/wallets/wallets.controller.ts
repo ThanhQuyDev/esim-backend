@@ -17,6 +17,7 @@ import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import {
+  AdminUpdateReferralCodeDto,
   ManualWalletAdjustDto,
   UpdateReferralCodeDto,
   UpdateWalletStatusDto,
@@ -188,5 +189,20 @@ export class WalletsController {
     @Body() dto: UpdateWalletStatusDto,
   ) {
     return this.walletsService.updateWalletStatus(Number(userId), dto.status);
+  }
+
+  /** Set a customer's referral code from the CMS, without the 10-char rule (#026). */
+  @Roles(RoleEnum.admin)
+  @ApiOkResponse({ type: ReferralProfileDto })
+  @Patch('admin/:userId/referral')
+  @HttpCode(HttpStatus.OK)
+  adminUpdateReferralCode(
+    @Param('userId') userId: number,
+    @Body() dto: AdminUpdateReferralCodeDto,
+  ): Promise<ReferralProfileDto> {
+    return this.walletsService.adminUpdateReferralCode(
+      Number(userId),
+      dto.code,
+    );
   }
 }

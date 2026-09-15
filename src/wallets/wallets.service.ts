@@ -60,6 +60,12 @@ export const REFERRAL_BLOCKING_ORDER_STATUSES = [
 ] as const;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** A customer editing their own referral code: exactly 10 letters/digits. */
+export const CUSTOMER_REFERRAL_CODE_PATTERN = /^[A-Z0-9]{10}$/;
+
+/** An admin editing a customer's code: 3-50 letters/digits (#026). */
+export const ADMIN_REFERRAL_CODE_PATTERN = /^[A-Z0-9]{3,50}$/;
+
 export type ReferralValidationResult = {
   referralCode: string;
   referrerUserId: number;
@@ -302,13 +308,39 @@ export class WalletsService {
   ): Promise<ReferralProfileDto> {
     const code = newCode.trim().toUpperCase();
 
-    // Validate: exactly 10 alphanumeric characters
-    if (!/^[A-Z0-9]{10}$/.test(code)) {
+    if (!CUSTOMER_REFERRAL_CODE_PATTERN.test(code)) {
       throw new BadRequestException(
         'Mã giới thiệu phải đủ 10 ký tự, chỉ gồm chữ hoặc số.',
       );
     }
 
+    return this.saveReferralCode(userId, code);
+  }
+
+  /**
+   * Admin override of a customer's referral code (#026). Support hands out
+   * short or vanity codes ("VIP", a partner's brand), so the 10-character rule
+   * customers follow does not apply — only letters/digits, 3 to 50 of them.
+   */
+  async adminUpdateReferralCode(
+    userId: number,
+    newCode: string,
+  ): Promise<ReferralProfileDto> {
+    const code = newCode.trim().toUpperCase();
+
+    if (!ADMIN_REFERRAL_CODE_PATTERN.test(code)) {
+      throw new BadRequestException(
+        'Mã giới thiệu phải từ 3 đến 50 ký tự, chỉ gồm chữ hoặc số.',
+      );
+    }
+
+    return this.saveReferralCode(userId, code);
+  }
+
+  private async saveReferralCode(
+    userId: number,
+    code: string,
+  ): Promise<ReferralProfileDto> {
     const profile = await this.getOrCreateReferralProfile(userId);
 
     // Check uniqueness
