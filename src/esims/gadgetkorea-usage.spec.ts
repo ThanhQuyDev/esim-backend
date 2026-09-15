@@ -16,6 +16,7 @@ function makeService(opts: {
   usage: { usage: string; activeTime: string; expireTime: string };
   planDataMb?: number | null;
   esim?: Record<string, unknown>;
+  orderRequestId?: string | null;
 }) {
   const service = Object.create(EsimsService.prototype) as EsimsService;
   const internals = service as unknown as Record<string, unknown>;
@@ -35,7 +36,10 @@ function makeService(opts: {
   internals.esimsRepository = {
     findByIdWithRelations: jest.fn().mockResolvedValue({
       ...esim,
-      orderItem: { orderRequestId: 'topup-1' },
+      orderItem: {
+        orderRequestId:
+          opts.orderRequestId === undefined ? 'topup-1' : opts.orderRequestId,
+      },
       plan:
         opts.planDataMb === null ? null : { dataMb: opts.planDataMb ?? 3072 },
     }),
@@ -44,9 +48,8 @@ function makeService(opts: {
       return Promise.resolve(esim);
     }),
   };
-  internals.gadgetKoreaService = {
-    getDataUsage: jest.fn().mockResolvedValue(opts.usage),
-  };
+  const getDataUsage = jest.fn().mockResolvedValue(opts.usage);
+  internals.gadgetKoreaService = { getDataUsage };
 
   const run = (): Promise<DataUsageResult> =>
     (
@@ -55,7 +58,7 @@ function makeService(opts: {
       }
     ).fetchProviderUsage(esim);
 
-  return { run, updates };
+  return { run, updates, getDataUsage };
 }
 
 const USAGE = {
@@ -108,6 +111,31 @@ describe('Gadget Korea usage', () => {
     expect(result.total).toBe(0);
     // Null, not "0 left" — the page then shows what has been used instead.
     expect(result.remaining).toBeNull();
+    expect(result.dataUsed).toBe(512);
+  });
+
+  it('should convert a usage figure that carries a unit (#028)', async () => {
+    const { run } = makeService({
+      usage: { ...USAGE, usage: '1.5GB' },
+      planDataMb: 3072,
+    });
+
+    const result = await run();
+
+    expect(result.dataUsed).toBe(1536);
+    expect(result.remaining).toBe(1536);
+  });
+
+  it('should ask by the topupId stored on the eSIM when the order link is missing (#028)', async () => {
+    const { run, getDataUsage } = makeService({
+      usage: USAGE,
+      orderRequestId: null,
+      esim: { esimTranNo: 'topup-from-webhook' },
+    });
+
+    const result = await run();
+
+    expect(getDataUsage).toHaveBeenCalledWith('topup-from-webhook');
     expect(result.dataUsed).toBe(512);
   });
 

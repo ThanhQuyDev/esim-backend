@@ -16,7 +16,10 @@ import { Esim } from './domain/esim';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
-import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
+import {
+  GadgetKoreaService,
+  parseGadgetKoreaUsageMb,
+} from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
 
@@ -307,15 +310,19 @@ export class EsimsService {
       // We need to find the order-item associated with this esim
       const esimWithRelations =
         await this.esimsRepository.findByIdWithRelations(esim.id);
+      // The webhook now also records the topupId on the eSIM itself, so an eSIM
+      // whose order item link is missing can still be looked up (#028).
       const orderRequestId =
-        (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
+        (esimWithRelations as any)?.orderItem?.orderRequestId ??
+        esim.esimTranNo ??
+        null;
       if (!orderRequestId) {
         return this.fallbackFromDb(esim);
       }
       try {
         const usage =
           await this.gadgetKoreaService.getDataUsage(orderRequestId);
-        const dataUsedMb = parseFloat(usage.usage) || 0;
+        const dataUsedMb = parseGadgetKoreaUsageMb(usage.usage);
         // Gadget Korea reports what has been USED but never the package size, so
         // `total: 0` left the customer's page with an empty bar and "0 GB" — the
         // plan is the only place that knows how big the package is (#065).

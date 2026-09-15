@@ -397,6 +397,13 @@ export class WebhooksService {
     const smdp: string = payload.smdp;
     const activateCode: string = payload.activateCode;
     const qrcodeImgUrl: string = payload.qrcodeImgUrl;
+    // The validity end Gadget Korea sends with the eSIM; dropping it left the
+    // customer's tab without an expiry until the first usage poll (#028).
+    const expiredDate = payload.expiredDate
+      ? new Date(payload.expiredDate)
+      : null;
+    const expiresAt =
+      expiredDate && !Number.isNaN(expiredDate.getTime()) ? expiredDate : null;
 
     this.logger.log(
       `Gadget Korea webhook received: topupId=${topupId}, iccid=${iccid}`,
@@ -470,6 +477,9 @@ export class WebhooksService {
           orderItemId: orderItemId ?? existing.orderItemId ?? undefined,
           planId: planId ?? existing.planId ?? undefined,
           provider: 'gadgetkorea',
+          // The topupId is what usage queries and top-ups address (#028).
+          esimTranNo: existing.esimTranNo ?? topupId,
+          ...(expiresAt && { expiresAt }),
         });
         this.logger.log(`Updated eSIM iccid=${iccid} (Gadget Korea)`);
       } else {
@@ -484,6 +494,8 @@ export class WebhooksService {
           orderItemId,
           planId,
           provider: 'gadgetkorea',
+          esimTranNo: topupId,
+          expiresAt,
         });
         this.logger.log(`Created eSIM iccid=${iccid} (Gadget Korea)`);
       }

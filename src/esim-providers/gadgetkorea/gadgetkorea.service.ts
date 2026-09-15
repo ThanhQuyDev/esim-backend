@@ -15,6 +15,42 @@ import {
   GadgetKoreaExtendResponse,
 } from './gadgetkorea-api.types';
 
+const UNIT_TO_MB: Record<string, number> = {
+  B: 1 / (1024 * 1024),
+  BYTE: 1 / (1024 * 1024),
+  BYTES: 1 / (1024 * 1024),
+  KB: 1 / 1024,
+  MB: 1,
+  GB: 1024,
+  TB: 1024 * 1024,
+};
+
+/**
+ * Megabytes used, from Gadget Korea's `usage` field (#028).
+ *
+ * A bare number is taken as MB (what the integration has assumed so far). A
+ * value carrying a unit — "1.5GB", "2048 KB" — is converted, where a plain
+ * `parseFloat` read "1.5GB" as 1.5 MB.
+ */
+export function parseGadgetKoreaUsageMb(
+  value: string | number | null | undefined,
+): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? Math.max(0, value) : 0;
+  }
+  const match = value
+    .trim()
+    .replace(/,/g, '')
+    .match(/^(-?\d+(?:\.\d+)?)\s*([a-zA-Z]*)$/);
+  if (!match) return 0;
+  const amount = parseFloat(match[1]);
+  const unit = match[2].toUpperCase();
+  const factor = unit === '' ? 1 : UNIT_TO_MB[unit];
+  if (factor === undefined || !Number.isFinite(amount)) return 0;
+  return Math.max(0, Math.round(amount * factor * 100) / 100);
+}
+
 @Injectable()
 export class GadgetKoreaService {
   private readonly logger = new Logger(GadgetKoreaService.name);
@@ -177,7 +213,11 @@ export class GadgetKoreaService {
 
     const timestamp = Date.now();
     const method = 'GET';
-    const pathAndQuery = '/api/v2/topup';
+    // The topupId went only in a GET body, which proxies and many servers drop —
+    // then no eSIM is named and no usage comes back. It now also travels in the
+    // query string, signed as part of the path exactly as Gadget Korea's own
+    // pre-request script signs it; the body is kept for compatibility (#028).
+    const pathAndQuery = `/api/v2/topup?topupId=${encodeURIComponent(topupId)}`;
     const stringToSign = `${method} ${pathAndQuery}\n${timestamp}\n${accessKey}`;
 
     const secretKeyBuffer = Buffer.from(secretKey, 'base64');
