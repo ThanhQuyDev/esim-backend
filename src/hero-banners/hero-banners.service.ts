@@ -41,6 +41,10 @@ export class HeroBannersService {
       description: createHeroBannerDto.description,
 
       language: createHeroBannerDto.language,
+
+      // #046: the CMS sent the uploaded hero picture, but it was never passed
+      // on, so the storefront kept showing its built-in image.
+      image: createHeroBannerDto.image || null,
     });
   }
 
@@ -100,6 +104,13 @@ export class HeroBannersService {
       description: updateHeroBannerDto.description,
 
       language: updateHeroBannerDto.language,
+
+      // #046: save the hero picture. Only when the request carries the field —
+      // an update that leaves it out (e.g. toggling `active`) keeps the image;
+      // an empty string clears it back to the built-in one.
+      ...(updateHeroBannerDto.image !== undefined && {
+        image: updateHeroBannerDto.image || null,
+      }),
     });
   }
 
