@@ -28,6 +28,7 @@ export interface GadgetKoreaQueryEsimResponse {
   data: GadgetKoreaEsimData;
 }
 
+/** GET /api/v2/topup — times are UTC "YYYY-MM-DD HH:mm:ss", usage is MB. */
 export interface GadgetKoreaTopupData {
   topupId: string;
   createTime: string;

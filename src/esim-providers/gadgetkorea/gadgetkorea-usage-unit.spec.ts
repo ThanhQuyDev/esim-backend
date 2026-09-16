@@ -1,4 +1,7 @@
-import { parseGadgetKoreaUsageMb } from './gadgetkorea.service';
+import {
+  parseGadgetKoreaUsageMb,
+  parseGadgetKoreaUtc,
+} from './gadgetkorea.service';
 
 /**
  * Gadget Korea's `usage` field, read as megabytes (#028).
@@ -21,6 +24,28 @@ describe('parseGadgetKoreaUsageMb', () => {
     'should read %p as nothing used',
     (value) => {
       expect(parseGadgetKoreaUsageMb(value)).toBe(0);
+    },
+  );
+});
+
+/**
+ * Gadget Korea's times are UTC without a zone (#028); `new Date()` would read
+ * them as server-local time.
+ */
+describe('parseGadgetKoreaUtc', () => {
+  it.each([
+    ['2022-12-09 09:08:20', '2022-12-09T09:08:20.000Z'],
+    ['2022-12-09T09:08:20Z', '2022-12-09T09:08:20.000Z'],
+    ['2022-12-09 16:08:20+07:00', '2022-12-09T09:08:20.000Z'],
+    ['2025-03-08', '2025-03-08T00:00:00.000Z'],
+  ])('should read %p as %p', (value, expected) => {
+    expect(parseGadgetKoreaUtc(value)).toBe(expected);
+  });
+
+  it.each([null, undefined, '', '  ', 'not-a-date'])(
+    'should read %p as no time',
+    (value) => {
+      expect(parseGadgetKoreaUtc(value)).toBeNull();
     },
   );
 });

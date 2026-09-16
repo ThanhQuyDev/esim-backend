@@ -3,9 +3,10 @@ import { WebhooksService } from './webhooks.service';
 /**
  * The Gadget Korea eSIM webhook (#028).
  *
- * It saved the eSIM without the topupId and without the expiry it carries. The
- * topupId is what usage queries and top-ups address, so a Gadget Korea eSIM
- * could show no usage and could not be topped up.
+ * It saved the eSIM without the topupId. The topupId is what usage queries and
+ * top-ups address, so a Gadget Korea eSIM could show no usage and could not be
+ * topped up. `expiredDate` is the install-by date, not the plan end, and must
+ * not become the eSIM's expiry.
  */
 
 function makeService(existing: Record<string, unknown> | null) {
@@ -36,16 +37,20 @@ function makeService(existing: Record<string, unknown> | null) {
   return { service, esimsService };
 }
 
+// Shape from the Usimsa Partner API (v2) "eSIM Callback Notification" docs.
 const PAYLOAD = {
   topupId: 'GK-TOPUP-1',
   optionId: 'opt-1',
   iccid: '8982000000000000001',
-  downloadLink: 'LPA:1$smdp.example.com$ACT-CODE',
-  expiredDate: '2026-12-31T00:00:00.000Z',
+  smdp: 'usimsa.com',
+  activateCode: 'ACT-CODE',
+  downloadLink: 'LPA:$usimsa.com$ACT-CODE',
+  qrcodeImgUrl: 'https://issue.usimsa.com/api/iccid/qrcode/x/120',
+  expiredDate: '2025-03-08',
 };
 
 describe('Gadget Korea webhook', () => {
-  it('should store the topupId and expiry on a new eSIM', async () => {
+  it('should store the topupId on a new eSIM', async () => {
     const { service, esimsService } = makeService(null);
 
     await service.handleGadgetKoreaEvent(PAYLOAD);
@@ -54,7 +59,9 @@ describe('Gadget Korea webhook', () => {
       expect.objectContaining({
         iccid: PAYLOAD.iccid,
         esimTranNo: 'GK-TOPUP-1',
-        expiresAt: new Date(PAYLOAD.expiredDate),
+        smdpAddress: 'usimsa.com',
+        activationCode: 'ACT-CODE',
+        qrcode: PAYLOAD.qrcodeImgUrl,
         provider: 'gadgetkorea',
         userId: 7,
         orderItemId: 5,
@@ -72,10 +79,7 @@ describe('Gadget Korea webhook', () => {
 
     expect(esimsService.update).toHaveBeenCalledWith(
       11,
-      expect.objectContaining({
-        esimTranNo: 'GK-TOPUP-1',
-        expiresAt: new Date(PAYLOAD.expiredDate),
-      }),
+      expect.objectContaining({ esimTranNo: 'GK-TOPUP-1' }),
     );
 
     const kept = makeService({ id: 12, esimTranNo: 'EARLIER' });
@@ -86,16 +90,31 @@ describe('Gadget Korea webhook', () => {
     );
   });
 
-  it('should ignore an expiry it cannot read', async () => {
+  it('should not take the install-by date as the plan expiry', async () => {
+    const created = makeService(null);
+    await created.service.handleGadgetKoreaEvent(PAYLOAD);
+    expect(created.esimsService.create.mock.calls[0][0]).not.toHaveProperty(
+      'expiresAt',
+    );
+
+    const updated = makeService({ id: 11, esimTranNo: null });
+    await updated.service.handleGadgetKoreaEvent(PAYLOAD);
+    expect(updated.esimsService.update.mock.calls[0][1]).not.toHaveProperty(
+      'expiresAt',
+    );
+  });
+
+  it('should accept the qrCodeImgUrl spelling', async () => {
     const { service, esimsService } = makeService(null);
+    const { qrcodeImgUrl, ...rest } = PAYLOAD;
 
     await service.handleGadgetKoreaEvent({
-      ...PAYLOAD,
-      expiredDate: 'not-a-date',
+      ...rest,
+      qrCodeImgUrl: qrcodeImgUrl,
     });
 
     expect(esimsService.create).toHaveBeenCalledWith(
-      expect.objectContaining({ expiresAt: null }),
+      expect.objectContaining({ qrcode: qrcodeImgUrl }),
     );
   });
 });

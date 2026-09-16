@@ -19,6 +19,7 @@ import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.servi
 import {
   GadgetKoreaService,
   parseGadgetKoreaUsageMb,
+  parseGadgetKoreaUtc,
 } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
@@ -68,7 +69,7 @@ export class EsimsService {
    *
    * Only Viettel / local inventory is uploaded ahead of time and genuinely sits
    * `available` until someone buys it. Every API provider (esimaccess, airalo,
-   * gadgetkorea, japantravelsim, billion, microesim) provisions on purchase,
+   * gadgetkorea, billion, microesim) provisions on purchase,
    * and each of those integrations passed `status: 'available'` — so the CMS
    * listed sold eSIMs as unsold stock. Applying the rule here instead of at the
    * dozen call sites means the next provider integration cannot get it wrong.
@@ -327,18 +328,19 @@ export class EsimsService {
         // `total: 0` left the customer's page with an empty bar and "0 GB" — the
         // plan is the only place that knows how big the package is (#065).
         const totalMb = Number(esimWithRelations?.plan?.dataMb ?? 0) || 0;
+        const activeTime = parseGadgetKoreaUtc(usage.activeTime);
         const result: DataUsageResult = {
           remaining: totalMb > 0 ? Math.max(0, totalMb - dataUsedMb) : null,
           total: totalMb,
           dataUsed: dataUsedMb,
-          expiredAt: usage.expireTime || null,
+          expiredAt: parseGadgetKoreaUtc(usage.expireTime),
           isUnlimited: false,
           // `NOT_ACTIVE` is the wording every other provider uses, and what the
           // profile page knows how to translate.
-          status: usage.activeTime ? 'ACTIVE' : 'NOT_ACTIVE',
+          status: activeTime ? 'ACTIVE' : 'NOT_ACTIVE',
           // Gadget Korea is the one provider that reports the real activation
           // moment; keep it instead of guessing "now" on the first poll.
-          activatedAt: usage.activeTime || null,
+          activatedAt: activeTime,
           lastUpdateTime: null,
         };
         await this.persistUsageSnapshot(esim, result);

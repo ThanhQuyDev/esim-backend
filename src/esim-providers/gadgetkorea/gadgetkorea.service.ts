@@ -51,6 +51,24 @@ export function parseGadgetKoreaUsageMb(
   return Math.max(0, Math.round(amount * factor * 100) / 100);
 }
 
+/**
+ * An ISO timestamp from one of Gadget Korea's times (#028).
+ *
+ * The usage API reports "2022-12-09 09:08:20" in UTC but without a zone, and
+ * `new Date()` reads that form as server-local time — seven hours off on a
+ * Vietnam-time host, and passed raw to the browser it shifted again there.
+ */
+export function parseGadgetKoreaUtc(
+  value: string | null | undefined,
+): string | null {
+  const text = value?.trim();
+  if (!text) return null;
+  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(text);
+  const iso = text.replace(' ', 'T');
+  const date = new Date(hasZone ? iso : `${iso}Z`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 @Injectable()
 export class GadgetKoreaService {
   private readonly logger = new Logger(GadgetKoreaService.name);
@@ -213,11 +231,10 @@ export class GadgetKoreaService {
 
     const timestamp = Date.now();
     const method = 'GET';
-    // The topupId went only in a GET body, which proxies and many servers drop —
-    // then no eSIM is named and no usage comes back. It now also travels in the
-    // query string, signed as part of the path exactly as Gadget Korea's own
-    // pre-request script signs it; the body is kept for compatibility (#028).
-    const pathAndQuery = `/api/v2/topup?topupId=${encodeURIComponent(topupId)}`;
+    // Per the Usimsa v2 docs the topupId travels in the body of this GET and the
+    // signature covers the bare path. Verified against the dev API: without a
+    // body it answers 9998 "A non-empty request body is required" (#028).
+    const pathAndQuery = '/api/v2/topup';
     const stringToSign = `${method} ${pathAndQuery}\n${timestamp}\n${accessKey}`;
 
     const secretKeyBuffer = Buffer.from(secretKey, 'base64');

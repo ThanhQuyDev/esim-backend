@@ -396,14 +396,12 @@ export class WebhooksService {
     const downloadLink: string = payload.downloadLink; // "LPA:$<smdp>$<activateCode>"
     const smdp: string = payload.smdp;
     const activateCode: string = payload.activateCode;
-    const qrcodeImgUrl: string = payload.qrcodeImgUrl;
-    // The validity end Gadget Korea sends with the eSIM; dropping it left the
-    // customer's tab without an expiry until the first usage poll (#028).
-    const expiredDate = payload.expiredDate
-      ? new Date(payload.expiredDate)
-      : null;
-    const expiresAt =
-      expiredDate && !Number.isNaN(expiredDate.getTime()) ? expiredDate : null;
+    // The webhook spells it qrcodeImgUrl, the order inquiry qrCodeImgUrl.
+    const qrcodeImgUrl: string = payload.qrcodeImgUrl ?? payload.qrCodeImgUrl;
+    // `expiredDate` is deliberately not stored as the eSIM's expiry: per the
+    // Usimsa docs it is the install-by date (~180 days after purchase, even on a
+    // 1-day plan), so it made the time bar count down half a year. The real plan
+    // end arrives as `expireTime` from the usage API once activated (#028).
 
     this.logger.log(
       `Gadget Korea webhook received: topupId=${topupId}, iccid=${iccid}`,
@@ -479,7 +477,6 @@ export class WebhooksService {
           provider: 'gadgetkorea',
           // The topupId is what usage queries and top-ups address (#028).
           esimTranNo: existing.esimTranNo ?? topupId,
-          ...(expiresAt && { expiresAt }),
         });
         this.logger.log(`Updated eSIM iccid=${iccid} (Gadget Korea)`);
       } else {
@@ -495,7 +492,6 @@ export class WebhooksService {
           planId,
           provider: 'gadgetkorea',
           esimTranNo: topupId,
-          expiresAt,
         });
         this.logger.log(`Created eSIM iccid=${iccid} (Gadget Korea)`);
       }

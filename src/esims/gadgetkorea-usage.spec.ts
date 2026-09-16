@@ -61,11 +61,14 @@ function makeService(opts: {
   return { run, updates, getDataUsage };
 }
 
+// As the Usimsa docs return it: UTC without a zone, usage in MB.
 const USAGE = {
-  usage: '512',
-  activeTime: '2026-01-10T03:00:00.000Z',
-  expireTime: '2026-02-09T03:00:00.000Z',
+  usage: '512.00',
+  activeTime: '2026-01-10 03:00:00',
+  expireTime: '2026-02-09 03:00:00',
 };
+const ACTIVE_ISO = '2026-01-10T03:00:00.000Z';
+const EXPIRE_ISO = '2026-02-09T03:00:00.000Z';
 
 describe('Gadget Korea usage', () => {
   it('should take the package size from the plan, since the API never sends it', async () => {
@@ -79,15 +82,16 @@ describe('Gadget Korea usage', () => {
     expect(result.remaining).toBe(2560);
   });
 
-  it('should keep the activation time the provider reports', async () => {
+  it('should keep the activation time the provider reports, read as UTC', async () => {
     const { run, updates } = makeService({ usage: USAGE });
 
     const result = await run();
 
-    expect(result.activatedAt).toBe(USAGE.activeTime);
-    expect(result.expiredAt).toBe(USAGE.expireTime);
+    expect(result.activatedAt).toBe(ACTIVE_ISO);
+    expect(result.expiredAt).toBe(EXPIRE_ISO);
     // …and record it, rather than stamping "now" on the first poll.
-    expect(updates[0].activatedAt).toEqual(new Date(USAGE.activeTime));
+    expect(updates[0].activatedAt).toEqual(new Date(ACTIVE_ISO));
+    expect(updates[0].expiresAt).toEqual(new Date(EXPIRE_ISO));
   });
 
   it('should report an eSIM with no activation time as not activated', async () => {
