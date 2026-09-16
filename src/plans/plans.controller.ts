@@ -47,7 +47,6 @@ import { PlansService } from './plans.service';
 import { PlansImportService, ImportResult } from './plans-import.service';
 import { PlansExportService } from './plans-export.service';
 import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
-import { PlansJapantravelsimImportService } from './plans-japantravelsim-import.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 
@@ -59,7 +58,6 @@ export class PlansController {
     private readonly plansImportService: PlansImportService,
     private readonly plansExportService: PlansExportService,
     private readonly plansGadgetkoreaImportService: PlansGadgetkoreaImportService,
-    private readonly plansJapantravelsimImportService: PlansJapantravelsimImportService,
   ) {}
 
   @ApiBearerAuth()
@@ -455,68 +453,5 @@ export class PlansController {
     }
 
     return this.plansGadgetkoreaImportService.importFromExcel(file.buffer);
-  }
-
-  @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Post('import-japantravelsim')
-  @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description:
-      'Upload JapanTravelSim Excel file. Provider is auto-set to japantravelsim, destination is always Japan.',
-    schema: {
-      type: 'object',
-      required: ['file'],
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-          description: 'JapanTravelSim Excel file (.xlsx)',
-        },
-      },
-    },
-  })
-  @ApiOkResponse({
-    description: 'Import result summary',
-    schema: {
-      type: 'object',
-      properties: {
-        total: { type: 'number' },
-        created: { type: 'number' },
-        updated: { type: 'number' },
-        skipped: { type: 'number' },
-        errors: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              row: { type: 'number' },
-              error: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  })
-  async importJapantravelsim(@UploadedFile() file: Express.Multer.File) {
-    if (!file) {
-      throw new BadRequestException('Excel file is required');
-    }
-
-    const allowedMimes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'application/octet-stream',
-    ];
-    if (!allowedMimes.includes(file.mimetype)) {
-      throw new BadRequestException(
-        `Invalid file type: ${file.mimetype}. Only .xlsx and .xls files are allowed.`,
-      );
-    }
-
-    return this.plansJapantravelsimImportService.importFromExcel(file.buffer);
   }
 }

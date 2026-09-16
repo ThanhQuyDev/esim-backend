@@ -22,7 +22,6 @@ import { OrderItemsService } from '../order-items/order-items.service';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
-import { JapanTravelSimService } from '../esim-providers/japantravelsim/japantravelsim.service';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
 import { parseBillionPlanId } from '../esim-providers/billion/billion-catalogue';
@@ -141,7 +140,6 @@ export class OrdersService {
     private readonly airaloService: AiraloService,
     private readonly esimAccessService: EsimAccessService,
     private readonly gadgetKoreaService: GadgetKoreaService,
-    private readonly japanTravelSimService: JapanTravelSimService,
     private readonly microEsimService: MicroEsimService,
     private readonly billionService: BillionService,
     private readonly configService: ConfigService<AllConfigType>,
@@ -314,6 +312,14 @@ export class OrdersService {
         if (!plan) {
           throw new NotFoundException(`Plan ${item.planId} not found`);
         }
+        // A plan taken off sale (a provider removed, like Japan Travel SIM in
+        // #008, or dropped by the catalogue sync) could still sit in a cart;
+        // charging for it would sell an eSIM nobody delivers.
+        if (!plan.isActive) {
+          throw new BadRequestException(
+            `Plan ${item.planId} is no longer on sale`,
+          );
+        }
         return { ...item, plan };
       }),
     );
@@ -383,9 +389,6 @@ export class OrdersService {
     );
     const gadgetKoreaItems = planDetails.filter(
       (i) => i.plan.provider === 'gadgetkorea',
-    );
-    const japanTravelSimItems = planDetails.filter(
-      (i) => i.plan.provider === 'japantravelsim',
     );
     const localItems = planDetails.filter((i) => i.plan.isLocalInventory);
 
@@ -513,84 +516,6 @@ export class OrdersService {
       }
     }
 
-    // 8. Call JapanTravelSim API
-    // The JapanTravelSim INSERT API has no quantity field: each entry in
-    // `data[]` requires a unique OrderId and produces exactly one
-    // channelOrderId → one eSIM. So we expand each cart line by its
-    // quantity into individual units, submit one `data[]` row per unit,
-    // and create one order-item per unit (quantity = 1 each) to preserve a
-    // strict 1:1:1 mapping (order-item → channelOrderId → eSIM).
-    if (japanTravelSimItems.length > 0) {
-      // Expand items by quantity into individual units. Each unit gets a
-      // globally unique index used to build a unique OrderId.
-      const jtsUnits: Array<{
-        item: (typeof japanTravelSimItems)[number];
-        unitOrderId: string;
-      }> = [];
-      let unitCounter = 0;
-      for (const item of japanTravelSimItems) {
-        const count = Math.max(1, item.quantity);
-        for (let u = 0; u < count; u++) {
-          jtsUnits.push({
-            item,
-            unitOrderId: `${orderNumber}-jts-${unitCounter}`,
-          });
-          unitCounter++;
-        }
-      }
-
-      // Batch into groups of 10 (API limit)
-      const channelOrderIdMap = new Map<string, string>();
-      for (let i = 0; i < jtsUnits.length; i += 10) {
-        const batch = jtsUnits.slice(i, i + 10);
-        try {
-          const result = await this.japanTravelSimService.submitOrder({
-            orderId: `${orderNumber}-jts-${i}`,
-            items: batch.map((unit) => {
-              const [wrGroup, deviceSkuId] =
-                unit.item.plan.providerPlanId.includes(':')
-                  ? unit.item.plan.providerPlanId.split(':')
-                  : ['plan', unit.item.plan.providerPlanId];
-              return {
-                OrderId: unit.unitOrderId,
-                wrGroup,
-                deviceSkuId,
-                days: unit.item.plan.durationDays,
-                email: 'esimvietnam.api@gmail.com',
-              };
-            }),
-          });
-          for (const d of result.data ?? []) {
-            channelOrderIdMap.set(d.OrderId, d.channelOrderId);
-          }
-        } catch (err) {
-          this.logger.error(
-            `JapanTravelSim order failed: ${(err as Error).message}`,
-          );
-        }
-      }
-
-      // Create one order-item per unit (quantity = 1)
-      for (const unit of jtsUnits) {
-        const channelOrderId = channelOrderIdMap.get(unit.unitOrderId) ?? null;
-        await this.orderItemsService.create({
-          orderId: order.id,
-          planId: unit.item.planId,
-          orderRequestId: channelOrderId,
-          status: 'pending',
-          price: unit.item.plan.price,
-          currency: dto.currency,
-          quantity: 1,
-        });
-      }
-
-      // Schedule callback poll after 60s
-      const allChannelOrderIds = [...channelOrderIdMap.values()];
-      this.japanTravelSimService.scheduleCallbackAfterSubmit(
-        allChannelOrderIds,
-      );
-    }
-
     // 9. Local providers (esimvn) — assign available esims from inventory
     const localOrderItemIds: number[] = [];
     for (const item of localItems) {
@@ -681,6 +606,14 @@ export class OrdersService {
         if (!plan) {
           throw new NotFoundException(`Plan ${item.planId} not found`);
         }
+        // A plan taken off sale (a provider removed, like Japan Travel SIM in
+        // #008, or dropped by the catalogue sync) could still sit in a cart;
+        // charging for it would sell an eSIM nobody delivers.
+        if (!plan.isActive) {
+          throw new BadRequestException(
+            `Plan ${item.planId} is no longer on sale`,
+          );
+        }
         return { ...item, plan };
       }),
     );
@@ -760,19 +693,11 @@ export class OrdersService {
           ? Math.round(unitCostPrice * vndRate) * item.quantity
           : 0;
 
-      // JapanTravelSim INSERT API has no quantity field: each unit needs its
-      // own unique OrderId → channelOrderId → eSIM. Expand into one
-      // order-item per unit (quantity = 1 each) so submitProviders can map
-      // one channelOrderId onto one order-item. Total price/cost is
-      // preserved because each row carries the per-unit amounts.
-      //
-      // Gadget Korea behaves the same way: it returns one topupId per unit and
-      // the webhook fires once per topupId, so it also needs one order-item
-      // per unit.
-      if (
-        item.plan.provider === 'japantravelsim' ||
-        item.plan.provider === 'gadgetkorea'
-      ) {
+      // Gadget Korea returns one topupId per unit and the webhook fires once
+      // per topupId, so expand into one order-item per unit (quantity = 1
+      // each). Total price/cost is preserved because each row carries the
+      // per-unit amounts.
+      if (item.plan.provider === 'gadgetkorea') {
         const count = Math.max(1, item.quantity);
         for (let u = 0; u < count; u++) {
           await this.orderItemsService.create({
@@ -1110,9 +1035,6 @@ export class OrdersService {
     const gadgetKoreaItems = itemsWithPlans.filter(
       (i) => i.plan.provider === 'gadgetkorea',
     );
-    const japanTravelSimItems = itemsWithPlans.filter(
-      (i) => i.plan.provider === 'japantravelsim',
-    );
     const microEsimItems = itemsWithPlans.filter(
       (i) => i.plan.provider === 'microesim',
     );
@@ -1213,59 +1135,6 @@ export class OrdersService {
           });
         }
       }
-    }
-
-    // 8. Call JapanTravelSim API
-    if (japanTravelSimItems.length > 0) {
-      const userEmail = 'esimvietnam.api@gmail.com';
-
-      const channelOrderIdMap = new Map<string, string>();
-      for (let i = 0; i < japanTravelSimItems.length; i += 10) {
-        const batch = japanTravelSimItems.slice(i, i + 10);
-        try {
-          const result = await this.japanTravelSimService.submitOrder({
-            orderId: `${order.orderNumber}-jts-${i}`,
-            items: batch.map((item, idx) => {
-              const [wrGroup, deviceSkuId] = item.plan.providerPlanId.includes(
-                ':',
-              )
-                ? item.plan.providerPlanId.split(':')
-                : ['plan', item.plan.providerPlanId];
-              return {
-                OrderId: `${order.orderNumber}-jts-${i + idx}`,
-                wrGroup,
-                deviceSkuId,
-                days: item.plan.durationDays,
-                email: userEmail,
-              };
-            }),
-          });
-          for (const d of result.data ?? []) {
-            channelOrderIdMap.set(d.OrderId, d.channelOrderId);
-          }
-        } catch (err) {
-          this.logger.error(
-            `JapanTravelSim order failed: ${(err as Error).message}`,
-          );
-        }
-      }
-
-      for (let idx = 0; idx < japanTravelSimItems.length; idx++) {
-        const item = japanTravelSimItems[idx];
-        const itemOrderId = `${order.orderNumber}-jts-${idx}`;
-        const channelOrderId = channelOrderIdMap.get(itemOrderId) ?? null;
-        if (channelOrderId) {
-          await this.orderItemsService.update(item.id, {
-            orderRequestId: channelOrderId,
-          });
-        }
-      }
-
-      // Schedule callback poll after 60s
-      const allChannelOrderIds = [...channelOrderIdMap.values()];
-      this.japanTravelSimService.scheduleCallbackAfterSubmit(
-        allChannelOrderIds,
-      );
     }
 
     // 8b. Call MicroEsim API — one esimSubscribe per order item (number = qty).

@@ -18,7 +18,6 @@ export const OVERVIEW_PROVIDERS = [
   'airalo',
   'esimaccess',
   'gadgetkorea',
-  'japantravelsim',
   'microesim',
   'billion',
   'viettel',

@@ -5,7 +5,6 @@ import { EsimAccessService } from './esimaccess/esimaccess.service';
 import { AiraloService } from './airalo/airalo.service';
 import { SyncOrchestratorService } from './sync-orchestrator.service';
 import { GadgetKoreaService } from './gadgetkorea/gadgetkorea.service';
-import { JapanTravelSimService } from './japantravelsim/japantravelsim.service';
 import { MicroEsimService } from './microesim/microesim.service';
 import { BillionService } from './billion/billion.service';
 import { PlansModule } from '../plans/plans.module';
@@ -39,7 +38,6 @@ import { OrdersModule } from '../orders/orders.module';
     AiraloService,
     SyncOrchestratorService,
     GadgetKoreaService,
-    JapanTravelSimService,
     MicroEsimService,
     BillionService,
   ],
@@ -47,7 +45,6 @@ import { OrdersModule } from '../orders/orders.module';
     AiraloService,
     EsimAccessService,
     GadgetKoreaService,
-    JapanTravelSimService,
     MicroEsimService,
     BillionService,
   ],
