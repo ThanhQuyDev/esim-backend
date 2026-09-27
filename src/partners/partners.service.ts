@@ -135,6 +135,12 @@ export interface OrderPartnerCommissionSummary {
   createdAt: Date;
 }
 /** Order states that will never pay a commission, however they got here. */
+/**
+ * How long an affiliate order sits as "Chờ xác nhận" before the commission is
+ * approved (#019) — the window in which customers cancel or ask for a refund.
+ */
+const COMMISSION_HOLD_HOURS = 24;
+
 /** How long an emailed bank-change code stays good, and how hard it may be guessed (#005). */
 const BANK_CHANGE_OTP_TTL_MS = 10 * 60 * 1000;
 const BANK_CHANGE_OTP_RESEND_MS = 60 * 1000;
@@ -1594,6 +1600,44 @@ export class PartnersService {
    * someone's commission rate off the back of a quiet week is a commercial
    * decision, not a cron's. Demotions stay a manual admin action.
    */
+  /**
+   * Credit commissions whose 24h hold has passed (#019).
+   *
+   * Hourly rather than by the minute: the brief's promise is "sau 24h", and an
+   * hour of slack on a payout that is reconciled monthly costs nobody anything.
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async creditMaturedCommissions(): Promise<void> {
+    const rows = await this.dataSource.query(
+      `SELECT c."orderId"
+       FROM order_partner_commission c
+       JOIN "order" o ON o.id = c."orderId"
+       WHERE c.status = $1
+         AND o."deletedAt" IS NULL
+         AND o.status IN ('paid', 'completed')
+         AND o."createdAt" <= now() - INTERVAL '${COMMISSION_HOLD_HOURS} hours'
+       LIMIT 500`,
+      [OrderPartnerCommissionStatusEnum.PENDING],
+    );
+
+    let credited = 0;
+    for (const row of rows as { orderId: number }[]) {
+      try {
+        await this.creditCommissionForOrder(row.orderId);
+        credited += 1;
+      } catch (error) {
+        // One bad order must not stop the rest of the sweep.
+        this.logger.error(
+          `creditMaturedCommissions: order ${row.orderId} failed: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    if (credited > 0) {
+      this.logger.log(`Đã duyệt hoa hồng cho ${credited} đơn qua mốc 24h.`);
+    }
+  }
+
   @Cron(CronExpression.EVERY_WEEK)
   async runWeeklyTierReview(): Promise<void> {
     const partners = await this.partnerRepository.find({
@@ -2212,8 +2256,17 @@ export class PartnersService {
   }
 
   /**
-   * Credit a PENDING commission to the partner's wallet once the order is
-   * paid. Mirrors WalletsService.completePaidOrderBenefits' referral block.
+   * Credit a PENDING commission to the partner's wallet (#019).
+   *
+   * Not at the moment of payment: an affiliate order stays "Chờ xác nhận" for
+   * 24 hours from when it was placed, because that is the window in which a
+   * customer cancels or asks for a refund. Crediting straight away meant a
+   * partner could see the money, request a withdrawal, and only then have the
+   * order fall over.
+   *
+   * Called both from the payment hook — which credits immediately when the
+   * order is already older than the hold, e.g. a bank transfer that landed two
+   * days later — and from the hourly sweep for everything else.
    */
   async creditCommissionForOrder(orderId: number): Promise<void> {
     const commission = await this.commissionRepository.findOne({
@@ -2223,6 +2276,19 @@ export class PartnersService {
       !commission ||
       commission.status !== OrderPartnerCommissionStatusEnum.PENDING
     ) {
+      return;
+    }
+
+    const [order] = await this.dataSource.query(
+      `SELECT "createdAt" FROM "order" WHERE id = $1`,
+      [orderId],
+    );
+    const placedAt = order?.createdAt ? new Date(order.createdAt) : null;
+    if (
+      placedAt &&
+      Date.now() - placedAt.getTime() < COMMISSION_HOLD_HOURS * 3600_000
+    ) {
+      // Still inside the 24h window; the sweep will pick it up.
       return;
     }
 
