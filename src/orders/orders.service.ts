@@ -168,11 +168,25 @@ export class OrdersService {
   private async resolvePartnerAttribution(
     partnerLinkCode?: string | null,
     clickedAt?: string | null,
+    couponCode?: string | null,
   ): Promise<{
     partnerLinkCode: string | null;
     attributedPartnerId: number | null;
     linkId: number | null;
   }> {
+    // A partner's own discount code typed at checkout beats a link opened days
+    // ago (#033) — it is the more deliberate act, and the brief gives the
+    // order to whoever's code was used.
+    const couponPartnerId =
+      await this.partnersService.resolvePartnerForCoupon(couponCode);
+    if (couponPartnerId) {
+      return {
+        partnerLinkCode: null,
+        attributedPartnerId: couponPartnerId,
+        linkId: null,
+      };
+    }
+
     if (!partnerLinkCode) {
       return { partnerLinkCode: null, attributedPartnerId: null, linkId: null };
     }
@@ -330,6 +344,7 @@ export class OrdersService {
     const attribution = await this.resolvePartnerAttribution(
       dto.partnerLinkCode,
       dto.partnerLinkClickedAt,
+      pricing.couponCode,
     );
 
     // 3. Create order
@@ -624,6 +639,7 @@ export class OrdersService {
     const attribution = await this.resolvePartnerAttribution(
       dto.partnerLinkCode,
       dto.partnerLinkClickedAt,
+      pricing.couponCode,
     );
 
     const totalVndCostPrice = planDetails.reduce((sum, item) => {

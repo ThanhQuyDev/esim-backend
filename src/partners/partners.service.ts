@@ -2496,6 +2496,27 @@ export class PartnersService {
    *     row, so a link with no click in 30 days cannot have an in-window cookie
    *     behind it — this can never reject a buyer who really did visit.
    */
+  /**
+   * The partner behind a discount code the buyer typed in (#033).
+   *
+   * A code beats a link: the customer may have opened partner A's link days
+   * ago, but typing partner B's code at checkout is a deliberate act, and the
+   * brief gives the order to B. Only a code that belongs to a partner counts —
+   * the house's own codes leave attribution alone.
+   */
+  async resolvePartnerForCoupon(code?: string | null): Promise<number | null> {
+    if (!code?.trim()) return null;
+
+    const coupon = await this.couponRepository.findOne({
+      where: { code: code.trim().toUpperCase() },
+    });
+
+    if (!coupon?.partnerId) return null;
+    if (coupon.isActive === false) return null;
+
+    return coupon.partnerId;
+  }
+
   async resolveLinkForAttribution(
     code: string,
     clickedAt?: Date | null,
