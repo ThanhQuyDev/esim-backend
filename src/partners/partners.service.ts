@@ -1584,6 +1584,79 @@ export class PartnersService {
   }
 
   /**
+   * The partner's attributed orders as a spreadsheet (#027).
+   *
+   * Built from the same read model as the screen, so the file cannot disagree
+   * with the list: revenue net of refunds, commission net of reversals, and no
+   * top-ups (#025).
+   */
+  async exportMyOrdersToExcel(partnerId: number): Promise<Buffer> {
+    const orders = await this.getMyOrders(partnerId, 5000);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Đơn hàng');
+    sheet.columns = [
+      { header: 'Mã đơn hàng', key: 'orderNumber', width: 28 },
+      { header: 'Tên sản phẩm', key: 'products', width: 40 },
+      { header: 'Giá trị doanh thu (VND)', key: 'revenue', width: 22 },
+      { header: 'Nguồn ghi nhận', key: 'source', width: 24 },
+      { header: 'Khách hàng', key: 'customer', width: 16 },
+      { header: 'Số lượng eSIM', key: 'esimCount', width: 14 },
+      { header: 'Mức % hoa hồng', key: 'commissionPercent', width: 16 },
+      { header: 'Tiền hoa hồng (VND)', key: 'commission', width: 20 },
+      { header: 'Trạng thái', key: 'status', width: 18 },
+      { header: 'Ngày đặt hàng', key: 'createdAt', width: 20 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    const statusLabels: Record<string, string> = {
+      pending: 'Chờ xác nhận',
+      credited: 'Đã duyệt',
+      reversed: 'Đơn hoàn tiền',
+    };
+
+    for (const order of orders) {
+      sheet.addRow({
+        orderNumber: order.orderNumber,
+        products: order.items
+          .map((item) =>
+            item.refunded
+              ? `${item.planName} (đã hoàn)`
+              : `${item.planName}${item.quantity > 1 ? ` x${item.quantity}` : ''}`,
+          )
+          .join(' + '),
+        revenue: Number(order.vndPrice ?? 0),
+        source: order.linkCode
+          ? `Link: /go/${order.linkCode}`
+          : order.couponCode
+            ? `Mã: ${order.couponCode}`
+            : '—',
+        customer: order.customerType === 'new' ? 'Khách mới' : 'Khách quay lại',
+        esimCount: Number(order.esimCount ?? 0),
+        commissionPercent:
+          order.commissionPercent == null
+            ? ''
+            : Number(order.commissionPercent),
+        commission: Number(order.commissionVnd ?? 0),
+        status:
+          statusLabels[order.commissionStatus ?? ''] ??
+          'Không phát sinh hoa hồng',
+        createdAt: new Date(order.createdAt),
+      });
+    }
+
+    sheet.getColumn('revenue').numFmt = '#,##0';
+    sheet.getColumn('commission').numFmt = '#,##0';
+    sheet.getColumn('createdAt').numFmt = 'dd/mm/yyyy hh:mm';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  /**
    * One attributed order in full, with how it came to be attributed (#026).
    *
    * The timeline answers the question a partner actually asks when a commission

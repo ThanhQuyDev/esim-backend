@@ -257,6 +257,28 @@ export class PartnersController {
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  /** The partner's orders as a spreadsheet (#027). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/orders/export')
+  @HttpCode(HttpStatus.OK)
+  async exportMyOrders(
+    @Request() req: { user: { id: number } },
+    @Res() res: Response,
+  ): Promise<void> {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    const buffer = await this.partnersService.exportMyOrdersToExcel(partner.id);
+
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="don-hang-doi-tac-${Date.now()}.xlsx"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   /** One attributed order with its attribution timeline (#026). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
