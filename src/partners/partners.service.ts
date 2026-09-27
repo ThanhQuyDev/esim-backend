@@ -652,6 +652,17 @@ export class PartnersService {
   }
 
   async createDepositRequest(partnerId: number, dto: CreateDepositRequestDto) {
+    // A marketing partner has nothing to deposit against — they earn
+    // commission, they do not buy stock (#013). The portal hides the screen;
+    // this is the rule itself, so a stale tab or a direct call cannot open a
+    // deposit request that would never be spent.
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    if (partner.partnerType === PartnerTypeEnum.KOL) {
+      throw new BadRequestException(
+        'Đối tác tiếp thị không dùng ví ký quỹ. Thu nhập của bạn là hoa hồng, rút ở mục Rút tiền.',
+      );
+    }
+
     const sepay = this.configService.get('sepay', { infer: true });
     if (!sepay?.accountNumber) {
       throw new BadRequestException(
