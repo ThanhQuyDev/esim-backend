@@ -140,6 +140,41 @@ const BANK_CHANGE_OTP_RESEND_MS = 60 * 1000;
 const BANK_CHANGE_OTP_MAX_ATTEMPTS = 5;
 
 /**
+ * Day bounds for the dashboard window (#010).
+ *
+ * `to` is pushed to the start of the next day so the last day counts in full —
+ * an order placed at 16:00 today belongs to "Hôm nay".
+ */
+function resolveSummaryRange(range: { from?: string; to?: string }): {
+  from: Date;
+  to: Date;
+} {
+  const startOfDay = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  const parsed = (value?: string) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const fromInput = parsed(range.from);
+  const toInput = parsed(range.to);
+
+  if (!fromInput) {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+    return { from: thirtyDaysAgo, to: new Date(now.getTime() + 1000) };
+  }
+
+  const from = startOfDay(fromInput);
+  const end = startOfDay(toInput ?? fromInput);
+  end.setDate(end.getDate() + 1);
+  return { from, to: end };
+}
+
+/**
  * Growth against the same period last month, as a whole percent (#008).
  *
  * With nothing to compare against, a first month of earnings is not "+∞%": it
@@ -1529,40 +1564,50 @@ export class PartnersService {
    * Everything the "Tổng quan" screen shows: 30-day performance, lifetime
    * totals, wallet balance and progress towards the next tier.
    */
-  async getMySummary(partnerId: number) {
+  /**
+   * Dashboard read model for one partner, over a period they choose (#010).
+   *
+   * `from`/`to` are inclusive day bounds; with neither, the window is the last
+   * 30 days, which is what the dashboard opened with before it had a filter.
+   */
+  async getMySummary(
+    partnerId: number,
+    range: { from?: string; to?: string } = {},
+  ) {
     const partner = await this.getPartnerOrThrowById(partnerId);
+    const { from, to } = resolveSummaryRange(range);
 
     const [perf] = await this.dataSource.query(
       `SELECT
-         COALESCE(SUM(o."vndPrice") FILTER (WHERE o."createdAt" >= now() - INTERVAL '30 days'), 0) AS "revenue30",
-         COUNT(*)          FILTER (WHERE o."createdAt" >= now() - INTERVAL '30 days') AS "orders30",
+         COALESCE(SUM(o."vndPrice") FILTER (WHERE o."createdAt" >= $2 AND o."createdAt" < $3), 0) AS "revenue30",
+         COUNT(*)          FILTER (WHERE o."createdAt" >= $2 AND o."createdAt" < $3) AS "orders30",
          COALESCE(SUM(o."vndPrice"), 0) AS "revenueTotal",
          COUNT(*) AS "ordersTotal"
        FROM "order" o
        WHERE o."attributedPartnerId" = $1
          AND o."deletedAt" IS NULL
          AND o.status IN ('paid', 'completed')`,
-      [partnerId],
+      [partnerId, from, to],
     );
 
     const [comm] = await this.dataSource.query(
       `SELECT
-         COALESCE(SUM(c."commissionVnd") FILTER (WHERE c."createdAt" >= now() - INTERVAL '30 days'), 0) AS "commission30",
+         COALESCE(SUM(c."commissionVnd") FILTER (WHERE c."createdAt" >= $2 AND c."createdAt" < $3), 0) AS "commission30",
          COALESCE(SUM(c."commissionVnd"), 0) AS "commissionTotal",
          COALESCE(SUM(c."commissionVnd") FILTER (WHERE c.status = 'pending'), 0) AS "commissionPending"
        FROM order_partner_commission c
        WHERE c."partnerId" = $1 AND c.status <> 'reversed'`,
-      [partnerId],
+      [partnerId, from, to],
     );
 
     const [clicks] = await this.dataSource.query(
       `SELECT
-         COUNT(*) FILTER (WHERE k."clickedAt" >= now() - INTERVAL '30 days') AS "clicks30",
+         COUNT(*) FILTER (WHERE k."clickedAt" >= $2 AND k."clickedAt" < $3) AS "clicks30",
          COUNT(*) AS "clicksTotal"
        FROM partner_link_click k
        JOIN partner_link l ON l.id = k."linkId"
        WHERE l."partnerId" = $1`,
-      [partnerId],
+      [partnerId, from, to],
     );
 
     // Same span of this month against last month — "cùng kỳ tháng trước"
@@ -1606,7 +1651,9 @@ export class PartnersService {
       : 0;
 
     return {
-      performance30d: {
+      /** The window the figures below cover, echoed back for the header. */
+      range: { from: from.toISOString(), to: to.toISOString() },
+      performance: {
         clicks: Number(clicks?.clicks30 ?? 0),
         orders: Number(perf?.orders30 ?? 0),
         revenueVnd: Number(perf?.revenue30 ?? 0),

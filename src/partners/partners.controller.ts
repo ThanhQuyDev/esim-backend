@@ -141,15 +141,21 @@ export class PartnersController {
     return this.partnersService.getMyDepositRequests(partner.id);
   }
 
-  /** Dashboard read model: 30-day performance, lifetime totals, tier progress. */
+  /** Dashboard read model: performance over the chosen period (#010). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get('me/summary')
   @HttpCode(HttpStatus.OK)
-  async getMySummary(@Request() req: { user: { id: number } }) {
+  async getMySummary(
+    @Request() req: { user: { id: number } },
+    @Query() query: { from?: string; to?: string },
+  ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
-    return this.partnersService.getMySummary(partner.id);
+    return this.partnersService.getMySummary(partner.id, {
+      from: query.from,
+      to: query.to,
+    });
   }
 
   /** Orders attributed to this partner through their marketing links. */
