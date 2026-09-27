@@ -31,6 +31,10 @@ import { SessionService } from '../session/session.service';
 import { StatusEnum } from '../statuses/statuses.enum';
 import { User } from '../users/domain/user';
 import { OtpService } from '../otp/otp.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { PartnerEntity } from '../partners/infrastructure/persistence/relational/entities/partner.entity';
+import { PartnerStatusEnum, PartnerTypeEnum } from '../partners/partners.enum';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -44,7 +48,40 @@ export class AuthService {
     private mailService: MailService,
     private configService: ConfigService<AllConfigType>,
     private otpService: OtpService,
+    @InjectRepository(PartnerEntity)
+    private partnersRepository: Repository<PartnerEntity>,
   ) {}
+
+  /**
+   * An applicant whose partner profile is still awaiting approval must not get
+   * a session (#001): the sign-in page tells them to watch their inbox instead
+   * of dropping them into a portal where every menu is empty.
+   */
+  private async assertPartnerMaySignIn(user: User): Promise<void> {
+    if (Number(user.role?.id) !== RoleEnum.partner) return;
+
+    const partner = await this.partnersRepository.findOne({
+      where: { userId: Number(user.id) },
+      select: { id: true, partnerType: true, status: true },
+    });
+
+    if (partner?.status !== PartnerStatusEnum.PENDING) return;
+
+    const label =
+      partner.partnerType === PartnerTypeEnum.KOL
+        ? 'Tài khoản tiếp thị'
+        : partner.partnerType === PartnerTypeEnum.DISTRIBUTION
+          ? 'Tài khoản đối tác phân phối'
+          : 'Tài khoản đối tác API';
+
+    throw new UnprocessableEntityException({
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      message: `${label} của bạn đang chờ xét duyệt, vui lòng theo dõi kết quả được gửi qua email đã đăng ký trong 1 - 3 ngày làm việc. Xin cảm ơn.`,
+      errors: {
+        email: 'partnerPending',
+      },
+    });
+  }
 
   async validateLogin(loginDto: AuthEmailLoginDto): Promise<LoginResponseDto> {
     const user = await this.usersService.findByEmail(loginDto.email);
@@ -83,6 +120,8 @@ export class AuthService {
         },
       });
     }
+
+    await this.assertPartnerMaySignIn(user);
 
     const hash = crypto
       .createHash('sha256')
@@ -164,6 +203,8 @@ export class AuthService {
         },
       });
     }
+
+    await this.assertPartnerMaySignIn(user);
 
     const hash = crypto
       .createHash('sha256')
