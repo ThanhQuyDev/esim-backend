@@ -136,6 +136,17 @@ export interface OrderPartnerCommissionSummary {
 }
 /** Order states that will never pay a commission, however they got here. */
 /**
+ * What one attributed order is worth to the partner (#020).
+ *
+ * `vndPrice` is only the part the customer paid with money: an order settled
+ * from their eXU wallet has `vndPrice = 0`, which is why the partner's order
+ * list showed 0đ. `eligibleSpendVnd` is the order value after discounts and
+ * before the wallet spend — the very base the commission is calculated from,
+ * so revenue and commission on the same row now agree with each other.
+ */
+const ORDER_REVENUE_SQL = `COALESCE(NULLIF(o."eligibleSpendVnd", 0), NULLIF(o."payableVndPrice" + o."walletSpentVndAmount", 0), o."vndPrice")`;
+
+/**
  * How long an affiliate order sits as "Chờ xác nhận" before the commission is
  * approved (#019) — the window in which customers cancel or ask for a refund.
  */
@@ -1006,7 +1017,7 @@ export class PartnersService {
     // never multiply, and skip/take's distinct-id wrapper cannot see the alias.
     const totalCount = await qb.getCount();
     qb.addSelect(
-      `(SELECT COALESCE(SUM(o."vndPrice"), 0) FROM "order" o
+      `(SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) FROM "order" o
         WHERE o."attributedPartnerId" = partner.id
           AND o."deletedAt" IS NULL
           AND o.status IN ('paid', 'completed'))`,
@@ -1468,7 +1479,7 @@ export class PartnersService {
     const rows = await this.dataSource.query(
       `SELECT o."orderNumber",
               o.status,
-              o."vndPrice",
+              ${ORDER_REVENUE_SQL} AS "vndPrice",
               COALESCE(o."refundedAmountVnd", 0) AS "refundedAmountVnd",
               o."createdAt",
               c."commissionVnd",
@@ -1649,7 +1660,7 @@ export class PartnersService {
     for (const partner of partners) {
       try {
         const [row] = await this.dataSource.query(
-          `SELECT COALESCE(SUM(o."vndPrice"), 0) AS "revenueVnd",
+          `SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueVnd",
                   COUNT(*)::int AS "validOrders"
            FROM "order" o
            WHERE o."attributedPartnerId" = $1
@@ -1774,9 +1785,9 @@ export class PartnersService {
 
     const [perf] = await this.dataSource.query(
       `SELECT
-         COALESCE(SUM(o."vndPrice") FILTER (WHERE o."createdAt" >= $2 AND o."createdAt" < $3), 0) AS "revenue30",
+         COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (WHERE o."createdAt" >= $2 AND o."createdAt" < $3), 0) AS "revenue30",
          COUNT(*)          FILTER (WHERE o."createdAt" >= $2 AND o."createdAt" < $3) AS "orders30",
-         COALESCE(SUM(o."vndPrice"), 0) AS "revenueTotal",
+         COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueTotal",
          COUNT(*) AS "ordersTotal"
        FROM "order" o
        WHERE o."attributedPartnerId" = $1
@@ -1951,7 +1962,7 @@ export class PartnersService {
       `SELECT p.id AS "partnerId",
               COALESCE(w."balanceVnd", 0) AS "walletBalanceVnd",
               COALESCE((
-                SELECT SUM(o."vndPrice") FROM "order" o
+                SELECT SUM(${ORDER_REVENUE_SQL}) FROM "order" o
                 WHERE o."attributedPartnerId" = p.id
                   AND o."deletedAt" IS NULL
                   AND o.status IN ('paid', 'completed')
@@ -1974,10 +1985,10 @@ export class PartnersService {
          SELECT COUNT(*) FILTER (
                   WHERE o.status IN ('paid', 'completed')
                 ) AS "totalOrders",
-                COALESCE(SUM(o."vndPrice") FILTER (
+                COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
                   WHERE o.status IN ('paid', 'completed')
                 ), 0) AS "totalRevenueVnd",
-                COALESCE(SUM(o."vndPrice" - COALESCE(o."vndCostPrice", 0)) FILTER (
+                COALESCE(SUM(${ORDER_REVENUE_SQL} - COALESCE(o."vndCostPrice", 0)) FILTER (
                   WHERE o.status IN ('paid', 'completed')
                 ), 0) AS "grossProfitVnd",
                 COUNT(*) FILTER (WHERE o.status = 'refunded') AS "refundedOrders",
@@ -2052,7 +2063,7 @@ export class PartnersService {
 
     const [revenue] = await this.dataSource.query(
       `SELECT
-         COALESCE(SUM(o."vndPrice") FILTER (WHERE o."createdAt" >= now() - INTERVAL '30 days'), 0) AS "revenue30dVnd",
+         COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (WHERE o."createdAt" >= now() - INTERVAL '30 days'), 0) AS "revenue30dVnd",
          COUNT(*) FILTER (WHERE o."createdAt" >= now() - INTERVAL '30 days') AS "orders30d"
        FROM "order" o
        WHERE o."attributedPartnerId" IS NOT NULL
@@ -2062,7 +2073,7 @@ export class PartnersService {
 
     const topPartners = await this.dataSource.query(
       `SELECT p.id, p."contactName", p."partnerType", p."tierCode",
-              COALESCE(SUM(o."vndPrice"), 0) AS "revenue30dVnd",
+              COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenue30dVnd",
               COUNT(o.id) AS "orders30d"
        FROM partner p
        JOIN "order" o
