@@ -39,6 +39,10 @@ export class PartnerOrderRowDto {
   @ApiProperty({ required: false })
   refundedVnd?: number;
 
+  /** Rate this order paid, read back from the money (#026). */
+  @ApiPropertyOptional({ type: Number, example: 15 })
+  commissionPercent?: number | null;
+
   /** Discount code the order came in on, when it was not a link (#024). */
   @ApiPropertyOptional({ type: String })
   couponCode?: string | null;

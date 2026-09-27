@@ -257,6 +257,20 @@ export class PartnersController {
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  /** One attributed order with its attribution timeline (#026). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/orders/:orderNumber')
+  @HttpCode(HttpStatus.OK)
+  async getMyOrderDetail(
+    @Request() req: { user: { id: number } },
+    @Param('orderNumber') orderNumber: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyOrderDetail(partner.id, orderNumber);
+  }
+
   /** The partner's links as a spreadsheet (#017). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

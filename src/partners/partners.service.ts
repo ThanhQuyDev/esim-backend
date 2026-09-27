@@ -1488,6 +1488,12 @@ export class PartnersService {
               c."commissionVnd",
               c.status AS "commissionStatus",
               l.code   AS "linkCode",
+              -- Rate this order actually paid, read back from the money so a
+              -- later tier change does not rewrite it (#026).
+              CASE
+                WHEN c."commissionVnd" IS NOT NULL AND ${ORDER_REVENUE_SQL} > 0
+                THEN ROUND(c."commissionVnd" * 100.0 / (${ORDER_REVENUE_SQL}), 1)
+              END AS "commissionPercent",
               -- Which of the partner's discount codes brought the order, when
               -- it came in through a code rather than a link (#024).
               o."couponCode" AS "couponCode",
@@ -1563,6 +1569,8 @@ export class PartnersService {
         refundedVnd,
         createdAt: r.createdAt,
         commissionVnd,
+        commissionPercent:
+          r.commissionPercent == null ? null : Number(r.commissionPercent),
         commissionStatus,
         linkCode: r.linkCode ?? null,
         couponCode: r.couponCode ?? null,
@@ -1573,6 +1581,110 @@ export class PartnersService {
         invalidReason,
       };
     });
+  }
+
+  /**
+   * One attributed order in full, with how it came to be attributed (#026).
+   *
+   * The timeline answers the question a partner actually asks when a commission
+   * looks wrong: when did this customer touch my link, when did they buy, when
+   * did the eSIM start, and when was the money approved or taken back.
+   */
+  async getMyOrderDetail(partnerId: number, orderNumber: string) {
+    const [row] = await this.dataSource.query(
+      `SELECT o.id,
+              o."orderNumber",
+              o.status,
+              o."createdAt",
+              o."refundedAmountVnd",
+              ${ORDER_REVENUE_SQL} AS "revenueVnd",
+              c."commissionVnd",
+              c."reversedCommissionVnd",
+              c.status AS "commissionStatus",
+              c."linkId",
+              l.code AS "linkCode",
+              o."couponCode",
+              credit."createdAt" AS "creditedAt",
+              reversal."createdAt" AS "reversedAt",
+              (
+                SELECT MIN(e."activatedAt") FROM esim e
+                JOIN order_item oi ON oi.id = e."orderItemId"
+                WHERE oi."orderId" = o.id
+              ) AS "activatedAt",
+              (
+                SELECT bool_or(p.provider = 'viettel' OR p."isLocalInventory")
+                FROM order_item oi
+                JOIN plan p ON p.id = oi."planId"
+                WHERE oi."orderId" = o.id
+              ) AS "activatesOnPurchase",
+              (
+                SELECT MAX(k."clickedAt") FROM partner_link_click k
+                WHERE k."linkId" = c."linkId" AND k."clickedAt" <= o."createdAt"
+              ) AS "clickedAt",
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'planName', p2.name,
+                    'quantity', oi2.quantity,
+                    'vndPrice', oi2."vndPrice",
+                    'refunded', oi2.status = 'refunded'
+                  ) ORDER BY oi2.id
+                ) FILTER (WHERE oi2.id IS NOT NULL),
+                '[]'
+              ) AS items
+       FROM "order" o
+       LEFT JOIN order_partner_commission c ON c."orderId" = o.id
+       LEFT JOIN partner_link l ON l.id = c."linkId"
+       LEFT JOIN partner_wallet_transaction credit ON credit.id = c."rewardTransactionId"
+       LEFT JOIN partner_wallet_transaction reversal ON reversal.id = c."reversedTransactionId"
+       LEFT JOIN order_item oi2 ON oi2."orderId" = o.id
+       LEFT JOIN plan p2 ON p2.id = oi2."planId"
+       WHERE o."attributedPartnerId" = $1
+         AND o."orderNumber" = $2
+         AND o."deletedAt" IS NULL
+       GROUP BY o.id, c."commissionVnd", c."reversedCommissionVnd", c.status,
+                c."linkId", l.code, credit."createdAt", reversal."createdAt"`,
+      [partnerId, orderNumber],
+    );
+
+    if (!row) throw new NotFoundException('Không tìm thấy đơn hàng.');
+
+    const revenueVnd = Number(row.revenueVnd ?? 0);
+    const commissionVnd =
+      row.commissionVnd == null ? null : Number(row.commissionVnd);
+
+    return {
+      orderNumber: row.orderNumber,
+      status: row.status,
+      createdAt: row.createdAt,
+      items: row.items ?? [],
+      revenueVnd,
+      refundedVnd: Number(row.refundedAmountVnd ?? 0),
+      commissionVnd,
+      // Read back from the money rather than the tier, so a rate that changed
+      // after the order still shows what this order actually paid.
+      commissionPercent:
+        commissionVnd && revenueVnd > 0
+          ? Math.round((commissionVnd / revenueVnd) * 1000) / 10
+          : null,
+      commissionStatus: row.commissionStatus ?? null,
+      source: row.linkCode
+        ? { type: 'link' as const, code: row.linkCode }
+        : { type: 'coupon' as const, code: row.couponCode ?? null },
+      timeline: {
+        /** Last click on the link before the order — the visit we attribute to. */
+        clickedAt: row.clickedAt ?? null,
+        placedAt: row.createdAt,
+        /**
+         * Viettel and domestic-inventory eSIMs are usable the moment the order
+         * goes through, so they count as activated then (#026).
+         */
+        activatedAt:
+          row.activatedAt ?? (row.activatesOnPurchase ? row.createdAt : null),
+        creditedAt: row.creditedAt ?? null,
+        reversedAt: row.reversedAt ?? null,
+      },
+    };
   }
 
   /**
