@@ -16,6 +16,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
+import * as ExcelJS from 'exceljs';
 import { In, DataSource, EntityManager, Repository } from 'typeorm';
 import { AllConfigType } from '../config/config.type';
 import { MailService } from '../mail/mail.service';
@@ -798,6 +799,58 @@ export class PartnersService {
       }),
     });
     return this.linkRepository.save(link);
+  }
+
+  /**
+   * The partner's links as a spreadsheet (#017).
+   *
+   * Same columns they see on screen, so a partner reconciling a campaign in
+   * Excel is looking at the same numbers as the portal — commission included is
+   * already net of orders that were refunded or cancelled.
+   */
+  async exportMyLinksToExcel(partnerId: number): Promise<Buffer> {
+    const links = await this.linkRepository.find({
+      where: { partnerId },
+      order: { createdAt: 'DESC' },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Link tiếp thị');
+    sheet.columns = [
+      { header: 'Tên chiến dịch', key: 'label', width: 32 },
+      { header: 'Trang đích', key: 'landing', width: 32 },
+      { header: 'Link tiếp thị', key: 'link', width: 30 },
+      { header: 'Số lượt click', key: 'clicks', width: 14 },
+      { header: 'Tổng đơn hàng', key: 'orders', width: 14 },
+      { header: 'Tổng hoa hồng (VND)', key: 'commission', width: 20 },
+      { header: 'Trạng thái', key: 'status', width: 18 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    for (const link of links) {
+      sheet.addRow({
+        label: link.label,
+        // Without the utm parameters the portal appends, which are noise in a
+        // column meant to answer "where does this link send people".
+        landing: (link.targetPath ?? '').split('?')[0] || 'Trang chủ',
+        link: `esim.vn/r/${link.code}`,
+        clicks: Number(link.clickCount ?? 0),
+        orders: Number(link.conversionCount ?? 0),
+        commission: Number(link.totalCommissionVnd ?? 0),
+        status:
+          link.status === PartnerLinkStatusEnum.ACTIVE
+            ? 'Đang hoạt động'
+            : 'Đã tắt',
+      });
+    }
+
+    sheet.getColumn('commission').numFmt = '#,##0';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   /**
