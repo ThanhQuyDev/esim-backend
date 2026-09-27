@@ -175,66 +175,14 @@ export class OrdersService {
     attributedPartnerId: number | null;
     linkId: number | null;
   }> {
-    // A partner's own discount code typed at checkout beats a link opened days
-    // ago (#033) — it is the more deliberate act, and the brief gives the
-    // order to whoever's code was used.
-    const couponPartnerId =
-      await this.partnersService.resolvePartnerForCoupon(couponCode);
-    if (couponPartnerId) {
-      return {
-        partnerLinkCode: null,
-        attributedPartnerId: couponPartnerId,
-        linkId: null,
-      };
-    }
-
-    if (!partnerLinkCode) {
-      // No cookie on this device — but the account may carry the attribution
-      // from a click made while signed in elsewhere (#034).
-      const fromAccount =
-        await this.partnersService.resolveMemberAttribution(buyerUserId);
-      if (fromAccount) {
-        return {
-          partnerLinkCode: null,
-          attributedPartnerId: fromAccount.partnerId,
-          linkId: fromAccount.linkId,
-        };
-      }
-      return { partnerLinkCode: null, attributedPartnerId: null, linkId: null };
-    }
-    const parsedClickedAt = clickedAt ? new Date(clickedAt) : null;
-    const resolved = await this.partnersService.resolveLinkForAttribution(
-      partnerLinkCode,
-      parsedClickedAt && !Number.isNaN(parsedClickedAt.getTime())
-        ? parsedClickedAt
-        : null,
-    );
-    if (!resolved) {
-      const fromAccount =
-        await this.partnersService.resolveMemberAttribution(buyerUserId);
-      if (fromAccount) {
-        return {
-          partnerLinkCode: null,
-          attributedPartnerId: fromAccount.partnerId,
-          linkId: fromAccount.linkId,
-        };
-      }
-      return { partnerLinkCode: null, attributedPartnerId: null, linkId: null };
-    }
-
-    // Buying while signed in also binds the attribution to the account, so the
-    // customer's next order from any device still finds it (#034).
-    if (buyerUserId) {
-      void this.partnersService
-        .bindLinkToMember(buyerUserId, partnerLinkCode)
-        .catch(() => undefined);
-    }
-
-    return {
-      partnerLinkCode,
-      attributedPartnerId: resolved.partnerId,
-      linkId: resolved.linkId,
-    };
+    // The precedence rules themselves (#033, #034, #035, #038) live in
+    // PartnersService, where they can be read — and tested — in one piece.
+    return this.partnersService.resolveOrderAttribution({
+      linkCode: partnerLinkCode ?? null,
+      clickedAt: clickedAt ?? null,
+      couponCode: couponCode ?? null,
+      buyerUserId: buyerUserId ?? null,
+    });
   }
 
   /**

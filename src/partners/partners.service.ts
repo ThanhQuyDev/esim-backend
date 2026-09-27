@@ -2500,6 +2500,81 @@ export class PartnersService {
    *     behind it — this can never reject a buyer who really did visit.
    */
   /**
+   * Who earns on this order, in one place (#033, #034, #035, #038).
+   *
+   * In order of strength:
+   *  1. a partner's discount code typed at checkout — the most deliberate act,
+   *     and the brief hands the order to whoever's code was used (#033). It is
+   *     also what rescues the partner when the customer browsed on a laptop and
+   *     bought on a phone without signing in (#035).
+   *  2. the link cookie on this device, within the attribution window.
+   *  3. the attribution stored against the customer's account, which survives a
+   *     change of device (#034).
+   *
+   * An anonymous click on one device and a purchase on another, with no code
+   * and no account carrying the attribution, earns nothing — there is nothing
+   * connecting the two, and guessing would pay a partner for somebody else's
+   * customer (#035).
+   */
+  async resolveOrderAttribution(params: {
+    linkCode?: string | null;
+    clickedAt?: string | null;
+    couponCode?: string | null;
+    buyerUserId?: number | null;
+  }): Promise<{
+    partnerLinkCode: string | null;
+    attributedPartnerId: number | null;
+    linkId: number | null;
+  }> {
+    const none = {
+      partnerLinkCode: null,
+      attributedPartnerId: null,
+      linkId: null,
+    };
+
+    const couponPartnerId = await this.resolvePartnerForCoupon(
+      params.couponCode,
+    );
+    if (couponPartnerId) {
+      return { ...none, attributedPartnerId: couponPartnerId };
+    }
+
+    const fromAccount = async () => {
+      const bound = await this.resolveMemberAttribution(params.buyerUserId);
+      return bound
+        ? {
+            ...none,
+            attributedPartnerId: bound.partnerId,
+            linkId: bound.linkId,
+          }
+        : none;
+    };
+
+    if (!params.linkCode) return fromAccount();
+
+    const parsed = params.clickedAt ? new Date(params.clickedAt) : null;
+    const resolved = await this.resolveLinkForAttribution(
+      params.linkCode,
+      parsed && !Number.isNaN(parsed.getTime()) ? parsed : null,
+    );
+    if (!resolved) return fromAccount();
+
+    // Buying while signed in also binds the attribution to the account, so the
+    // customer's next order from any device still finds it (#034).
+    if (params.buyerUserId) {
+      void this.bindLinkToMember(params.buyerUserId, params.linkCode).catch(
+        () => undefined,
+      );
+    }
+
+    return {
+      partnerLinkCode: params.linkCode,
+      attributedPartnerId: resolved.partnerId,
+      linkId: resolved.linkId,
+    };
+  }
+
+  /**
    * Remember which partner a signed-in customer arrived through (#034).
    *
    * A cookie only covers the device it was set on. Binding the attribution to
