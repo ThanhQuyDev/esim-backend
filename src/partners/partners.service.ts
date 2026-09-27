@@ -139,6 +139,17 @@ const BANK_CHANGE_OTP_TTL_MS = 10 * 60 * 1000;
 const BANK_CHANGE_OTP_RESEND_MS = 60 * 1000;
 const BANK_CHANGE_OTP_MAX_ATTEMPTS = 5;
 
+/**
+ * Growth against the same period last month, as a whole percent (#008).
+ *
+ * With nothing to compare against, a first month of earnings is not "+∞%": it
+ * reads as 100% when there is something now and 0% when there is not.
+ */
+function growthPercent(current: number, previous: number): number {
+  if (previous > 0) return Math.round(((current - previous) / previous) * 100);
+  return current > 0 ? 100 : 0;
+}
+
 /** `thu.ha@esim.vn` -> `th***@esim.vn`, so the portal can say where it went. */
 function maskEmail(email: string): string {
   const [name, domain] = email.split('@');
@@ -1554,6 +1565,29 @@ export class PartnersService {
       [partnerId],
     );
 
+    // Same span of this month against last month — "cùng kỳ tháng trước"
+    // (#008). Comparing whole months would flatter the 1st of the month and
+    // punish the 2nd, which is not what the partner is being shown.
+    const [mom] = await this.dataSource.query(
+      `WITH bounds AS (
+         SELECT
+           date_trunc('month', now()) AS this_start,
+           date_trunc('month', now() - INTERVAL '1 month') AS prev_start,
+           date_trunc('month', now() - INTERVAL '1 month')
+             + (now() - date_trunc('month', now())) AS prev_cutoff
+       )
+       SELECT
+         COALESCE(SUM(c."commissionVnd") FILTER (
+           WHERE c."createdAt" >= b.this_start), 0) AS "commissionThis",
+         COALESCE(SUM(c."commissionVnd") FILTER (
+           WHERE c."createdAt" >= b.prev_start AND c."createdAt" < b.prev_cutoff), 0)
+           AS "commissionPrev"
+       FROM order_partner_commission c
+       CROSS JOIN bounds b
+       WHERE c."partnerId" = $1 AND c.status <> 'reversed'`,
+      [partnerId],
+    );
+
     const wallet = await this.getWalletSummaryForPartner(partnerId);
     const tiers = await this.tierRepository.find({
       where: { partnerType: partner.partnerType, isActive: true },
@@ -1585,6 +1619,15 @@ export class PartnersService {
         commissionVnd: Number(comm?.commissionTotal ?? 0),
       },
       commissionPendingVnd: Number(comm?.commissionPending ?? 0),
+      /** This month so far vs the same days of last month (#008). */
+      monthOverMonth: {
+        commissionVnd: Number(mom?.commissionThis ?? 0),
+        previousCommissionVnd: Number(mom?.commissionPrev ?? 0),
+        commissionGrowthPercent: growthPercent(
+          Number(mom?.commissionThis ?? 0),
+          Number(mom?.commissionPrev ?? 0),
+        ),
+      },
       wallet,
       tier: {
         current: currentTier,
