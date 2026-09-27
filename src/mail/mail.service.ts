@@ -35,15 +35,14 @@ export interface InvoiceIssuedMailData {
 }
 
 /**
- * Where an approved affiliate manages their links, as a path on the public
- * site (#095).
+ * Where an approved partner signs in (#004).
  *
- * The storefront's Vietnamese profile route is `/ho-so` (`/profile` is the
- * English one) and the Affiliates tab opens from `?tab=affiliate`. This was
- * `/tai-khoan/affiliates` — a path that exists in neither language, so the
- * approval email's one call to action was a 404.
+ * This pointed at the storefront's profile page (`/ho-so?tab=affiliate`) — the
+ * customer site, not the partner portal — so the one instruction the approval
+ * email gives, sign in with the email and password you registered with, could
+ * not be followed from the button next to it.
  */
-export const PARTNER_AFFILIATE_PATH = '/ho-so?tab=affiliate';
+export const PARTNER_SIGN_IN_PATH = '/auth/sign-in';
 
 /**
  * Where a rejected applicant fills the form in again (#003). The rejection
@@ -330,6 +329,21 @@ export class MailService {
    * the database whether or not the mail server is reachable, and the caller
    * fires this without awaiting the result.
    */
+  /**
+   * Absolute URL of a partner-portal page.
+   *
+   * `getOrThrow` on the fallback on purpose: a missing domain would otherwise
+   * mail out a link starting with the literal word "undefined", and the caller
+   * already swallows a throw here without touching the decision itself.
+   */
+  private partnerPortalUrl(path: string): string {
+    const domain =
+      this.configService.get('app.partnerPortalDomain', { infer: true }) ??
+      this.configService.getOrThrow('app.frontendDomain', { infer: true });
+
+    return domain.replace(/\/+$/, '') + path;
+  }
+
   private async sendPartnerDecision(
     templateName:
       | 'partner_application_approved'
@@ -348,20 +362,9 @@ export class MailService {
     const context = {
       contactName: data.contactName,
       reason: data.reason ?? null,
-      // Where an approved partner picks up their links. `getOrThrow` on
-      // purpose: a missing domain would otherwise mail out a link that starts
-      // with the literal word "undefined", and the caller already swallows a
-      // throw here without touching the approval itself.
-      portalUrl:
-        this.configService.getOrThrow('app.frontendDomain', { infer: true }) +
-        PARTNER_AFFILIATE_PATH,
-      // The application form lives on the partner portal, not the storefront
-      // (#003); `partnerPortalDomain` falls back to the frontend domain.
-      registerUrl:
-        (this.configService.get('app.partnerPortalDomain', { infer: true }) ??
-          this.configService.getOrThrow('app.frontendDomain', {
-            infer: true,
-          })) + PARTNER_REGISTER_PATH,
+      // Both links live on the partner portal, not the storefront (#003, #004).
+      portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
+      registerUrl: this.partnerPortalUrl(PARTNER_REGISTER_PATH),
       app_name: appName,
       logoUrl: BRAND_LOGO_URL,
       supportEmail: SUPPORT_EMAIL,

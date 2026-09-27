@@ -1,8 +1,8 @@
 import Handlebars from 'handlebars';
 import {
   MailService,
-  PARTNER_AFFILIATE_PATH,
   PARTNER_REGISTER_PATH,
+  PARTNER_SIGN_IN_PATH,
 } from './mail.service';
 import { BRAND_LOGO_URL, SUPPORT_EMAIL } from './mail-branding';
 
@@ -11,19 +11,16 @@ import { BRAND_LOGO_URL, SUPPORT_EMAIL } from './mail-branding';
  *
  * The earlier spec for this feature mocked `MailService` wholesale, so it only
  * proved that `approve()` calls a method. It could not catch what was actually
- * wrong: the approval email's only call to action pointed at
- * `/tai-khoan/affiliates`, a path the storefront serves in neither language
- * (Vietnamese is `/ho-so`, English `/profile`). Every approved partner got a
- * button to a 404.
+ * wrong: the approval email's only call to action pointed at the storefront
+ * rather than the partner portal, so the sentence next to it — sign in with the
+ * email and password you registered with — could not be followed (#004).
  *
  * These tests render the real template with the real context, which is the only
  * way a broken link or a missing variable shows up before a customer sees it.
  */
 describe('MailService — partner decision email contents', () => {
   const FRONTEND = 'https://esim.vn';
-
-  /** Paths the storefront really serves (`i18n/routing.ts`). */
-  const REAL_PROFILE_PATHS = ['/ho-so', '/profile'];
+  const PORTAL = 'https://doitac.esim.vn';
 
   function buildService(template: { subject: string; htmlBody: string }) {
     const sendMail = jest.fn().mockResolvedValue(undefined);
@@ -32,7 +29,12 @@ describe('MailService — partner decision email contents', () => {
       logger: { warn: jest.fn(), error: jest.fn() },
       mailerService: { sendMail },
       configService: {
-        get: (key: string) => (key === 'app.name' ? 'esim.vn' : undefined),
+        get: (key: string) =>
+          key === 'app.name'
+            ? 'esim.vn'
+            : key === 'app.partnerPortalDomain'
+              ? PORTAL
+              : undefined,
         getOrThrow: (key: string) => {
           if (key === 'app.frontendDomain') return FRONTEND;
           throw new Error(`missing config ${key}`);
@@ -71,10 +73,10 @@ describe('MailService — partner decision email contents', () => {
     const html = sendMail.mock.calls[0][0].html as string;
     // "Bạn có thể nộp lại hồ sơ" without a link was an instruction nobody
     // could follow.
-    expect(html).toContain(`href="${FRONTEND}${PARTNER_REGISTER_PATH}"`);
+    expect(html).toContain(`href="${PORTAL}${PARTNER_REGISTER_PATH}"`);
   });
 
-  it('should point the approval email at a page the site actually serves', async () => {
+  it('should point the approval email at the partner portal sign-in (#004)', async () => {
     const { service, sendMail } = buildService(APPROVED);
 
     await service.sendPartnerApproved({
@@ -83,25 +85,54 @@ describe('MailService — partner decision email contents', () => {
     });
 
     const html = sendMail.mock.calls[0][0].html as string;
-    const href = /href="(https:\/\/[^"]+)"/.exec(html)?.[1] ?? '';
-    expect(href.startsWith(FRONTEND)).toBe(true);
-
-    const path = href.slice(FRONTEND.length);
-    const [pathname] = path.split('?');
-    expect(REAL_PROFILE_PATHS).toContain(pathname);
+    // Not the storefront: partners have no account there.
+    expect(html).toContain(`href="${PORTAL}${PARTNER_SIGN_IN_PATH}"`);
+    expect(html).not.toContain(FRONTEND);
   });
 
-  it('should open the Affiliates tab rather than dropping the partner on a generic page', () => {
-    // The tab is not its own route, so the link carries `?tab=affiliate`; the
-    // profile page reads it.
-    expect(PARTNER_AFFILIATE_PATH).toContain('?tab=affiliate');
+  it('should not double the slash when the domain is configured with one', async () => {
+    const { service, sendMail } = buildService(APPROVED);
+    Object.assign(service, {
+      configService: {
+        get: (key: string) =>
+          key === 'app.name'
+            ? 'esim.vn'
+            : key === 'app.partnerPortalDomain'
+              ? `${PORTAL}/`
+              : undefined,
+        getOrThrow: () => FRONTEND,
+      },
+    });
+
+    await service.sendPartnerApproved({ to: 'a@b.com', contactName: 'A' });
+
+    const html = sendMail.mock.calls[0][0].html as string;
+    expect(html).toContain(`href="${PORTAL}${PARTNER_SIGN_IN_PATH}"`);
+  });
+
+  it('should fall back to the frontend domain when no portal domain is set', async () => {
+    const { service, sendMail } = buildService(APPROVED);
+    Object.assign(service, {
+      configService: {
+        get: (key: string) => (key === 'app.name' ? 'esim.vn' : undefined),
+        getOrThrow: (key: string) => {
+          if (key === 'app.frontendDomain') return FRONTEND;
+          throw new Error(`missing config ${key}`);
+        },
+      },
+    });
+
+    await service.sendPartnerApproved({ to: 'a@b.com', contactName: 'A' });
+
+    const html = sendMail.mock.calls[0][0].html as string;
+    expect(html).toContain(`href="${FRONTEND}${PARTNER_SIGN_IN_PATH}"`);
   });
 
   it('should never mail a link built from a missing config value', async () => {
     const { service } = buildService(APPROVED);
     Object.assign(service, {
       configService: {
-        get: () => 'esim.vn',
+        get: (key: string) => (key === 'app.name' ? 'esim.vn' : undefined),
         getOrThrow: () => {
           throw new Error('app.frontendDomain is not set');
         },
@@ -109,7 +140,7 @@ describe('MailService — partner decision email contents', () => {
     });
 
     // Better to fail loudly here — the caller swallows it and the approval
-    // still stands — than to send "undefined/ho-so?tab=affiliate".
+    // still stands — than to send a link starting with "undefined".
     await expect(
       service.sendPartnerApproved({ to: 'a@b.com', contactName: 'A' }),
     ).rejects.toThrow();
