@@ -27,6 +27,7 @@ import {
   RequestBankAccountChangeDto,
 } from './dto/partner-bank-account.dto';
 import { QueryPartnerCommissionDto } from './dto/query-partner.dto';
+import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import {
   CreateDepositRequestDto,
   CreatePartnerPayoutDto,
@@ -257,6 +258,39 @@ export class PartnersController {
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  /** Create a discount code funded by this partner's own commission (#028). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/coupons')
+  @HttpCode(HttpStatus.CREATED)
+  async createMyCoupon(
+    @Request() req: { user: { id: number } },
+    @Body() dto: CreatePartnerCouponDto,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.createMyCoupon(partner.id, dto);
+  }
+
+  /** Turn one of the partner's own codes on or off (#028). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('me/coupons/:id')
+  @HttpCode(HttpStatus.OK)
+  async setMyCouponActive(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+    @Body() body: { isActive: boolean },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.setMyCouponActive(
+      partner.id,
+      Number(id),
+      Boolean(body.isActive),
+    );
+  }
+
   /** The partner's orders as a spreadsheet (#027). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

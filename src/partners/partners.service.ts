@@ -36,7 +36,9 @@ import { PartnerLinkEntity } from './infrastructure/persistence/relational/entit
 import { PartnerLinkClickEntity } from './infrastructure/persistence/relational/entities/partner-link-click.entity';
 import { OrderPartnerCommissionEntity } from './infrastructure/persistence/relational/entities/order-partner-commission.entity';
 import { PartnerPayoutEntity } from './infrastructure/persistence/relational/entities/partner-payout.entity';
+import { CouponEntity } from '../coupons/infrastructure/persistence/relational/entities/coupon.entity';
 import { PartnerApplyDto } from './dto/partner-apply.dto';
+import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
 import { RequestBankAccountChangeDto } from './dto/partner-bank-account.dto';
 import {
@@ -291,6 +293,8 @@ export class PartnersService {
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(PartnerTierEvaluationEntity)
     private readonly tierEvaluationRepository: Repository<PartnerTierEvaluationEntity>,
+    @InjectRepository(CouponEntity)
+    private readonly couponRepository: Repository<CouponEntity>,
     private readonly mailService: MailService,
   ) {}
 
@@ -1758,6 +1762,111 @@ export class PartnersService {
         reversedAt: row.reversedAt ?? null,
       },
     };
+  }
+
+  /**
+   * A discount the partner funds out of their own commission (#028).
+   *
+   * The cap is the whole idea: a partner decides how to split the commission
+   * they already earn — keep it, or hand part of it to the customer as a
+   * discount. The two shares always add up to the original commission, so a
+   * code may not give away more than the partner's own rate.
+   *
+   * Partner codes are never advertised on the cart page: the customer types in
+   * the one their KOL gave them, while the house's own codes keep showing.
+   */
+  async createMyCoupon(partnerId: number, dto: CreatePartnerCouponDto) {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    if (partner.partnerType !== PartnerTypeEnum.KOL) {
+      throw new ForbiddenException(
+        'Chỉ đối tác tiếp thị mới tạo được mã giảm giá.',
+      );
+    }
+
+    const tier = partner.tierCode
+      ? await this.tierRepository.findOne({
+          where: {
+            partnerType: partner.partnerType,
+            tierCode: partner.tierCode,
+          },
+        })
+      : null;
+    const commissionPercent = Number(tier?.commissionPercent ?? 0);
+
+    if (commissionPercent <= 0) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          discountPercent:
+            'Tài khoản của bạn chưa được gán hạng nên chưa có hoa hồng để chia cho khách.',
+        },
+      });
+    }
+
+    if (dto.discountPercent > commissionPercent) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          discountPercent: `Mức giảm tối đa bằng đúng tỷ lệ hoa hồng của bạn (${commissionPercent}%). Phần giữ lại cộng phần nhường khách luôn bằng hoa hồng gốc.`,
+        },
+      });
+    }
+
+    const code = dto.code.trim().toUpperCase();
+    const taken = await this.couponRepository.findOne({
+      where: { code },
+      withDeleted: true,
+    });
+    if (taken) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { code: 'Mã giảm giá này đã có người dùng.' },
+      });
+    }
+
+    const coupon = await this.couponRepository.save(
+      this.couponRepository.create({
+        code,
+        discountPercent: dto.discountPercent,
+        discountType: 'percent',
+        maxDiscountAmount: dto.maxDiscountAmount ?? null,
+        minOrderAmount: dto.minOrderAmount ?? null,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        maxUsage: dto.maxUsage ?? null,
+        maxUsagePerUser: dto.maxUsagePerUser ?? null,
+        partnerId,
+        isActive: true,
+        // Never listed on the cart page — the customer types the one their
+        // partner gave them.
+        isPublic: false,
+      } as Partial<CouponEntity>),
+    );
+
+    return {
+      id: coupon.id,
+      code: coupon.code,
+      discountPercent: Number(coupon.discountPercent),
+      commissionPercent,
+      /** What is left for the partner once the customer's share is given. */
+      keptPercent:
+        Math.round((commissionPercent - dto.discountPercent) * 100) / 100,
+    };
+  }
+
+  /** Turn one of the partner's own codes on or off (#028). */
+  async setMyCouponActive(
+    partnerId: number,
+    couponId: number,
+    isActive: boolean,
+  ) {
+    const coupon = await this.couponRepository.findOne({
+      where: { id: couponId, partnerId },
+    });
+    if (!coupon) throw new NotFoundException('Không tìm thấy mã giảm giá.');
+
+    coupon.isActive = isActive;
+    await this.couponRepository.save(coupon);
+    return { id: coupon.id, isActive: coupon.isActive };
   }
 
   /**
