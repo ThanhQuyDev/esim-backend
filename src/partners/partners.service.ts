@@ -634,15 +634,17 @@ export class PartnersService {
             status: OrderPartnerCommissionStatusEnum.PENDING,
           })
           .getRawOne<{ sum: string }>(),
-        // Lifetime paid out, so the partner can reconcile against their bank.
+        // Lifetime paid out, so the partner can reconcile against their bank —
+        // with the number of payments behind it (#029).
         this.payoutRepository
           .createQueryBuilder('payout')
           .select('COALESCE(SUM(payout.amountVnd), 0)', 'sum')
+          .addSelect('COUNT(*)', 'count')
           .where('payout.partnerId = :partnerId', { partnerId })
           .andWhere('payout.status = :status', {
             status: PartnerPayoutStatusEnum.PAID,
           })
-          .getRawOne<{ sum: string }>(),
+          .getRawOne<{ sum: string; count: string }>(),
       ],
     );
 
@@ -663,6 +665,8 @@ export class PartnersService {
       pendingCommissionVnd: Number(pendingCommissions?.sum ?? 0),
       /** Lifetime total actually paid out. */
       withdrawnVnd: Number(paidPayouts?.sum ?? 0),
+      /** How many payments that was, for "từ N lần thanh toán" (#029). */
+      payoutCount: Number(paidPayouts?.count ?? 0),
       status: wallet.status,
     };
   }

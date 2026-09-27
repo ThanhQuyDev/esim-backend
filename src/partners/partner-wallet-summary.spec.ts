@@ -25,13 +25,18 @@ describe('PartnersService — partner wallet summary', () => {
       let status = '';
       const builder = {
         select: () => builder,
+        // The paid-payout query also counts the payments (#029).
+        addSelect: () => builder,
         where: () => builder,
         andWhere: (_clause: string, params: { status: string }) => {
           status = params.status;
           return builder;
         },
         getRawOne: () =>
-          Promise.resolve({ sum: String(byStatus[status] ?? 0) }),
+          Promise.resolve({
+            sum: String(byStatus[status] ?? 0),
+            count: byStatus[status] ? '1' : '0',
+          }),
       };
       return builder;
     }

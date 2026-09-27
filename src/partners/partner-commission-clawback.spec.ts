@@ -131,18 +131,22 @@ describe('PartnersService — clawing a paid commission back (#007)', () => {
   });
 });
 
+/**
+ * A query builder that answers whatever chain the service calls — the payout
+ * query also counts the payments behind the total (#029).
+ */
+function sum(value: number) {
+  const node: Record<string, unknown> = {
+    getRawOne: () => Promise.resolve({ sum: String(value), count: '0' }),
+  };
+  for (const step of ['select', 'addSelect', 'where', 'andWhere']) {
+    node[step] = () => node;
+  }
+  return node;
+}
+
 describe('PartnersService — the debt is visible and blocks withdrawal (#007)', () => {
   function buildSummaryService(balanceVnd: number) {
-    const sum = (value: number) => ({
-      select: () => ({
-        where: () => ({
-          andWhere: () => ({
-            getRawOne: () => Promise.resolve({ sum: String(value) }),
-          }),
-        }),
-      }),
-    });
-
     const service = Object.create(PartnersService.prototype) as PartnersService;
     Object.assign(service, {
       getOrCreateWallet: jest
@@ -179,15 +183,7 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
     Object.assign(service, {
       getPartnerOrThrowById: jest.fn(),
       payoutRepository: {
-        createQueryBuilder: () => ({
-          select: () => ({
-            where: () => ({
-              andWhere: () => ({
-                getRawOne: () => Promise.resolve({ sum: '0' }),
-              }),
-            }),
-          }),
-        }),
+        createQueryBuilder: () => sum(0),
         create: (row: unknown) => row,
         save: jest.fn(),
       },
