@@ -49,6 +49,17 @@ export class CreatePartnerTierDto {
   @Min(0)
   maxDiscountPercent?: number;
 
+  @ApiPropertyOptional({
+    type: Number,
+    example: 15,
+    description:
+      'Days a click keeps earning the order for this tier; each new click restarts it (#037)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  attributionDays?: number;
+
   @ApiPropertyOptional({ type: Number, example: 0 })
   @IsOptional()
   @IsInt()
@@ -65,6 +76,13 @@ export class UpdatePartnerTierDto {
   @IsOptional()
   @IsString()
   tierName?: string;
+
+  /** Days a click keeps earning the order for this tier (#037). */
+  @ApiPropertyOptional({ type: Number, example: 15 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  attributionDays?: number;
 
   @ApiPropertyOptional({ type: Number })
   @IsOptional()

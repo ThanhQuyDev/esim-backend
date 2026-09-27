@@ -35,6 +35,13 @@ export class PartnerTierEntity extends EntityRelationalHelper {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   maxDiscountPercent!: number;
 
+  /**
+   * Days a click by this tier's partner keeps earning them the order (#037).
+   * Every fresh click restarts the clock.
+   */
+  @Column({ type: 'int', default: 30 })
+  attributionDays!: number;
+
   @Column({ type: 'int', default: 0 })
   sortOrder!: number;
 

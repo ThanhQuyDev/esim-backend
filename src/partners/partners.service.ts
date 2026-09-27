@@ -1408,6 +1408,8 @@ export class PartnersService {
         minVolumeVnd: dto.minVolumeVnd ?? 0,
         commissionPercent: dto.commissionPercent ?? 0,
         maxDiscountPercent: dto.maxDiscountPercent ?? 0,
+        // Each tier carries its own attribution window (#037).
+        attributionDays: dto.attributionDays ?? PARTNER_LINK_ATTRIBUTION_DAYS,
         sortOrder: dto.sortOrder ?? 0,
         isActive: dto.isActive ?? true,
       }),
@@ -1434,6 +1436,9 @@ export class PartnersService {
       ...(dto.minVolumeVnd !== undefined && { minVolumeVnd: dto.minVolumeVnd }),
       ...(dto.commissionPercent !== undefined && {
         commissionPercent: dto.commissionPercent,
+      }),
+      ...(dto.attributionDays !== undefined && {
+        attributionDays: dto.attributionDays,
       }),
       ...(dto.maxDiscountPercent !== undefined && {
         maxDiscountPercent: dto.maxDiscountPercent,
@@ -2473,10 +2478,30 @@ export class PartnersService {
   // ───────────────────────── Order attribution (called by OrdersService) ─────────────────────────
 
   /** Start of the attribution window: visits older than this earn nothing. */
-  private attributionWindowStart(now = new Date()): Date {
-    return new Date(
-      now.getTime() - PARTNER_LINK_ATTRIBUTION_DAYS * 24 * 60 * 60 * 1000,
-    );
+  private attributionWindowStart(now = new Date(), days?: number | null): Date {
+    const window = days && days > 0 ? days : PARTNER_LINK_ATTRIBUTION_DAYS;
+
+    return new Date(now.getTime() - window * 24 * 60 * 60 * 1000);
+  }
+
+  /**
+   * How many days this partner's clicks keep earning them the order (#037).
+   *
+   * It comes from their tier — a higher tier is credited for longer — and
+   * falls back to the programme default for a partner with no tier yet.
+   */
+  private async attributionDaysFor(partner: {
+    partnerType: PartnerTypeEnum;
+    tierCode?: string | null;
+  }): Promise<number> {
+    if (!partner.tierCode) return PARTNER_LINK_ATTRIBUTION_DAYS;
+
+    const tier = await this.tierRepository.findOne({
+      where: { partnerType: partner.partnerType, tierCode: partner.tierCode },
+    });
+
+    const days = Number(tier?.attributionDays ?? 0);
+    return days > 0 ? days : PARTNER_LINK_ATTRIBUTION_DAYS;
   }
 
   /**
@@ -2643,13 +2668,18 @@ export class PartnersService {
       where: { userId },
     });
     if (!row) return null;
-    if (new Date(row.attributedAt) < this.attributionWindowStart()) return null;
 
     // The partner may have been suspended since the click.
     const partner = await this.partnerRepository.findOne({
       where: { id: row.partnerId, status: PartnerStatusEnum.ACTIVE },
     });
     if (!partner || partner.partnerType !== PartnerTypeEnum.KOL) return null;
+
+    const windowStart = this.attributionWindowStart(
+      new Date(),
+      await this.attributionDaysFor(partner),
+    );
+    if (new Date(row.attributedAt) < windowStart) return null;
 
     return { partnerId: row.partnerId, linkId: row.linkId };
   }
@@ -2689,7 +2719,12 @@ export class PartnersService {
     });
     if (!partner || partner.partnerType !== PartnerTypeEnum.KOL) return null;
 
-    const windowStart = this.attributionWindowStart();
+    // The window belongs to the partner's tier, and every fresh click restarts
+    // it — `visitedAt` below is the newest click we know of (#037).
+    const windowStart = this.attributionWindowStart(
+      new Date(),
+      await this.attributionDaysFor(partner),
+    );
 
     // A stamp from the future is a broken clock (or a hand-edited cookie), not
     // a fresh visit — treat it as no stamp at all and check the click log.
