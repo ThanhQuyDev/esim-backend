@@ -725,11 +725,17 @@ export class PartnersService {
       );
     }
 
-    // A partner may name their own code — "được tạo link/mã giới thiệu tối
-    // thiểu 6 ký tự tùy ý" (#095). A memorable code is the whole point when it
-    // has to be read aloud in a video, so a taken one is reported as such
-    // instead of being silently swapped for a random string.
+    // A memorable code is the whole point when it has to be read aloud in a
+    // video, but it is a privilege an admin grants per partner (#014) — every
+    // good short name would otherwise be taken within a week. A taken code is
+    // reported as such instead of being silently swapped for a random string.
     if (dto.code) {
+      if (!partner.canCustomLinkCode) {
+        throw new ForbiddenException(
+          'Tài khoản của bạn chưa được cấp quyền đặt tên link tiếp thị. Hệ thống sẽ tạo mã ngẫu nhiên, liên hệ hỗ trợ nếu bạn cần tên riêng cho chiến dịch.',
+        );
+      }
+
       const code = dto.code.trim().toUpperCase();
       const taken = await this.linkRepository.findOne({
         where: { code },
@@ -1040,6 +1046,21 @@ export class PartnersService {
   ): Promise<PartnerEntity> {
     const partner = await this.adminFindById(id);
     partner.status = dto.status;
+    return this.partnerRepository.save(partner);
+  }
+
+  /**
+   * Let this partner name their own link codes, or stop them (#014).
+   *
+   * Revoking does not touch codes already created: the campaign they printed on
+   * a video is still the campaign customers are typing.
+   */
+  async setLinkCodePermission(
+    id: number,
+    canCustomLinkCode: boolean,
+  ): Promise<PartnerEntity> {
+    const partner = await this.adminFindById(id);
+    partner.canCustomLinkCode = canCustomLinkCode;
     return this.partnerRepository.save(partner);
   }
 

@@ -4,6 +4,7 @@ import {
   PARTNER_PAYOUT_MIN_VND,
 } from '../partners.constants';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -31,6 +32,13 @@ export class AssignPartnerTierDto {
   @IsString()
   @MaxLength(50)
   tierCode!: string;
+}
+
+/** Admin ticks who may name their own marketing link (#014). */
+export class UpdatePartnerLinkCodePermissionDto {
+  @ApiProperty({ type: Boolean })
+  @IsBoolean()
+  canCustomLinkCode!: boolean;
 }
 
 export class AdjustPartnerWalletDto {

@@ -31,6 +31,9 @@ describe('PartnersService — partner self-service', () => {
             id: 5,
             status: PartnerStatusEnum.ACTIVE,
             partnerType: PartnerTypeEnum.KOL,
+            // Picking your own code is a privilege an admin grants (#014);
+            // these tests are about what happens once it has been granted.
+            canCustomLinkCode: true,
           }),
         },
         linkRepository,

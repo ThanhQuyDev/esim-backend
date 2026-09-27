@@ -26,6 +26,7 @@ import {
   AssignPartnerTierDto,
   ProcessPartnerPayoutDto,
   RejectPartnerDto,
+  UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerStatusDto,
 } from './dto/admin-partner.dto';
 import {
@@ -186,6 +187,19 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   updateStatus(@Param('id') id: number, @Body() dto: UpdatePartnerStatusDto) {
     return this.partnersService.updateStatus(Number(id), dto);
+  }
+
+  /** Tick/untick "được đặt tên link tiếp thị" for this partner (#014). */
+  @Patch(':id/link-code-permission')
+  @HttpCode(HttpStatus.OK)
+  setLinkCodePermission(
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerLinkCodePermissionDto,
+  ) {
+    return this.partnersService.setLinkCodePermission(
+      Number(id),
+      dto.canCustomLinkCode,
+    );
   }
 
   @Patch(':id/tier')

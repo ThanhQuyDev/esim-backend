@@ -8,9 +8,9 @@ import {
   MinLength,
 } from 'class-validator';
 
-/** Shortest code a partner may pick for themselves (#095). */
-export const PARTNER_LINK_CODE_MIN_LENGTH = 6;
-export const PARTNER_LINK_CODE_MAX_LENGTH = 32;
+/** Bounds for a code a partner names themselves (#014). */
+export const PARTNER_LINK_CODE_MIN_LENGTH = 8;
+export const PARTNER_LINK_CODE_MAX_LENGTH = 50;
 
 export class CreatePartnerLinkDto {
   @ApiProperty({ example: 'Chiến dịch TikTok tháng 9' })
@@ -21,15 +21,15 @@ export class CreatePartnerLinkDto {
   @ApiPropertyOptional({
     example: 'VANA2026',
     description:
-      'Referral code the partner picks for themselves — at least 6 characters, letters/digits/-/_ only. Leave empty to have one generated.',
+      'Referral code the partner picks for themselves — 8 to 50 characters, letters and/or digits. Only partners an admin has allowed may send this; leave empty to have one generated.',
   })
   @IsOptional()
   @IsString()
   @MinLength(PARTNER_LINK_CODE_MIN_LENGTH)
   @MaxLength(PARTNER_LINK_CODE_MAX_LENGTH)
-  @Matches(/^[A-Za-z0-9_-]+$/, {
+  @Matches(/^[A-Za-z0-9]+$/, {
     message:
-      'Mã giới thiệu chỉ gồm chữ, số, dấu gạch ngang và gạch dưới, không có khoảng trắng.',
+      'Mã giới thiệu chỉ gồm chữ và số, không dấu và không khoảng trắng.',
   })
   code?: string;
 

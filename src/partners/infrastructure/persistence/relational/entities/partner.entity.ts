@@ -92,6 +92,13 @@ export class PartnerEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   rejectionReason?: string | null;
 
+  /**
+   * Admin ticked this partner as allowed to name their own link code (#014);
+   * everyone else gets a generated one.
+   */
+  @Column({ type: Boolean, default: false })
+  canCustomLinkCode!: boolean;
+
   @Column({ type: String, nullable: true })
   notes?: string | null;
 
