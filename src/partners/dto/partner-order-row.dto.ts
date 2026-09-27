@@ -7,6 +7,14 @@ export class PartnerOrderItemDto {
 
   @ApiProperty({ type: Number, example: 2 })
   quantity!: number;
+
+  /** Line price, so the partner can read the order without opening it (#023). */
+  @ApiPropertyOptional({ type: Number, example: 590000 })
+  vndPrice?: number;
+
+  /** This product came back; the row is greyed and labelled (#023). */
+  @ApiPropertyOptional({ type: Boolean })
+  refunded?: boolean;
 }
 
 /**

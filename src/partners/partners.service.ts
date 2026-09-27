@@ -1487,7 +1487,15 @@ export class PartnersService {
               l.code   AS "linkCode",
               COALESCE(
                 json_agg(
-                  json_build_object('planName', p.name, 'quantity', oi.quantity)
+                  json_build_object(
+                    'planName', p.name,
+                    'quantity', oi.quantity,
+                    -- Per-line price and whether this particular product came
+                    -- back (#023): an order can be half refunded, and the
+                    -- partner needs to see which half.
+                    'vndPrice', oi."vndPrice",
+                    'refunded', oi.status = 'refunded'
+                  ) ORDER BY oi.id
                 ) FILTER (WHERE oi.id IS NOT NULL),
                 '[]'
               ) AS items,
