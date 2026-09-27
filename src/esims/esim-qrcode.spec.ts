@@ -19,6 +19,11 @@ import {
 describe('eSIM QR code', () => {
   const LPA = 'LPA:1$rsp.truphone.com$QRF-SPEEDTEST';
 
+  // sharp really encodes and composites PNGs here, which takes well over
+  // Jest's 5s default once the rest of the suite is running in parallel — the
+  // tests passed alone and failed the pre-commit hook.
+  jest.setTimeout(60000);
+
   beforeEach(() => {
     resetLogoCache();
   });

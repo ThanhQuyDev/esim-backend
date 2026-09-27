@@ -1991,7 +1991,11 @@ export class OrdersService {
 
     if (order.attributedPartnerId) {
       try {
-        await this.partnersService.reverseCommissionForOrder(order.id);
+        // A cancelled order is void in full, so a commission already credited
+        // is clawed back too — into a negative balance if need be (#007).
+        await this.partnersService.reverseCommissionForOrder(order.id, {
+          cancelled: true,
+        });
       } catch (err) {
         this.logger.error(
           `cancelOrder: failed to reverse pending partner commission for order ${order.id}: ${(err as Error).message}`,

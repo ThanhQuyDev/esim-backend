@@ -581,6 +581,12 @@ export class PartnersService {
     return {
       balanceVnd,
       availableBalanceVnd: Math.max(0, balanceVnd - pendingPayoutVnd),
+      /**
+       * Commission clawed back after it was already paid out, shown as a debt
+       * rather than hidden behind a floored available balance (#007): the next
+       * commissions pay it off before anything becomes withdrawable again.
+       */
+      carriedDebtVnd: Math.max(0, -balanceVnd),
       pendingPayoutVnd,
       /** Commission earned but still awaiting reconciliation. */
       pendingCommissionVnd: Number(pendingCommissions?.sum ?? 0),
@@ -1976,16 +1982,22 @@ export class PartnersService {
   }
 
   /**
-   * Reverse a commission when its order is cancelled before payment (PENDING
-   * → REVERSED) or fully refunded after being credited (CREDITED → REVERSED,
-   * with a matching negative wallet transaction). Partial refunds are left
-   * uncredited-back for manual review — proportional reversal for a second
-   * currency (partner wallet) on top of the buyer-side proportional reversal
-   * is deferred; log instead of silently mis-crediting.
+   * Take a commission back when its order dies (#007).
+   *
+   * PENDING commission → REVERSED, nothing moved yet. A commission already
+   * CREDITED, on a fully refunded or cancelled order, is clawed back with a
+   * negative wallet transaction — and the wallet is allowed to go below zero
+   * on purpose: if the partner has already withdrawn the money, the debt has
+   * to sit there and be netted off the next period's commission, which is
+   * exactly what the brief asks for. Withdrawals are blocked meanwhile because
+   * the available balance floors at zero.
+   *
+   * Partial refunds are left CREDITED for manual review — proportional
+   * reversal is #018; log instead of silently mis-crediting.
    */
   async reverseCommissionForOrder(
     orderId: number,
-    opts: { fullRefund?: boolean } = {},
+    opts: { fullRefund?: boolean; cancelled?: boolean } = {},
   ): Promise<void> {
     const commission = await this.commissionRepository.findOne({
       where: { orderId },
@@ -2000,7 +2012,7 @@ export class PartnersService {
 
     if (
       commission.status === OrderPartnerCommissionStatusEnum.CREDITED &&
-      opts.fullRefund
+      (opts.fullRefund || opts.cancelled)
     ) {
       const transaction = await this.createWalletTransaction(
         commission.partnerId,
@@ -2011,7 +2023,9 @@ export class PartnersService {
           sourceType: 'order_partner_commission_reversal',
           sourceId: String(commission.id),
           idempotencyKey: `partner_commission_reversal:${orderId}`,
-          reason: 'Hoàn hoa hồng do đơn hàng được hoàn tiền toàn phần',
+          reason: opts.cancelled
+            ? 'Hoàn hoa hồng do đơn hàng bị hủy'
+            : 'Hoàn hoa hồng do đơn hàng được hoàn tiền toàn phần',
         },
       );
       commission.status = OrderPartnerCommissionStatusEnum.REVERSED;
