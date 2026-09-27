@@ -1565,6 +1565,47 @@ export class PartnersService {
    * totals, wallet balance and progress towards the next tier.
    */
   /**
+   * Where this partner's buyers are going (#012).
+   *
+   * Same shape as the admin console's "điểm đến mua nhiều": ranked by eSIMs
+   * sold, with the revenue behind them, and falling back from destination to
+   * region to the plan's country code so a regional plan still lands somewhere.
+   */
+  async getMyTopDestinations(
+    partnerId: number,
+    range: { from?: string; to?: string } = {},
+    limit = 6,
+  ): Promise<{ name: string; plansPurchased: number; revenueVnd: number }[]> {
+    const { from, to } = resolveSummaryRange(range);
+
+    const rows = await this.dataSource.query(
+      `SELECT
+         COALESCE(d.name, r.name, p."countryCode", 'Không xác định') AS name,
+         COALESCE(SUM(oi.quantity), 0) AS "plansPurchased",
+         COALESCE(SUM(oi."vndPrice"), 0) AS "revenueVnd"
+       FROM "order" o
+       JOIN order_item oi ON oi."orderId" = o.id
+       JOIN plan p ON p.id = oi."planId"
+       LEFT JOIN destination d ON d.id = p."destinationId"
+       LEFT JOIN region r ON r.id = p."regionId"
+       WHERE o."attributedPartnerId" = $1
+         AND o."deletedAt" IS NULL
+         AND o.status IN ('paid', 'completed')
+         AND o."createdAt" >= $2 AND o."createdAt" < $3
+       GROUP BY 1
+       ORDER BY "plansPurchased" DESC, "revenueVnd" DESC
+       LIMIT $4`,
+      [partnerId, from, to, Math.min(Math.max(limit, 1), 20)],
+    );
+
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      name: String(row.name ?? 'Không xác định'),
+      plansPurchased: Number(row.plansPurchased ?? 0),
+      revenueVnd: Number(row.revenueVnd ?? 0),
+    }));
+  }
+
+  /**
    * Dashboard read model for one partner, over a period they choose (#010).
    *
    * `from`/`to` are inclusive day bounds; with neither, the window is the last

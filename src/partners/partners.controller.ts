@@ -158,6 +158,24 @@ export class PartnersController {
     });
   }
 
+  /** Destinations this partner's buyers bought most, for the dashboard (#012). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/top-destinations')
+  @HttpCode(HttpStatus.OK)
+  async getMyTopDestinations(
+    @Request() req: { user: { id: number } },
+    @Query() query: { from?: string; to?: string; limit?: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyTopDestinations(
+      partner.id,
+      { from: query.from, to: query.to },
+      query.limit ? Number(query.limit) : undefined,
+    );
+  }
+
   /** Orders attributed to this partner through their marketing links. */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
