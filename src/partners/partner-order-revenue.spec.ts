@@ -53,6 +53,17 @@ describe('PartnersService — what an attributed order is worth (#020)', () => {
     expect(sql[0]).toContain('eligibleSpendVnd');
   });
 
+  it('should mark each buyer as new or returning (#021)', async () => {
+    const { service, sql } = buildService();
+
+    await service.getMyOrders(5);
+
+    // Same rule as the dashboard tile (#011): an earlier paid order by the
+    // same account, anywhere on esim.vn, makes them a returning customer.
+    expect(sql[0]).toContain('isNewCustomer');
+    expect(sql[0]).toContain(`prev."createdAt" < o."createdAt"`);
+  });
+
   it('should try payable plus wallet as one sum, not payable alone', async () => {
     const { service, sql } = buildService();
 

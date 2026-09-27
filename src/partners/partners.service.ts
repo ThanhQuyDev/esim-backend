@@ -1497,7 +1497,18 @@ export class PartnersService {
                 WHERE oi2."orderId" = o.id
               ) AS "esimCount",
               -- The partner buying through their own link (#095).
-              (o."userId" IS NOT NULL AND o."userId" = pa."userId") AS "isSelfReferral"
+              (o."userId" IS NOT NULL AND o."userId" = pa."userId") AS "isSelfReferral",
+              -- First paid order this account ever placed on esim.vn, or a
+              -- returning buyer (#021) — same rule as the dashboard tile so the
+              -- two screens cannot disagree.
+              NOT EXISTS (
+                SELECT 1 FROM "order" prev
+                WHERE prev."userId" = o."userId"
+                  AND prev.id <> o.id
+                  AND prev."deletedAt" IS NULL
+                  AND prev.status IN ('paid', 'completed')
+                  AND prev."createdAt" < o."createdAt"
+              ) AS "isNewCustomer"
        FROM "order" o
        JOIN partner pa ON pa.id = o."attributedPartnerId"
        LEFT JOIN order_item oi ON oi."orderId" = o.id
@@ -1537,6 +1548,7 @@ export class PartnersService {
         commissionVnd,
         commissionStatus,
         linkCode: r.linkCode ?? null,
+        customerType: r.isNewCustomer ? 'new' : 'returning',
         esimCount: Number(r.esimCount ?? 0),
         items: r.items ?? [],
         validity,

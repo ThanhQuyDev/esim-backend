@@ -31,6 +31,10 @@ export class PartnerOrderRowDto {
   @ApiProperty({ required: false })
   refundedVnd?: number;
 
+  /** Whether esim.vn had seen this buyer before this order (#021). */
+  @ApiProperty({ required: false, enum: ['new', 'returning'] })
+  customerType?: 'new' | 'returning';
+
   @ApiProperty()
   createdAt!: Date;
 
