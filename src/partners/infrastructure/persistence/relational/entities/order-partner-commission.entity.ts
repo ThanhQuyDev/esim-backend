@@ -43,8 +43,13 @@ export class OrderPartnerCommissionEntity extends EntityRelationalHelper {
   @JoinColumn({ name: 'linkId' })
   link?: PartnerLinkEntity | null;
 
+  /** What the partner still earns on this order, after any refunds (#018). */
   @Column({ type: 'decimal', precision: 14, scale: 0 })
   commissionVnd!: number;
+
+  /** Running total already taken back, so a second refund only charges the difference (#018). */
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  reversedCommissionVnd!: number;
 
   @Column({ type: String, nullable: true })
   tierSnapshot!: string | null;

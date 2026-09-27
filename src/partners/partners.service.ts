@@ -1463,6 +1463,7 @@ export class PartnersService {
       `SELECT o."orderNumber",
               o.status,
               o."vndPrice",
+              COALESCE(o."refundedAmountVnd", 0) AS "refundedAmountVnd",
               o."createdAt",
               c."commissionVnd",
               c.status AS "commissionStatus",
@@ -1503,10 +1504,18 @@ export class PartnersService {
         Boolean(r.isSelfReferral),
       );
 
+      // Revenue net of what the customer got back (#018): a partly refunded
+      // order is not worth what it was rung up at, and the commission beside
+      // it has already been adjusted the same way.
+      const refundedVnd = Number(r.refundedAmountVnd ?? 0);
+      const grossVnd = Number(r.vndPrice ?? 0);
+
       return {
         orderNumber: r.orderNumber,
         status: r.status,
-        vndPrice: Number(r.vndPrice ?? 0),
+        vndPrice: Math.max(0, grossVnd - refundedVnd),
+        grossVndPrice: grossVnd,
+        refundedVnd,
         createdAt: r.createdAt,
         commissionVnd,
         commissionStatus,
@@ -2318,9 +2327,95 @@ export class PartnersService {
       commission.status === OrderPartnerCommissionStatusEnum.CREDITED
     ) {
       this.logger.warn(
-        `reverseCommissionForOrder: partial refund on order ${orderId} — commission ${commission.id} left CREDITED (no proportional reversal in v1).`,
+        `reverseCommissionForOrder: partial refund on order ${orderId} reached the full-reversal path — commission ${commission.id} left CREDITED. Use adjustCommissionForPartialRefund.`,
       );
     }
+  }
+
+  /**
+   * Take back the share of a commission that belongs to refunded products
+   * (#018).
+   *
+   * An affiliate order carries several eSIMs; refunding one of them used to
+   * leave the whole commission standing, so the partner kept earning on a
+   * product the customer no longer has. The share is proportional to the money
+   * actually refunded, and `reversedCommissionVnd` records what has already
+   * been taken so a second refund on the same order charges only the
+   * difference rather than the whole share again.
+   *
+   * `commissionVnd` itself is reduced, which is what keeps every total that
+   * sums it — the dashboard, the link's running totals, the payout ledger —
+   * correct without each of them having to know about refunds.
+   */
+  async adjustCommissionForPartialRefund(params: {
+    orderId: number;
+    refundedAmountVnd: number;
+    orderValueVnd: number;
+  }): Promise<void> {
+    const { orderId, refundedAmountVnd, orderValueVnd } = params;
+    if (orderValueVnd <= 0 || refundedAmountVnd <= 0) return;
+
+    const commission = await this.commissionRepository.findOne({
+      where: { orderId },
+    });
+    if (
+      !commission ||
+      commission.status === OrderPartnerCommissionStatusEnum.REVERSED
+    ) {
+      return;
+    }
+
+    const alreadyReversed = Number(commission.reversedCommissionVnd ?? 0);
+    const earned = Number(commission.commissionVnd) + alreadyReversed;
+    const target = Math.min(
+      earned,
+      Math.round((earned * refundedAmountVnd) / orderValueVnd),
+    );
+    const delta = target - alreadyReversed;
+    if (delta <= 0) return;
+
+    if (commission.status === OrderPartnerCommissionStatusEnum.CREDITED) {
+      // The money is in the partner's wallet, so it has to come back out —
+      // into a negative balance if they have already withdrawn it (#007).
+      await this.createWalletTransaction(
+        commission.partnerId,
+        PartnerWalletTransactionTypeEnum.COMMISSION_REVERSED,
+        -delta,
+        {
+          orderId,
+          sourceType: 'order_partner_commission_partial_reversal',
+          sourceId: String(commission.id),
+          idempotencyKey: `partner_commission_partial_reversal:${orderId}:${target}`,
+          reason: 'Điều chỉnh hoa hồng do hoàn tiền một phần đơn hàng',
+        },
+      );
+
+      if (commission.linkId) {
+        await this.linkRepository.decrement(
+          { id: commission.linkId },
+          'totalCommissionVnd',
+          delta,
+        );
+      }
+    }
+
+    commission.commissionVnd = earned - target;
+    commission.reversedCommissionVnd = target;
+    if (commission.commissionVnd <= 0) {
+      commission.status = OrderPartnerCommissionStatusEnum.REVERSED;
+      // A fully refunded order stops counting as a conversion for the link.
+      if (
+        commission.linkId &&
+        commission.status === OrderPartnerCommissionStatusEnum.REVERSED
+      ) {
+        await this.linkRepository.decrement(
+          { id: commission.linkId },
+          'conversionCount',
+          1,
+        );
+      }
+    }
+    await this.commissionRepository.save(commission);
   }
 
   // ───────────────────────── Internal helpers ─────────────────────────

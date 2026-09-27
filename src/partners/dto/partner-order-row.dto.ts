@@ -21,7 +21,15 @@ export class PartnerOrderRowDto {
   status!: string;
 
   @ApiProperty({ type: Number, example: 290000 })
+  /** Revenue after refunds — what this order is actually worth now (#018). */
   vndPrice!: number;
+
+  @ApiProperty({ required: false })
+  grossVndPrice?: number;
+
+  /** How much of the order the customer got back (#018). */
+  @ApiProperty({ required: false })
+  refundedVnd?: number;
 
   @ApiProperty()
   createdAt!: Date;

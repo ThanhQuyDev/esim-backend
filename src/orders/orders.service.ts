@@ -1811,9 +1811,19 @@ export class OrdersService {
         Math.round(Number(dto.amountVnd));
       const isFullRefund = refundedAmountVnd >= totalOrderValue;
       try {
-        await this.partnersService.reverseCommissionForOrder(order.id, {
-          fullRefund: isFullRefund,
-        });
+        if (isFullRefund) {
+          await this.partnersService.reverseCommissionForOrder(order.id, {
+            fullRefund: true,
+          });
+        } else {
+          // Only the refunded products lose their commission (#018); the rest
+          // of the order still earned it.
+          await this.partnersService.adjustCommissionForPartialRefund({
+            orderId: order.id,
+            refundedAmountVnd,
+            orderValueVnd: totalOrderValue,
+          });
+        }
       } catch (err) {
         this.logger.error(
           `refundOrder: failed to reverse partner commission for order ${order.id}: ${(err as Error).message}`,
