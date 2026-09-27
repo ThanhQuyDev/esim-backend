@@ -37,6 +37,7 @@ import { PartnerLinkClickEntity } from './infrastructure/persistence/relational/
 import { OrderPartnerCommissionEntity } from './infrastructure/persistence/relational/entities/order-partner-commission.entity';
 import { PartnerPayoutEntity } from './infrastructure/persistence/relational/entities/partner-payout.entity';
 import { CouponEntity } from '../coupons/infrastructure/persistence/relational/entities/coupon.entity';
+import { PartnerMemberAttributionEntity } from './infrastructure/persistence/relational/entities/partner-member-attribution.entity';
 import { PartnerApplyDto } from './dto/partner-apply.dto';
 import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
@@ -295,6 +296,8 @@ export class PartnersService {
     private readonly tierEvaluationRepository: Repository<PartnerTierEvaluationEntity>,
     @InjectRepository(CouponEntity)
     private readonly couponRepository: Repository<CouponEntity>,
+    @InjectRepository(PartnerMemberAttributionEntity)
+    private readonly memberAttributionRepository: Repository<PartnerMemberAttributionEntity>,
     private readonly mailService: MailService,
   ) {}
 
@@ -2496,6 +2499,55 @@ export class PartnersService {
    *     row, so a link with no click in 30 days cannot have an in-window cookie
    *     behind it — this can never reject a buyer who really did visit.
    */
+  /**
+   * Remember which partner a signed-in customer arrived through (#034).
+   *
+   * A cookie only covers the device it was set on. Binding the attribution to
+   * the account means somebody who opens the link on a laptop while signed in
+   * and buys on their phone still earns the partner their commission. The
+   * newest link wins, which is the rule #038 asks for.
+   */
+  async bindLinkToMember(
+    userId: number,
+    code: string,
+  ): Promise<{ partnerId: number; linkId: number } | null> {
+    const resolved = await this.resolveLinkForAttribution(code, new Date());
+    if (!resolved) return null;
+
+    await this.memberAttributionRepository.save({
+      userId,
+      partnerId: resolved.partnerId,
+      linkId: resolved.linkId,
+      attributedAt: new Date(),
+    });
+
+    return resolved;
+  }
+
+  /**
+   * The partner this customer's account is attributed to, if the visit is
+   * still inside the attribution window (#034).
+   */
+  async resolveMemberAttribution(
+    userId?: number | null,
+  ): Promise<{ partnerId: number; linkId: number | null } | null> {
+    if (!userId) return null;
+
+    const row = await this.memberAttributionRepository.findOne({
+      where: { userId },
+    });
+    if (!row) return null;
+    if (new Date(row.attributedAt) < this.attributionWindowStart()) return null;
+
+    // The partner may have been suspended since the click.
+    const partner = await this.partnerRepository.findOne({
+      where: { id: row.partnerId, status: PartnerStatusEnum.ACTIVE },
+    });
+    if (!partner || partner.partnerType !== PartnerTypeEnum.KOL) return null;
+
+    return { partnerId: row.partnerId, linkId: row.linkId };
+  }
+
   /**
    * The partner behind a discount code the buyer typed in (#033).
    *

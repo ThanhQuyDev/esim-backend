@@ -16,6 +16,7 @@ import { PartnerLinkClickEntity } from './infrastructure/persistence/relational/
 import { OrderPartnerCommissionEntity } from './infrastructure/persistence/relational/entities/order-partner-commission.entity';
 import { PartnerPayoutEntity } from './infrastructure/persistence/relational/entities/partner-payout.entity';
 import { CouponEntity } from '../coupons/infrastructure/persistence/relational/entities/coupon.entity';
+import { PartnerMemberAttributionEntity } from './infrastructure/persistence/relational/entities/partner-member-attribution.entity';
 import { MailModule } from '../mail/mail.module';
 
 @Module({
@@ -36,6 +37,8 @@ import { MailModule } from '../mail/mail.module';
       PartnerTierEvaluationEntity,
       // Partners create their own discount codes (#028).
       CouponEntity,
+      // Attribution that follows the customer's account (#034).
+      PartnerMemberAttributionEntity,
     ]),
   ],
   controllers: [

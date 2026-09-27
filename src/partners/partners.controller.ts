@@ -258,6 +258,28 @@ export class PartnersController {
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  /**
+   * Bind a marketing link to the signed-in customer's account (#034).
+   *
+   * Called by the storefront once the visitor is known: from then on the
+   * attribution follows the account rather than the cookie, so buying on
+   * another device still credits the partner.
+   */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Post('links/:code/bind')
+  @HttpCode(HttpStatus.OK)
+  async bindLinkToMember(
+    @Request() req: { user: { id: number } },
+    @Param('code') code: string,
+  ) {
+    const bound = await this.partnersService.bindLinkToMember(
+      req.user.id,
+      code,
+    );
+    return { bound: Boolean(bound) };
+  }
+
   /** Create a discount code funded by this partner's own commission (#028). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

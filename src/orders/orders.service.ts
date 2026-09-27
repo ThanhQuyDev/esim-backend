@@ -169,6 +169,7 @@ export class OrdersService {
     partnerLinkCode?: string | null,
     clickedAt?: string | null,
     couponCode?: string | null,
+    buyerUserId?: number | null,
   ): Promise<{
     partnerLinkCode: string | null;
     attributedPartnerId: number | null;
@@ -188,6 +189,17 @@ export class OrdersService {
     }
 
     if (!partnerLinkCode) {
+      // No cookie on this device — but the account may carry the attribution
+      // from a click made while signed in elsewhere (#034).
+      const fromAccount =
+        await this.partnersService.resolveMemberAttribution(buyerUserId);
+      if (fromAccount) {
+        return {
+          partnerLinkCode: null,
+          attributedPartnerId: fromAccount.partnerId,
+          linkId: fromAccount.linkId,
+        };
+      }
       return { partnerLinkCode: null, attributedPartnerId: null, linkId: null };
     }
     const parsedClickedAt = clickedAt ? new Date(clickedAt) : null;
@@ -198,8 +210,26 @@ export class OrdersService {
         : null,
     );
     if (!resolved) {
+      const fromAccount =
+        await this.partnersService.resolveMemberAttribution(buyerUserId);
+      if (fromAccount) {
+        return {
+          partnerLinkCode: null,
+          attributedPartnerId: fromAccount.partnerId,
+          linkId: fromAccount.linkId,
+        };
+      }
       return { partnerLinkCode: null, attributedPartnerId: null, linkId: null };
     }
+
+    // Buying while signed in also binds the attribution to the account, so the
+    // customer's next order from any device still finds it (#034).
+    if (buyerUserId) {
+      void this.partnersService
+        .bindLinkToMember(buyerUserId, partnerLinkCode)
+        .catch(() => undefined);
+    }
+
     return {
       partnerLinkCode,
       attributedPartnerId: resolved.partnerId,
@@ -345,6 +375,7 @@ export class OrdersService {
       dto.partnerLinkCode,
       dto.partnerLinkClickedAt,
       pricing.couponCode,
+      userId,
     );
 
     // 3. Create order
@@ -640,6 +671,7 @@ export class OrdersService {
       dto.partnerLinkCode,
       dto.partnerLinkClickedAt,
       pricing.couponCode,
+      userId,
     );
 
     const totalVndCostPrice = planDetails.reduce((sum, item) => {
