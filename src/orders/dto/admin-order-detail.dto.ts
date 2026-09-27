@@ -251,6 +251,14 @@ export class AdminOrderDetailDto {
   @ApiPropertyOptional({ type: () => AdminOrderPartnerCommissionDto })
   partnerCommission?: AdminOrderPartnerCommissionDto | null;
 
+  /**
+   * Set when this affiliate order came from the same device or network as
+   * another one for the same partner (#036). The commission still stands; the
+   * flag is there so an admin can review that partner's other transactions.
+   */
+  @ApiPropertyOptional({ type: String, example: 'same_device_or_ip' })
+  attributionWarning?: string | null;
+
   @ApiProperty({ type: Number })
   discountAmount: number;
 

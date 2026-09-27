@@ -126,6 +126,17 @@ export class SubmitOrderDto {
 
   @ApiPropertyOptional({
     type: String,
+    example: 'b6f0b1d0-7d5e-4f7a-9a3e-1f2c3d4e5f60',
+    description:
+      "The browser's own id, from the esim_visitor_id cookie. Used only to flag several affiliate orders coming from one device (#036); it never changes whether the order earns commission.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  visitorId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
     example: '+84901234567',
     description: 'Phone number for contact. Saved to user profile if not set.',
   })

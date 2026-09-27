@@ -112,6 +112,21 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: Number, nullable: true })
   attributedPartnerId?: number | null;
 
+  /**
+   * Who placed the order, as far as fraud watching goes (#036): a hash of the
+   * network address and the browser's own id. The order still earns its
+   * commission; `attributionWarning` marks the ones worth a look.
+   */
+  @Column({ type: String, nullable: true })
+  buyerIpHash?: string | null;
+
+  @Index()
+  @Column({ type: String, nullable: true })
+  buyerVisitorId?: string | null;
+
+  @Column({ type: String, nullable: true })
+  attributionWarning?: string | null;
+
   @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
   referralDiscountVndAmount!: number;
 

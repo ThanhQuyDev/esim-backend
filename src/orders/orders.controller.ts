@@ -43,6 +43,8 @@ import { infinityPagination } from '../utils/infinity-pagination';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
 import { AdminOrderDetailDto } from './dto/admin-order-detail.dto';
 import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
+import { clientIp } from '../tickets/ticket-spam-guard';
+import { hashIpForFraudWatch } from './order-fraud-signals';
 
 @ApiBearerAuth()
 @Roles(RoleEnum.admin)
@@ -70,10 +72,16 @@ export class OrdersController {
   @Post('submit')
   @HttpCode(HttpStatus.CREATED)
   submitOrder(
-    @Request() req: { user: { id: number } },
+    @Request() req: { user: { id: number } } & Parameters<typeof clientIp>[0],
     @Body() dto: SubmitOrderDto,
   ): Promise<Order> {
-    return this.ordersService.submitOrder(req.user.id, dto);
+    // Hashed on the way in: enough to spot several orders from one network
+    // (#036) without keeping the address itself.
+    return this.ordersService.submitOrder(
+      req.user.id,
+      dto,
+      hashIpForFraudWatch(clientIp(req)),
+    );
   }
 
   @Roles(RoleEnum.user, RoleEnum.admin)

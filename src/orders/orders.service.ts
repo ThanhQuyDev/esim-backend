@@ -186,6 +186,39 @@ export class OrdersService {
   }
 
   /**
+   * Fraud-watch signals for an affiliate order (#036).
+   *
+   * The order is never refused: the brief says it still earns the commission.
+   * What it gets is a mark, so an admin reviewing a partner can see that these
+   * orders came from one device or one network rather than from an audience.
+   */
+  private async resolveFraudSignals(
+    attributedPartnerId: number | null,
+    visitorId: string | null,
+    ipHash: string | null,
+  ): Promise<{
+    visitorId: string | null;
+    ipHash: string | null;
+    warning: string | null;
+  }> {
+    if (!attributedPartnerId || (!visitorId && !ipHash)) {
+      return { visitorId, ipHash, warning: null };
+    }
+
+    const seenBefore = await this.partnersService.hasOrderFromSameOrigin(
+      attributedPartnerId,
+      visitorId,
+      ipHash,
+    );
+
+    return {
+      visitorId,
+      ipHash,
+      warning: seenBefore ? 'same_device_or_ip' : null,
+    };
+  }
+
+  /**
    * Create the PENDING commission snapshot for a newly-created order that
    * carries partner attribution. Errors are logged but never propagated —
    * commission bookkeeping must not block order placement.
@@ -287,7 +320,12 @@ export class OrdersService {
     });
   }
 
-  async submitOrder(userId: number, dto: SubmitOrderDto): Promise<Order> {
+  async submitOrder(
+    userId: number,
+    dto: SubmitOrderDto,
+    /** Hashed network address of the buyer, for fraud watching (#036). */
+    clientIpHash?: string | null,
+  ): Promise<Order> {
     // Save phone number to user profile
     if (dto.phoneNumber) {
       try {
@@ -326,6 +364,14 @@ export class OrdersService {
       userId,
     );
 
+    // Same device or network as another order for this partner still earns the
+    // commission, but is flagged for review (#036).
+    const fraudSignals = await this.resolveFraudSignals(
+      attribution.attributedPartnerId,
+      dto.visitorId ?? null,
+      clientIpHash ?? null,
+    );
+
     // 3. Create order
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const order = await this.orderRepository.create({
@@ -346,6 +392,9 @@ export class OrdersService {
       referrerUserId: pricing.referrerUserId,
       partnerLinkCode: attribution.partnerLinkCode,
       attributedPartnerId: attribution.attributedPartnerId,
+      buyerIpHash: fraudSignals.ipHash,
+      buyerVisitorId: fraudSignals.visitorId,
+      attributionWarning: fraudSignals.warning,
       referralDiscountVndAmount: pricing.referralDiscountVndAmount,
       walletSpentVndAmount: pricing.walletSpentVndAmount,
       payableVndPrice: pricing.payableVndPrice,
@@ -584,6 +633,8 @@ export class OrdersService {
     dto: SubmitOrderDto,
     orderNumber: string,
     vndRate?: number,
+    /** Hashed network address of the buyer, for fraud watching (#036). */
+    clientIpHash?: string | null,
   ): Promise<Order> {
     // Save phone number to user profile if provided and user doesn't have one yet
     if (dto.phoneNumber) {
@@ -622,6 +673,14 @@ export class OrdersService {
       userId,
     );
 
+    // Same device and network as another order for this partner still earns
+    // the commission, but is flagged for an admin to look at (#036).
+    const fraudSignals = await this.resolveFraudSignals(
+      attribution.attributedPartnerId,
+      dto.visitorId ?? null,
+      clientIpHash ?? null,
+    );
+
     const totalVndCostPrice = planDetails.reduce((sum, item) => {
       const itemCostPrice = getPlanCostPrice(item.plan, item.periodNum);
       if (item.plan.isLocalInventory) {
@@ -651,6 +710,9 @@ export class OrdersService {
       referrerUserId: pricing.referrerUserId,
       partnerLinkCode: attribution.partnerLinkCode,
       attributedPartnerId: attribution.attributedPartnerId,
+      buyerIpHash: fraudSignals.ipHash,
+      buyerVisitorId: fraudSignals.visitorId,
+      attributionWarning: fraudSignals.warning,
       referralDiscountVndAmount: pricing.referralDiscountVndAmount,
       walletSpentVndAmount: pricing.walletSpentVndAmount,
       payableVndPrice: pricing.payableVndPrice,
@@ -1573,6 +1635,7 @@ export class OrdersService {
             tierSnapshot: partnerCommission.tierSnapshot,
           }
         : null,
+      attributionWarning: order.attributionWarning ?? null,
       discountAmount: order.discountAmount,
       couponDiscountVndAmount: order.couponDiscountVndAmount ?? 0,
       vndPrice: order.vndPrice,

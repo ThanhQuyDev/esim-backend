@@ -143,6 +143,10 @@ export class Order {
 
   @ApiPropertyOptional({ type: Number })
   attributedPartnerId?: number | null;
+  /** Fraud-watch signals for affiliate orders (#036). */
+  buyerIpHash?: string | null;
+  buyerVisitorId?: string | null;
+  attributionWarning?: string | null;
 
   @ApiProperty({ type: Number, example: 0 })
   referralDiscountVndAmount!: number;

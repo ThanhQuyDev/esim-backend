@@ -2500,6 +2500,37 @@ export class PartnersService {
    *     behind it — this can never reject a buyer who really did visit.
    */
   /**
+   * Has this partner already had an order from the same device or network
+   * (#036)?
+   *
+   * One person buying through their own audience's link over and over looks
+   * exactly like this. The order still earns — the brief is explicit — but it
+   * is marked so an admin can review the partner's other transactions.
+   */
+  async hasOrderFromSameOrigin(
+    partnerId: number,
+    visitorId: string | null,
+    ipHash: string | null,
+  ): Promise<boolean> {
+    if (!visitorId && !ipHash) return false;
+
+    const [row] = await this.dataSource.query(
+      `SELECT 1
+       FROM "order" o
+       WHERE o."attributedPartnerId" = $1
+         AND o."deletedAt" IS NULL
+         AND (
+           ($2::text IS NOT NULL AND o."buyerVisitorId" = $2)
+           OR ($3::text IS NOT NULL AND o."buyerIpHash" = $3)
+         )
+       LIMIT 1`,
+      [partnerId, visitorId, ipHash],
+    );
+
+    return Boolean(row);
+  }
+
+  /**
    * Who earns on this order, in one place (#033, #034, #035, #038).
    *
    * In order of strength:
