@@ -135,6 +135,9 @@ export interface OrderPartnerCommissionSummary {
   createdAt: Date;
 }
 /** Order states that will never pay a commission, however they got here. */
+/** Orders that only top up an eSIM the customer already has (#025). */
+const TOPUP_ORDER_TYPE = 'TOPUP';
+
 /**
  * What one attributed order is worth to the partner (#020).
  *
@@ -1527,6 +1530,9 @@ export class PartnersService {
        LEFT JOIN order_partner_commission c ON c."orderId" = o.id
        LEFT JOIN partner_link l ON l.id = c."linkId"
        WHERE o."attributedPartnerId" = $1 AND o."deletedAt" IS NULL
+         -- Top-ups are the customer's business with their own eSIM, not the
+         -- partner's referral (#025).
+         AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
        GROUP BY o.id, c."commissionVnd", c.status, l.code, pa."userId"
        ORDER BY o."createdAt" DESC
        LIMIT $2`,
@@ -1779,6 +1785,7 @@ export class PartnersService {
        LEFT JOIN region r ON r.id = p."regionId"
        WHERE o."attributedPartnerId" = $1
          AND o."deletedAt" IS NULL
+         AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
          AND o.status IN ('paid', 'completed')
          AND o."createdAt" >= $2 AND o."createdAt" < $3
        GROUP BY 1
@@ -1816,6 +1823,7 @@ export class PartnersService {
        FROM "order" o
        WHERE o."attributedPartnerId" = $1
          AND o."deletedAt" IS NULL
+         AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
          AND o.status IN ('paid', 'completed')`,
       [partnerId, from, to],
     );
@@ -1826,7 +1834,11 @@ export class PartnersService {
          COALESCE(SUM(c."commissionVnd"), 0) AS "commissionTotal",
          COALESCE(SUM(c."commissionVnd") FILTER (WHERE c.status = 'pending'), 0) AS "commissionPending"
        FROM order_partner_commission c
-       WHERE c."partnerId" = $1 AND c.status <> 'reversed'`,
+       JOIN "order" o ON o.id = c."orderId"
+       WHERE c."partnerId" = $1
+         AND c.status <> 'reversed'
+         -- Historical rows from before top-ups stopped earning (#025).
+         AND o."orderType" <> '${TOPUP_ORDER_TYPE}'`,
       [partnerId, from, to],
     );
 
@@ -1850,6 +1862,7 @@ export class PartnersService {
          FROM "order" o
          WHERE o."attributedPartnerId" = $1
            AND o."deletedAt" IS NULL
+           AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
            AND o.status IN ('paid', 'completed')
            AND o."createdAt" >= $2 AND o."createdAt" < $3
          GROUP BY o."userId"
@@ -2240,11 +2253,18 @@ export class PartnersService {
     orderValueVnd: number;
     /** The account that placed the order, when there is one. */
     buyerUserId?: number | null;
+    /** `TOPUP` orders earn no commission (#025). */
+    orderType?: string | null;
   }): Promise<OrderPartnerCommissionEntity | null> {
     const partner = await this.partnerRepository.findOne({
       where: { id: params.partnerId },
     });
     if (!partner) return null;
+
+    // Topping up an existing eSIM earns nothing (#025): the partner brought
+    // the customer once, and every later top-up of that same eSIM is not a new
+    // referral.
+    if (params.orderType === TOPUP_ORDER_TYPE) return null;
 
     if (params.buyerUserId && partner.userId === params.buyerUserId) {
       this.logger.warn(

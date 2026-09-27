@@ -211,6 +211,8 @@ export class OrdersService {
         // Lets the partners module refuse a partner buying through their own
         // link (#095).
         buyerUserId: order.userId,
+        // Top-ups earn no commission (#025).
+        orderType: order.orderType,
         // Commission base is the order value AFTER discounts but BEFORE the
         // buyer's eXU wallet spend: eXU is the customer paying with store
         // credit, not a discount, so it must not shrink what the partner earns.
