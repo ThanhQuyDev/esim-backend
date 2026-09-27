@@ -387,6 +387,57 @@ export class MailService {
     });
   }
 
+  /**
+   * Code that releases a bank account change (#005).
+   *
+   * Uses the same stored-template mechanism as the decision emails so support
+   * can reword it without a deploy, and repeats the account being changed to:
+   * an unexpected code is only alarming if it says what it would do.
+   */
+  async sendPartnerBankChangeOtp(data: {
+    to: string;
+    contactName: string;
+    otp: string;
+    bankSummary: string;
+    expiresInMinutes: number;
+  }): Promise<void> {
+    const template = await this.emailTemplatesService.findByName(
+      'partner_bank_change_otp',
+    );
+    if (!template) {
+      this.logger.warn(
+        'Email template "partner_bank_change_otp" not found, skipping bank change code',
+      );
+      return;
+    }
+
+    const context = {
+      contactName: data.contactName,
+      otp: data.otp,
+      bankSummary: data.bankSummary,
+      expiresInMinutes: data.expiresInMinutes,
+      app_name: this.configService.get('app.name', { infer: true }),
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail: SUPPORT_EMAIL,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      transportName: 'otp',
+      to: data.to,
+      subject: subjectCompiled,
+      text: `${subjectCompiled}: ${data.otp}`,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
+    });
+  }
+
   async sendPartnerApproved(data: PartnerDecisionMailData): Promise<void> {
     await this.sendPartnerDecision('partner_application_approved', data);
   }

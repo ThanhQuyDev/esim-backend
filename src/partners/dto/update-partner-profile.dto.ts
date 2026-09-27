@@ -45,27 +45,6 @@ export class UpdatePartnerProfileDto {
   @IsObject()
   brandInfo?: Record<string, unknown>;
 
-  @ApiPropertyOptional({ example: 'Vietcombank' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  bankName?: string;
-
-  @ApiPropertyOptional({ example: '0123456789' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(40)
-  bankAccountNumber?: string;
-
-  @ApiPropertyOptional({ example: 'TRAN THU HA' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  bankAccountHolder?: string;
-
-  @ApiPropertyOptional({ example: 'Chi nhánh Tân Bình' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  bankBranch?: string;
+  // Bank details are not here on purpose: changing where the money goes needs
+  // the emailed code (#005), see POST /partners/me/bank-account/otp.
 }

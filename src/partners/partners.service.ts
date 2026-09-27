@@ -37,6 +37,7 @@ import { OrderPartnerCommissionEntity } from './infrastructure/persistence/relat
 import { PartnerPayoutEntity } from './infrastructure/persistence/relational/entities/partner-payout.entity';
 import { PartnerApplyDto } from './dto/partner-apply.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
+import { RequestBankAccountChangeDto } from './dto/partner-bank-account.dto';
 import {
   QueryPartnerDto,
   QueryPartnerCommissionDto,
@@ -133,6 +134,19 @@ export interface OrderPartnerCommissionSummary {
   createdAt: Date;
 }
 /** Order states that will never pay a commission, however they got here. */
+/** How long an emailed bank-change code stays good, and how hard it may be guessed (#005). */
+const BANK_CHANGE_OTP_TTL_MS = 10 * 60 * 1000;
+const BANK_CHANGE_OTP_RESEND_MS = 60 * 1000;
+const BANK_CHANGE_OTP_MAX_ATTEMPTS = 5;
+
+/** `thu.ha@esim.vn` -> `th***@esim.vn`, so the portal can say where it went. */
+function maskEmail(email: string): string {
+  const [name, domain] = email.split('@');
+  if (!domain) return email;
+  const head = name.slice(0, 2);
+  return `${head}${'*'.repeat(Math.max(name.length - 2, 1))}@${domain}`;
+}
+
 const DEAD_ORDER_STATUSES = new Set(['cancelled', 'failed', 'refunded']);
 
 /** Order states where the money has actually arrived. */
@@ -394,15 +408,127 @@ export class PartnersService {
       }),
       ...(dto.channelInfo !== undefined && { channelInfo: dto.channelInfo }),
       ...(dto.brandInfo !== undefined && { brandInfo: dto.brandInfo }),
-      ...(dto.bankName !== undefined && { bankName: dto.bankName }),
-      ...(dto.bankAccountNumber !== undefined && {
-        bankAccountNumber: dto.bankAccountNumber,
-      }),
-      ...(dto.bankAccountHolder !== undefined && {
-        bankAccountHolder: dto.bankAccountHolder,
-      }),
-      ...(dto.bankBranch !== undefined && { bankBranch: dto.bankBranch }),
     });
+    // Bank details deliberately absent: they move through the emailed code
+    // (#005), see requestBankAccountChange / confirmBankAccountChange.
+    return this.partnerRepository.save(partner);
+  }
+
+  /**
+   * Step one of changing where the money goes (#005).
+   *
+   * The new account is parked on the partner row with the hash of a six-digit
+   * code mailed to the address on file. Nothing about the live account changes
+   * yet, so someone who gets hold of a session still cannot redirect a payout
+   * without also reading the partner's inbox.
+   */
+  async requestBankAccountChange(
+    userId: number,
+    dto: RequestBankAccountChangeDto,
+  ): Promise<{ sentTo: string; expiresAt: string }> {
+    const partner = await this.getPartnerByUserId(userId);
+
+    if (!partner.contactEmail) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { contactEmail: 'Hồ sơ chưa có email để nhận mã xác nhận.' },
+      });
+    }
+
+    const pending = partner.pendingBankChange;
+    if (
+      pending &&
+      Date.now() - new Date(pending.requestedAt).getTime() <
+        BANK_CHANGE_OTP_RESEND_MS
+    ) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpRecentlySent' },
+      });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + BANK_CHANGE_OTP_TTL_MS);
+
+    partner.pendingBankChange = {
+      values: {
+        bankName: dto.bankName,
+        bankAccountNumber: dto.bankAccountNumber,
+        bankAccountHolder: dto.bankAccountHolder,
+        bankBranch: dto.bankBranch ?? null,
+      },
+      otpHash: await bcrypt.hash(otp, 10),
+      expiresAt: expiresAt.toISOString(),
+      attempts: 0,
+      requestedAt: new Date().toISOString(),
+    };
+    await this.partnerRepository.save(partner);
+
+    await this.mailService.sendPartnerBankChangeOtp({
+      to: partner.contactEmail,
+      contactName: partner.contactName,
+      otp,
+      bankSummary: `${dto.bankName} — ${dto.bankAccountNumber} — ${dto.bankAccountHolder}`,
+      expiresInMinutes: Math.round(BANK_CHANGE_OTP_TTL_MS / 60000),
+    });
+
+    return {
+      sentTo: maskEmail(partner.contactEmail),
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  /** Step two: the code releases exactly the account that was requested (#005). */
+  async confirmBankAccountChange(
+    userId: number,
+    otp: string,
+  ): Promise<PartnerEntity> {
+    const partner = await this.getPartnerByUserId(userId);
+    const pending = partner.pendingBankChange;
+
+    if (!pending) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpNotFound' },
+      });
+    }
+
+    if (Date.now() > new Date(pending.expiresAt).getTime()) {
+      partner.pendingBankChange = null;
+      await this.partnerRepository.save(partner);
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpExpired' },
+      });
+    }
+
+    if (pending.attempts >= BANK_CHANGE_OTP_MAX_ATTEMPTS) {
+      partner.pendingBankChange = null;
+      await this.partnerRepository.save(partner);
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpMaxAttemptsExceeded' },
+      });
+    }
+
+    if (!(await bcrypt.compare(otp, pending.otpHash))) {
+      partner.pendingBankChange = {
+        ...pending,
+        attempts: pending.attempts + 1,
+      };
+      await this.partnerRepository.save(partner);
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { otp: 'otpInvalid' },
+      });
+    }
+
+    partner.bankName = pending.values.bankName;
+    partner.bankAccountNumber = pending.values.bankAccountNumber;
+    partner.bankAccountHolder = pending.values.bankAccountHolder;
+    partner.bankBranch = pending.values.bankBranch;
+    partner.pendingBankChange = null;
+
     return this.partnerRepository.save(partner);
   }
 

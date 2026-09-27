@@ -19,6 +19,10 @@ import { RolesGuard } from '../roles/roles.guard';
 import { PartnersService } from './partners.service';
 import { PartnerApplyDto } from './dto/partner-apply.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
+import {
+  ConfirmBankAccountChangeDto,
+  RequestBankAccountChangeDto,
+} from './dto/partner-bank-account.dto';
 import { QueryPartnerCommissionDto } from './dto/query-partner.dto';
 import {
   CreateDepositRequestDto,
@@ -60,6 +64,32 @@ export class PartnersController {
     @Body() dto: UpdatePartnerProfileDto,
   ) {
     return this.partnersService.updateMyProfile(req.user.id, dto);
+  }
+
+  /** Ask for the code that releases a bank account change (#005). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/bank-account/otp')
+  @HttpCode(HttpStatus.OK)
+  async requestBankAccountChange(
+    @Request() req: { user: { id: number } },
+    @Body() dto: RequestBankAccountChangeDto,
+  ) {
+    return this.partnersService.requestBankAccountChange(req.user.id, dto);
+  }
+
+  /** Apply the requested bank account once the code checks out (#005). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/bank-account/confirm')
+  @HttpCode(HttpStatus.OK)
+  async confirmBankAccountChange(
+    @Request() req: { user: { id: number } },
+    @Body() dto: ConfirmBankAccountChangeDto,
+  ) {
+    return this.partnersService.confirmBankAccountChange(req.user.id, dto.otp);
   }
 
   @ApiBearerAuth()

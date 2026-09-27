@@ -17,6 +17,20 @@ import {
   PartnerTypeEnum,
 } from '../../../../partners.enum';
 
+/** Bank details a partner asked to change, held until the code confirms (#005). */
+export interface PendingBankChange {
+  values: {
+    bankName: string;
+    bankAccountNumber: string;
+    bankAccountHolder: string;
+    bankBranch: string | null;
+  };
+  otpHash: string;
+  expiresAt: string;
+  attempts: number;
+  requestedAt: string;
+}
+
 @Entity({ name: 'partner' })
 export class PartnerEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn()
@@ -106,6 +120,13 @@ export class PartnerEntity extends EntityRelationalHelper {
 
   @Column({ type: String, nullable: true })
   bankBranch?: string | null;
+
+  /**
+   * A bank account change waiting for the emailed code (#005).
+   * Shape: `{ values, otpHash, expiresAt, attempts, requestedAt }`.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  pendingBankChange?: PendingBankChange | null;
 
   @DeleteDateColumn()
   deletedAt!: Date;
