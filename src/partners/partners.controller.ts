@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -254,6 +255,20 @@ export class PartnersController {
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  /** Remove a link from the partner's list (#016). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Delete('me/links/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteMyLink(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    await this.partnersService.deleteLink(partner.id, Number(id));
+  }
+
   @Patch('me/links/:id')
   @HttpCode(HttpStatus.OK)
   async updateLink(

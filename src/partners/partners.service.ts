@@ -801,6 +801,22 @@ export class PartnersService {
   }
 
   /**
+   * Retire a link the partner no longer wants (#016).
+   *
+   * Soft delete on purpose: the code stays reserved and the orders it already
+   * brought keep pointing at something, so a reconciliation query months later
+   * still says where that commission came from.
+   */
+  async deleteLink(partnerId: number, linkId: number): Promise<void> {
+    const link = await this.linkRepository.findOne({
+      where: { id: linkId, partnerId },
+    });
+    if (!link) throw new NotFoundException('Không tìm thấy link.');
+
+    await this.linkRepository.softRemove(link);
+  }
+
+  /**
    * The affiliate commission attached to an order, if any (#095).
    *
    * Admins looking at an order need to see who earned on it and how much —
@@ -2229,6 +2245,22 @@ export class PartnersService {
       commission.status = OrderPartnerCommissionStatusEnum.REVERSED;
       commission.reversedTransactionId = transaction.id;
       await this.commissionRepository.save(commission);
+
+      // The link's running totals were raised when this commission was
+      // credited; leaving them alone would show a partner commission on a link
+      // that no longer earned it (#016).
+      if (commission.linkId) {
+        await this.linkRepository.decrement(
+          { id: commission.linkId },
+          'conversionCount',
+          1,
+        );
+        await this.linkRepository.decrement(
+          { id: commission.linkId },
+          'totalCommissionVnd',
+          Number(commission.commissionVnd),
+        );
+      }
     } else if (
       commission.status === OrderPartnerCommissionStatusEnum.CREDITED
     ) {

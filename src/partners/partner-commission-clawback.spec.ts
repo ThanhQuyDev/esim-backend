@@ -32,7 +32,7 @@ function buildService(
       findOne: jest.fn().mockResolvedValue(commission),
       save: commissionSave,
     },
-    linkRepository: { increment: jest.fn() },
+    linkRepository: { increment: jest.fn(), decrement: jest.fn() },
     walletRepository: { save: walletSave },
     getOrCreateWalletWithManager: jest.fn().mockResolvedValue(wallet),
     dataSource: {
@@ -72,6 +72,31 @@ describe('PartnersService — clawing a paid commission back (#007)', () => {
     });
     // Already withdrawn, so the wallet goes below zero and stays there.
     expect(wallet.balanceVnd).toBe(-120000);
+  });
+
+  it('should take the reversed commission off the link totals too (#016)', async () => {
+    const commission = {
+      id: 7,
+      partnerId: 5,
+      linkId: 11,
+      commissionVnd: 80000,
+      status: OrderPartnerCommissionStatusEnum.CREDITED,
+    };
+    const { service } = buildService(commission);
+    const decrement = (
+      service as unknown as {
+        linkRepository: { decrement: jest.Mock };
+      }
+    ).linkRepository.decrement;
+
+    await service.reverseCommissionForOrder(80, { fullRefund: true });
+
+    expect(decrement).toHaveBeenCalledWith({ id: 11 }, 'conversionCount', 1);
+    expect(decrement).toHaveBeenCalledWith(
+      { id: 11 },
+      'totalCommissionVnd',
+      80000,
+    );
   });
 
   it('should let the balance go negative on a full refund after payout', async () => {
