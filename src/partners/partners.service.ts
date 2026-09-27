@@ -853,7 +853,7 @@ export class PartnersService {
         // Without the utm parameters the portal appends, which are noise in a
         // column meant to answer "where does this link send people".
         landing: (link.targetPath ?? '').split('?')[0] || 'Trang chủ',
-        link: `esim.vn/r/${link.code}`,
+        link: `esim.vn/go/${link.code}`,
         clicks: Number(link.clickCount ?? 0),
         orders: Number(link.conversionCount ?? 0),
         commission: Number(link.totalCommissionVnd ?? 0),
@@ -1485,6 +1485,9 @@ export class PartnersService {
               c."commissionVnd",
               c.status AS "commissionStatus",
               l.code   AS "linkCode",
+              -- Which of the partner's discount codes brought the order, when
+              -- it came in through a code rather than a link (#024).
+              o."couponCode" AS "couponCode",
               COALESCE(
                 json_agg(
                   json_build_object(
@@ -1556,6 +1559,7 @@ export class PartnersService {
         commissionVnd,
         commissionStatus,
         linkCode: r.linkCode ?? null,
+        couponCode: r.couponCode ?? null,
         customerType: r.isNewCustomer ? 'new' : 'returning',
         esimCount: Number(r.esimCount ?? 0),
         items: r.items ?? [],

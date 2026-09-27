@@ -74,7 +74,7 @@ describe('PartnersService — exporting the link list (#017)', () => {
     expect(rows[1]).toEqual([
       'Video Nhật Bản',
       '/esim-nhat-ban',
-      'esim.vn/r/VANA2026',
+      'esim.vn/go/VANA2026',
       120,
       8,
       640000,

@@ -39,6 +39,10 @@ export class PartnerOrderRowDto {
   @ApiProperty({ required: false })
   refundedVnd?: number;
 
+  /** Discount code the order came in on, when it was not a link (#024). */
+  @ApiPropertyOptional({ type: String })
+  couponCode?: string | null;
+
   /** Whether esim.vn had seen this buyer before this order (#021). */
   @ApiProperty({ required: false, enum: ['new', 'returning'] })
   customerType?: 'new' | 'returning';
