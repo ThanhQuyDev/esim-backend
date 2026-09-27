@@ -1,10 +1,15 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { TicketMessageEntity } from './infrastructure/persistence/relational/entities/ticket-message.entity';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { TicketRepository } from './infrastructure/persistence/ticket.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
@@ -25,7 +30,83 @@ export class TicketsService {
     TICKET_IP_WINDOW_MS,
   );
 
-  constructor(private readonly ticketRepository: TicketRepository) {}
+  constructor(
+    private readonly ticketRepository: TicketRepository,
+    @InjectRepository(TicketMessageEntity)
+    private readonly messageRepository: Repository<TicketMessageEntity>,
+  ) {}
+
+  /**
+   * The conversation on one ticket (#032).
+   *
+   * Only the person who opened it and staff may read it: a ticket carries
+   * order numbers, ICCIDs and whatever the customer pasted in.
+   */
+  async listMessages(
+    ticketId: number,
+    requester: { email?: string | null; isAdmin: boolean },
+  ): Promise<TicketMessageEntity[]> {
+    await this.assertCanSeeTicket(ticketId, requester);
+
+    return this.messageRepository.find({
+      where: { ticketId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  /** Add a reply to a ticket, from either side of it (#032). */
+  async addMessage(
+    ticketId: number,
+    requester: {
+      email?: string | null;
+      isAdmin: boolean;
+      name?: string | null;
+    },
+    input: { body: string; attachments?: string[] },
+  ): Promise<TicketMessageEntity> {
+    await this.assertCanSeeTicket(ticketId, requester);
+
+    const body = input.body?.trim();
+    if (!body) {
+      throw new BadRequestException('Nội dung phản hồi không được để trống.');
+    }
+
+    const message = await this.messageRepository.save(
+      this.messageRepository.create({
+        ticketId,
+        authorRole: requester.isAdmin ? 'admin' : 'customer',
+        authorName: requester.name ?? null,
+        body,
+        attachments: input.attachments?.length ? input.attachments : null,
+      }),
+    );
+
+    // A reply from support reopens a ticket that was closed prematurely, and a
+    // reply from the customer means it is not resolved after all.
+    const ticket = await this.ticketRepository.findById(ticketId);
+    if (ticket && ticket.status === 'closed') {
+      await this.ticketRepository.update(ticketId, { status: 'open' } as never);
+    }
+
+    return message;
+  }
+
+  private async assertCanSeeTicket(
+    ticketId: number,
+    requester: { email?: string | null; isAdmin: boolean },
+  ): Promise<Ticket> {
+    const ticket = await this.ticketRepository.findById(ticketId);
+    if (!ticket) throw new NotFoundException('Không tìm thấy yêu cầu hỗ trợ.');
+
+    if (requester.isAdmin) return ticket;
+
+    const email = requester.email?.trim().toLowerCase();
+    if (!email || ticket.customerEmail?.trim().toLowerCase() !== email) {
+      throw new ForbiddenException('Yêu cầu hỗ trợ này không thuộc về bạn.');
+    }
+
+    return ticket;
+  }
 
   async create(
     createTicketDto: CreateTicketDto,

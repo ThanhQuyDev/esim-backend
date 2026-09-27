@@ -28,7 +28,9 @@ function makeService(opts: { sentByEmail?: number; duplicate?: boolean } = {}) {
     countByEmailSince: jest.fn().mockResolvedValue(opts.sentByEmail ?? 0),
     existsDuplicate: jest.fn().mockResolvedValue(opts.duplicate ?? false),
   };
-  const service = new TicketsService(repository as never);
+  // The message repository is irrelevant to the spam rules (#032).
+  const messages = { find: jest.fn(), create: jest.fn(), save: jest.fn() };
+  const service = new TicketsService(repository as never, messages as never);
   return { service, repository };
 }
 

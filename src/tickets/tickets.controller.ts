@@ -115,6 +115,50 @@ export class TicketsController {
     return infinityPagination(data, { page, limit }, count);
   }
 
+  /**
+   * The conversation on one ticket (#032) — the owner or staff.
+   */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Get(':id/messages')
+  @ApiParam({ name: 'id', type: Number })
+  @HttpCode(HttpStatus.OK)
+  async messages(
+    @Request() req: { user: { id: number; role?: { id: number } } },
+    @Param('id') id: number,
+  ) {
+    const requester = await this.describeRequester(req.user);
+    return this.ticketsService.listMessages(Number(id), requester);
+  }
+
+  /** Reply to a ticket, from either side of it (#032). */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Post(':id/messages')
+  @ApiParam({ name: 'id', type: Number })
+  @HttpCode(HttpStatus.CREATED)
+  async reply(
+    @Request() req: { user: { id: number; role?: { id: number } } },
+    @Param('id') id: number,
+    @Body() body: { body: string; attachments?: string[] },
+  ) {
+    const requester = await this.describeRequester(req.user);
+    return this.ticketsService.addMessage(Number(id), requester, body);
+  }
+
+  /** Who is asking, and may they see this ticket at all (#032). */
+  private async describeRequester(user: { id: number; role?: { id: number } }) {
+    const account = await this.usersService.findById(user.id);
+    return {
+      email: account?.email ?? null,
+      isAdmin: Number(user.role?.id ?? account?.role?.id) === RoleEnum.admin,
+      name:
+        [account?.firstName, account?.lastName].filter(Boolean).join(' ') ||
+        account?.email ||
+        null,
+    };
+  }
+
   @ApiBearerAuth()
   @Roles(RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
