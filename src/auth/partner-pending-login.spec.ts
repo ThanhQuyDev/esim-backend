@@ -83,6 +83,24 @@ describe('sign-in while the partner profile is pending (#001)', () => {
     });
   });
 
+  it('should answer a rejected application like an unknown account (#003)', async () => {
+    const { service, createdSessions } = await makeService({
+      id: 6,
+      partnerType: PartnerTypeEnum.KOL,
+      status: PartnerStatusEnum.REJECTED,
+    });
+
+    // They were told to fill the form in again, not to sign in — so they get
+    // the same answer as someone who never registered.
+    await expect(
+      service.validateLogin({ email: 'kol@esim.vn', password: PASSWORD }),
+    ).rejects.toMatchObject({
+      response: { errors: { email: 'notFound' } },
+    });
+
+    expect(createdSessions).toHaveLength(0);
+  });
+
   it('should let an approved partner through', async () => {
     const { service, createdSessions } = await makeService({
       id: 5,

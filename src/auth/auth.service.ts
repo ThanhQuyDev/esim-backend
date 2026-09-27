@@ -65,6 +65,18 @@ export class AuthService {
       select: { id: true, partnerType: true, status: true },
     });
 
+    // A rejected application is answered like an account that was never
+    // created (#003) — the email told them to fill the form in again, not to
+    // sign in with what they had.
+    if (partner?.status === PartnerStatusEnum.REJECTED) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          email: 'notFound',
+        },
+      });
+    }
+
     if (partner?.status !== PartnerStatusEnum.PENDING) return;
 
     const label =

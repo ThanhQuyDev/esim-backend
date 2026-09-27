@@ -36,6 +36,10 @@ class EnvironmentVariablesValidator {
   @IsOptional()
   BACKEND_DOMAIN: string;
 
+  @IsUrl({ require_tld: false })
+  @IsOptional()
+  PARTNER_PORTAL_DOMAIN: string;
+
   @IsString()
   @IsOptional()
   API_PREFIX: string;
@@ -58,6 +62,11 @@ export default registerAs<AppConfig>('app', () => {
     workingDirectory: process.env.PWD || process.cwd(),
     frontendDomain: process.env.FRONTEND_DOMAIN,
     backendDomain: process.env.BACKEND_DOMAIN ?? 'http://localhost',
+    // Where partners sign in and apply — a different deployment from the
+    // customer site, so partner emails must not point at FRONTEND_DOMAIN
+    // (#003, #004). Falls back to it only so dev setups keep working.
+    partnerPortalDomain:
+      process.env.PARTNER_PORTAL_DOMAIN || process.env.FRONTEND_DOMAIN,
     port: process.env.APP_PORT
       ? parseInt(process.env.APP_PORT, 10)
       : process.env.PORT

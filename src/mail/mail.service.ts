@@ -45,6 +45,12 @@ export interface InvoiceIssuedMailData {
  */
 export const PARTNER_AFFILIATE_PATH = '/ho-so?tab=affiliate';
 
+/**
+ * Where a rejected applicant fills the form in again (#003). The rejection
+ * email used to say "bạn có thể nộp lại hồ sơ" without saying where.
+ */
+export const PARTNER_REGISTER_PATH = '/register/partner';
+
 /** Outcome of an affiliate application, either way (#095). */
 export interface PartnerDecisionMailData {
   to: string;
@@ -349,6 +355,13 @@ export class MailService {
       portalUrl:
         this.configService.getOrThrow('app.frontendDomain', { infer: true }) +
         PARTNER_AFFILIATE_PATH,
+      // The application form lives on the partner portal, not the storefront
+      // (#003); `partnerPortalDomain` falls back to the frontend domain.
+      registerUrl:
+        (this.configService.get('app.partnerPortalDomain', { infer: true }) ??
+          this.configService.getOrThrow('app.frontendDomain', {
+            infer: true,
+          })) + PARTNER_REGISTER_PATH,
       app_name: appName,
       logoUrl: BRAND_LOGO_URL,
       supportEmail: SUPPORT_EMAIL,

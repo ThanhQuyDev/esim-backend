@@ -255,6 +255,20 @@ export class PartnersService {
       where: { email: dto.contactEmail },
     });
     if (existing) {
+      const rejected = await this.partnerRepository.findOne({
+        where: {
+          userId: existing.id,
+          status: PartnerStatusEnum.REJECTED,
+        },
+      });
+
+      // The rejection email tells the applicant to fill the form in again, so
+      // their own email must be accepted a second time (#003). The profile is
+      // rewritten with what they just sent and goes back in the queue.
+      if (rejected) {
+        return this.reapply(existing.id, rejected, dto);
+      }
+
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         errors: { contactEmail: 'emailAlreadyExists' },
@@ -307,6 +321,51 @@ export class PartnersService {
       );
 
       return { partnerId: partner.id, userId: user.id };
+    });
+  }
+
+  /**
+   * Second attempt after a rejection (#003).
+   *
+   * Everything the applicant just filled in replaces what was on file, the
+   * rejection reason is cleared so the admin reviews a clean profile, and the
+   * password they typed becomes their login — they may well have forgotten the
+   * one from the first attempt.
+   */
+  private async reapply(
+    userId: number,
+    partner: PartnerEntity,
+    dto: PartnerApplyDto,
+  ): Promise<{ partnerId: number; userId: number }> {
+    return this.dataSource.transaction(async (manager) => {
+      const salt = await bcrypt.genSalt();
+      const password = await bcrypt.hash(dto.password, salt);
+
+      await manager.getRepository(UserEntity).update(userId, {
+        password,
+        firstName: dto.contactName,
+        phoneNumber: dto.contactPhone,
+      });
+
+      const partnerRepo = manager.getRepository(PartnerEntity);
+      await partnerRepo.save(
+        partnerRepo.merge(partner, {
+          partnerType: dto.partnerType,
+          legalType: dto.legalType,
+          companyName: dto.companyName ?? null,
+          taxCode: dto.taxCode ?? null,
+          businessAddress: dto.businessAddress ?? null,
+          contactName: dto.contactName,
+          contactPhone: dto.contactPhone,
+          contactEmail: dto.contactEmail,
+          channelInfo: dto.channelInfo ?? null,
+          status: PartnerStatusEnum.PENDING,
+          notes: dto.notes ?? null,
+          rejectionReason: null,
+        }),
+      );
+
+      return { partnerId: partner.id, userId };
     });
   }
 

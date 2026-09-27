@@ -1,5 +1,9 @@
 import Handlebars from 'handlebars';
-import { MailService, PARTNER_AFFILIATE_PATH } from './mail.service';
+import {
+  MailService,
+  PARTNER_AFFILIATE_PATH,
+  PARTNER_REGISTER_PATH,
+} from './mail.service';
 import { BRAND_LOGO_URL, SUPPORT_EMAIL } from './mail-branding';
 
 /**
@@ -51,8 +55,24 @@ describe('MailService — partner decision email contents', () => {
   const REJECTED = {
     subject: 'Kết quả hồ sơ đối tác — {{app_name}}',
     htmlBody:
-      '<p>Chào {{contactName}},</p>{{#if reason}}<p>Lý do: {{reason}}</p>{{/if}}',
+      '<p>Chào {{contactName}},</p>{{#if reason}}<p>Lý do: {{reason}}</p>{{/if}}' +
+      '<a href="{{registerUrl}}">Điền lại biểu mẫu đăng ký</a>',
   };
+
+  it('should tell a rejected applicant where the form is (#003)', async () => {
+    const { service, sendMail } = buildService(REJECTED);
+
+    await service.sendPartnerRejected({
+      to: 'kol@example.com',
+      contactName: 'Nguyễn Văn A',
+      reason: 'Kênh chưa đủ người theo dõi',
+    });
+
+    const html = sendMail.mock.calls[0][0].html as string;
+    // "Bạn có thể nộp lại hồ sơ" without a link was an instruction nobody
+    // could follow.
+    expect(html).toContain(`href="${FRONTEND}${PARTNER_REGISTER_PATH}"`);
+  });
 
   it('should point the approval email at a page the site actually serves', async () => {
     const { service, sendMail } = buildService(APPROVED);
