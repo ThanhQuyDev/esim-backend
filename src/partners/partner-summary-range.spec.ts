@@ -65,6 +65,18 @@ describe('PartnersService — dashboard period filter (#010)', () => {
     expect(windows[2]).toEqual(windows[0]);
   });
 
+  it('should ask the same window for the customer split (#011)', async () => {
+    const { service, calls } = buildService();
+
+    await service.getMySummary(5, { from: '2026-09-01', to: '2026-09-07' });
+
+    // orders, commissions, clicks, customers, month-over-month
+    const [, from, to] = calls[3] as [number, Date, Date];
+    const [, firstFrom, firstTo] = calls[0] as [number, Date, Date];
+    expect(from.toISOString()).toBe(firstFrom.toISOString());
+    expect(to.toISOString()).toBe(firstTo.toISOString());
+  });
+
   it('should fall back to the last 30 days when nothing is chosen', async () => {
     const { service, calls } = buildService();
 

@@ -1610,6 +1610,36 @@ export class PartnersService {
       [partnerId, from, to],
     );
 
+    // New vs returning buyers behind this partner's orders (#011). "Mới" is
+    // read from the buyer's own account history: their first paid order on
+    // esim.vn ever, not merely their first through this partner — otherwise
+    // every partner would report the same customer as new.
+    const [customers] = await this.dataSource.query(
+      `WITH buyers AS (
+         SELECT o."userId" AS user_id, MIN(o."createdAt") AS first_in_range
+         FROM "order" o
+         WHERE o."attributedPartnerId" = $1
+           AND o."deletedAt" IS NULL
+           AND o.status IN ('paid', 'completed')
+           AND o."createdAt" >= $2 AND o."createdAt" < $3
+         GROUP BY o."userId"
+       )
+       SELECT
+         COUNT(*) FILTER (WHERE earlier.id IS NULL) AS "newCustomers",
+         COUNT(*) FILTER (WHERE earlier.id IS NOT NULL) AS "returningCustomers"
+       FROM buyers b
+       LEFT JOIN LATERAL (
+         SELECT e.id
+         FROM "order" e
+         WHERE e."userId" = b.user_id
+           AND e."deletedAt" IS NULL
+           AND e.status IN ('paid', 'completed')
+           AND e."createdAt" < b.first_in_range
+         LIMIT 1
+       ) earlier ON true`,
+      [partnerId, from, to],
+    );
+
     // Same span of this month against last month — "cùng kỳ tháng trước"
     // (#008). Comparing whole months would flatter the 1st of the month and
     // punish the 2nd, which is not what the partner is being shown.
@@ -1664,6 +1694,11 @@ export class PartnersService {
         orders: Number(perf?.ordersTotal ?? 0),
         revenueVnd: revenueTotal,
         commissionVnd: Number(comm?.commissionTotal ?? 0),
+      },
+      /** Buyers in the window, split by whether esim.vn had seen them before (#011). */
+      customers: {
+        newCount: Number(customers?.newCustomers ?? 0),
+        returningCount: Number(customers?.returningCustomers ?? 0),
       },
       commissionPendingVnd: Number(comm?.commissionPending ?? 0),
       /** This month so far vs the same days of last month (#008). */
