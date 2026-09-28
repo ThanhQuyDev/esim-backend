@@ -3392,6 +3392,88 @@ export class PartnersService {
     }));
   }
 
+  /**
+   * The partners bringing in the most, for the foot of the overview (#054).
+   *
+   * Ranked on the same money as everything else on that screen — what esim.vn
+   * keeps — so the table and the totals above it cannot tell different stories.
+   * Thirty rows because the brief asks for thirty: enough to see the long tail
+   * rather than only the names everyone already knows.
+   */
+  async adminTopPartners(
+    range: { from?: string; to?: string } = {},
+    limit = 30,
+  ): Promise<
+    {
+      id: number;
+      contactName: string | null;
+      partnerType: string;
+      tierCode: string | null;
+      status: string;
+      revenueVnd: number;
+      orders: number;
+      commissionVnd: number;
+    }[]
+  > {
+    const { from, to } = resolveSummaryRange(range);
+
+    const rows = await this.dataSource.query(
+      `SELECT p.id,
+              p."contactName",
+              p."partnerType",
+              p."tierCode",
+              p.status,
+              COALESCE(SUM(t."revenueVnd"), 0) AS "revenueVnd",
+              COALESCE(SUM(t."commissionVnd"), 0) AS "commissionVnd",
+              COUNT(DISTINCT t."orderId") AS orders
+       FROM partner p
+       JOIN (
+         SELECT o.id AS "orderId", o."attributedPartnerId" AS "partnerId",
+                ${ORDER_REVENUE_SQL} - COALESCE(
+                  (SELECT c."commissionVnd" - COALESCE(c."reversedCommissionVnd", 0)
+                   FROM order_partner_commission c
+                   WHERE c."orderId" = o.id AND c.status <> 'reversed'), 0
+                ) AS "revenueVnd",
+                COALESCE(
+                  (SELECT c."commissionVnd" - COALESCE(c."reversedCommissionVnd", 0)
+                   FROM order_partner_commission c
+                   WHERE c."orderId" = o.id AND c.status <> 'reversed'), 0
+                ) AS "commissionVnd"
+         FROM "order" o
+         WHERE o."deletedAt" IS NULL AND o.status = ANY($3)
+           AND o."attributedPartnerId" IS NOT NULL
+           AND o."createdAt" >= $1 AND o."createdAt" < $2
+
+         UNION ALL
+
+         SELECT o.id AS "orderId", pa.id AS "partnerId",
+                ${ORDER_REVENUE_SQL} AS "revenueVnd",
+                0 AS "commissionVnd"
+         FROM "order" o
+         JOIN partner pa ON pa."userId" = o."userId" AND pa."deletedAt" IS NULL
+         WHERE o."deletedAt" IS NULL AND o.status = ANY($3)
+           AND (o."attributedPartnerId" IS NULL OR o."attributedPartnerId" = pa.id)
+           AND o."createdAt" >= $1 AND o."createdAt" < $2
+       ) t ON t."partnerId" = p.id
+       WHERE p."deletedAt" IS NULL
+       GROUP BY p.id
+       ORDER BY "revenueVnd" DESC
+       LIMIT $4`,
+      [from, to, SETTLED_ORDER_STATUS_LIST, Math.min(Math.max(limit, 1), 100)],
+    );
+
+    return (rows as Record<string, any>[]).map((row) => ({
+      id: Number(row.id),
+      contactName: row.contactName ?? null,
+      partnerType: String(row.partnerType),
+      tierCode: row.tierCode ?? null,
+      status: String(row.status),
+      revenueVnd: Number(row.revenueVnd ?? 0),
+      orders: Number(row.orders ?? 0),
+      commissionVnd: Number(row.commissionVnd ?? 0),
+    }));
+  }
+
   async adminOverview() {
     const [counts] = await this.dataSource.query(
       `SELECT

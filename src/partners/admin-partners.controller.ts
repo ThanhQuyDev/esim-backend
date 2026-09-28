@@ -80,6 +80,18 @@ export class AdminPartnersController {
     );
   }
 
+  /** The partners bringing in the most, for the foot of the overview (#054). */
+  @Get('top-partners')
+  @HttpCode(HttpStatus.OK)
+  adminTopPartners(
+    @Query() query: { from?: string; to?: string; limit?: string },
+  ) {
+    return this.partnersService.adminTopPartners(
+      { from: query.from, to: query.to },
+      query.limit ? Number(query.limit) : undefined,
+    );
+  }
+
   /** Where partner-driven orders are going (#052). */
   @Get('top-destinations')
   @HttpCode(HttpStatus.OK)
