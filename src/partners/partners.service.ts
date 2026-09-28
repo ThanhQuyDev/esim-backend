@@ -1614,6 +1614,84 @@ export class PartnersService {
     return Buffer.from(buffer);
   }
 
+  /**
+   * The five figures at the head of "Hoa hồng & Đối soát" (#063).
+   *
+   * They are five different stages of the same money, and the partner count
+   * beside each is what turns a total into something an admin can act on:
+   * 40 triệu owed to two partners is a different afternoon from 40 triệu owed
+   * to two hundred.
+   *
+   * - Chờ xác nhận: inside the 24-hour hold after the order (#019).
+   * - Đã duyệt, chờ chi: credited to the wallet, not yet withdrawn.
+   * - Đang yêu cầu thanh toán: the partner has asked for it.
+   * - Đã chi trả tháng này: actually paid out, this calendar month.
+   * - Điều chỉnh/hoàn: taken back after a refund, a cancellation or a breach.
+   */
+  async adminCommissionSummary(): Promise<{
+    pendingConfirmation: { totalVnd: number; partners: number };
+    approvedAwaitingPayout: { totalVnd: number; partners: number };
+    payoutRequested: { totalVnd: number; partners: number };
+    paidThisMonth: { totalVnd: number; partners: number };
+    reversed: { totalVnd: number; partners: number };
+  }> {
+    const [commissions] = await this.dataSource.query(
+      `SELECT
+         COALESCE(SUM("commissionVnd") FILTER (WHERE status = $1), 0) AS "pendingVnd",
+         COUNT(DISTINCT "partnerId") FILTER (WHERE status = $1) AS "pendingPartners",
+         COALESCE(SUM("commissionVnd") FILTER (WHERE status = $2), 0) AS "creditedVnd",
+         COUNT(DISTINCT "partnerId") FILTER (WHERE status = $2) AS "creditedPartners",
+         -- Taken back after the fact: a refund, a cancellation or a breach.
+         COALESCE(SUM("reversedCommissionVnd"), 0) AS "reversedVnd",
+         COUNT(DISTINCT "partnerId") FILTER (
+           WHERE COALESCE("reversedCommissionVnd", 0) > 0
+         ) AS "reversedPartners"
+       FROM order_partner_commission`,
+      [
+        OrderPartnerCommissionStatusEnum.PENDING,
+        OrderPartnerCommissionStatusEnum.CREDITED,
+      ],
+    );
+
+    const [payouts] = await this.dataSource.query(
+      `SELECT
+         COALESCE(SUM("amountVnd") FILTER (WHERE status = $1), 0) AS "requestedVnd",
+         COUNT(DISTINCT "partnerId") FILTER (WHERE status = $1) AS "requestedPartners",
+         COALESCE(SUM("amountVnd") FILTER (
+           WHERE status = $2 AND "processedAt" >= date_trunc('month', now())
+         ), 0) AS "paidVnd",
+         COUNT(DISTINCT "partnerId") FILTER (
+           WHERE status = $2 AND "processedAt" >= date_trunc('month', now())
+         ) AS "paidPartners"
+       FROM partner_payout`,
+      [PartnerPayoutStatusEnum.PENDING, PartnerPayoutStatusEnum.PAID],
+    );
+
+    const n = (v: unknown) => Number(v ?? 0);
+    return {
+      pendingConfirmation: {
+        totalVnd: n(commissions?.pendingVnd),
+        partners: n(commissions?.pendingPartners),
+      },
+      approvedAwaitingPayout: {
+        totalVnd: n(commissions?.creditedVnd),
+        partners: n(commissions?.creditedPartners),
+      },
+      payoutRequested: {
+        totalVnd: n(payouts?.requestedVnd),
+        partners: n(payouts?.requestedPartners),
+      },
+      paidThisMonth: {
+        totalVnd: n(payouts?.paidVnd),
+        partners: n(payouts?.paidPartners),
+      },
+      reversed: {
+        totalVnd: n(commissions?.reversedVnd),
+        partners: n(commissions?.reversedPartners),
+      },
+    };
+  }
+
   async adminFindById(id: number): Promise<PartnerEntity> {
     const partner = await this.partnerRepository.findOne({
       where: { id },

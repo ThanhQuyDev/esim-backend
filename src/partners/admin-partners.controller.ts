@@ -105,6 +105,13 @@ export class AdminPartnersController {
     res.end(buffer);
   }
 
+  /** The five figures at the head of "Hoa hồng & Đối soát" (#063). */
+  @Get('commission-summary')
+  @HttpCode(HttpStatus.OK)
+  adminCommissionSummary() {
+    return this.partnersService.adminCommissionSummary();
+  }
+
   /** The four figures at the head of the partner list (#057). */
   @Get('list-stats')
   @HttpCode(HttpStatus.OK)
