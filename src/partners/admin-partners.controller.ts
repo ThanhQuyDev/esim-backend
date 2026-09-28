@@ -63,6 +63,35 @@ export class AdminPartnersController {
   /**
    * What esim.vn keeps from each kind of partner, over a period (#050).
    */
+  /** Revenue and orders over time, split by partner type (#052). */
+  @Get('series-by-type')
+  @HttpCode(HttpStatus.OK)
+  adminPartnerSeries(
+    @Query()
+    query: {
+      from?: string;
+      to?: string;
+      groupBy?: 'day' | 'week' | 'month' | 'year';
+    },
+  ) {
+    return this.partnersService.adminPartnerSeries(
+      { from: query.from, to: query.to },
+      query.groupBy,
+    );
+  }
+
+  /** Where partner-driven orders are going (#052). */
+  @Get('top-destinations')
+  @HttpCode(HttpStatus.OK)
+  adminPartnerTopDestinations(
+    @Query() query: { from?: string; to?: string; limit?: string },
+  ) {
+    return this.partnersService.adminPartnerTopDestinations(
+      { from: query.from, to: query.to },
+      query.limit ? Number(query.limit) : undefined,
+    );
+  }
+
   /** Orders, live partners and what is waiting to be settled (#051). */
   @Get('activity-by-type')
   @HttpCode(HttpStatus.OK)

@@ -3259,6 +3259,139 @@ export class PartnersService {
     };
   }
 
+  /**
+   * Revenue and order count over time, split by partner type (#052).
+   *
+   * The same money as #050 — what esim.vn keeps, not what the orders were rung
+   * up at — cut by bucket so the shape of a month is visible rather than one
+   * number for it. Bucketed in Postgres: a year by day is a few hundred rows
+   * either way, but folding it here would mean shipping every order to do it.
+   */
+  async adminPartnerSeries(
+    range: { from?: string; to?: string } = {},
+    groupBy: 'day' | 'week' | 'month' | 'year' = 'day',
+  ): Promise<{
+    range: { from: string; to: string };
+    points: {
+      bucket: string;
+      byType: { partnerType: string; revenueVnd: number; orders: number }[];
+    }[];
+  }> {
+    const { from, to } = resolveSummaryRange(range);
+    // Never interpolated from the caller: one of four known words.
+    const unit = ['day', 'week', 'month', 'year'].includes(groupBy)
+      ? groupBy
+      : 'day';
+    const params = [from, to, SETTLED_ORDER_STATUS_LIST];
+
+    // Attributed orders net of commission, and the partner's own purchases,
+    // in one pass. An order reaches a partner from one side or the other; the
+    // union keys off which, so nothing is counted twice.
+    const rows = await this.dataSource.query(
+      `SELECT date_trunc('${unit}', t."createdAt") AS bucket,
+              t."partnerType",
+              COALESCE(SUM(t."revenueVnd"), 0) AS "revenueVnd",
+              COUNT(DISTINCT t."orderId") AS orders
+       FROM (
+         SELECT o.id AS "orderId", o."createdAt", p."partnerType",
+                ${ORDER_REVENUE_SQL} - COALESCE(
+                  (SELECT c."commissionVnd" - COALESCE(c."reversedCommissionVnd", 0)
+                   FROM order_partner_commission c
+                   WHERE c."orderId" = o.id AND c.status <> 'reversed'), 0
+                ) AS "revenueVnd"
+         FROM "order" o
+         JOIN partner p ON p.id = o."attributedPartnerId"
+         WHERE o."deletedAt" IS NULL AND o.status = ANY($3)
+           AND o."createdAt" >= $1 AND o."createdAt" < $2
+
+         UNION ALL
+
+         SELECT o.id AS "orderId", o."createdAt", p."partnerType",
+                ${ORDER_REVENUE_SQL} AS "revenueVnd"
+         FROM "order" o
+         JOIN partner p ON p."userId" = o."userId"
+         WHERE o."deletedAt" IS NULL AND o.status = ANY($3)
+           AND (o."attributedPartnerId" IS NULL OR o."attributedPartnerId" = p.id)
+           AND o."createdAt" >= $1 AND o."createdAt" < $2
+       ) t
+       GROUP BY 1, 2
+       ORDER BY 1`,
+      params,
+    );
+
+    const byBucket = new Map<
+      string,
+      { partnerType: string; revenueVnd: number; orders: number }[]
+    >();
+    for (const row of rows as Record<string, any>[]) {
+      const key = new Date(row.bucket as string).toISOString();
+      const list = byBucket.get(key) ?? [];
+      list.push({
+        partnerType: String(row.partnerType),
+        revenueVnd: Number(row.revenueVnd ?? 0),
+        orders: Number(row.orders ?? 0),
+      });
+      byBucket.set(key, list);
+    }
+
+    return {
+      range: { from: from.toISOString(), to: to.toISOString() },
+      points: [...byBucket.entries()]
+        .map(([bucket, byType]) => ({
+          bucket,
+          byType: byType.sort((a, b) =>
+            a.partnerType.localeCompare(b.partnerType),
+          ),
+        }))
+        .sort((a, b) => a.bucket.localeCompare(b.bucket)),
+    };
+  }
+
+  /**
+   * Where partner-driven orders are going (#052).
+   *
+   * The admin console already ranks destinations for the shop as a whole; this
+   * is the same question asked of the partner programme only, which is the one
+   * an admin is on this screen to answer.
+   */
+  async adminPartnerTopDestinations(
+    range: { from?: string; to?: string } = {},
+    limit = 8,
+  ): Promise<{ name: string; plansPurchased: number; revenueVnd: number }[]> {
+    const { from, to } = resolveSummaryRange(range);
+
+    const rows = await this.dataSource.query(
+      `SELECT COALESCE(d.name, r.name, p."countryCode", 'Không xác định') AS name,
+              COALESCE(SUM(oi.quantity), 0) AS "plansPurchased",
+              COALESCE(SUM(oi."vndPrice"), 0) AS "revenueVnd"
+       FROM "order" o
+       JOIN order_item oi ON oi."orderId" = o.id
+       JOIN plan p ON p.id = oi."planId"
+       LEFT JOIN destination d ON d.id = p."destinationId"
+       LEFT JOIN region r ON r.id = p."regionId"
+       WHERE o."deletedAt" IS NULL
+         AND o.status = ANY($3)
+         AND o."createdAt" >= $1 AND o."createdAt" < $2
+         AND (
+           o."attributedPartnerId" IS NOT NULL
+           OR EXISTS (
+             SELECT 1 FROM partner pa
+             WHERE pa."userId" = o."userId" AND pa."deletedAt" IS NULL
+           )
+         )
+       GROUP BY 1
+       ORDER BY "plansPurchased" DESC, "revenueVnd" DESC
+       LIMIT $4`,
+      [from, to, SETTLED_ORDER_STATUS_LIST, Math.min(Math.max(limit, 1), 30)],
+    );
+
+    return (rows as Record<string, any>[]).map((row) => ({
+      name: String(row.name ?? 'Không xác định'),
+      plansPurchased: Number(row.plansPurchased ?? 0),
+      revenueVnd: Number(row.revenueVnd ?? 0),
+    }));
+  }
+
   async adminOverview() {
     const [counts] = await this.dataSource.query(
       `SELECT
