@@ -3153,6 +3153,112 @@ export class PartnersService {
     };
   }
 
+  /**
+   * Orders, live partners and what is waiting to be settled (#051).
+   *
+   * "Đang hoạt động" here is not the status field: the brief defines it as a
+   * partner who has transacted in the last 30 days. A partner approved a year
+   * ago who has not sent an order since is active on paper and dormant in fact,
+   * and the second is the number worth putting on a dashboard.
+   *
+   * A transaction is either side of the business: an order credited to them, or
+   * one they placed themselves.
+   */
+  async adminPartnerActivity(
+    range: { from?: string; to?: string } = {},
+  ): Promise<{
+    range: { from: string; to: string };
+    orders: {
+      total: number;
+      byType: { partnerType: string; orders: number }[];
+    };
+    activePartners: {
+      total: number;
+      byType: { partnerType: string; partners: number }[];
+    };
+    pendingApprovals: {
+      total: number;
+      byType: { partnerType: string; partners: number }[];
+    };
+    commissionToReconcile: { totalVnd: number; partners: number };
+  }> {
+    const { from, to } = resolveSummaryRange(range);
+    const params = [from, to, SETTLED_ORDER_STATUS_LIST];
+
+    // One row per partner per order, from either side, so a partner is counted
+    // once however the order reached them.
+    const PARTNER_ORDERS_SQL = `
+      SELECT p.id AS "partnerId", p."partnerType" AS "partnerType", o.id AS "orderId"
+      FROM "order" o
+      JOIN partner p
+        ON p.id = o."attributedPartnerId"
+        OR (p."userId" = o."userId"
+            AND (o."attributedPartnerId" IS NULL OR o."attributedPartnerId" = p.id))
+      WHERE o."deletedAt" IS NULL
+        AND o.status = ANY($3)
+        AND o."createdAt" >= $1 AND o."createdAt" < $2
+        AND p."deletedAt" IS NULL`;
+
+    const orderRows = await this.dataSource.query(
+      `SELECT "partnerType", COUNT(DISTINCT "orderId") AS orders
+       FROM (${PARTNER_ORDERS_SQL}) t
+       GROUP BY 1`,
+      params,
+    );
+
+    const activeRows = await this.dataSource.query(
+      `SELECT "partnerType", COUNT(DISTINCT "partnerId") AS partners
+       FROM (${PARTNER_ORDERS_SQL}) t
+       GROUP BY 1`,
+      params,
+    );
+
+    const pendingRows = await this.dataSource.query(
+      `SELECT "partnerType", COUNT(*) AS partners
+       FROM partner
+       WHERE "deletedAt" IS NULL AND status = 'pending'
+       GROUP BY 1`,
+    );
+
+    // Earned but not yet credited: the order is done, reconciliation is not.
+    const [reconcile] = await this.dataSource.query(
+      `SELECT COALESCE(SUM("commissionVnd"), 0) AS "totalVnd",
+              COUNT(DISTINCT "partnerId") AS partners
+       FROM order_partner_commission
+       WHERE status = $1`,
+      [OrderPartnerCommissionStatusEnum.PENDING],
+    );
+
+    const n = (v: unknown) => Number(v ?? 0);
+    const byType = (rows: Record<string, any>[], key: 'orders' | 'partners') =>
+      rows
+        .map((r) => ({ partnerType: String(r.partnerType), [key]: n(r[key]) }))
+        .sort((a, b) => a.partnerType.localeCompare(b.partnerType)) as never;
+
+    const sum = (rows: Record<string, any>[], key: string) =>
+      rows.reduce((total, r) => total + n(r[key]), 0);
+
+    return {
+      range: { from: from.toISOString(), to: to.toISOString() },
+      orders: {
+        total: sum(orderRows, 'orders'),
+        byType: byType(orderRows, 'orders'),
+      },
+      activePartners: {
+        total: sum(activeRows, 'partners'),
+        byType: byType(activeRows, 'partners'),
+      },
+      pendingApprovals: {
+        total: sum(pendingRows, 'partners'),
+        byType: byType(pendingRows, 'partners'),
+      },
+      commissionToReconcile: {
+        totalVnd: n(reconcile?.totalVnd),
+        partners: n(reconcile?.partners),
+      },
+    };
+  }
+
   async adminOverview() {
     const [counts] = await this.dataSource.query(
       `SELECT

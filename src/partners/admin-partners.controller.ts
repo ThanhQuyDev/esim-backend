@@ -63,6 +63,16 @@ export class AdminPartnersController {
   /**
    * What esim.vn keeps from each kind of partner, over a period (#050).
    */
+  /** Orders, live partners and what is waiting to be settled (#051). */
+  @Get('activity-by-type')
+  @HttpCode(HttpStatus.OK)
+  adminPartnerActivity(@Query() query: { from?: string; to?: string }) {
+    return this.partnersService.adminPartnerActivity({
+      from: query.from,
+      to: query.to,
+    });
+  }
+
   @Get('revenue-by-type')
   @HttpCode(HttpStatus.OK)
   adminRevenueByPartnerType(@Query() query: { from?: string; to?: string }) {
