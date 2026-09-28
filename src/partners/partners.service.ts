@@ -2302,20 +2302,82 @@ export class PartnersService {
 
   // ───────────────────────── Admin: commissions / payouts ─────────────────────────
 
+  /**
+   * The reconciliation list, with the filters the screen offers (#064).
+   *
+   * "Đang kiểm tra" is not a status of its own in the data: it is a commission
+   * still inside its 24-hour hold whose order carries a fraud-watch mark
+   * (#036, #040) — the ones somebody should look at before the money is
+   * credited. Treating it as a fourth stored status would mean writing a state
+   * nothing ever clears.
+   */
   async adminListCommissions(query: QueryPartnerCommissionDto) {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 20, 100);
-    const [data, count] = await this.commissionRepository.findAndCount({
-      where: {
-        ...(query.partnerId && { partnerId: query.partnerId }),
-        ...(query.status && {
-          status: query.status as OrderPartnerCommissionStatusEnum,
-        }),
-      },
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+
+    const qb = this.commissionRepository
+      .createQueryBuilder('c')
+      .leftJoin('partner', 'p', 'p.id = c."partnerId"')
+      .leftJoin('order', 'o', 'o.id = c."orderId"');
+
+    if (query.partnerId) {
+      qb.andWhere('c."partnerId" = :partnerId', { partnerId: query.partnerId });
+    }
+
+    if (query.status && query.status !== 'all') {
+      if (query.status === 'reviewing') {
+        qb.andWhere('c.status = :pending', {
+          pending: OrderPartnerCommissionStatusEnum.PENDING,
+        }).andWhere('o."attributionWarning" IS NOT NULL');
+      } else {
+        qb.andWhere('c.status = :status', { status: query.status });
+      }
+    }
+
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      const asId = Number(query.search.trim().replace(/^#/, ''));
+      const looksLikeId = Number.isInteger(asId) && asId > 0;
+      qb.andWhere(
+        `(p."contactName" ILIKE :search OR p."contactEmail" ILIKE :search OR p."contactPhone" ILIKE :search${
+          looksLikeId ? ' OR p.id = :id' : ''
+        })`,
+        looksLikeId ? { search, id: asId } : { search },
+      );
+    }
+
+    // A reconciliation period is a calendar month, which is how the statements
+    // are cut; a from/to is the finer-grained answer to the same question.
+    if (query.period?.trim()) {
+      const [year, month] = query.period.trim().split('-').map(Number);
+      if (Number.isInteger(year) && Number.isInteger(month)) {
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 1);
+        qb.andWhere(
+          'c."createdAt" >= :periodStart AND c."createdAt" < :periodEnd',
+          {
+            periodStart: start,
+            periodEnd: end,
+          },
+        );
+      }
+    } else if (query.from || query.to) {
+      const { from, to } = resolveSummaryRange({
+        from: query.from,
+        to: query.to,
+      });
+      qb.andWhere('c."createdAt" >= :from AND c."createdAt" < :to', {
+        from,
+        to,
+      });
+    }
+
+    const [data, count] = await qb
+      .orderBy('c.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
     return { data, totalCount: count };
   }
 

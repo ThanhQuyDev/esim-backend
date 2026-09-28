@@ -54,8 +54,36 @@ export class QueryPartnerCommissionDto {
   @Type(() => Number)
   partnerId?: number;
 
+  /**
+   * `all`, `pending` (chờ xác nhận), `reviewing` (đang kiểm tra) or `credited`
+   * (đã duyệt) — see `adminListCommissions` for what "đang kiểm tra" means
+   * (#064).
+   */
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Partner name, email, phone or id (#064).',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  /** Reconciliation period, as `YYYY-MM` (#064). */
+  @ApiPropertyOptional({ example: '2026-09' })
+  @IsOptional()
+  @IsString()
+  period?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-01' })
+  @IsOptional()
+  @IsString()
+  from?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-30' })
+  @IsOptional()
+  @IsString()
+  to?: string;
 }
