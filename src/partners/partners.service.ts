@@ -19,7 +19,7 @@ import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { partnerDeviceFingerprint } from './partner-device-fingerprint';
 import * as ExcelJS from 'exceljs';
-import { In, DataSource, EntityManager, Repository } from 'typeorm';
+import { In, DataSource, EntityManager, MoreThan, Repository } from 'typeorm';
 import { AllConfigType } from '../config/config.type';
 import { MailService } from '../mail/mail.service';
 import { RoleEnum } from '../roles/roles.enum';
@@ -40,6 +40,7 @@ import { OrderPartnerCommissionEntity } from './infrastructure/persistence/relat
 import { PartnerPayoutEntity } from './infrastructure/persistence/relational/entities/partner-payout.entity';
 import { CouponEntity } from '../coupons/infrastructure/persistence/relational/entities/coupon.entity';
 import { PartnerMemberAttributionEntity } from './infrastructure/persistence/relational/entities/partner-member-attribution.entity';
+import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { PartnerApplyDto } from './dto/partner-apply.dto';
 import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
@@ -78,6 +79,8 @@ import {
   PartnerTypeEnum,
   PartnerWalletStatusEnum,
   PartnerWalletTransactionTypeEnum,
+  SessionEventTypeEnum,
+  SessionShapeEnum,
   PARTNER_LINK_ATTRIBUTION_DAYS,
 } from './partners.enum';
 
@@ -300,6 +303,8 @@ export class PartnersService {
     private readonly couponRepository: Repository<CouponEntity>,
     @InjectRepository(PartnerMemberAttributionEntity)
     private readonly memberAttributionRepository: Repository<PartnerMemberAttributionEntity>,
+    @InjectRepository(PartnerSessionEventEntity)
+    private readonly sessionEventRepository: Repository<PartnerSessionEventEntity>,
     private readonly mailService: MailService,
   ) {}
 
@@ -2843,6 +2848,126 @@ export class PartnersService {
     if (click.clickedAt < windowStart) return null;
 
     return { partnerId: partner.id, linkId: link.id };
+  }
+
+  // ───────────────────────── Session journey (#040) ─────────────────────────
+
+  /**
+   * What a plausible buying session looks like (#040).
+   *
+   * A person compares a handful of plans before paying; they do not read twenty
+   * of them in ten seconds, and they rarely pay for one they never opened. Both
+   * numbers are deliberately generous — the point is to mark the obvious cases
+   * for review, not to guess at borderline ones.
+   */
+  private static readonly SESSION_INHUMAN_PLAN_VIEWS = 12;
+  private static readonly SESSION_INHUMAN_WINDOW_MS = 10_000;
+  /** A visitor cannot file more than this in a day; past it, the rest is noise. */
+  private static readonly SESSION_EVENTS_DAILY_CAP = 600;
+
+  /**
+   * Record the steps the tracking snippet reported (#040).
+   *
+   * Anonymous and unauthenticated by nature — it runs before anyone signs in —
+   * so it takes only what it can use: a known step name, a visitor id, the
+   * click the session came from, and a plan slug for a plan view. Anything else
+   * in the payload is dropped rather than stored.
+   */
+  async recordSessionEvents(payload: {
+    visitorId?: string | null;
+    clickId?: string | null;
+    ipHash?: string | null;
+    events: { type?: string | null; ref?: string | null }[];
+  }): Promise<{ recorded: number }> {
+    const visitorId = payload.visitorId?.trim().slice(0, 64) || null;
+    const clickId = payload.clickId?.trim().slice(0, 64) || null;
+    // Without one of these the rows could never be read back for a session.
+    if (!visitorId && !clickId) return { recorded: 0 };
+
+    const known = new Set<string>(Object.values(SessionEventTypeEnum));
+    const events = (payload.events ?? [])
+      .slice(0, 20)
+      .filter((event): event is { type: string; ref?: string | null } =>
+        Boolean(event?.type && known.has(event.type)),
+      );
+    if (!events.length) return { recorded: 0 };
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const alreadyToday = await this.sessionEventRepository.count({
+      where: visitorId
+        ? { visitorId, occurredAt: MoreThan(since) }
+        : { clickId: clickId as string, occurredAt: MoreThan(since) },
+    });
+    const room = PartnersService.SESSION_EVENTS_DAILY_CAP - alreadyToday;
+    if (room <= 0) return { recorded: 0 };
+
+    const rows = events.slice(0, room).map((event) =>
+      this.sessionEventRepository.create({
+        visitorId,
+        clickId,
+        eventType: event.type as SessionEventTypeEnum,
+        ref: event.ref?.trim().slice(0, 160) || null,
+        ipHash: payload.ipHash?.trim().slice(0, 64) || null,
+      }),
+    );
+    await this.sessionEventRepository.save(rows);
+
+    return { recorded: rows.length };
+  }
+
+  /**
+   * What this session's steps say about it (#040).
+   *
+   * Returns `null` when there is nothing to judge — no visitor id and no click
+   * id, which is every order placed before the snippet had a chance to run.
+   * A verdict is a mark for an admin, never a refusal.
+   */
+  async evaluateSessionShape(params: {
+    visitorId?: string | null;
+    clickId?: string | null;
+  }): Promise<SessionShapeEnum | null> {
+    const visitorId = params.visitorId?.trim() || null;
+    const clickId = params.clickId?.trim() || null;
+    if (!visitorId && !clickId) return null;
+
+    // The session, not the lifetime: a day is far longer than any checkout.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const events = await this.sessionEventRepository.find({
+      where: visitorId
+        ? { visitorId, occurredAt: MoreThan(since) }
+        : { clickId: clickId as string, occurredAt: MoreThan(since) },
+      order: { occurredAt: 'ASC' },
+      take: 500,
+    });
+
+    // Nothing at all: either a scripted order, or a browser that blocked the
+    // snippet. Both are worth a look and neither is worth refusing.
+    if (!events.length) return SessionShapeEnum.NO_BROWSING;
+
+    const planViews = events.filter(
+      (event) => event.eventType === SessionEventTypeEnum.PLAN_VIEW,
+    );
+    for (
+      let i = PartnersService.SESSION_INHUMAN_PLAN_VIEWS - 1;
+      i < planViews.length;
+      i += 1
+    ) {
+      const span =
+        planViews[i].occurredAt.getTime() -
+        planViews[
+          i - (PartnersService.SESSION_INHUMAN_PLAN_VIEWS - 1)
+        ].occurredAt.getTime();
+      if (span <= PartnersService.SESSION_INHUMAN_WINDOW_MS) {
+        return SessionShapeEnum.INHUMAN_SPEED;
+      }
+    }
+
+    const looked = events.some(
+      (event) =>
+        event.eventType === SessionEventTypeEnum.PLAN_VIEW ||
+        event.eventType === SessionEventTypeEnum.PLAN_LIST,
+    );
+    return looked ? SessionShapeEnum.NATURAL : SessionShapeEnum.NO_BROWSING;
   }
 
   /**

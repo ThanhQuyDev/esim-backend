@@ -41,6 +41,7 @@ import { MembershipTierEnum, TierSourceEnum } from '../wallets/tier/tier.enum';
 import { InvoiceRepository } from '../invoices/infrastructure/persistence/invoice.repository';
 import { InvoiceStatus } from '../invoices/invoices.enum';
 import { PartnersService } from '../partners/partners.service';
+import { SessionShapeEnum } from '../partners/partners.enum';
 
 const VND_ROUNDING_UNIT = 1000;
 
@@ -196,7 +197,7 @@ export class OrdersService {
   }
 
   /**
-   * Fraud-watch signals for an affiliate order (#036).
+   * Fraud-watch signals for an affiliate order (#036, #040).
    *
    * The order is never refused: the brief says it still earns the commission.
    * What it gets is a mark, so an admin reviewing a partner can see that these
@@ -206,25 +207,39 @@ export class OrdersService {
     attributedPartnerId: number | null,
     visitorId: string | null,
     ipHash: string | null,
+    clickId?: string | null,
   ): Promise<{
     visitorId: string | null;
     ipHash: string | null;
     warning: string | null;
   }> {
-    if (!attributedPartnerId || (!visitorId && !ipHash)) {
+    if (!attributedPartnerId) {
       return { visitorId, ipHash, warning: null };
     }
 
-    const seenBefore = await this.partnersService.hasOrderFromSameOrigin(
-      attributedPartnerId,
+    const warnings: string[] = [];
+
+    if (visitorId || ipHash) {
+      const seenBefore = await this.partnersService.hasOrderFromSameOrigin(
+        attributedPartnerId,
+        visitorId,
+        ipHash,
+      );
+      if (seenBefore) warnings.push('same_device_or_ip');
+    }
+
+    // What the session looked like on the way here (#040): an order that never
+    // opened a plan, or opened twenty in ten seconds, is worth a look.
+    const shape = await this.partnersService.evaluateSessionShape({
       visitorId,
-      ipHash,
-    );
+      clickId,
+    });
+    if (shape && shape !== SessionShapeEnum.NATURAL) warnings.push(shape);
 
     return {
       visitorId,
       ipHash,
-      warning: seenBefore ? 'same_device_or_ip' : null,
+      warning: warnings.length ? warnings.join(',') : null,
     };
   }
 
@@ -385,6 +400,7 @@ export class OrdersService {
       attribution.attributedPartnerId,
       dto.visitorId ?? null,
       clientIpHash ?? null,
+      dto.partnerClickId ?? null,
     );
 
     // 3. Create order
@@ -699,6 +715,7 @@ export class OrdersService {
       attribution.attributedPartnerId,
       dto.visitorId ?? null,
       clientIpHash ?? null,
+      dto.partnerClickId ?? null,
     );
 
     const totalVndCostPrice = planDetails.reduce((sum, item) => {

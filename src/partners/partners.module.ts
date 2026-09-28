@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PartnersController } from './partners.controller';
 import { AdminPartnersController } from './admin-partners.controller';
 import { PartnerLinksPublicController } from './partner-links-public.controller';
+import { SessionEventsPublicController } from './session-events-public.controller';
 import { PartnersService } from './partners.service';
 import { UserEntity } from '../users/infrastructure/persistence/relational/entities/user.entity';
 import { PartnerEntity } from './infrastructure/persistence/relational/entities/partner.entity';
@@ -17,6 +18,7 @@ import { OrderPartnerCommissionEntity } from './infrastructure/persistence/relat
 import { PartnerPayoutEntity } from './infrastructure/persistence/relational/entities/partner-payout.entity';
 import { CouponEntity } from '../coupons/infrastructure/persistence/relational/entities/coupon.entity';
 import { PartnerMemberAttributionEntity } from './infrastructure/persistence/relational/entities/partner-member-attribution.entity';
+import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { MailModule } from '../mail/mail.module';
 
 @Module({
@@ -39,12 +41,14 @@ import { MailModule } from '../mail/mail.module';
       CouponEntity,
       // Attribution that follows the customer's account (#034).
       PartnerMemberAttributionEntity,
+      PartnerSessionEventEntity,
     ]),
   ],
   controllers: [
     PartnersController,
     AdminPartnersController,
     PartnerLinksPublicController,
+    SessionEventsPublicController,
   ],
   providers: [PartnersService],
   exports: [PartnersService],
