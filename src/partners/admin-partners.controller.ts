@@ -81,6 +81,13 @@ export class AdminPartnersController {
     );
   }
 
+  /** The four figures at the head of the partner list (#057). */
+  @Get('list-stats')
+  @HttpCode(HttpStatus.OK)
+  adminPartnerListStats() {
+    return this.partnersService.adminPartnerListStats();
+  }
+
   /** The partners bringing in the most, for the foot of the overview (#054). */
   @Get('top-partners')
   @HttpCode(HttpStatus.OK)

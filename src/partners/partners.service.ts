@@ -3499,6 +3499,83 @@ export class PartnersService {
     }));
   }
 
+  /**
+   * The four figures at the head of the partner list (#057).
+   *
+   * All four are about the state of the accounts themselves, which is what that
+   * page is a list of — not about who traded recently, which is the overview's
+   * question (#051). Locked accounts are left out of the total because the
+   * brief says so: a total that counts accounts nobody can use overstates the
+   * programme.
+   */
+  async adminPartnerListStats(): Promise<{
+    total: { count: number; byType: { partnerType: string; count: number }[] };
+    active: {
+      count: number;
+      percentOfTotal: number;
+      byType: { partnerType: string; count: number }[];
+    };
+    newThisMonth: {
+      count: number;
+      byType: { partnerType: string; count: number }[];
+    };
+    onHold: { count: number; byType: { partnerType: string; count: number }[] };
+  }> {
+    const rows = await this.dataSource.query(
+      `SELECT "partnerType",
+              COUNT(*) FILTER (WHERE status <> $1) AS "total",
+              COUNT(*) FILTER (WHERE status = $2) AS "active",
+              COUNT(*) FILTER (WHERE status = $3) AS "onHold",
+              COUNT(*) FILTER (
+                WHERE status <> $1
+                  AND "createdAt" >= date_trunc('month', now())
+              ) AS "newThisMonth"
+       FROM partner
+       WHERE "deletedAt" IS NULL
+       GROUP BY 1`,
+      [
+        PartnerStatusEnum.DISABLED,
+        PartnerStatusEnum.ACTIVE,
+        PartnerStatusEnum.HOLD,
+      ],
+    );
+
+    const n = (v: unknown) => Number(v ?? 0);
+    const typed = (rows as Record<string, any>[]).map((r) => ({
+      partnerType: String(r.partnerType),
+      total: n(r.total),
+      active: n(r.active),
+      onHold: n(r.onHold),
+      newThisMonth: n(r.newThisMonth),
+    }));
+
+    const sum = (key: 'total' | 'active' | 'onHold' | 'newThisMonth') =>
+      typed.reduce((acc, r) => acc + r[key], 0);
+    const split = (key: 'total' | 'active' | 'onHold' | 'newThisMonth') =>
+      typed
+        .map((r) => ({ partnerType: r.partnerType, count: r[key] }))
+        .sort((a, b) => a.partnerType.localeCompare(b.partnerType));
+
+    const total = sum('total');
+    const active = sum('active');
+
+    return {
+      total: { count: total, byType: split('total') },
+      active: {
+        count: active,
+        // Share of the accounts that are live, which is the number the brief
+        // asks to see beside it.
+        percentOfTotal: total > 0 ? Math.round((active / total) * 100) : 0,
+        byType: split('active'),
+      },
+      newThisMonth: {
+        count: sum('newThisMonth'),
+        byType: split('newThisMonth'),
+      },
+      onHold: { count: sum('onHold'), byType: split('onHold') },
+    };
+  }
+
   async adminOverview() {
     const [counts] = await this.dataSource.query(
       `SELECT
