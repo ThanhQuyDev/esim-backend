@@ -54,6 +54,16 @@ export class OrderPartnerCommissionEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   tierSnapshot!: string | null;
 
+  /**
+   * The rate this commission was actually worked out at (#042).
+   *
+   * The tier code alone does not settle a dispute: a tier's percentage can be
+   * edited, and a partner who changed tier mid-period needs to see the rate that
+   * applied to each order rather than the one on the tier today.
+   */
+  @Column({ type: 'decimal', precision: 6, scale: 3, nullable: true })
+  commissionPercentSnapshot!: number | null;
+
   @Index()
   @Column({ type: String, default: OrderPartnerCommissionStatusEnum.PENDING })
   status!: OrderPartnerCommissionStatusEnum;

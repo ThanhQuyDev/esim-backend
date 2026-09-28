@@ -109,6 +109,16 @@ export class PartnerEntity extends EntityRelationalHelper {
   updatedAt!: Date;
 
   /**
+   * When the current tier took effect (#042).
+   *
+   * A tier change is never retroactive: orders placed after this moment earn at
+   * the new rate, everything before it keeps what it was worked out at. Recorded
+   * so a partner asking about a period can be shown the date rather than told.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  tierEffectiveFrom?: Date | null;
+
+  /**
    * Branding for this partner's own portal page.
    * Shape: `{ displayName?, logoUrl?, tagline? }`.
    */

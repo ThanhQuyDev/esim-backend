@@ -143,6 +143,8 @@ export interface OrderPartnerCommissionSummary {
   /** Why a `rejected` commission earned nothing — see #041. */
   rejectionReason: string | null;
   tierSnapshot: string | null;
+  /** The rate this commission was worked out at, when it is known (#042). */
+  commissionPercentSnapshot: number | null;
   createdAt: Date;
 }
 /** Order states that will never pay a commission, however they got here. */
@@ -983,6 +985,10 @@ export class PartnersService {
         status: row.status,
         rejectionReason: row.rejectionReason ?? null,
         tierSnapshot: row.tierSnapshot ?? null,
+        commissionPercentSnapshot:
+          row.commissionPercentSnapshot == null
+            ? null
+            : Number(row.commissionPercentSnapshot),
         createdAt: row.createdAt,
       });
     }
@@ -1229,8 +1235,31 @@ export class PartnersService {
         `Không tìm thấy tier ${dto.tierCode} cho loại đối tác ${partner.partnerType}.`,
       );
     }
+    // A tier change applies from now on, never backwards (#042): the date is
+    // what an admin shows a partner asking which orders earned at which rate.
+    const tierBefore = partner.tierCode ?? null;
     partner.tierCode = dto.tierCode;
-    return this.partnerRepository.save(partner);
+    if (tierBefore !== dto.tierCode) {
+      partner.tierEffectiveFrom = new Date();
+    }
+    const saved = await this.partnerRepository.save(partner);
+
+    if (tierBefore !== dto.tierCode) {
+      // The weekly review leaves a trail; a change made by hand used to leave
+      // none at all.
+      await this.tierEvaluationRepository.save(
+        this.tierEvaluationRepository.create({
+          partnerId: partner.id,
+          revenueVnd: 0,
+          validOrders: 0,
+          tierBefore,
+          tierAfter: dto.tierCode,
+          result: 'manual',
+        }),
+      );
+    }
+
+    return saved;
   }
 
   // ───────────────────────── Admin: wallet / deposits ─────────────────────────
@@ -2083,6 +2112,8 @@ export class PartnersService {
 
         if (shouldPromote) {
           partner.tierCode = earned.tierCode;
+          // From this moment on, not backwards (#042).
+          partner.tierEffectiveFrom = new Date();
           await this.partnerRepository.save(partner);
           promoted++;
         }
@@ -2322,6 +2353,14 @@ export class PartnersService {
       tier: {
         current: currentTier,
         next: nextTier,
+        /**
+         * When this tier took effect (#042). Orders placed before it kept the
+         * rate of the tier the partner was on then — nothing is recalculated
+         * backwards, and this is the date that says where the line falls.
+         */
+        effectiveFrom: partner.tierEffectiveFrom
+          ? partner.tierEffectiveFrom.toISOString()
+          : null,
         toNextTierVnd,
         /** 0–100, how far this partner is towards `next`. */
         progressPercent: nextTier
@@ -3234,6 +3273,10 @@ export class PartnersService {
         linkId: params.linkId,
         commissionVnd,
         tierSnapshot: partner.tierCode ?? null,
+        // The rate as it stood when the order was placed (#042). Worked out
+        // here and stored, so a later tier change — or an edit to the tier's
+        // own percentage — cannot reach back and alter this order.
+        commissionPercentSnapshot: commissionPercent,
         status: OrderPartnerCommissionStatusEnum.PENDING,
       }),
     );
