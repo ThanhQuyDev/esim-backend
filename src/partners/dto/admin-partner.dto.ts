@@ -4,6 +4,7 @@ import {
   PARTNER_DEPOSIT_MIN_VND,
   PARTNER_PAYOUT_MIN_VND,
 } from '../partners.constants';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayNotEmpty,
@@ -17,6 +18,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { PartnerStatusEnum, PartnerTopupMethodEnum } from '../partners.enum';
 
@@ -70,6 +72,47 @@ export class BulkPartnerStatusDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+/** One line of the contract details shown in the reconciliation file (#061). */
+export class PartnerContractLineDto {
+  @ApiProperty({ type: String, example: 'Số hợp đồng' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  label!: string;
+
+  @ApiProperty({ type: String, example: 'HD-2026/014' })
+  @IsString()
+  @MaxLength(500)
+  value!: string;
+}
+
+/** Everything an admin may edit on the partner detail screen (#061). */
+export class UpdatePartnerProfileByAdminDto {
+  @ApiPropertyOptional({ type: [PartnerContractLineDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => PartnerContractLineDto)
+  contractInfo?: PartnerContractLineDto[];
+
+  @ApiPropertyOptional({
+    type: Number,
+    description:
+      'Smallest top-up this partner may make; null falls back to the programme default (#061).',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  depositMinVnd?: number | null;
+
+  @ApiPropertyOptional({ type: Number })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  depositMaxVnd?: number | null;
 }
 
 /** An admin's own note on a partner (#056). */

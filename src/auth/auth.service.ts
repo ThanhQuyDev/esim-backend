@@ -77,6 +77,18 @@ export class AuthService {
       });
     }
 
+    // A locked account cannot sign in at all, and is told why rather than
+    // being left to guess at a wrong password (#061).
+    if (partner?.status === PartnerStatusEnum.DISABLED) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          email:
+            'Tài khoản đối tác của bạn đã bị khoá. Vui lòng liên hệ bộ phận hỗ trợ của esim.vn.',
+        },
+      });
+    }
+
     if (partner?.status !== PartnerStatusEnum.PENDING) return;
 
     const label =

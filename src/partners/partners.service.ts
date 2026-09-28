@@ -64,6 +64,7 @@ import {
   CreateDepositRequestDto,
   CreatePartnerPayoutDto,
   RejectPartnerDto,
+  UpdatePartnerProfileByAdminDto,
   UpdatePartnerStatusDto,
 } from './dto/admin-partner.dto';
 import {
@@ -782,8 +783,7 @@ export class PartnersService {
        * declared, so the form and the server cannot disagree (#047).
        */
       topupPolicy: {
-        minVnd: PARTNER_DEPOSIT_MIN_VND,
-        maxVnd: PARTNER_DEPOSIT_MAX_VND,
+        ...this.depositLimitsFor(await this.getPartnerOrThrowById(partnerId)),
         cardFeePercent: PARTNER_CARD_TOPUP_FEE_PERCENT,
       },
     };
@@ -835,14 +835,17 @@ export class PartnersService {
     }
 
     const amountVnd = Math.round(dto.amountVnd);
-    if (amountVnd < PARTNER_DEPOSIT_MIN_VND) {
+    // This partner's own limits when they have been given any, the programme
+    // default otherwise (#061).
+    const limits = this.depositLimitsFor(partner);
+    if (amountVnd < limits.minVnd) {
       throw new BadRequestException(
-        `Số tiền nạp tối thiểu là ${PARTNER_DEPOSIT_MIN_VND.toLocaleString('vi-VN')}đ.`,
+        `Số tiền nạp tối thiểu là ${limits.minVnd.toLocaleString('vi-VN')}đ.`,
       );
     }
-    if (amountVnd > PARTNER_DEPOSIT_MAX_VND) {
+    if (amountVnd > limits.maxVnd) {
       throw new BadRequestException(
-        `Số tiền nạp tối đa mỗi lần là ${PARTNER_DEPOSIT_MAX_VND.toLocaleString('vi-VN')}đ.`,
+        `Số tiền nạp tối đa mỗi lần là ${limits.maxVnd.toLocaleString('vi-VN')}đ.`,
       );
     }
 
@@ -1322,6 +1325,186 @@ export class PartnersService {
     return { links, coupons };
   }
 
+  /**
+   * The performance figures on a partner's detail screen, last 30 days (#061).
+   *
+   * Two different questions, because the two programmes are two businesses. A
+   * marketing partner is judged link by link — clicks, orders, commission, and
+   * how many came back. A distribution partner has no links: what matters is
+   * what they bought (at their price, not esim.vn's list price), how many
+   * orders that was across eSIMs and top-ups together, and the same refund
+   * rate.
+   */
+  async adminPartnerPerformance(partnerId: number): Promise<{
+    partnerType: string;
+    links: {
+      id: number;
+      code: string;
+      label: string | null;
+      clicks: number;
+      orders: number;
+      commissionVnd: number;
+      refundedOrders: number;
+      refundRatePercent: number;
+    }[];
+    coupons: {
+      code: string;
+      orders: number;
+      commissionVnd: number;
+      refundedOrders: number;
+      refundRatePercent: number;
+    }[];
+    distribution: {
+      revenueVnd: number;
+      orders: number;
+      refundedOrders: number;
+      refundRatePercent: number;
+    } | null;
+  }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const rate = (refunded: number, total: number) =>
+      total > 0 ? Math.round((refunded / total) * 1000) / 10 : 0;
+
+    if (partner.partnerType === PartnerTypeEnum.DISTRIBUTION) {
+      const [row] = await this.dataSource.query(
+        `SELECT
+           COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+             WHERE o.status IN ('paid', 'completed')
+           ), 0) AS "revenueVnd",
+           COUNT(*) FILTER (WHERE o.status IN ('paid', 'completed')) AS orders,
+           COUNT(*) FILTER (WHERE o.status = 'refunded') AS "refundedOrders"
+         FROM "order" o
+         WHERE o."userId" = $1
+           AND o."deletedAt" IS NULL
+           AND o."createdAt" >= now() - INTERVAL '30 days'`,
+        [partner.userId],
+      );
+
+      const orders = Number(row?.orders ?? 0);
+      const refundedOrders = Number(row?.refundedOrders ?? 0);
+      return {
+        partnerType: partner.partnerType,
+        links: [],
+        coupons: [],
+        distribution: {
+          // What they paid us — their buying price, not esim.vn's list price.
+          revenueVnd: Number(row?.revenueVnd ?? 0),
+          // eSIM and top-up orders together, as the brief asks.
+          orders,
+          refundedOrders,
+          refundRatePercent: rate(refundedOrders, orders + refundedOrders),
+        },
+      };
+    }
+
+    const linkRows = await this.dataSource.query(
+      `SELECT l.id, l.code, l.label,
+              COALESCE(cl.clicks, 0) AS clicks,
+              COALESCE(o.orders, 0) AS orders,
+              COALESCE(o."commissionVnd", 0) AS "commissionVnd",
+              COALESCE(o."refundedOrders", 0) AS "refundedOrders"
+       FROM partner_link l
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) AS clicks FROM partner_link_click c
+         WHERE c."linkId" = l.id AND c."clickedAt" >= now() - INTERVAL '30 days'
+       ) cl ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) FILTER (WHERE ord.status IN ('paid', 'completed')) AS orders,
+                COUNT(*) FILTER (WHERE ord.status = 'refunded') AS "refundedOrders",
+                COALESCE(SUM(opc."commissionVnd") FILTER (
+                  WHERE opc.status <> 'reversed'
+                ), 0) AS "commissionVnd"
+         FROM order_partner_commission opc
+         JOIN "order" ord ON ord.id = opc."orderId" AND ord."deletedAt" IS NULL
+         WHERE opc."linkId" = l.id
+           AND ord."createdAt" >= now() - INTERVAL '30 days'
+       ) o ON TRUE
+       WHERE l."partnerId" = $1
+       ORDER BY orders DESC, clicks DESC`,
+      [partnerId],
+    );
+
+    const couponRows = await this.dataSource.query(
+      `SELECT c.code,
+              COUNT(*) FILTER (WHERE o.status IN ('paid', 'completed')) AS orders,
+              COUNT(*) FILTER (WHERE o.status = 'refunded') AS "refundedOrders",
+              COALESCE(SUM(opc."commissionVnd") FILTER (
+                WHERE opc.status <> 'reversed'
+              ), 0) AS "commissionVnd"
+       FROM coupon c
+       JOIN "order" o
+         ON o."couponCode" = c.code
+        AND o."deletedAt" IS NULL
+        AND o."createdAt" >= now() - INTERVAL '30 days'
+       LEFT JOIN order_partner_commission opc ON opc."orderId" = o.id
+       WHERE c."partnerId" = $1
+       GROUP BY c.code
+       ORDER BY orders DESC`,
+      [partnerId],
+    );
+
+    return {
+      partnerType: partner.partnerType,
+      links: (linkRows as Record<string, any>[]).map((r) => {
+        const orders = Number(r.orders ?? 0);
+        const refundedOrders = Number(r.refundedOrders ?? 0);
+        return {
+          id: Number(r.id),
+          code: String(r.code),
+          label: r.label ?? null,
+          clicks: Number(r.clicks ?? 0),
+          orders,
+          commissionVnd: Number(r.commissionVnd ?? 0),
+          refundedOrders,
+          refundRatePercent: rate(refundedOrders, orders + refundedOrders),
+        };
+      }),
+      coupons: (couponRows as Record<string, any>[]).map((r) => {
+        const orders = Number(r.orders ?? 0);
+        const refundedOrders = Number(r.refundedOrders ?? 0);
+        return {
+          code: String(r.code),
+          orders,
+          commissionVnd: Number(r.commissionVnd ?? 0),
+          refundedOrders,
+          refundRatePercent: rate(refundedOrders, orders + refundedOrders),
+        };
+      }),
+      distribution: null,
+    };
+  }
+
+  /**
+   * Create a marketing link on a partner's behalf (#061).
+   *
+   * "Admin có quyền tạo link tiếp thị/mã tiếp thị giúp đối tác mà không bị giới
+   * hạn gì cả" — usually for a VIP who wants a memorable code and should not
+   * have to ask twice. The partner's own limits do not apply; what the admin
+   * types is what they get.
+   */
+  async adminCreateLinkForPartner(
+    partnerId: number,
+    dto: CreatePartnerLinkDto,
+  ) {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const code = dto.code?.trim().toUpperCase() || this.generateLinkCode();
+
+    const taken = await this.linkRepository.findOne({ where: { code } });
+    if (taken) {
+      throw new BadRequestException(`Mã link "${code}" đã được dùng.`);
+    }
+
+    return this.linkRepository.save(
+      this.linkRepository.create({
+        partnerId: partner.id,
+        code,
+        label: dto.label ?? null,
+        targetPath: dto.targetPath ?? null,
+        status: PartnerLinkStatusEnum.ACTIVE,
+      }),
+    );
+  }
+
   async adminFindById(id: number): Promise<PartnerEntity> {
     const partner = await this.partnerRepository.findOne({
       where: { id },
@@ -1390,12 +1573,150 @@ export class PartnersService {
     return saved;
   }
 
+  /**
+   * Change one partner's status, with everything that follows from it (#061).
+   *
+   * The status is not a label: "tạm khoá" freezes the money and stops the
+   * partner trading, "khoá tài khoản" additionally signs them out everywhere so
+   * an open tab is not a way back in. Doing only the first half is how a locked
+   * partner keeps selling until their session happens to expire.
+   */
   async updateStatus(
     id: number,
     dto: UpdatePartnerStatusDto,
+    adminId?: number,
+    reason?: string,
   ): Promise<PartnerEntity> {
     const partner = await this.adminFindById(id);
+    const fromStatus = partner.status;
+    if (fromStatus === dto.status) return partner;
+
+    const locking =
+      dto.status === PartnerStatusEnum.HOLD ||
+      dto.status === PartnerStatusEnum.DISABLED;
+    if (locking && !reason?.trim()) {
+      throw new BadRequestException(
+        'Cần nhập lý do khi tạm khoá hoặc khoá tài khoản đối tác.',
+      );
+    }
+
     partner.status = dto.status;
+    const saved = await this.partnerRepository.save(partner);
+    await this.applyStatusConsequences(saved, fromStatus);
+    await this.recordStatusChange({
+      partnerId: saved.id,
+      fromStatus,
+      toStatus: dto.status,
+      reason: reason?.trim() || null,
+      adminId: adminId ?? null,
+    });
+
+    return saved;
+  }
+
+  /**
+   * What a status change actually does to the partner's account (#061).
+   *
+   * - Tạm khoá: the wallet is frozen, so nothing can be spent or withdrawn, and
+   *   a marketing partner's links and codes stop attributing.
+   * - Khoá tài khoản: the same, plus every session is destroyed — an open tab
+   *   must not be a way back into a locked account.
+   * - Mở khoá: the wallet works again and the links they had switched off with
+   *   the account come back on.
+   */
+  private async applyStatusConsequences(
+    partner: PartnerEntity,
+    fromStatus: PartnerStatusEnum,
+  ): Promise<void> {
+    const frozen =
+      partner.status === PartnerStatusEnum.HOLD ||
+      partner.status === PartnerStatusEnum.DISABLED;
+
+    await this.walletRepository.update(
+      { partnerId: partner.id },
+      {
+        status: frozen
+          ? PartnerWalletStatusEnum.LOCKED
+          : PartnerWalletStatusEnum.ACTIVE,
+      },
+    );
+
+    // Links and codes are the marketing partner's half of "dừng hoạt động".
+    if (partner.partnerType === PartnerTypeEnum.KOL || partner.canAffiliate) {
+      await this.linkRepository.update(
+        { partnerId: partner.id },
+        {
+          status: frozen
+            ? PartnerLinkStatusEnum.INACTIVE
+            : PartnerLinkStatusEnum.ACTIVE,
+        },
+      );
+    }
+
+    if (partner.status === PartnerStatusEnum.DISABLED) {
+      // Signed out everywhere, so a tab left open is not a way back in.
+      await this.dataSource.query(`DELETE FROM session WHERE "userId" = $1`, [
+        partner.userId,
+      ]);
+    }
+
+    this.logger.log(
+      `Partner ${partner.id}: ${fromStatus} -> ${partner.status}` +
+        `${frozen ? ' (ví bị đóng băng)' : ' (ví hoạt động lại)'}`,
+    );
+  }
+
+  /**
+   * The deposit limits that apply to one partner (#061).
+   *
+   * The programme-wide numbers are the default; a partner may be given their
+   * own, which is what a distributor turning over hundreds of millions needs.
+   */
+  depositLimitsFor(partner: PartnerEntity): { minVnd: number; maxVnd: number } {
+    return {
+      minVnd: partner.depositMinVnd ?? PARTNER_DEPOSIT_MIN_VND,
+      maxVnd: partner.depositMaxVnd ?? PARTNER_DEPOSIT_MAX_VND,
+    };
+  }
+
+  /**
+   * Contract details and per-partner deposit limits (#061).
+   *
+   * Saved together because they are the same screen's "Lưu lại": an admin
+   * editing a contract line and a deposit ceiling in one sitting should not
+   * have to think about which of two buttons writes which.
+   */
+  async updatePartnerByAdmin(
+    id: number,
+    dto: UpdatePartnerProfileByAdminDto,
+  ): Promise<PartnerEntity> {
+    const partner = await this.adminFindById(id);
+
+    if (dto.contractInfo !== undefined) {
+      // Blank lines are what an admin leaves behind after clicking "+" and
+      // changing their mind; they have no business reaching the file.
+      partner.contractInfo = dto.contractInfo
+        .filter((line) => line.label?.trim())
+        .map((line) => ({
+          label: line.label.trim(),
+          value: (line.value ?? '').trim(),
+        }));
+    }
+    if (dto.depositMinVnd !== undefined) {
+      partner.depositMinVnd = dto.depositMinVnd;
+    }
+    if (dto.depositMaxVnd !== undefined) {
+      partner.depositMaxVnd = dto.depositMaxVnd;
+    }
+
+    const min = partner.depositMinVnd;
+    const max = partner.depositMaxVnd;
+    if (min != null && max != null && min > max) {
+      throw new BadRequestException(
+        'Mức nạp tối thiểu không được lớn hơn mức nạp tối đa.',
+      );
+    }
+
     return this.partnerRepository.save(partner);
   }
 

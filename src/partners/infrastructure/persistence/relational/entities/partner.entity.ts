@@ -109,6 +109,29 @@ export class PartnerEntity extends EntityRelationalHelper {
   updatedAt!: Date;
 
   /**
+   * Contract details for the monthly reconciliation file (#061).
+   *
+   * A list rather than fixed fields: no two partners carry the same set, and an
+   * admin adds a line when a contract has something the others do not.
+   * Shape: `[{ label, value }]`.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  contractInfo?: { label: string; value: string }[] | null;
+
+  /**
+   * Deposit limits for this partner alone (#061).
+   *
+   * The programme-wide 100.000đ–10 triệu (#047) is a default, not a rule: a
+   * distributor turning over hundreds of millions should not have to top up ten
+   * million at a time. Null means "use the programme default".
+   */
+  @Column({ type: Number, nullable: true })
+  depositMinVnd?: number | null;
+
+  @Column({ type: Number, nullable: true })
+  depositMaxVnd?: number | null;
+
+  /**
    * An admin's own note on this partner (#056).
    *
    * Separate from `notes`, which is what the applicant wrote about themselves:

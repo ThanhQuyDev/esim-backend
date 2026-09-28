@@ -18,6 +18,7 @@ import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import { PartnersService } from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
+import { CreatePartnerLinkDto } from './dto/partner-link.dto';
 import {
   QueryPartnerDto,
   QueryPartnerCommissionDto,
@@ -29,6 +30,7 @@ import {
   RejectPartnerDto,
   BulkPartnerStatusDto,
   UpdatePartnerAdminNoteDto,
+  UpdatePartnerProfileByAdminDto,
   UpdatePartnerAffiliateGrantDto,
   UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerStatusDto,
@@ -259,8 +261,17 @@ export class AdminPartnersController {
 
   @Patch(':id/status')
   @HttpCode(HttpStatus.OK)
-  updateStatus(@Param('id') id: number, @Body() dto: UpdatePartnerStatusDto) {
-    return this.partnersService.updateStatus(Number(id), dto);
+  updateStatus(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerStatusDto & { reason?: string },
+  ) {
+    return this.partnersService.updateStatus(
+      Number(id),
+      dto,
+      req.user.id,
+      dto.reason,
+    );
   }
 
   /** Tick/untick "được đặt tên link tiếp thị" for this partner (#014). */
@@ -306,6 +317,36 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   getStatusHistory(@Param('id') id: number) {
     return this.partnersService.getStatusHistory(Number(id));
+  }
+
+  /**
+   * Contract details and this partner's own deposit limits (#061) — the
+   * detail screen's "Lưu lại".
+   */
+  @Patch(':id/profile')
+  @HttpCode(HttpStatus.OK)
+  updatePartnerByAdmin(
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerProfileByAdminDto,
+  ) {
+    return this.partnersService.updatePartnerByAdmin(Number(id), dto);
+  }
+
+  /** Link and code performance over the last 30 days (#061). */
+  @Get(':id/performance')
+  @HttpCode(HttpStatus.OK)
+  adminPartnerPerformance(@Param('id') id: number) {
+    return this.partnersService.adminPartnerPerformance(Number(id));
+  }
+
+  /** Create a marketing link on a partner's behalf (#061). */
+  @Post(':id/links')
+  @HttpCode(HttpStatus.CREATED)
+  adminCreateLinkForPartner(
+    @Param('id') id: number,
+    @Body() dto: CreatePartnerLinkDto,
+  ) {
+    return this.partnersService.adminCreateLinkForPartner(Number(id), dto);
   }
 
   /** Record an admin's own note on this partner (#056). */

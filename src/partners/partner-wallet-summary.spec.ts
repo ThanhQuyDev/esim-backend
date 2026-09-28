@@ -46,6 +46,11 @@ describe('PartnersService — partner wallet summary', () => {
       getOrCreateWallet: jest
         .fn()
         .mockResolvedValue({ balanceVnd, status: 'active' }),
+      // The summary now publishes this partner's own top-up limits (#061).
+      getPartnerOrThrowById: jest
+        .fn()
+        .mockResolvedValue({ id: 5, depositMinVnd: null, depositMaxVnd: null }),
+
       payoutRepository: {
         createQueryBuilder: () =>
           sumBuilder({

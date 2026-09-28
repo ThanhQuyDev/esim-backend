@@ -152,6 +152,10 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
       getOrCreateWallet: jest
         .fn()
         .mockResolvedValue({ balanceVnd, status: 'active' }),
+      // The summary now publishes this partner's own top-up limits (#061).
+      getPartnerOrThrowById: jest
+        .fn()
+        .mockResolvedValue({ id: 5, depositMinVnd: null, depositMaxVnd: null }),
       payoutRepository: { createQueryBuilder: () => sum(0) },
       commissionRepository: { createQueryBuilder: () => sum(0) },
     });
