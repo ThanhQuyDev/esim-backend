@@ -2214,6 +2214,171 @@ export class PartnersService {
   }
 
   /**
+   * The eSIMs this distribution partner has taken delivery of (#046).
+   *
+   * Their stock: what was bought, what the customer has switched on, and what
+   * is still sitting unused. The affiliate screens have nothing like it because
+   * a marketing partner never holds stock — they never touch the eSIM at all.
+   */
+  async getMyEsims(
+    partnerId: number,
+    filters: { search?: string; status?: string; limit?: number } = {},
+  ): Promise<
+    {
+      iccid: string | null;
+      status: string | null;
+      planName: string | null;
+      destination: string | null;
+      orderNumber: string | null;
+      costVnd: number;
+      dataUsed: number | null;
+      dataTotal: number | null;
+      activatedAt: string | null;
+      expiresAt: string | null;
+      createdAt: string | null;
+    }[]
+  > {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const limit = Math.min(Math.max(filters.limit ?? 100, 1), 500);
+    const search = filters.search?.trim() || null;
+    const status = filters.status?.trim() || null;
+
+    const rows = await this.dataSource.query(
+      `SELECT e.iccid,
+              e.status,
+              p.name AS "planName",
+              COALESCE(d.name, r.name, p."countryCode") AS destination,
+              o."orderNumber",
+              -- What this one eSIM cost: the line total spread over the line.
+              COALESCE(oi."vndPrice" / NULLIF(oi.quantity, 0), 0) AS "costVnd",
+              e."dataUsed",
+              e."dataTotal",
+              e."activatedAt",
+              e."expiresAt",
+              o."createdAt"
+       FROM esim e
+       JOIN order_item oi ON oi.id = e."orderItemId"
+       JOIN "order" o ON o.id = oi."orderId"
+       LEFT JOIN plan p ON p.id = oi."planId"
+       LEFT JOIN destination d ON d.id = p."destinationId"
+       LEFT JOIN region r ON r.id = p."regionId"
+       WHERE o."userId" = $1
+         AND o."deletedAt" IS NULL
+         AND ($2::text IS NULL OR e.status = $2)
+         AND (
+           $3::text IS NULL
+           OR e.iccid ILIKE '%' || $3 || '%'
+           OR o."orderNumber" ILIKE '%' || $3 || '%'
+           OR p.name ILIKE '%' || $3 || '%'
+         )
+       ORDER BY o."createdAt" DESC, e.id DESC
+       LIMIT $4`,
+      [partner.userId, status, search, limit],
+    );
+
+    return (rows as Record<string, any>[]).map((row) => ({
+      iccid: row.iccid ?? null,
+      status: row.status ?? null,
+      planName: row.planName ?? null,
+      destination: row.destination ?? null,
+      orderNumber: row.orderNumber ?? null,
+      costVnd: Number(row.costVnd ?? 0),
+      dataUsed: row.dataUsed == null ? null : Number(row.dataUsed),
+      dataTotal: row.dataTotal == null ? null : Number(row.dataTotal),
+      activatedAt: row.activatedAt ?? null,
+      expiresAt: row.expiresAt ?? null,
+      createdAt: row.createdAt ?? null,
+    }));
+  }
+
+  /**
+   * The orders this distribution partner placed themselves (#046).
+   *
+   * `getMyOrders` above answers the marketing question — orders somebody else
+   * placed that were credited to this partner. This one is the opposite: the
+   * partner's own buying, which is the only kind of order a distribution
+   * partner has.
+   */
+  async getMyPurchases(
+    partnerId: number,
+    filters: { search?: string; status?: string; limit?: number } = {},
+  ): Promise<
+    {
+      orderNumber: string;
+      status: string;
+      orderType: string | null;
+      paidVnd: number;
+      listVnd: number;
+      refundedVnd: number;
+      esimCount: number;
+      createdAt: string;
+      items: { planName: string | null; quantity: number; vndPrice: number }[];
+    }[]
+  > {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+    const search = filters.search?.trim() || null;
+    const status = filters.status?.trim() || null;
+
+    const rows = await this.dataSource.query(
+      `SELECT o."orderNumber",
+              o.status,
+              o."orderType",
+              ${ORDER_REVENUE_SQL} AS "paidVnd",
+              -- Before any discount, so the page can show what the margin was.
+              COALESCE(NULLIF(o."subtotalVndPrice", 0), ${ORDER_REVENUE_SQL}) AS "listVnd",
+              COALESCE(o."refundedAmountVnd", 0) AS "refundedVnd",
+              o."createdAt",
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'planName', p.name,
+                    'quantity', oi.quantity,
+                    'vndPrice', oi."vndPrice"
+                  ) ORDER BY oi.id
+                ) FILTER (WHERE oi.id IS NOT NULL),
+                '[]'
+              ) AS items,
+              (
+                SELECT count(*)::int FROM esim e
+                JOIN order_item oi2 ON oi2.id = e."orderItemId"
+                WHERE oi2."orderId" = o.id
+              ) AS "esimCount"
+       FROM "order" o
+       LEFT JOIN order_item oi ON oi."orderId" = o.id
+       LEFT JOIN plan p ON p.id = oi."planId"
+       WHERE o."userId" = $1
+         AND o."deletedAt" IS NULL
+         AND ($2::text IS NULL OR o.status = $2)
+         AND (
+           $3::text IS NULL
+           OR o."orderNumber" ILIKE '%' || $3 || '%'
+           OR p.name ILIKE '%' || $3 || '%'
+         )
+       GROUP BY o.id
+       ORDER BY o."createdAt" DESC
+       LIMIT $4`,
+      [partner.userId, status, search, limit],
+    );
+
+    return (rows as Record<string, any>[]).map((row) => ({
+      orderNumber: String(row.orderNumber),
+      status: String(row.status),
+      orderType: row.orderType ?? null,
+      paidVnd: Number(row.paidVnd ?? 0),
+      listVnd: Number(row.listVnd ?? 0),
+      refundedVnd: Number(row.refundedVnd ?? 0),
+      esimCount: Number(row.esimCount ?? 0),
+      createdAt: row.createdAt,
+      items: (row.items ?? []).map((item: Record<string, unknown>) => ({
+        planName: (item.planName as string) ?? null,
+        quantity: Number(item.quantity ?? 0),
+        vndPrice: Number(item.vndPrice ?? 0),
+      })),
+    }));
+  }
+
+  /**
    * Orders bought and eSIMs activated over time, for the chart (#045).
    *
    * Two different dates, so two queries: an order counts on the day it was

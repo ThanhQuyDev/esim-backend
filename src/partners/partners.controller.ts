@@ -209,6 +209,42 @@ export class PartnersController {
     );
   }
 
+  /** The eSIMs a distribution partner has taken delivery of (#046). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/esims')
+  @HttpCode(HttpStatus.OK)
+  async getMyEsims(
+    @Request() req: { user: { id: number } },
+    @Query() query: { search?: string; status?: string; limit?: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyEsims(partner.id, {
+      search: query.search,
+      status: query.status,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+  }
+
+  /** The orders a distribution partner placed themselves (#046). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/purchases')
+  @HttpCode(HttpStatus.OK)
+  async getMyPurchases(
+    @Request() req: { user: { id: number } },
+    @Query() query: { search?: string; status?: string; limit?: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyPurchases(partner.id, {
+      search: query.search,
+      status: query.status,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+  }
+
   /**
    * Orders bought and eSIMs activated over time, for the distribution
    * partner's chart (#045).
