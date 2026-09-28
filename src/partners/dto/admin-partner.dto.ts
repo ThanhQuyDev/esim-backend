@@ -181,6 +181,39 @@ export class BulkPayoutDecisionDto {
   adminNote?: string;
 }
 
+/** Compose an announcement to partners (#079). */
+export class CreatePartnerNotificationDto {
+  @ApiProperty({ example: 'Bảo trì hệ thống ngày 05/10' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  title!: string;
+
+  @ApiProperty({
+    example: 'Hệ thống sẽ tạm dừng từ 01:00 đến 03:00 ngày 05/10.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(5000)
+  body!: string;
+
+  @ApiPropertyOptional({
+    example: 'all',
+    description: 'all | kol | distribution — nhóm đối tác nhận thông báo.',
+  })
+  @IsOptional()
+  @IsIn(['all', 'kol', 'distribution'])
+  audience?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Gửi kèm email ngoài thông báo trong ứng dụng.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  sendEmail?: boolean;
+}
+
 /** The partner programme's settings (#075, #076, #077). */
 export class UpdatePartnerProgramSettingDto {
   @ApiPropertyOptional({ type: Number, example: 50000 })

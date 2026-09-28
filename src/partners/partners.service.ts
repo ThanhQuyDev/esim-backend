@@ -46,6 +46,8 @@ import { PartnerSessionEventEntity } from './infrastructure/persistence/relation
 import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
 import { PartnerReconciliationEntity } from './infrastructure/persistence/relational/entities/partner-reconciliation.entity';
 import { PartnerProgramSettingEntity } from './infrastructure/persistence/relational/entities/partner-program-setting.entity';
+import { PartnerNotificationEntity } from './infrastructure/persistence/relational/entities/partner-notification.entity';
+import { PartnerNotificationReadEntity } from './infrastructure/persistence/relational/entities/partner-notification-read.entity';
 import {
   AdminCreatePartnerDto,
   PartnerApplyDto,
@@ -67,6 +69,7 @@ import {
   UpdatePartnerProfileByAdminDto,
   UpdatePartnerStatusDto,
   UpdatePartnerProgramSettingDto,
+  CreatePartnerNotificationDto,
   UpdateReconciliationStatusDto,
   BulkPayoutDecisionDto,
 } from './dto/admin-partner.dto';
@@ -449,6 +452,10 @@ export class PartnersService {
     private readonly reconciliationRepository: Repository<PartnerReconciliationEntity>,
     @InjectRepository(PartnerProgramSettingEntity)
     private readonly programSettingRepository: Repository<PartnerProgramSettingEntity>,
+    @InjectRepository(PartnerNotificationEntity)
+    private readonly notificationRepository: Repository<PartnerNotificationEntity>,
+    @InjectRepository(PartnerNotificationReadEntity)
+    private readonly notificationReadRepository: Repository<PartnerNotificationReadEntity>,
     private readonly mailService: MailService,
     /**
      * Only to build a payment URL for a card top-up (#047). Provided directly
@@ -2378,6 +2385,204 @@ export class PartnersService {
       `Partner ${partner.id}: ${fromStatus} -> ${partner.status}` +
         `${frozen ? ' (ví bị đóng băng)' : ' (ví hoạt động lại)'}`,
     );
+  }
+
+  // ─────────────────────── Announcements (#079) ────────────────────────────
+
+  /**
+   * Who an announcement is addressed to (#079).
+   *
+   * Only active partners: an announcement is news somebody should act on, and
+   * a locked account cannot act on anything.
+   */
+  private notificationAudienceWhere(audience: string): {
+    sql: string;
+    params: unknown[];
+  } {
+    if (
+      audience === PartnerTypeEnum.KOL ||
+      audience === PartnerTypeEnum.DISTRIBUTION
+    ) {
+      return {
+        sql: `p."deletedAt" IS NULL AND p.status = $1 AND p."partnerType" = $2`,
+        params: [PartnerStatusEnum.ACTIVE, audience],
+      };
+    }
+    return {
+      sql: `p."deletedAt" IS NULL AND p.status = $1`,
+      params: [PartnerStatusEnum.ACTIVE],
+    };
+  }
+
+  /**
+   * Compose and send an announcement (#079).
+   *
+   * The bell is the delivery that always happens: it is a row everybody in the
+   * audience can read, and it cannot fail per-partner. The email is the extra,
+   * and a partner with no address on file simply does not get one — which is
+   * why the count of emails sent is recorded rather than assumed.
+   */
+  async adminCreateNotification(
+    dto: CreatePartnerNotificationDto,
+    adminId: number,
+  ): Promise<PartnerNotificationEntity> {
+    const notification = await this.notificationRepository.save(
+      this.notificationRepository.create({
+        title: dto.title.trim(),
+        body: dto.body.trim(),
+        audience: dto.audience ?? 'all',
+        sendEmail: dto.sendEmail ?? false,
+        createdByAdminId: adminId,
+      }),
+    );
+
+    if (!notification.sendEmail) return notification;
+
+    const where = this.notificationAudienceWhere(notification.audience);
+    const recipients = await this.dataSource.query(
+      `SELECT p.id, p."contactName", p."contactEmail"
+       FROM partner p
+       WHERE ${where.sql} AND p."contactEmail" IS NOT NULL`,
+      where.params,
+    );
+
+    let emailsSent = 0;
+    for (const recipient of recipients as Record<string, any>[]) {
+      try {
+        await this.mailService.sendPartnerNotification({
+          to: recipient.contactEmail,
+          contactName: recipient.contactName ?? 'Quý đối tác',
+          title: notification.title,
+          body: notification.body,
+        });
+        emailsSent++;
+      } catch (err) {
+        // One address bouncing is one partner's email. The announcement is
+        // already on their bell either way.
+        this.logger.error(
+          `Notification ${notification.id} email to partner ${recipient.id} failed: ${
+            (err as Error).message
+          }`,
+        );
+      }
+    }
+
+    notification.emailsSent = emailsSent;
+    return this.notificationRepository.save(notification);
+  }
+
+  /** Everything an admin has sent, with how far it reached (#079). */
+  async adminListNotifications(
+    limit = 50,
+  ): Promise<
+    (PartnerNotificationEntity & { recipients: number; readCount: number })[]
+  > {
+    const take = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const rows = await this.dataSource.query(
+      `SELECT n.*,
+              (
+                SELECT COUNT(*)::int FROM partner p
+                WHERE p."deletedAt" IS NULL
+                  AND p.status = $1
+                  AND (n.audience = 'all' OR p."partnerType" = n.audience)
+              ) AS recipients,
+              (
+                SELECT COUNT(*)::int FROM partner_notification_read r
+                WHERE r."notificationId" = n.id
+              ) AS "readCount"
+       FROM partner_notification n
+       ORDER BY n."createdAt" DESC
+       LIMIT $2`,
+      [PartnerStatusEnum.ACTIVE, take],
+    );
+
+    return (rows as Record<string, any>[]).map((row) => ({
+      ...row,
+      id: Number(row.id),
+      emailsSent: Number(row.emailsSent ?? 0),
+      recipients: Number(row.recipients ?? 0),
+      readCount: Number(row.readCount ?? 0),
+    })) as (PartnerNotificationEntity & {
+      recipients: number;
+      readCount: number;
+    })[];
+  }
+
+  /**
+   * The announcements one partner can see, newest first (#079).
+   *
+   * Read state comes from the join rather than a flag on the announcement,
+   * because the same announcement is read by one partner and not another.
+   */
+  async getMyNotifications(
+    partnerId: number,
+    limit = 20,
+  ): Promise<{
+    unreadCount: number;
+    data: {
+      id: number;
+      title: string;
+      body: string;
+      createdAt: Date;
+      isRead: boolean;
+    }[];
+  }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const take = Math.min(Math.max(Number(limit) || 20, 1), 100);
+
+    const rows = await this.dataSource.query(
+      `SELECT n.id, n.title, n.body, n."createdAt",
+              (r.id IS NOT NULL) AS "isRead"
+       FROM partner_notification n
+       LEFT JOIN partner_notification_read r
+         ON r."notificationId" = n.id AND r."partnerId" = $1
+       WHERE n.audience = 'all' OR n.audience = $2
+       ORDER BY n."createdAt" DESC
+       LIMIT $3`,
+      [partnerId, partner.partnerType, take],
+    );
+
+    const data = (rows as Record<string, any>[]).map((row) => ({
+      id: Number(row.id),
+      title: row.title,
+      body: row.body,
+      createdAt: row.createdAt,
+      isRead: Boolean(row.isRead),
+    }));
+
+    return { unreadCount: data.filter((row) => !row.isRead).length, data };
+  }
+
+  /**
+   * Mark one announcement read (#079).
+   *
+   * Reading twice is not an error, so the insert is idempotent — the bell
+   * firing a request on every render must not be able to fail.
+   */
+  async markNotificationRead(
+    partnerId: number,
+    notificationId: number,
+  ): Promise<{ ok: true }> {
+    await this.dataSource.query(
+      `INSERT INTO partner_notification_read ("notificationId", "partnerId")
+       VALUES ($1, $2)
+       ON CONFLICT ("notificationId", "partnerId") DO NOTHING`,
+      [notificationId, partnerId],
+    );
+    return { ok: true };
+  }
+
+  /** Mark every announcement this partner can see as read (#079). */
+  async markAllNotificationsRead(partnerId: number): Promise<{ ok: true }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    await this.dataSource.query(
+      `INSERT INTO partner_notification_read ("notificationId", "partnerId")
+       SELECT n.id, $1 FROM partner_notification n
+       WHERE n.audience = 'all' OR n.audience = $2
+       ON CONFLICT ("notificationId", "partnerId") DO NOTHING`,
+      [partnerId, partner.partnerType],
+    );
+    return { ok: true };
   }
 
   // ───────────────────── Programme settings (#075, #076, #077) ─────────────

@@ -66,6 +66,14 @@ export interface PartnerAccountCreatedMailData {
   temporaryPassword: string;
 }
 
+/** An announcement going out by email (#079). */
+export interface PartnerNotificationMailData {
+  to: string;
+  contactName: string;
+  title: string;
+  body: string;
+}
+
 /** One partner's monthly statement, as the email shows it (#076). */
 export interface PartnerReconciliationMailData {
   to: string;
@@ -509,6 +517,56 @@ export class MailService {
       to: data.to,
       subject: subjectCompiled,
       text: subjectCompiled,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
+    });
+  }
+
+  /**
+   * An announcement, sent as an email as well as to the bell (#079).
+   *
+   * The admin's own words are the content; the template only frames them.
+   * Handlebars escapes the body, so an announcement mentioning "<24h" arrives
+   * as written rather than as broken markup.
+   */
+  async sendPartnerNotification(
+    data: PartnerNotificationMailData,
+  ): Promise<void> {
+    const template = await this.emailTemplatesService.findByName(
+      'partner_notification',
+    );
+    if (!template) {
+      this.logger.error(
+        'Email template "partner_notification" not found — the announcement was not emailed',
+      );
+      return;
+    }
+
+    const appName = this.configService.get('app.name', { infer: true });
+    const context = {
+      contactName: data.contactName,
+      title: data.title,
+      body: data.body,
+      portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
+      app_name: appName,
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail: SUPPORT_EMAIL,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      transportName: 'otp',
+      to: data.to,
+      subject: subjectCompiled,
+      text: `${data.title}
+
+${data.body}`,
       templatePath: '',
       context: {},
       html: htmlCompiled,

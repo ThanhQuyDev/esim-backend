@@ -35,6 +35,7 @@ import {
   UpdatePartnerProfileByAdminDto,
   UpdateReconciliationStatusDto,
   UpdatePartnerProgramSettingDto,
+  CreatePartnerNotificationDto,
   QueryPartnerPayoutDto,
   BulkPayoutDecisionDto,
   UpdatePartnerAffiliateGrantDto,
@@ -233,6 +234,23 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   listCommissions(@Query() query: QueryPartnerCommissionDto) {
     return this.partnersService.adminListCommissions(query);
+  }
+
+  /** Compose and send an announcement to partners (#079). */
+  @Post('notifications')
+  @HttpCode(HttpStatus.CREATED)
+  createNotification(
+    @Body() dto: CreatePartnerNotificationDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminCreateNotification(dto, req.user.id);
+  }
+
+  /** Everything that has been sent, with how far it reached (#079). */
+  @Get('notifications')
+  @HttpCode(HttpStatus.OK)
+  listNotifications(@Query('limit') limit?: number) {
+    return this.partnersService.adminListNotifications(Number(limit) || 50);
   }
 
   /** The partner programme's settings (#075, #076, #077). */

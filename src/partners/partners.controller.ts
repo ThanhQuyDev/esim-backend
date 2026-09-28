@@ -169,6 +169,47 @@ export class PartnersController {
     });
   }
 
+  /** Announcements this partner can see, for the bell (#079). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/notifications')
+  @HttpCode(HttpStatus.OK)
+  async getMyNotifications(
+    @Request() req: { user: { id: number } },
+    @Query('limit') limit?: number,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyNotifications(
+      partner.id,
+      Number(limit) || 20,
+    );
+  }
+
+  /** Mark one announcement read (#079). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/notifications/read-all')
+  @HttpCode(HttpStatus.OK)
+  async markAllNotificationsRead(@Request() req: { user: { id: number } }) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.markAllNotificationsRead(partner.id);
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/notifications/:id/read')
+  @HttpCode(HttpStatus.OK)
+  async markNotificationRead(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.markNotificationRead(partner.id, Number(id));
+  }
+
   /** Dashboard read model: performance over the chosen period (#010). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
