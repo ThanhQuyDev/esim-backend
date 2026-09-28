@@ -26,6 +26,7 @@ import {
   AssignPartnerTierDto,
   ProcessPartnerPayoutDto,
   RejectPartnerDto,
+  UpdatePartnerAdminNoteDto,
   UpdatePartnerAffiliateGrantDto,
   UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerStatusDto,
@@ -264,6 +265,16 @@ export class AdminPartnersController {
       Number(id),
       dto.canCustomLinkCode,
     );
+  }
+
+  /** Record an admin's own note on this partner (#056). */
+  @Patch(':id/admin-note')
+  @HttpCode(HttpStatus.OK)
+  setAdminNote(
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerAdminNoteDto,
+  ) {
+    return this.partnersService.setAdminNote(Number(id), dto.adminNote);
   }
 
   /** Tick/untick "được phân quyền affiliate" for this partner (#048). */

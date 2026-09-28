@@ -109,6 +109,16 @@ export class PartnerEntity extends EntityRelationalHelper {
   updatedAt!: Date;
 
   /**
+   * An admin's own note on this partner (#056).
+   *
+   * Separate from `notes`, which is what the applicant wrote about themselves:
+   * recording "duyệt vì đã gọi xác minh" into the applicant's field would
+   * overwrite their words with ours.
+   */
+  @Column({ type: 'text', nullable: true })
+  adminNote?: string | null;
+
+  /**
    * Whether this distribution partner may also run the affiliate programme
    * (#048).
    *

@@ -43,6 +43,17 @@ export class UpdatePartnerLinkCodePermissionDto {
   canCustomLinkCode!: boolean;
 }
 
+/** An admin's own note on a partner (#056). */
+export class UpdatePartnerAdminNoteDto {
+  @ApiProperty({
+    type: String,
+    example: 'Đã gọi xác minh kênh bán, ảnh giấy phép hợp lệ.',
+  })
+  @IsString()
+  @MaxLength(2000)
+  adminNote!: string;
+}
+
 /** Tick/untick the affiliate grant for a distribution partner (#048). */
 export class UpdatePartnerAffiliateGrantDto {
   @ApiProperty({ type: Boolean })

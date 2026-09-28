@@ -1225,8 +1225,10 @@ export class PartnersService {
       qb.andWhere('partner.status = :status', { status: query.status });
     }
     if (query.search) {
+      // Phone included because that is what an admin has in front of them when
+      // the applicant rings to ask where their approval got to (#055).
       qb.andWhere(
-        '(partner.contactName ILIKE :search OR partner.contactEmail ILIKE :search OR partner.companyName ILIKE :search)',
+        '(partner.contactName ILIKE :search OR partner.contactEmail ILIKE :search OR partner.companyName ILIKE :search OR partner.contactPhone ILIKE :search)',
         { search: `%${query.search}%` },
       );
     }
@@ -1306,9 +1308,16 @@ export class PartnersService {
 
   async approve(id: number, adminId: number): Promise<PartnerEntity> {
     const partner = await this.adminFindById(id);
-    if (partner.status !== PartnerStatusEnum.PENDING) {
+    // A rejection is a decision, not a dead end (#056): the applicant sends the
+    // missing paper, or the reviewer was wrong, and an admin may approve them
+    // by hand without making them apply again.
+    const approvable: PartnerStatusEnum[] = [
+      PartnerStatusEnum.PENDING,
+      PartnerStatusEnum.REJECTED,
+    ];
+    if (!approvable.includes(partner.status)) {
       throw new BadRequestException(
-        'Chỉ có thể duyệt đối tác đang ở trạng thái chờ duyệt.',
+        'Chỉ có thể duyệt đối tác đang chờ duyệt hoặc đã bị từ chối.',
       );
     }
 
@@ -1316,6 +1325,9 @@ export class PartnersService {
       partner.status = PartnerStatusEnum.ACTIVE;
       partner.approvedAt = new Date();
       partner.approvedByAdminId = adminId;
+      // Otherwise an approved partner keeps a "bị từ chối vì..." line on their
+      // record, which is what support would read back to them.
+      partner.rejectionReason = null;
       const saved = await manager.getRepository(PartnerEntity).save(partner);
 
       await manager.getRepository(UserEntity).update(partner.userId, {
@@ -1359,6 +1371,19 @@ export class PartnersService {
   ): Promise<PartnerEntity> {
     const partner = await this.adminFindById(id);
     partner.status = dto.status;
+    return this.partnerRepository.save(partner);
+  }
+
+  /**
+   * Record an admin's own note on a partner (#056).
+   *
+   * Kept apart from the applicant's own `notes`: this is the reviewer's memory
+   * of the decision — who they called, what they checked, what to look at next
+   * time — and it survives approval and rejection alike.
+   */
+  async setAdminNote(id: number, adminNote: string): Promise<PartnerEntity> {
+    const partner = await this.adminFindById(id);
+    partner.adminNote = adminNote.trim() || null;
     return this.partnerRepository.save(partner);
   }
 
