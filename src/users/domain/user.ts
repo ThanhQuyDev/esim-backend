@@ -44,6 +44,11 @@ export class User {
   @Expose({ groups: ['me', 'admin'] })
   mustChangePassword?: boolean;
 
+  /** When this account last signed in (#060). */
+  @ApiProperty({ type: Date, nullable: true })
+  @Expose({ groups: ['me', 'admin'] })
+  lastLoginAt?: Date | null;
+
   @ApiProperty({
     type: String,
     example: 'email',

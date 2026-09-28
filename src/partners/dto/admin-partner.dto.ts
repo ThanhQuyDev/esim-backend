@@ -11,6 +11,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Max,
@@ -94,11 +95,20 @@ export class AdjustPartnerWalletDto {
   @IsInt()
   amountVnd!: number;
 
-  @ApiPropertyOptional({ type: String })
-  @IsOptional()
+  /**
+   * Required (#060): the reason is what the partner reads in their transaction
+   * history, and what an admin reads back a month later. Moving somebody's
+   * money with nothing recorded is the gap the brief calls out — "hiện tại
+   * không cần nhập lý do vẫn cho điều chỉnh thì chưa chặt chẽ".
+   */
+  @ApiProperty({
+    type: String,
+    example: 'Bù hoa hồng đơn DS-18342 đối soát thiếu',
+  })
   @IsString()
+  @IsNotEmpty()
   @MaxLength(500)
-  reason?: string;
+  reason!: string;
 }
 
 export class ConfirmDepositRequestDto {

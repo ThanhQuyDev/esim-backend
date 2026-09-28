@@ -152,8 +152,16 @@ function formatPartnerBankAccount(partner: {
 /** An admin list row: the partner plus the numbers the console triages on. */
 type AdminPartnerListRow = PartnerEntity & {
   walletBalanceVnd: number;
+  /** Balance less anything already claimed and waiting to be paid (#060). */
+  availableBalanceVnd: number;
   revenue30dVnd: number;
+  /**
+   * When the partner last signed in (#060) — the brief's "hoạt động gần nhất".
+   * Falls back to their last order for accounts that predate the column.
+   */
   lastActivityAt: Date | null;
+  lastLoginAt: Date | null;
+  lastOrderAt: Date | null;
   /** Lifetime paid/completed orders attributed to this partner (#095). */
   totalOrders: number;
   /** Lifetime value of those orders. */
@@ -3173,9 +3181,24 @@ export class PartnersService {
               (
                 SELECT MAX(o."createdAt") FROM "order" o
                 WHERE o."attributedPartnerId" = p.id AND o."deletedAt" IS NULL
-              ) AS "lastOrderAt"
+              ) AS "lastOrderAt",
+              -- "hoạt động gần nhất" is when they last signed in (#060), not
+              -- when an order last happened to arrive through their link.
+              u."lastLoginAt" AS "lastLoginAt",
+              -- What they could actually withdraw or spend: the balance less
+              -- anything already claimed and waiting (#060).
+              GREATEST(
+                COALESCE(w."balanceVnd", 0) - COALESCE(pp."pendingPayoutVnd", 0),
+                0
+              ) AS "availableBalanceVnd"
        FROM partner p
        LEFT JOIN partner_wallet w ON w."partnerId" = p.id
+       LEFT JOIN "user" u ON u.id = p."userId"
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(pay."amountVnd"), 0) AS "pendingPayoutVnd"
+         FROM partner_payout pay
+         WHERE pay."partnerId" = p.id AND pay.status = 'pending'
+       ) pp ON TRUE
        LEFT JOIN LATERAL (
          SELECT COUNT(*) FILTER (
                   WHERE o.status IN ('paid', 'completed')
@@ -3212,8 +3235,13 @@ export class PartnersService {
       const refunded = Number(m?.refundedOrders ?? 0);
       return Object.assign(p, {
         walletBalanceVnd: Number(m?.walletBalanceVnd ?? 0),
+        availableBalanceVnd: Number(m?.availableBalanceVnd ?? 0),
         revenue30dVnd: Number(m?.revenue30dVnd ?? 0),
-        lastActivityAt: m?.lastOrderAt ?? null,
+        // The sign-in is the answer the brief asks for; the last order is kept
+        // as a fallback for accounts that predate the column (#060).
+        lastActivityAt: m?.lastLoginAt ?? m?.lastOrderAt ?? null,
+        lastLoginAt: m?.lastLoginAt ?? null,
+        lastOrderAt: m?.lastOrderAt ?? null,
         totalOrders: Number(m?.totalOrders ?? 0),
         totalRevenueVnd: Number(m?.totalRevenueVnd ?? 0),
         profitVnd: Number(m?.profitVnd ?? 0),

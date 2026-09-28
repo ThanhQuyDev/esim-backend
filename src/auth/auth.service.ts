@@ -135,6 +135,17 @@ export class AuthService {
 
     await this.assertPartnerMaySignIn(user);
 
+    // What the partner list reports as "hoạt động gần nhất" (#060). Wrapped,
+    // not awaited: a failed bookkeeping write must not cost somebody their
+    // sign-in, and that includes it throwing on the way out.
+    try {
+      void this.usersService
+        .update(user.id, { lastLoginAt: new Date() } as never)
+        ?.catch(() => undefined);
+    } catch {
+      // Nothing to do; the sign-in is what matters.
+    }
+
     const hash = crypto
       .createHash('sha256')
       .update(randomStringGenerator())

@@ -83,6 +83,17 @@ export class UserEntity extends EntityRelationalHelper {
   status?: StatusEntity;
 
   /**
+   * When this account last signed in (#060).
+   *
+   * The partner list reports "hoạt động gần nhất" from this rather than from
+   * the last order: a partner who checks their commission daily and has not
+   * sold this month is active, and one whose orders arrive through a link they
+   * posted a year ago is not.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  lastLoginAt?: Date | null;
+
+  /**
    * Set when an admin created this account and the password was emailed
    * (#059). The holder signs in with it once and is made to set their own —
    * a password that has travelled through an inbox must not stay the account's.

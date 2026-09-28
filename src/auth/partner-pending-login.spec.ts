@@ -26,6 +26,8 @@ async function makeService(partner: Record<string, unknown> | null) {
 
   internals.usersService = {
     findByEmail: jest.fn().mockResolvedValue(user),
+    // Stamping "last signed in" is bookkeeping alongside the sign-in (#060).
+    update: jest.fn().mockResolvedValue(undefined),
   };
   internals.sessionService = {
     create: jest.fn((args: unknown) => {

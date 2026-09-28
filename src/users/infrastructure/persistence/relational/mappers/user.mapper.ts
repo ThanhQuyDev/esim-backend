@@ -15,6 +15,7 @@ export class UserMapper {
     domainEntity.password = raw.password;
     domainEntity.hasPassword = !!raw.password;
     domainEntity.mustChangePassword = raw.mustChangePassword ?? false;
+    domainEntity.lastLoginAt = raw.lastLoginAt ?? null;
     domainEntity.provider = raw.provider;
     domainEntity.socialId = raw.socialId;
     domainEntity.firstName = raw.firstName;
