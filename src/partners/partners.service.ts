@@ -1697,6 +1697,72 @@ export class PartnersService {
   }
 
   /**
+   * The four figures at the head of "Tài chính" (#067).
+   *
+   * Two kinds of money sit on this page and they point opposite ways: what is
+   * owed out to marketing partners, and what distribution partners have paid
+   * in and not yet spent. Both belong here because both are the finance team's
+   * exposure on the partner channel.
+   *
+   * "Lũy kế" is deliberately every payout ever made, not a rolling window —
+   * it is the number an accountant reconciles against the bank statement.
+   */
+  async adminPayoutSummary(): Promise<{
+    payoutRequested: { totalVnd: number; partners: number };
+    paidThisMonth: { totalVnd: number; partners: number };
+    paidAllTime: { totalVnd: number; partners: number };
+    distributionDeposit: { totalVnd: number; partners: number };
+  }> {
+    const [payouts] = await this.dataSource.query(
+      `SELECT
+         COALESCE(SUM("amountVnd") FILTER (WHERE status = $1), 0) AS "requestedVnd",
+         COUNT(DISTINCT "partnerId") FILTER (WHERE status = $1) AS "requestedPartners",
+         COALESCE(SUM("amountVnd") FILTER (
+           WHERE status = $2 AND "processedAt" >= date_trunc('month', now())
+         ), 0) AS "paidMonthVnd",
+         COUNT(DISTINCT "partnerId") FILTER (
+           WHERE status = $2 AND "processedAt" >= date_trunc('month', now())
+         ) AS "paidMonthPartners",
+         COALESCE(SUM("amountVnd") FILTER (WHERE status = $2), 0) AS "paidAllVnd",
+         COUNT(DISTINCT "partnerId") FILTER (WHERE status = $2) AS "paidAllPartners"
+       FROM partner_payout`,
+      [PartnerPayoutStatusEnum.PENDING, PartnerPayoutStatusEnum.PAID],
+    );
+
+    // Money the distribution partners have put in and not yet spent. A partner
+    // with no wallet row has put nothing in, which is a zero rather than a
+    // missing row, so the count comes off partner and the sum off the join.
+    const [deposits] = await this.dataSource.query(
+      `SELECT COALESCE(SUM(w."balanceVnd"), 0) AS "totalVnd",
+              COUNT(*) AS partners
+       FROM partner p
+       LEFT JOIN partner_wallet w ON w."partnerId" = p.id
+       WHERE p."deletedAt" IS NULL AND p."partnerType" = $1`,
+      [PartnerTypeEnum.DISTRIBUTION],
+    );
+
+    const n = (v: unknown) => Number(v ?? 0);
+    return {
+      payoutRequested: {
+        totalVnd: n(payouts?.requestedVnd),
+        partners: n(payouts?.requestedPartners),
+      },
+      paidThisMonth: {
+        totalVnd: n(payouts?.paidMonthVnd),
+        partners: n(payouts?.paidMonthPartners),
+      },
+      paidAllTime: {
+        totalVnd: n(payouts?.paidAllVnd),
+        partners: n(payouts?.paidAllPartners),
+      },
+      distributionDeposit: {
+        totalVnd: n(deposits?.totalVnd),
+        partners: n(deposits?.partners),
+      },
+    };
+  }
+
+  /**
    * The reconciliation list: one row per partner for one period (#065).
    *
    * The commission list is a row per order, which is the wrong grain for a

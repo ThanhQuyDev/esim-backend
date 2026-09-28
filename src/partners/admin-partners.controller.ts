@@ -235,6 +235,13 @@ export class AdminPartnersController {
     return this.partnersService.adminListCommissions(query);
   }
 
+  /** The four figures at the head of "Tài chính" (#067). */
+  @Get('payouts/summary')
+  @HttpCode(HttpStatus.OK)
+  adminPayoutSummary() {
+    return this.partnersService.adminPayoutSummary();
+  }
+
   @Get('payouts')
   @HttpCode(HttpStatus.OK)
   listPayouts(@Query('status') status?: PartnerPayoutStatusEnum) {
