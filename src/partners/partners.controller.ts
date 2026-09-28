@@ -20,6 +20,7 @@ import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import { PartnersService } from './partners.service';
+import { PartnerTypeEnum } from './partners.enum';
 import { PartnerApplyDto } from './dto/partner-apply.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
 import {
@@ -200,6 +201,37 @@ export class PartnersController {
       partner.id,
       { from: query.from, to: query.to },
       query.limit ? Number(query.limit) : undefined,
+      // A distribution partner's destinations are the ones they bought, not the
+      // ones an audience bought through them (#045).
+      partner.partnerType === PartnerTypeEnum.DISTRIBUTION
+        ? 'own'
+        : 'attributed',
+    );
+  }
+
+  /**
+   * Orders bought and eSIMs activated over time, for the distribution
+   * partner's chart (#045).
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/distribution-series')
+  @HttpCode(HttpStatus.OK)
+  async getMyDistributionSeries(
+    @Request() req: { user: { id: number } },
+    @Query()
+    query: {
+      from?: string;
+      to?: string;
+      groupBy?: 'day' | 'week' | 'month' | 'year';
+    },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyDistributionSeries(
+      partner.id,
+      { from: query.from, to: query.to },
+      query.groupBy,
     );
   }
 

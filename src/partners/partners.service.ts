@@ -2168,8 +2168,22 @@ export class PartnersService {
     partnerId: number,
     range: { from?: string; to?: string } = {},
     limit = 6,
+    /**
+     * Whose orders to count (#045). A marketing partner's destinations are the
+     * ones their audience bought — orders attributed to them. A distribution
+     * partner's are the ones they bought themselves, which is a different set
+     * of orders entirely.
+     */
+    scope: 'attributed' | 'own' = 'attributed',
   ): Promise<{ name: string; plansPurchased: number; revenueVnd: number }[]> {
     const { from, to } = resolveSummaryRange(range);
+
+    let ownerId = partnerId;
+    if (scope === 'own') {
+      const partner = await this.getPartnerOrThrowById(partnerId);
+      ownerId = partner.userId;
+    }
+    const ownerColumn = scope === 'own' ? 'userId' : 'attributedPartnerId';
 
     const rows = await this.dataSource.query(
       `SELECT
@@ -2181,7 +2195,7 @@ export class PartnersService {
        JOIN plan p ON p.id = oi."planId"
        LEFT JOIN destination d ON d.id = p."destinationId"
        LEFT JOIN region r ON r.id = p."regionId"
-       WHERE o."attributedPartnerId" = $1
+       WHERE o."${ownerColumn}" = $1
          AND o."deletedAt" IS NULL
          AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
          AND o.status IN ('paid', 'completed')
@@ -2189,7 +2203,7 @@ export class PartnersService {
        GROUP BY 1
        ORDER BY "plansPurchased" DESC, "revenueVnd" DESC
        LIMIT $4`,
-      [partnerId, from, to, Math.min(Math.max(limit, 1), 20)],
+      [ownerId, from, to, Math.min(Math.max(limit, 1), 20)],
     );
 
     return (rows as Record<string, unknown>[]).map((row) => ({
@@ -2197,6 +2211,80 @@ export class PartnersService {
       plansPurchased: Number(row.plansPurchased ?? 0),
       revenueVnd: Number(row.revenueVnd ?? 0),
     }));
+  }
+
+  /**
+   * Orders bought and eSIMs activated over time, for the chart (#045).
+   *
+   * Two different dates, so two queries: an order counts on the day it was
+   * placed, an eSIM on the day the customer switched it on — which is usually a
+   * later day, and sometimes a much later one. Bucketed in Postgres so a year
+   * of history is a handful of rows rather than a payload the browser has to
+   * fold itself.
+   */
+  async getMyDistributionSeries(
+    partnerId: number,
+    range: { from?: string; to?: string } = {},
+    groupBy: 'day' | 'week' | 'month' | 'year' = 'day',
+  ): Promise<{ bucket: string; orders: number; activatedEsims: number }[]> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const { from, to } = resolveSummaryRange(range);
+    // Never interpolated from the caller: one of four known words.
+    const unit = ['day', 'week', 'month', 'year'].includes(groupBy)
+      ? groupBy
+      : 'day';
+
+    const orderRows = await this.dataSource.query(
+      `SELECT date_trunc('${unit}', o."createdAt") AS bucket,
+              COUNT(*) AS orders
+       FROM "order" o
+       WHERE o."userId" = $1
+         AND o."deletedAt" IS NULL
+         AND o.status = ANY($4)
+         AND o."createdAt" >= $2 AND o."createdAt" < $3
+       GROUP BY 1`,
+      [partner.userId, from, to, SETTLED_ORDER_STATUS_LIST],
+    );
+
+    const esimRows = await this.dataSource.query(
+      `SELECT date_trunc('${unit}', e."activatedAt") AS bucket,
+              COUNT(*) AS "activatedEsims"
+       FROM esim e
+       JOIN order_item oi ON oi.id = e."orderItemId"
+       JOIN "order" o ON o.id = oi."orderId"
+       WHERE o."userId" = $1
+         AND o."deletedAt" IS NULL
+         AND e."activatedAt" IS NOT NULL
+         AND e."activatedAt" >= $2 AND e."activatedAt" < $3
+       GROUP BY 1`,
+      [partner.userId, from, to],
+    );
+
+    const merged = new Map<
+      string,
+      { orders: number; activatedEsims: number }
+    >();
+    const bucketKey = (value: unknown) =>
+      new Date(value as string).toISOString();
+
+    for (const row of orderRows as Record<string, unknown>[]) {
+      const key = bucketKey(row.bucket);
+      merged.set(key, {
+        orders: Number(row.orders ?? 0),
+        activatedEsims: merged.get(key)?.activatedEsims ?? 0,
+      });
+    }
+    for (const row of esimRows as Record<string, unknown>[]) {
+      const key = bucketKey(row.bucket);
+      merged.set(key, {
+        orders: merged.get(key)?.orders ?? 0,
+        activatedEsims: Number(row.activatedEsims ?? 0),
+      });
+    }
+
+    return [...merged.entries()]
+      .map(([bucket, counts]) => ({ bucket, ...counts }))
+      .sort((a, b) => a.bucket.localeCompare(b.bucket));
   }
 
   /**
