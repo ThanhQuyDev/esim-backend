@@ -145,6 +145,29 @@ export class PartnersController {
     return this.partnersService.getMyDepositRequests(partner.id);
   }
 
+  /**
+   * Dashboard figures for a distribution partner (#043).
+   *
+   * Separate from `me/summary` because it answers a different question: what
+   * this partner bought and how much of it has been activated, not what they
+   * earned in commission.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/distribution-summary')
+  @HttpCode(HttpStatus.OK)
+  async getMyDistributionSummary(
+    @Request() req: { user: { id: number } },
+    @Query() query: { from?: string; to?: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyDistributionSummary(partner.id, {
+      from: query.from,
+      to: query.to,
+    });
+  }
+
   /** Dashboard read model: performance over the chosen period (#010). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

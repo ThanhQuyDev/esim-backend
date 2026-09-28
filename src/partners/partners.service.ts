@@ -261,10 +261,12 @@ function maskEmail(email: string): string {
   return `${head}${'*'.repeat(Math.max(name.length - 2, 1))}@${domain}`;
 }
 
-const DEAD_ORDER_STATUSES = new Set(['cancelled', 'failed', 'refunded']);
+const DEAD_ORDER_STATUS_LIST = ['cancelled', 'failed', 'refunded'];
+const DEAD_ORDER_STATUSES = new Set(DEAD_ORDER_STATUS_LIST);
 
 /** Order states where the money has actually arrived. */
-const SETTLED_ORDER_STATUSES = new Set(['paid', 'completed']);
+const SETTLED_ORDER_STATUS_LIST = ['paid', 'completed'];
+const SETTLED_ORDER_STATUSES = new Set(SETTLED_ORDER_STATUS_LIST);
 
 /**
  * Is this order one the partner gets paid for (#095, ý 3)?
@@ -2195,6 +2197,111 @@ export class PartnersService {
       plansPurchased: Number(row.plansPurchased ?? 0),
       revenueVnd: Number(row.revenueVnd ?? 0),
     }));
+  }
+
+  /**
+   * Dashboard read model for a distribution partner (#043).
+   *
+   * A different business from the marketing side, so a different dashboard. A
+   * marketing partner earns commission on orders somebody else placed; a
+   * distribution partner buys the eSIMs themselves and resells them, so what
+   * they need to see is their own buying: how many orders, how many fell over,
+   * what they spent, split between eSIMs and top-ups — and how many of the
+   * eSIMs they bought have actually been activated, because an unactivated
+   * eSIM is stock, not a sale.
+   *
+   * "Doanh thu" here is what the partner spent with esim.vn, which is the same
+   * number esim.vn books as revenue from them (#050).
+   */
+  async getMyDistributionSummary(
+    partnerId: number,
+    range: { from?: string; to?: string } = {},
+  ) {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const { from, to } = resolveSummaryRange(range);
+
+    // Their own purchases — not orders attributed to them, which is the
+    // marketing side's question.
+    const [orders] = await this.dataSource.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE o."orderType" <> $4) AS "esimOrders",
+         COUNT(*) FILTER (WHERE o."orderType" <> $4 AND o.status = ANY($5)) AS "esimCancelled",
+         COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+           WHERE o."orderType" <> $4 AND o.status = ANY($6)
+         ), 0) AS "esimRevenueVnd",
+         COUNT(*) FILTER (WHERE o."orderType" = $4) AS "topupOrders",
+         COUNT(*) FILTER (WHERE o."orderType" = $4 AND o.status = ANY($5)) AS "topupCancelled",
+         COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+           WHERE o."orderType" = $4 AND o.status = ANY($6)
+         ), 0) AS "topupRevenueVnd"
+       FROM "order" o
+       WHERE o."userId" = $1
+         AND o."deletedAt" IS NULL
+         AND o."createdAt" >= $2
+         AND o."createdAt" < $3`,
+      [
+        partner.userId,
+        from,
+        to,
+        TOPUP_ORDER_TYPE,
+        DEAD_ORDER_STATUS_LIST,
+        SETTLED_ORDER_STATUS_LIST,
+      ],
+    );
+
+    // An eSIM the customer never switched on is stock the partner is still
+    // holding, so it is counted apart from what they bought.
+    const [esims] = await this.dataSource.query(
+      `SELECT
+         COUNT(*) AS "activatedCount",
+         -- order_item."vndPrice" is the line total, so one eSIM out of a line
+         -- of five is worth a fifth of it.
+         COALESCE(
+           SUM(oi."vndPrice" / NULLIF(oi.quantity, 0)),
+           0
+         ) AS "activatedRevenueVnd"
+       FROM esim e
+       JOIN order_item oi ON oi.id = e."orderItemId"
+       JOIN "order" o ON o.id = oi."orderId"
+       WHERE o."userId" = $1
+         AND o."deletedAt" IS NULL
+         AND e."activatedAt" IS NOT NULL
+         AND e."activatedAt" >= $2
+         AND e."activatedAt" < $3`,
+      [partner.userId, from, to],
+    );
+
+    const esimOrders = Number(orders?.esimOrders ?? 0);
+    const topupOrders = Number(orders?.topupOrders ?? 0);
+    const esimRevenueVnd = Number(orders?.esimRevenueVnd ?? 0);
+    const topupRevenueVnd = Number(orders?.topupRevenueVnd ?? 0);
+
+    return {
+      range: { from: from.toISOString(), to: to.toISOString() },
+      /** eSIM purchases and top-ups added together — the header figures. */
+      total: {
+        orders: esimOrders + topupOrders,
+        cancelledOrders:
+          Number(orders?.esimCancelled ?? 0) +
+          Number(orders?.topupCancelled ?? 0),
+        revenueVnd: esimRevenueVnd + topupRevenueVnd,
+      },
+      esim: {
+        orders: esimOrders,
+        cancelledOrders: Number(orders?.esimCancelled ?? 0),
+        revenueVnd: esimRevenueVnd,
+      },
+      topup: {
+        orders: topupOrders,
+        cancelledOrders: Number(orders?.topupCancelled ?? 0),
+        revenueVnd: topupRevenueVnd,
+      },
+      /** eSIMs the end customer switched on inside the window. */
+      activatedEsims: {
+        count: Number(esims?.activatedCount ?? 0),
+        revenueVnd: Number(esims?.activatedRevenueVnd ?? 0),
+      },
+    };
   }
 
   /**
