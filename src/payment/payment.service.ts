@@ -4,6 +4,7 @@ import { OnepayService } from './onepay.service';
 import { OrdersService } from '../orders/orders.service';
 import { AllConfigType } from '../config/config.type';
 import { SubmitOrderDto } from '../orders/dto/submit-order.dto';
+import { hashIpForFraudWatch } from '../orders/order-fraud-signals';
 import { CustomPaymentLinksService } from '../custom-payment-links/custom-payment-links.service';
 import { CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX } from '../custom-payment-links/custom-payment-links.enum';
 import { TopupService } from '../topup/topup.service';
@@ -58,14 +59,19 @@ export class PaymentService {
     userId: number,
     dto: SubmitOrderDto,
     clientIp: string,
+    userAgent?: string | null,
   ): Promise<{ paymentUrl: string; orderNumber: string }> {
     const rate = await this.fetchVndRate();
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    // The buyer's network and browser reach the order too: they feed the
+    // fraud flags (#036) and the device backstop for attribution (#039).
     const order = await this.ordersService.createPendingOrder(
       userId,
       dto,
       orderNumber,
       rate,
+      hashIpForFraudWatch(clientIp),
+      userAgent ?? null,
     );
 
     // If eXU wallet covers the entire amount, skip OnePay and finalize immediately
@@ -126,6 +132,8 @@ export class PaymentService {
   async createBankTransferCheckout(
     userId: number,
     dto: SubmitOrderDto,
+    clientIp?: string,
+    userAgent?: string | null,
   ): Promise<BankTransferCheckoutResult & { paymentUrl?: string }> {
     const sepay = this.configService.getOrThrow('sepay', { infer: true });
     if (!sepay.accountNumber) {
@@ -141,6 +149,8 @@ export class PaymentService {
       dto,
       orderNumber,
       rate,
+      hashIpForFraudWatch(clientIp),
+      userAgent ?? null,
     );
 
     // Wallet covers the whole amount — nothing to transfer, finalize now.

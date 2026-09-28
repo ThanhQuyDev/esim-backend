@@ -42,6 +42,22 @@ export class PartnerLinkClickEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   visitorId?: string | null;
 
+  /**
+   * The id the server minted for this click and put in the redirect URL, so
+   * the order can be attributed without depending on a cookie (#039).
+   */
+  @Index({ unique: true })
+  @Column({ type: String, length: 64, nullable: true })
+  clickId?: string | null;
+
+  /**
+   * Network address and user agent hashed together, as the server saw them —
+   * the backstop for a click id an in-app browser stripped from the URL (#039).
+   */
+  @Index()
+  @Column({ type: String, length: 64, nullable: true })
+  deviceHash?: string | null;
+
   @CreateDateColumn()
   clickedAt!: Date;
 }

@@ -126,6 +126,17 @@ export class SubmitOrderDto {
 
   @ApiPropertyOptional({
     type: String,
+    example: '9f1c7b2a4d6e8f0a1b3c5d7e9f0a1b2c',
+    description:
+      'The click id the server minted at /go/[code] and put in the redirect URL. Read back from the landing URL the browser kept, so the attribution no longer depends on a cookie surviving for weeks (#039). Outranks partnerLinkCode when both arrive.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  partnerClickId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
     example: 'b6f0b1d0-7d5e-4f7a-9a3e-1f2c3d4e5f60',
     description:
       "The browser's own id, from the esim_visitor_id cookie. Used only to flag several affiliate orders coming from one device (#036); it never changes whether the order earns commission.",

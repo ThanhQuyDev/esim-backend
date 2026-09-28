@@ -161,15 +161,22 @@ export class OrdersService {
    * have both a discount code AND arrive via a KOL link.
    *
    * `clickedAt` is when the buyer last opened the link. The partner only earns
-   * on an order placed within 30 days of that visit (#095, ý 3); the check
-   * itself lives in `PartnersService.resolveLinkForAttribution`, which falls
-   * back to the click log when the checkout sends no stamp.
+   * on an order placed within the window of their tier (#037); the check itself
+   * lives in `PartnersService.resolveLinkForAttribution`, which falls back to
+   * the click log when the checkout sends no stamp.
+   *
+   * `partnerClickId` is the sturdier signal: an id the server minted at the
+   * click and put in the redirect URL, so an iOS browser that dropped the
+   * cookie still credits the partner (#039).
    */
   private async resolvePartnerAttribution(
     partnerLinkCode?: string | null,
     clickedAt?: string | null,
     couponCode?: string | null,
     buyerUserId?: number | null,
+    partnerClickId?: string | null,
+    ipHash?: string | null,
+    userAgent?: string | null,
   ): Promise<{
     partnerLinkCode: string | null;
     attributedPartnerId: number | null;
@@ -180,8 +187,11 @@ export class OrdersService {
     return this.partnersService.resolveOrderAttribution({
       linkCode: partnerLinkCode ?? null,
       clickedAt: clickedAt ?? null,
+      clickId: partnerClickId ?? null,
       couponCode: couponCode ?? null,
       buyerUserId: buyerUserId ?? null,
+      ipHash: ipHash ?? null,
+      userAgent: userAgent ?? null,
     });
   }
 
@@ -325,6 +335,8 @@ export class OrdersService {
     dto: SubmitOrderDto,
     /** Hashed network address of the buyer, for fraud watching (#036). */
     clientIpHash?: string | null,
+    /** The buyer's user agent, for the device backstop in #039. */
+    clientUserAgent?: string | null,
   ): Promise<Order> {
     // Save phone number to user profile
     if (dto.phoneNumber) {
@@ -362,6 +374,9 @@ export class OrdersService {
       dto.partnerLinkClickedAt,
       pricing.couponCode,
       userId,
+      dto.partnerClickId,
+      clientIpHash,
+      clientUserAgent,
     );
 
     // Same device or network as another order for this partner still earns the
@@ -635,6 +650,8 @@ export class OrdersService {
     vndRate?: number,
     /** Hashed network address of the buyer, for fraud watching (#036). */
     clientIpHash?: string | null,
+    /** The buyer's user agent, for the device backstop in #039. */
+    clientUserAgent?: string | null,
   ): Promise<Order> {
     // Save phone number to user profile if provided and user doesn't have one yet
     if (dto.phoneNumber) {
@@ -671,6 +688,9 @@ export class OrdersService {
       dto.partnerLinkClickedAt,
       pricing.couponCode,
       userId,
+      dto.partnerClickId,
+      clientIpHash,
+      clientUserAgent,
     );
 
     // Same device and network as another order for this partner still earns

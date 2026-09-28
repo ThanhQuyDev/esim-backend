@@ -10,6 +10,7 @@ import {
   Query,
   HttpStatus,
   HttpCode,
+  Headers,
   Request,
   Res,
 } from '@nestjs/common';
@@ -74,6 +75,7 @@ export class OrdersController {
   submitOrder(
     @Request() req: { user: { id: number } } & Parameters<typeof clientIp>[0],
     @Body() dto: SubmitOrderDto,
+    @Headers('user-agent') userAgent?: string,
   ): Promise<Order> {
     // Hashed on the way in: enough to spot several orders from one network
     // (#036) without keeping the address itself.
@@ -81,6 +83,7 @@ export class OrdersController {
       req.user.id,
       dto,
       hashIpForFraudWatch(clientIp(req)),
+      userAgent ?? null,
     );
   }
 

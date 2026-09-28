@@ -39,8 +39,9 @@ export class PaymentController {
     @Request() req: { user: { id: number } },
     @Body() dto: SubmitOrderDto,
     @Ip() ip: string,
+    @Headers('user-agent') userAgent?: string,
   ): Promise<{ paymentUrl: string; orderNumber: string }> {
-    return this.paymentService.createCheckout(req.user.id, dto, ip);
+    return this.paymentService.createCheckout(req.user.id, dto, ip, userAgent);
   }
 
   /**
@@ -73,8 +74,15 @@ export class PaymentController {
   bankTransfer(
     @Request() req: { user: { id: number } },
     @Body() dto: SubmitOrderDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent?: string,
   ) {
-    return this.paymentService.createBankTransferCheckout(req.user.id, dto);
+    return this.paymentService.createBankTransferCheckout(
+      req.user.id,
+      dto,
+      ip,
+      userAgent,
+    );
   }
 
   /**

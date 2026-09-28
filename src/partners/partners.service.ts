@@ -16,6 +16,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
+import { partnerDeviceFingerprint } from './partner-device-fingerprint';
 import * as ExcelJS from 'exceljs';
 import { In, DataSource, EntityManager, Repository } from 'typeorm';
 import { AllConfigType } from '../config/config.type';
@@ -1463,11 +1465,16 @@ export class PartnersService {
       referrer?: string | null;
       visitorId?: string | null;
     },
-  ): Promise<{ targetPath: string | null } | null> {
+  ): Promise<{ targetPath: string | null; clickId: string } | null> {
     const link = await this.linkRepository.findOne({
       where: { code, status: PartnerLinkStatusEnum.ACTIVE },
     });
     if (!link) return null;
+
+    // Minted here, on the server, and handed back so the redirect can carry it
+    // in the URL (#039). 32 hex characters: guessing one would mean guessing a
+    // click that really happened.
+    const clickId = randomBytes(16).toString('hex');
 
     await this.linkClickRepository.save(
       this.linkClickRepository.create({
@@ -1476,11 +1483,13 @@ export class PartnersService {
         userAgent: meta.userAgent ?? null,
         referrer: meta.referrer ?? null,
         visitorId: meta.visitorId ?? null,
+        clickId,
+        deviceHash: partnerDeviceFingerprint(meta.ipHash, meta.userAgent),
       }),
     );
     await this.linkRepository.increment({ id: link.id }, 'clickCount', 1);
 
-    return { targetPath: link.targetPath ?? null };
+    return { targetPath: link.targetPath ?? null, clickId };
   }
 
   // ───────────────────────── Partner portal read models ─────────────────────────
@@ -2575,8 +2584,11 @@ export class PartnersService {
   async resolveOrderAttribution(params: {
     linkCode?: string | null;
     clickedAt?: string | null;
+    clickId?: string | null;
     couponCode?: string | null;
     buyerUserId?: number | null;
+    ipHash?: string | null;
+    userAgent?: string | null;
   }): Promise<{
     partnerLinkCode: string | null;
     attributedPartnerId: number | null;
@@ -2597,14 +2609,47 @@ export class PartnersService {
 
     const fromAccount = async () => {
       const bound = await this.resolveMemberAttribution(params.buyerUserId);
-      return bound
+      if (bound) {
+        return {
+          ...none,
+          attributedPartnerId: bound.partnerId,
+          linkId: bound.linkId,
+        };
+      }
+
+      // Last resort: the device the click came from (#039).
+      const fromDevice = await this.resolveDeviceForAttribution(
+        params.ipHash,
+        params.userAgent,
+      );
+      return fromDevice
         ? {
             ...none,
-            attributedPartnerId: bound.partnerId,
-            linkId: bound.linkId,
+            attributedPartnerId: fromDevice.partnerId,
+            linkId: fromDevice.linkId,
           }
         : none;
     };
+
+    // The server-minted click id outranks the cookie: same click, but this one
+    // did not have to survive in the browser (#039).
+    const fromClick = await this.resolveClickForAttribution(params.clickId);
+    if (fromClick) {
+      // The click id carries the link, so the account can be bound even when
+      // the cookie that used to carry the code is long gone (#034, #039).
+      if (params.buyerUserId) {
+        void this.saveMemberAttribution(
+          params.buyerUserId,
+          fromClick.partnerId,
+          fromClick.linkId,
+        ).catch(() => undefined);
+      }
+      return {
+        partnerLinkCode: params.linkCode ?? null,
+        attributedPartnerId: fromClick.partnerId,
+        linkId: fromClick.linkId,
+      };
+    }
 
     if (!params.linkCode) return fromAccount();
 
@@ -2645,14 +2690,31 @@ export class PartnersService {
     const resolved = await this.resolveLinkForAttribution(code, new Date());
     if (!resolved) return null;
 
-    await this.memberAttributionRepository.save({
+    await this.saveMemberAttribution(
       userId,
-      partnerId: resolved.partnerId,
-      linkId: resolved.linkId,
-      attributedAt: new Date(),
-    });
+      resolved.partnerId,
+      resolved.linkId,
+    );
 
     return resolved;
+  }
+
+  /**
+   * One row per account, so writing it replaces whatever was there before —
+   * that is both "the later link wins" (#038) and the fresh-click restart of
+   * the window (#037).
+   */
+  private async saveMemberAttribution(
+    userId: number,
+    partnerId: number,
+    linkId: number | null,
+  ): Promise<void> {
+    await this.memberAttributionRepository.save({
+      userId,
+      partnerId,
+      linkId,
+      attributedAt: new Date(),
+    });
   }
 
   /**
@@ -2740,6 +2802,87 @@ export class PartnersService {
       });
       if (!lastClick || lastClick.clickedAt < windowStart) return null;
     }
+
+    return { partnerId: partner.id, linkId: link.id };
+  }
+
+  /**
+   * The partner behind a click id the checkout sent back (#039).
+   *
+   * This is the sturdiest of the three signals: the id was minted by the server
+   * at the moment of the click, so the click's own timestamp is read from the
+   * log rather than taken from the browser. Nothing here trusts a cookie, which
+   * is the whole point — Safari and iOS throw the cookie away long before the
+   * window is up.
+   */
+  async resolveClickForAttribution(
+    clickId?: string | null,
+  ): Promise<{ partnerId: number; linkId: number } | null> {
+    const id = clickId?.trim();
+    if (!id) return null;
+
+    const click = await this.linkClickRepository.findOne({
+      where: { clickId: id },
+    });
+    if (!click) return null;
+
+    const link = await this.linkRepository.findOne({
+      where: { id: click.linkId, status: PartnerLinkStatusEnum.ACTIVE },
+    });
+    if (!link) return null;
+
+    const partner = await this.partnerRepository.findOne({
+      where: { id: link.partnerId, status: PartnerStatusEnum.ACTIVE },
+    });
+    if (!partner || partner.partnerType !== PartnerTypeEnum.KOL) return null;
+
+    const windowStart = this.attributionWindowStart(
+      new Date(),
+      await this.attributionDaysFor(partner),
+    );
+    if (click.clickedAt < windowStart) return null;
+
+    return { partnerId: partner.id, linkId: link.id };
+  }
+
+  /**
+   * The partner behind the last click from this device (#039).
+   *
+   * The weakest of the signals and the last one consulted: it says only that
+   * somebody on this network, in this browser, opened the partner's link inside
+   * the window. That is still a great deal better than losing the attribution
+   * because an in-app browser stripped the query string and iOS had already
+   * dropped the cookie — and an order that reaches this path is marked as
+   * coming from a shared origin anyway (#036).
+   */
+  async resolveDeviceForAttribution(
+    ipHash?: string | null,
+    userAgent?: string | null,
+  ): Promise<{ partnerId: number; linkId: number } | null> {
+    const deviceHash = partnerDeviceFingerprint(ipHash, userAgent);
+    if (!deviceHash) return null;
+
+    const click = await this.linkClickRepository.findOne({
+      where: { deviceHash },
+      order: { clickedAt: 'DESC' },
+    });
+    if (!click) return null;
+
+    const link = await this.linkRepository.findOne({
+      where: { id: click.linkId, status: PartnerLinkStatusEnum.ACTIVE },
+    });
+    if (!link) return null;
+
+    const partner = await this.partnerRepository.findOne({
+      where: { id: link.partnerId, status: PartnerStatusEnum.ACTIVE },
+    });
+    if (!partner || partner.partnerType !== PartnerTypeEnum.KOL) return null;
+
+    const windowStart = this.attributionWindowStart(
+      new Date(),
+      await this.attributionDaysFor(partner),
+    );
+    if (click.clickedAt < windowStart) return null;
 
     return { partnerId: partner.id, linkId: link.id };
   }
