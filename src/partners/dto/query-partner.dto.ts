@@ -25,11 +25,17 @@ export class QueryPartnerDto {
   status?: PartnerStatusEnum;
 
   @ApiPropertyOptional({
-    description: 'Search by contact name/email/company name',
+    description:
+      'Search by contact name, email, company name, phone or partner id (#058).',
   })
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by tier code (#058).' })
+  @IsOptional()
+  @IsString()
+  tierCode?: string;
 }
 
 export class QueryPartnerCommissionDto {

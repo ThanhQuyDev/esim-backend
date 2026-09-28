@@ -1224,12 +1224,22 @@ export class PartnersService {
     if (query.status) {
       qb.andWhere('partner.status = :status', { status: query.status });
     }
+    if (query.tierCode) {
+      qb.andWhere('partner.tierCode = :tierCode', { tierCode: query.tierCode });
+    }
     if (query.search) {
       // Phone included because that is what an admin has in front of them when
-      // the applicant rings to ask where their approval got to (#055).
+      // the applicant rings to ask where their approval got to (#055); the id
+      // because that is what the reconciliation file quotes back (#058).
+      const asId = Number(query.search.trim().replace(/^#/, ''));
+      const looksLikeId = Number.isInteger(asId) && asId > 0;
       qb.andWhere(
-        '(partner.contactName ILIKE :search OR partner.contactEmail ILIKE :search OR partner.companyName ILIKE :search OR partner.contactPhone ILIKE :search)',
-        { search: `%${query.search}%` },
+        `(partner.contactName ILIKE :search OR partner.contactEmail ILIKE :search OR partner.companyName ILIKE :search OR partner.contactPhone ILIKE :search${
+          looksLikeId ? ' OR partner.id = :id' : ''
+        })`,
+        looksLikeId
+          ? { search: `%${query.search}%`, id: asId }
+          : { search: `%${query.search}%` },
       );
     }
 

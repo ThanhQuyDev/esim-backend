@@ -49,7 +49,45 @@ describe('PartnersService.adminList — searching an application (#055)', () => 
     );
     expect(clause?.[0]).toContain('partner.contactPhone ILIKE :search');
     expect(clause?.[0]).toContain('partner.contactEmail ILIKE :search');
-    expect(clause?.[1]).toEqual({ search: '%0901234567%' });
+    // A phone number is all digits, so the id clause rides along too — it
+    // costs nothing and an admin pasting an id gets a hit either way.
+    expect(clause?.[1]).toMatchObject({ search: '%0901234567%' });
+  });
+
+  it('should match the partner id when the search looks like one (#058)', async () => {
+    // Support tickets and reconciliation files quote the id, so pasting "#42"
+    // or "42" has to find partner 42 rather than nothing at all.
+    const { service, qb } = buildListService();
+
+    await service.adminList({ search: '#42' });
+
+    const clause = (
+      qb.andWhere.mock.calls as [string, Record<string, unknown>][]
+    ).find(([sql]) => sql.includes('ILIKE'));
+    expect(clause?.[0]).toContain('partner.id = :id');
+    expect(clause?.[1].id).toBe(42);
+  });
+
+  it('should not look for an id when the search is a name (#058)', async () => {
+    const { service, qb } = buildListService();
+
+    await service.adminList({ search: 'Nguyễn' });
+
+    const clause = (qb.andWhere.mock.calls as [string][]).find(([sql]) =>
+      sql.includes('ILIKE'),
+    );
+    expect(clause?.[0]).not.toContain('partner.id = :id');
+  });
+
+  it('should filter by tier when asked (#058)', async () => {
+    const { service, qb } = buildListService();
+
+    await service.adminList({ tierCode: 'GOLD' });
+
+    const sql = (qb.andWhere.mock.calls as [string][])
+      .map(([s]) => s)
+      .join(' ');
+    expect(sql).toContain('partner.tierCode = :tierCode');
   });
 
   it('should filter by partner type and status when asked', async () => {
