@@ -34,6 +34,7 @@ import {
   UpdatePartnerAdminNoteDto,
   UpdatePartnerProfileByAdminDto,
   UpdateReconciliationStatusDto,
+  UpdatePartnerProgramSettingDto,
   QueryPartnerPayoutDto,
   BulkPayoutDecisionDto,
   UpdatePartnerAffiliateGrantDto,
@@ -232,6 +233,22 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   listCommissions(@Query() query: QueryPartnerCommissionDto) {
     return this.partnersService.adminListCommissions(query);
+  }
+
+  /** The partner programme's settings (#075, #076, #077). */
+  @Get('program-settings')
+  @HttpCode(HttpStatus.OK)
+  getProgramSettings() {
+    return this.partnersService.getProgramSettings();
+  }
+
+  @Patch('program-settings')
+  @HttpCode(HttpStatus.OK)
+  updateProgramSettings(
+    @Body() dto: UpdatePartnerProgramSettingDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.updateProgramSettings(dto, req.user.id);
   }
 
   /** "Đơn hàng đối tác": the partner screens, with the scope opened up (#071). */

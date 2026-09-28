@@ -43,6 +43,16 @@ describe('PartnersService — partner wallet summary', () => {
 
     const service = Object.create(PartnersService.prototype) as PartnersService;
     Object.assign(service, {
+      // The programme's thresholds now live in a settings row (#075).
+      programSettingRepository: {
+        findOne: jest.fn().mockResolvedValue({
+          payoutMinKolVnd: 50_000,
+          payoutMinDistributionVnd: 50_000,
+          depositMinKolVnd: 100_000,
+          depositMinDistributionVnd: 100_000,
+          lowDepositWarningVnd: 500_000,
+        }),
+      },
       getOrCreateWallet: jest
         .fn()
         .mockResolvedValue({ balanceVnd, status: 'active' }),

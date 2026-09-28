@@ -199,30 +199,67 @@ describe('PartnersService.updateStatus — mở khoá (#061)', () => {
 });
 
 describe('PartnersService.depositLimitsFor (#061)', () => {
-  it('should fall back to the programme default', () => {
-    const { service } = buildService({});
+  /**
+   * The programme default is now a row an admin edits rather than a constant
+   * (#075), so the limits are read asynchronously and the default differs by
+   * partner type.
+   */
+  function buildLimitsService(settings: Record<string, number> = {}) {
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    Object.assign(service, {
+      programSettingRepository: {
+        findOne: jest.fn().mockResolvedValue({
+          depositMinKolVnd: PARTNER_DEPOSIT_MIN_VND,
+          depositMinDistributionVnd: PARTNER_DEPOSIT_MIN_VND,
+          ...settings,
+        }),
+      },
+    });
+    return service;
+  }
 
-    expect(
+  it('should fall back to the programme default', async () => {
+    const service = buildLimitsService();
+
+    await expect(
       service.depositLimitsFor({
+        partnerType: 'kol',
         depositMinVnd: null,
         depositMaxVnd: null,
       } as PartnerEntity),
-    ).toEqual({
+    ).resolves.toEqual({
       minVnd: PARTNER_DEPOSIT_MIN_VND,
       maxVnd: PARTNER_DEPOSIT_MAX_VND,
     });
   });
 
-  it('should use the partner’s own limits when they have been given any', () => {
+  it('should read the default for the partner’s own type', async () => {
+    // A distribution partner's floor is a different decision from a marketing
+    // partner's, so the settings row carries one of each (#075).
+    const service = buildLimitsService({
+      depositMinDistributionVnd: 2_000_000,
+    });
+
+    await expect(
+      service.depositLimitsFor({
+        partnerType: 'distribution',
+        depositMinVnd: null,
+        depositMaxVnd: null,
+      } as PartnerEntity),
+    ).resolves.toMatchObject({ minVnd: 2_000_000 });
+  });
+
+  it('should use the partner’s own limits when they have been given any', async () => {
     // A distributor turning over hundreds of millions should not have to top up
     // ten million at a time.
-    const { service } = buildService({});
+    const service = buildLimitsService();
 
-    expect(
+    await expect(
       service.depositLimitsFor({
+        partnerType: 'distribution',
         depositMinVnd: 1_000_000,
         depositMaxVnd: 500_000_000,
       } as PartnerEntity),
-    ).toEqual({ minVnd: 1_000_000, maxVnd: 500_000_000 });
+    ).resolves.toEqual({ minVnd: 1_000_000, maxVnd: 500_000_000 });
   });
 });

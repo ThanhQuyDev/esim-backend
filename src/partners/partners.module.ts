@@ -22,6 +22,7 @@ import { PartnerMemberAttributionEntity } from './infrastructure/persistence/rel
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
 import { PartnerReconciliationEntity } from './infrastructure/persistence/relational/entities/partner-reconciliation.entity';
+import { PartnerProgramSettingEntity } from './infrastructure/persistence/relational/entities/partner-program-setting.entity';
 import { MailModule } from '../mail/mail.module';
 
 @Module({
@@ -47,6 +48,7 @@ import { MailModule } from '../mail/mail.module';
       PartnerSessionEventEntity,
       PartnerStatusChangeEntity,
       PartnerReconciliationEntity,
+      PartnerProgramSettingEntity,
     ]),
   ],
   controllers: [

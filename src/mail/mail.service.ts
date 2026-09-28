@@ -66,6 +66,19 @@ export interface PartnerAccountCreatedMailData {
   temporaryPassword: string;
 }
 
+/** One partner's monthly statement, as the email shows it (#076). */
+export interface PartnerReconciliationMailData {
+  to: string;
+  contactName: string;
+  /** "Tháng 09/2026" — already worded, so the template does no arithmetic. */
+  periodLabel: string;
+  validOrders: number;
+  esimsSold: number;
+  viaCouponPercent: number;
+  revenueVnd: number;
+  commissionVnd: number;
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -479,6 +492,59 @@ export class MailService {
       contactName: data.contactName,
       email: data.email,
       temporaryPassword: data.temporaryPassword,
+      portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
+      app_name: appName,
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail: SUPPORT_EMAIL,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      transportName: 'otp',
+      to: data.to,
+      subject: subjectCompiled,
+      text: subjectCompiled,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
+    });
+  }
+
+  /**
+   * The monthly statement a partner gets by email (#076).
+   *
+   * Numbers arrive already formatted, because a partner reading "18.000.000đ"
+   * and an admin reading the console must see the same thing and Handlebars is
+   * the wrong place to be doing arithmetic.
+   */
+  async sendPartnerReconciliationStatement(
+    data: PartnerReconciliationMailData,
+  ): Promise<void> {
+    const template = await this.emailTemplatesService.findByName(
+      'partner_reconciliation_statement',
+    );
+    if (!template) {
+      this.logger.error(
+        'Email template "partner_reconciliation_statement" not found — no statement was sent',
+      );
+      return;
+    }
+
+    const vnd = (value: number) => value.toLocaleString('vi-VN');
+    const appName = this.configService.get('app.name', { infer: true });
+    const context = {
+      contactName: data.contactName,
+      periodLabel: data.periodLabel,
+      validOrders: vnd(data.validOrders),
+      esimsSold: vnd(data.esimsSold),
+      viaCouponPercent: data.viaCouponPercent,
+      revenueVnd: vnd(data.revenueVnd),
+      commissionVnd: vnd(data.commissionVnd),
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       app_name: appName,
       logoUrl: BRAND_LOGO_URL,

@@ -39,6 +39,16 @@ function buildService(
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
     logger: { warn: jest.fn(), log: jest.fn(), error: jest.fn() },
+    // The programme's thresholds now live in a settings row (#075).
+    programSettingRepository: {
+      findOne: jest.fn().mockResolvedValue({
+        payoutMinKolVnd: 50_000,
+        payoutMinDistributionVnd: 50_000,
+        depositMinKolVnd: 100_000,
+        depositMinDistributionVnd: 100_000,
+        lowDepositWarningVnd: 500_000,
+      }),
+    },
     configService: {
       get: () => ({
         accountNumber: '19036789',

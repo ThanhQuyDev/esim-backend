@@ -181,6 +181,59 @@ export class BulkPayoutDecisionDto {
   adminNote?: string;
 }
 
+/** The partner programme's settings (#075, #076, #077). */
+export class UpdatePartnerProgramSettingDto {
+  @ApiPropertyOptional({ type: Number, example: 50000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  payoutMinKolVnd?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 50000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  payoutMinDistributionVnd?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 100000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  depositMinKolVnd?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 100000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  depositMinDistributionVnd?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 500000,
+    description: 'Dưới mức này thì cảnh báo đối tác phân phối nạp thêm (#077).',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  lowDepositWarningVnd?: number;
+
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  reconciliationEmailEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 5,
+    description: 'Ngày trong tháng N+1 gửi đối soát tháng N (#076). Tối đa 28.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  reconciliationEmailDayOfMonth?: number;
+}
+
 /** Sign off (or hold) one or more reconciliation statements (#065). */
 export class UpdateReconciliationStatusDto {
   @ApiProperty({ type: [Number], example: [12, 18] })

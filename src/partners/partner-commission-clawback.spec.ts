@@ -28,6 +28,16 @@ function buildService(
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
     logger: { warn: jest.fn(), error: jest.fn() },
+    // The programme's thresholds now live in a settings row (#075).
+    programSettingRepository: {
+      findOne: jest.fn().mockResolvedValue({
+        payoutMinKolVnd: 50_000,
+        payoutMinDistributionVnd: 50_000,
+        depositMinKolVnd: 100_000,
+        depositMinDistributionVnd: 100_000,
+        lowDepositWarningVnd: 500_000,
+      }),
+    },
     commissionRepository: {
       findOne: jest.fn().mockResolvedValue(commission),
       save: commissionSave,
@@ -149,6 +159,16 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
   function buildSummaryService(balanceVnd: number) {
     const service = Object.create(PartnersService.prototype) as PartnersService;
     Object.assign(service, {
+      // The programme's thresholds now live in a settings row (#075).
+      programSettingRepository: {
+        findOne: jest.fn().mockResolvedValue({
+          payoutMinKolVnd: 50_000,
+          payoutMinDistributionVnd: 50_000,
+          depositMinKolVnd: 100_000,
+          depositMinDistributionVnd: 100_000,
+          lowDepositWarningVnd: 500_000,
+        }),
+      },
       getOrCreateWallet: jest
         .fn()
         .mockResolvedValue({ balanceVnd, status: 'active' }),
@@ -197,8 +217,10 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
     });
 
     await expect(
+      // Comfortably over the programme minimum (#075), so the refusal that
+      // comes back is the debt and not the floor.
       service.createPayoutRequest(5, {
-        amountVnd: 10000,
+        amountVnd: 100_000,
         status: PartnerPayoutStatusEnum.PENDING,
       } as never),
     ).rejects.toThrow('Số dư khả dụng không đủ');

@@ -12,9 +12,7 @@ import { PartnerTierEvaluationEntity } from './infrastructure/persistence/relati
 import {
   PARTNER_CARD_TOPUP_FEE_PERCENT,
   PARTNER_DEPOSIT_MAX_VND,
-  PARTNER_DEPOSIT_MIN_VND,
   PARTNER_DEPOSIT_REF_PREFIX,
-  PARTNER_PAYOUT_MIN_VND,
 } from './partners.constants';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -47,6 +45,7 @@ import { PartnerMemberAttributionEntity } from './infrastructure/persistence/rel
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
 import { PartnerReconciliationEntity } from './infrastructure/persistence/relational/entities/partner-reconciliation.entity';
+import { PartnerProgramSettingEntity } from './infrastructure/persistence/relational/entities/partner-program-setting.entity';
 import {
   AdminCreatePartnerDto,
   PartnerApplyDto,
@@ -67,6 +66,7 @@ import {
   RejectPartnerDto,
   UpdatePartnerProfileByAdminDto,
   UpdatePartnerStatusDto,
+  UpdatePartnerProgramSettingDto,
   UpdateReconciliationStatusDto,
   BulkPayoutDecisionDto,
 } from './dto/admin-partner.dto';
@@ -447,6 +447,8 @@ export class PartnersService {
     private readonly statusChangeRepository: Repository<PartnerStatusChangeEntity>,
     @InjectRepository(PartnerReconciliationEntity)
     private readonly reconciliationRepository: Repository<PartnerReconciliationEntity>,
+    @InjectRepository(PartnerProgramSettingEntity)
+    private readonly programSettingRepository: Repository<PartnerProgramSettingEntity>,
     private readonly mailService: MailService,
     /**
      * Only to build a payment URL for a card top-up (#047). Provided directly
@@ -831,9 +833,20 @@ export class PartnersService {
        * declared, so the form and the server cannot disagree (#047).
        */
       topupPolicy: {
-        ...this.depositLimitsFor(await this.getPartnerOrThrowById(partnerId)),
+        ...(await this.depositLimitsFor(
+          await this.getPartnerOrThrowById(partnerId),
+        )),
         cardFeePercent: PARTNER_CARD_TOPUP_FEE_PERCENT,
       },
+      /**
+       * Below this the portal nags a distribution partner to top up (#077).
+       *
+       * A warning, never a block: running out in the middle of an order is
+       * what this is meant to prevent, and stopping them early would cause
+       * exactly that.
+       */
+      lowDepositWarningVnd: (await this.getProgramSettings())
+        .lowDepositWarningVnd,
     };
   }
 
@@ -885,7 +898,7 @@ export class PartnersService {
     const amountVnd = Math.round(dto.amountVnd);
     // This partner's own limits when they have been given any, the programme
     // default otherwise (#061).
-    const limits = this.depositLimitsFor(partner);
+    const limits = await this.depositLimitsFor(partner);
     if (amountVnd < limits.minVnd) {
       throw new BadRequestException(
         `Số tiền nạp tối thiểu là ${limits.minVnd.toLocaleString('vi-VN')}đ.`,
@@ -1240,6 +1253,18 @@ export class PartnersService {
       await this.getPartnerOrThrowById(partnerId),
       'chức năng rút tiền',
     );
+
+    // The DTO's @Min is the floor that shipped with the code; the programme's
+    // own minimum is editable and can be higher, so it is checked here (#075).
+    const partnerForLimits = await this.getPartnerOrThrowById(partnerId);
+    const payoutMinVnd = await this.payoutMinVndFor(
+      partnerForLimits.partnerType,
+    );
+    if (dto.amountVnd < payoutMinVnd) {
+      throw new BadRequestException(
+        `Số tiền rút tối thiểu là ${payoutMinVnd.toLocaleString('vi-VN')}đ.`,
+      );
+    }
 
     const summary = await this.getWalletSummaryForPartner(partnerId);
     if (dto.amountVnd > summary.availableBalanceVnd) {
@@ -2355,15 +2380,91 @@ export class PartnersService {
     );
   }
 
+  // ───────────────────── Programme settings (#075, #076, #077) ─────────────
+
+  /**
+   * The programme's settings, as one row (#075, #076, #077).
+   *
+   * Created on first read rather than assumed to exist: a fresh database that
+   * somehow missed the seed should still be able to take a withdrawal rather
+   * than throw on every request.
+   */
+  async getProgramSettings(): Promise<PartnerProgramSettingEntity> {
+    const existing = await this.programSettingRepository.findOne({
+      where: { id: 1 },
+    });
+    if (existing) return existing;
+
+    return this.programSettingRepository.save(
+      this.programSettingRepository.create({ id: 1 }),
+    );
+  }
+
+  /** Edit the programme's settings (#075, #076, #077). */
+  async updateProgramSettings(
+    dto: UpdatePartnerProgramSettingDto,
+    adminId: number,
+  ): Promise<PartnerProgramSettingEntity> {
+    const settings = await this.getProgramSettings();
+
+    Object.assign(settings, {
+      ...(dto.payoutMinKolVnd !== undefined && {
+        payoutMinKolVnd: dto.payoutMinKolVnd,
+      }),
+      ...(dto.payoutMinDistributionVnd !== undefined && {
+        payoutMinDistributionVnd: dto.payoutMinDistributionVnd,
+      }),
+      ...(dto.depositMinKolVnd !== undefined && {
+        depositMinKolVnd: dto.depositMinKolVnd,
+      }),
+      ...(dto.depositMinDistributionVnd !== undefined && {
+        depositMinDistributionVnd: dto.depositMinDistributionVnd,
+      }),
+      ...(dto.lowDepositWarningVnd !== undefined && {
+        lowDepositWarningVnd: dto.lowDepositWarningVnd,
+      }),
+      ...(dto.reconciliationEmailEnabled !== undefined && {
+        reconciliationEmailEnabled: dto.reconciliationEmailEnabled,
+      }),
+      ...(dto.reconciliationEmailDayOfMonth !== undefined && {
+        // Capped at 28 so the schedule fires in February too — a statement
+        // due on the 30th would silently skip one month in twelve.
+        reconciliationEmailDayOfMonth: Math.min(
+          28,
+          Math.max(1, dto.reconciliationEmailDayOfMonth),
+        ),
+      }),
+      updatedByAdminId: adminId,
+    });
+
+    return this.programSettingRepository.save(settings);
+  }
+
+  /** The smallest withdrawal this partner's type may request (#075). */
+  async payoutMinVndFor(partnerType: string): Promise<number> {
+    const settings = await this.getProgramSettings();
+    return partnerType === PartnerTypeEnum.DISTRIBUTION
+      ? settings.payoutMinDistributionVnd
+      : settings.payoutMinKolVnd;
+  }
+
   /**
    * The deposit limits that apply to one partner (#061).
    *
    * The programme-wide numbers are the default; a partner may be given their
    * own, which is what a distributor turning over hundreds of millions needs.
    */
-  depositLimitsFor(partner: PartnerEntity): { minVnd: number; maxVnd: number } {
+  async depositLimitsFor(
+    partner: PartnerEntity,
+  ): Promise<{ minVnd: number; maxVnd: number }> {
+    const settings = await this.getProgramSettings();
+    const programMin =
+      partner.partnerType === PartnerTypeEnum.DISTRIBUTION
+        ? settings.depositMinDistributionVnd
+        : settings.depositMinKolVnd;
+
     return {
-      minVnd: partner.depositMinVnd ?? PARTNER_DEPOSIT_MIN_VND,
+      minVnd: partner.depositMinVnd ?? programMin,
       maxVnd: partner.depositMaxVnd ?? PARTNER_DEPOSIT_MAX_VND,
     };
   }
@@ -3797,6 +3898,65 @@ export class PartnersService {
     if (credited > 0) {
       this.logger.log(`Đã duyệt hoa hồng cho ${credited} đơn qua mốc 24h.`);
     }
+  }
+
+  /**
+   * Email each partner the previous month's statement (#076).
+   *
+   * Runs daily and does nothing on all but one day: the schedule is a setting,
+   * so the cron cannot be the schedule. An admin choosing the 5th means "ngày
+   * 5 của tháng N+1 gửi đối soát tháng N".
+   *
+   * One partner's send failing is one partner's email, not the whole run's, so
+   * each is caught on its own.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_8AM)
+  async sendScheduledReconciliationEmails(): Promise<void> {
+    const settings = await this.getProgramSettings();
+    if (!settings.reconciliationEmailEnabled) return;
+
+    const today = new Date();
+    if (today.getDate() !== settings.reconciliationEmailDayOfMonth) return;
+
+    // The month that just ended — what the statement is about.
+    const previous = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const period = `${previous.getFullYear()}-${String(
+      previous.getMonth() + 1,
+    ).padStart(2, '0')}`;
+    const periodLabel = `Tháng ${String(previous.getMonth() + 1).padStart(
+      2,
+      '0',
+    )}/${previous.getFullYear()}`;
+
+    const { rows } = await this.adminListReconciliations({ period });
+
+    let sent = 0;
+    for (const row of rows) {
+      if (!row.contactEmail) continue;
+      try {
+        await this.mailService.sendPartnerReconciliationStatement({
+          to: row.contactEmail,
+          contactName: row.contactName ?? 'Quý đối tác',
+          periodLabel,
+          validOrders: row.validOrders,
+          esimsSold: row.esimsSold,
+          viaCouponPercent: row.viaCouponPercent,
+          revenueVnd: row.revenueVnd,
+          commissionVnd: row.commissionVnd,
+        });
+        sent++;
+      } catch (err) {
+        this.logger.error(
+          `Reconciliation email for partner ${row.partnerId} (${period}) failed: ${
+            (err as Error).message
+          }`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Reconciliation emails for ${period}: ${sent}/${rows.length} sent`,
+    );
   }
 
   @Cron(CronExpression.EVERY_WEEK)
@@ -5261,6 +5421,8 @@ export class PartnersService {
        LIMIT 5`,
     );
 
+    const settings = await this.getProgramSettings();
+
     const n = (v: unknown) => Number(v ?? 0);
     return {
       partners: {
@@ -5287,8 +5449,13 @@ export class PartnersService {
         commissionTotalVnd: n(money?.commissionTotalVnd),
       },
       policy: {
-        payoutMinVnd: PARTNER_PAYOUT_MIN_VND,
-        depositMinVnd: PARTNER_DEPOSIT_MIN_VND,
+        // From the settings row, so "Cấu hình chung" and this screen cannot
+        // show two different rules (#075).
+        payoutMinVnd: settings.payoutMinKolVnd,
+        payoutMinDistributionVnd: settings.payoutMinDistributionVnd,
+        depositMinVnd: settings.depositMinKolVnd,
+        depositMinDistributionVnd: settings.depositMinDistributionVnd,
+        lowDepositWarningVnd: settings.lowDepositWarningVnd,
         depositMaxVnd: PARTNER_DEPOSIT_MAX_VND,
         cardTopupFeePercent: PARTNER_CARD_TOPUP_FEE_PERCENT,
       },
