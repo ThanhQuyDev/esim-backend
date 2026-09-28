@@ -45,7 +45,11 @@ import { PartnerPayoutEntity } from './infrastructure/persistence/relational/ent
 import { CouponEntity } from '../coupons/infrastructure/persistence/relational/entities/coupon.entity';
 import { PartnerMemberAttributionEntity } from './infrastructure/persistence/relational/entities/partner-member-attribution.entity';
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
-import { PartnerApplyDto } from './dto/partner-apply.dto';
+import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
+import {
+  AdminCreatePartnerDto,
+  PartnerApplyDto,
+} from './dto/partner-apply.dto';
 import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
 import { RequestBankAccountChangeDto } from './dto/partner-bank-account.dto';
@@ -56,6 +60,7 @@ import {
 import {
   AdjustPartnerWalletDto,
   AssignPartnerTierDto,
+  BulkPartnerStatusDto,
   CreateDepositRequestDto,
   CreatePartnerPayoutDto,
   RejectPartnerDto,
@@ -383,6 +388,8 @@ export class PartnersService {
     private readonly memberAttributionRepository: Repository<PartnerMemberAttributionEntity>,
     @InjectRepository(PartnerSessionEventEntity)
     private readonly sessionEventRepository: Repository<PartnerSessionEventEntity>,
+    @InjectRepository(PartnerStatusChangeEntity)
+    private readonly statusChangeRepository: Repository<PartnerStatusChangeEntity>,
     private readonly mailService: MailService,
     /**
      * Only to build a payment URL for a card top-up (#047). Provided directly
@@ -1382,6 +1389,187 @@ export class PartnersService {
     const partner = await this.adminFindById(id);
     partner.status = dto.status;
     return this.partnerRepository.save(partner);
+  }
+
+  /**
+   * Create a partner account by hand (#059).
+   *
+   * Some partners are signed over the phone and cannot be asked to fill in a
+   * form and wait for a review. The admin supplies everything the form asks
+   * for except the password — they must not choose somebody else's — so the
+   * system mints one, emails it, and marks the account so that password is
+   * replaced at the first sign-in.
+   *
+   * The partner is active immediately: an admin adding them by hand has already
+   * made the decision the queue exists to make.
+   */
+  async adminCreatePartner(
+    dto: AdminCreatePartnerDto,
+    adminId: number,
+  ): Promise<{ partnerId: number; userId: number }> {
+    const existing = await this.userRepository.findOne({
+      where: { email: dto.contactEmail },
+    });
+    if (existing) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { contactEmail: 'emailAlreadyExists' },
+      });
+    }
+
+    // Long enough to be worth nothing to a guesser, short enough to retype
+    // from an email without a mistake.
+    const temporaryPassword = randomBytes(6).toString('base64url');
+
+    const created = await this.dataSource.transaction(async (manager) => {
+      const salt = await bcrypt.genSalt();
+      const password = await bcrypt.hash(temporaryPassword, salt);
+
+      const userRepo = manager.getRepository(UserEntity);
+      const user = await userRepo.save(
+        userRepo.create({
+          email: dto.contactEmail,
+          password,
+          provider: 'email',
+          firstName: dto.contactName,
+          lastName: null,
+          phoneNumber: dto.contactPhone,
+          role: { id: RoleEnum.partner } as UserEntity['role'],
+          // Active straight away: there is nothing left to approve.
+          status: { id: StatusEnum.active } as UserEntity['status'],
+          mustChangePassword: true,
+        }),
+      );
+
+      const partnerRepo = manager.getRepository(PartnerEntity);
+      const partner = await partnerRepo.save(
+        partnerRepo.create({
+          userId: user.id,
+          partnerType: dto.partnerType,
+          legalType: dto.legalType,
+          companyName: dto.companyName ?? null,
+          taxCode: dto.taxCode ?? null,
+          businessAddress: dto.businessAddress ?? null,
+          contactName: dto.contactName,
+          contactPhone: dto.contactPhone,
+          contactEmail: dto.contactEmail,
+          channelInfo: dto.channelInfo ?? null,
+          status: PartnerStatusEnum.ACTIVE,
+          notes: dto.notes ?? null,
+          approvedAt: new Date(),
+          approvedByAdminId: adminId,
+        }),
+      );
+
+      const walletRepo = manager.getRepository(PartnerWalletEntity);
+      await walletRepo.save(
+        walletRepo.create({
+          partnerId: partner.id,
+          balanceVnd: 0,
+          status: PartnerWalletStatusEnum.ACTIVE,
+        }),
+      );
+
+      return { partnerId: partner.id, userId: user.id };
+    });
+
+    await this.recordStatusChange({
+      partnerId: created.partnerId,
+      fromStatus: null,
+      toStatus: PartnerStatusEnum.ACTIVE,
+      reason: 'Admin tạo tài khoản đối tác thủ công',
+      adminId,
+    });
+
+    // Outside the transaction: the account exists either way, and a failed
+    // email is something support can resend rather than a reason to lose it.
+    void this.mailService
+      .sendPartnerAccountCreated({
+        to: dto.contactEmail,
+        contactName: dto.contactName,
+        email: dto.contactEmail,
+        temporaryPassword,
+      })
+      .catch((error) => {
+        this.logger.error(
+          `Partner ${created.partnerId} was created but the credentials email failed: ${error}`,
+        );
+      });
+
+    return created;
+  }
+
+  /**
+   * Change several partners' status in one go (#059).
+   *
+   * The reason is required for a hold or a lock: those are the decisions
+   * somebody has to answer for a month later, and the old flow changed the
+   * status with nothing recorded but the new value (#060).
+   */
+  async bulkUpdateStatus(
+    dto: BulkPartnerStatusDto,
+    adminId: number,
+  ): Promise<{ updated: number; skipped: number[] }> {
+    const locking =
+      dto.status === PartnerStatusEnum.HOLD ||
+      dto.status === PartnerStatusEnum.DISABLED;
+    if (locking && !dto.reason?.trim()) {
+      throw new BadRequestException(
+        'Cần nhập lý do khi tạm khoá hoặc khoá tài khoản đối tác.',
+      );
+    }
+
+    const ids: number[] = [...new Set(dto.ids)];
+    const partners = await this.partnerRepository.find({
+      where: { id: In(ids) },
+    });
+    const found = new Set(partners.map((p) => p.id));
+
+    let updated = 0;
+    for (const partner of partners) {
+      if (partner.status === dto.status) continue;
+      const fromStatus = partner.status;
+      partner.status = dto.status;
+      await this.partnerRepository.save(partner);
+      await this.recordStatusChange({
+        partnerId: partner.id,
+        fromStatus,
+        toStatus: dto.status,
+        reason: dto.reason?.trim() || null,
+        adminId,
+      });
+      updated += 1;
+    }
+
+    return { updated, skipped: ids.filter((id) => !found.has(id)) };
+  }
+
+  /** Append to a partner's status history (#059, #060). */
+  private async recordStatusChange(entry: {
+    partnerId: number;
+    fromStatus: string | null;
+    toStatus: string;
+    reason: string | null;
+    adminId: number | null;
+  }): Promise<void> {
+    await this.statusChangeRepository.save(
+      this.statusChangeRepository.create({
+        partnerId: entry.partnerId,
+        fromStatus: entry.fromStatus,
+        toStatus: entry.toStatus,
+        reason: entry.reason,
+        changedByAdminId: entry.adminId,
+      }),
+    );
+  }
+
+  /** A partner's status history, newest first (#060). */
+  async getStatusHistory(partnerId: number, limit = 50) {
+    return this.statusChangeRepository.find({
+      where: { partnerId },
+      order: { createdAt: 'DESC' },
+      take: Math.min(Math.max(limit, 1), 200),
+    });
   }
 
   /**

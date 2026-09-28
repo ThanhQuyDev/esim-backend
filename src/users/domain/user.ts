@@ -35,6 +35,15 @@ export class User {
   @Expose({ groups: ['me', 'admin'] })
   hasPassword?: boolean;
 
+  /**
+   * The password was minted by an admin and emailed, so it has to be replaced
+   * before the account is really theirs (#059). The portal reads this from the
+   * sign-in response and sends them straight to the change-password screen.
+   */
+  @ApiProperty({ type: Boolean, example: false })
+  @Expose({ groups: ['me', 'admin'] })
+  mustChangePassword?: boolean;
+
   @ApiProperty({
     type: String,
     example: 'email',

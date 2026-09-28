@@ -17,6 +17,7 @@ import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import { PartnersService } from './partners.service';
+import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
 import {
   QueryPartnerDto,
   QueryPartnerCommissionDto,
@@ -26,6 +27,7 @@ import {
   AssignPartnerTierDto,
   ProcessPartnerPayoutDto,
   RejectPartnerDto,
+  BulkPartnerStatusDto,
   UpdatePartnerAdminNoteDto,
   UpdatePartnerAffiliateGrantDto,
   UpdatePartnerLinkCodePermissionDto,
@@ -272,6 +274,38 @@ export class AdminPartnersController {
       Number(id),
       dto.canCustomLinkCode,
     );
+  }
+
+  /**
+   * Create a partner account by hand (#059).
+   *
+   * For partners signed over the phone who cannot be asked to fill in the form
+   * and wait: the admin gives the details, the system mints the password.
+   */
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  adminCreatePartner(
+    @Request() req: { user: { id: number } },
+    @Body() dto: AdminCreatePartnerDto,
+  ) {
+    return this.partnersService.adminCreatePartner(dto, req.user.id);
+  }
+
+  /** Change several partners' status at once (#059). */
+  @Patch('bulk-status')
+  @HttpCode(HttpStatus.OK)
+  bulkUpdateStatus(
+    @Request() req: { user: { id: number } },
+    @Body() dto: BulkPartnerStatusDto,
+  ) {
+    return this.partnersService.bulkUpdateStatus(dto, req.user.id);
+  }
+
+  /** A partner's status history, with the reason each time (#060). */
+  @Get(':id/status-history')
+  @HttpCode(HttpStatus.OK)
+  getStatusHistory(@Param('id') id: number) {
+    return this.partnersService.getStatusHistory(Number(id));
   }
 
   /** Record an admin's own note on this partner (#056). */

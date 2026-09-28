@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import {
   IsEmail,
   IsEnum,
@@ -77,3 +77,14 @@ export class PartnerApplyDto {
   @MaxLength(2000)
   notes?: string;
 }
+
+/**
+ * An account an admin creates by hand (#059).
+ *
+ * Everything the application form asks for except the password: the admin does
+ * not choose it. The system mints a random one, emails it, and makes the
+ * partner replace it at their first sign-in.
+ */
+export class AdminCreatePartnerDto extends OmitType(PartnerApplyDto, [
+  'password',
+] as const) {}

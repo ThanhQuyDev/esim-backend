@@ -20,6 +20,7 @@ import { PartnerPayoutEntity } from './infrastructure/persistence/relational/ent
 import { CouponEntity } from '../coupons/infrastructure/persistence/relational/entities/coupon.entity';
 import { PartnerMemberAttributionEntity } from './infrastructure/persistence/relational/entities/partner-member-attribution.entity';
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
+import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
 import { MailModule } from '../mail/mail.module';
 
 @Module({
@@ -43,6 +44,7 @@ import { MailModule } from '../mail/mail.module';
       // Attribution that follows the customer's account (#034).
       PartnerMemberAttributionEntity,
       PartnerSessionEventEntity,
+      PartnerStatusChangeEntity,
     ]),
   ],
   controllers: [

@@ -58,6 +58,14 @@ export interface PartnerDecisionMailData {
   reason?: string | null;
 }
 
+/** Credentials for an account an admin created by hand (#059). */
+export interface PartnerAccountCreatedMailData {
+  to: string;
+  contactName: string;
+  email: string;
+  temporaryPassword: string;
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -444,6 +452,54 @@ export class MailService {
 
   async sendPartnerRejected(data: PartnerDecisionMailData): Promise<void> {
     await this.sendPartnerDecision('partner_application_rejected', data);
+  }
+
+  /**
+   * Tell a partner an admin made them an account, and how to get in (#059).
+   *
+   * The only place they learn their login, since they never filled in a form —
+   * so if the template is missing this is worth shouting about rather than
+   * skipping quietly.
+   */
+  async sendPartnerAccountCreated(
+    data: PartnerAccountCreatedMailData,
+  ): Promise<void> {
+    const template = await this.emailTemplatesService.findByName(
+      'partner_account_created',
+    );
+    if (!template) {
+      this.logger.error(
+        'Email template "partner_account_created" not found — the partner was not told their password',
+      );
+      return;
+    }
+
+    const appName = this.configService.get('app.name', { infer: true });
+    const context = {
+      contactName: data.contactName,
+      email: data.email,
+      temporaryPassword: data.temporaryPassword,
+      portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
+      app_name: appName,
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail: SUPPORT_EMAIL,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      transportName: 'otp',
+      to: data.to,
+      subject: subjectCompiled,
+      text: subjectCompiled,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
+    });
   }
 
   async confirmNewEmail(mailData: MailData<{ hash: string }>): Promise<void> {

@@ -82,6 +82,14 @@ export class UserEntity extends EntityRelationalHelper {
   })
   status?: StatusEntity;
 
+  /**
+   * Set when an admin created this account and the password was emailed
+   * (#059). The holder signs in with it once and is made to set their own —
+   * a password that has travelled through an inbox must not stay the account's.
+   */
+  @Column({ type: Boolean, default: false })
+  mustChangePassword?: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -5,6 +5,9 @@ import {
   PARTNER_PAYOUT_MIN_VND,
 } from '../partners.constants';
 import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -41,6 +44,31 @@ export class UpdatePartnerLinkCodePermissionDto {
   @ApiProperty({ type: Boolean })
   @IsBoolean()
   canCustomLinkCode!: boolean;
+}
+
+/**
+ * Change several partners' status at once (#059).
+ *
+ * The reason is required for a hold or a lock — those are the decisions someone
+ * has to answer for later (#060).
+ */
+export class BulkPartnerStatusDto {
+  @ApiProperty({ type: [Number], example: [12, 18] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(200)
+  @IsInt({ each: true })
+  ids!: number[];
+
+  @ApiProperty({ enum: PartnerStatusEnum })
+  @IsEnum(PartnerStatusEnum)
+  status!: PartnerStatusEnum;
+
+  @ApiPropertyOptional({ type: String, example: 'Nghi ngờ gian lận đơn hàng' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 }
 
 /** An admin's own note on a partner (#056). */

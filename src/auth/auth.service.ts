@@ -541,7 +541,13 @@ export class AuthService {
     delete userDto.email;
     delete userDto.oldPassword;
 
-    await this.usersService.update(userJwtPayload.id, userDto);
+    await this.usersService.update(userJwtPayload.id, {
+      ...userDto,
+      // Setting their own password is what makes the account theirs, so the
+      // temporary one an admin emailed stops being a reason to interrupt them
+      // (#059).
+      ...(userDto.password ? { mustChangePassword: false } : {}),
+    });
 
     return this.usersService.findById(userJwtPayload.id);
   }
