@@ -1727,6 +1727,166 @@ export class PartnersService {
   }
 
   /**
+   * "Đơn hàng đối tác" for the admin (#071).
+   *
+   * Deliberately the same read models the partners see on their own screens —
+   * `getMyOrders` for marketing, `getMyPurchases` for distribution — with the
+   * partner filter opened up. Rebuilding the queries here would let the admin's
+   * figures drift from the partner's, and a partner disputing a number needs
+   * both screens to agree.
+   */
+  async adminListPartnerOrders(query: {
+    partnerType?: string;
+    partnerId?: number;
+    search?: string;
+    status?: string;
+    limit?: number;
+  }) {
+    const partnerId = Number(query.partnerId) || null;
+    const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
+
+    if (query.partnerType === PartnerTypeEnum.DISTRIBUTION) {
+      return this.getMyPurchases(partnerId, {
+        search: query.search,
+        status: query.status,
+        limit,
+      });
+    }
+
+    return this.getMyOrders(partnerId, limit, {
+      search: query.search,
+      status: query.status,
+    });
+  }
+
+  /** The names for the "lọc theo đối tác" select box (#071). */
+  async adminPartnerOptions(
+    partnerType?: string,
+  ): Promise<{ id: number; name: string; email: string | null }[]> {
+    const rows = await this.dataSource.query(
+      `SELECT id, "contactName" AS name, "contactEmail" AS email
+       FROM partner
+       WHERE "deletedAt" IS NULL
+         AND ($1::text IS NULL OR "partnerType" = $1)
+       ORDER BY "contactName" ASC NULLS LAST
+       LIMIT 1000`,
+      [partnerType || null],
+    );
+
+    return (rows as Record<string, any>[]).map((row) => ({
+      id: Number(row.id),
+      name: row.name ?? `Đối tác #${row.id}`,
+      email: row.email ?? null,
+    }));
+  }
+
+  /** The admin's partner-order list as a spreadsheet (#071). */
+  async adminExportPartnerOrdersToExcel(query: {
+    partnerType?: string;
+    partnerId?: number;
+    search?: string;
+    status?: string;
+  }): Promise<Buffer> {
+    const distribution = query.partnerType === PartnerTypeEnum.DISTRIBUTION;
+    const rows = (await this.adminListPartnerOrders({
+      ...query,
+      limit: 200,
+    })) as Record<string, any>[];
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet(
+      distribution ? 'Don phan phoi' : 'Don tiep thi',
+    );
+
+    // The columns follow the table on screen, which differs by partner type:
+    // a marketing order earns commission, a distribution order is a purchase.
+    sheet.columns = distribution
+      ? [
+          { header: 'Mã đơn hàng', key: 'orderNumber', width: 28 },
+          { header: 'Mã ID đối tác', key: 'partnerId', width: 14 },
+          { header: 'Đối tác', key: 'partnerName', width: 26 },
+          { header: 'Sản phẩm', key: 'products', width: 40 },
+          { header: 'Giá niêm yết (VND)', key: 'listVnd', width: 20 },
+          { header: 'Đã thanh toán (VND)', key: 'paidVnd', width: 20 },
+          { header: 'Hoàn tiền (VND)', key: 'refundedVnd', width: 18 },
+          { header: 'Số lượng eSIM', key: 'esimCount', width: 14 },
+          { header: 'Trạng thái', key: 'status', width: 16 },
+          { header: 'Ngày đặt hàng', key: 'createdAt', width: 20 },
+        ]
+      : [
+          { header: 'Mã đơn hàng', key: 'orderNumber', width: 28 },
+          { header: 'Mã ID đối tác', key: 'partnerId', width: 14 },
+          { header: 'Đối tác', key: 'partnerName', width: 26 },
+          { header: 'Sản phẩm', key: 'products', width: 40 },
+          { header: 'Doanh thu (VND)', key: 'revenue', width: 20 },
+          { header: 'Nguồn ghi nhận', key: 'source', width: 24 },
+          { header: 'Khách hàng', key: 'customer', width: 16 },
+          { header: 'Số lượng eSIM', key: 'esimCount', width: 14 },
+          { header: 'Mức % hoa hồng', key: 'commissionPercent', width: 16 },
+          { header: 'Tiền hoa hồng (VND)', key: 'commission', width: 20 },
+          { header: 'Trạng thái', key: 'status', width: 18 },
+          { header: 'Ngày đặt hàng', key: 'createdAt', width: 20 },
+        ];
+    sheet.getRow(1).font = { bold: true };
+
+    for (const row of rows) {
+      const products = (row.items ?? [])
+        .map(
+          (item: Record<string, any>) =>
+            `${item.planName ?? '—'} x${item.quantity ?? 0}`,
+        )
+        .join(', ');
+
+      sheet.addRow(
+        distribution
+          ? {
+              orderNumber: row.orderNumber,
+              partnerId: row.partnerId,
+              partnerName: row.partnerName ?? '',
+              products,
+              listVnd: row.listVnd,
+              paidVnd: row.paidVnd,
+              refundedVnd: row.refundedVnd,
+              esimCount: row.esimCount,
+              status: row.status,
+              createdAt: row.createdAt,
+            }
+          : {
+              orderNumber: row.orderNumber,
+              partnerId: row.partnerId,
+              partnerName: row.partnerName ?? '',
+              products,
+              revenue: row.vndPrice,
+              source: row.linkCode
+                ? `Link ${row.linkCode}`
+                : row.couponCode
+                  ? `Mã ${row.couponCode}`
+                  : '—',
+              customer: row.customerType === 'new' ? 'Khách mới' : 'Khách cũ',
+              esimCount: row.esimCount,
+              commissionPercent: row.commissionPercent ?? '',
+              commission: row.commissionVnd ?? 0,
+              status: row.status,
+              createdAt: row.createdAt,
+            },
+      );
+    }
+
+    for (const key of distribution
+      ? ['listVnd', 'paidVnd', 'refundedVnd']
+      : ['revenue', 'commission']) {
+      sheet.getColumn(key).numFmt = '#,##0';
+    }
+    sheet.getColumn('createdAt').numFmt = 'dd/mm/yyyy hh:mm';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  /**
    * The four figures at the head of "Tài chính" (#067).
    *
    * Two kinds of money sit on this page and they point opposite ways: what is
@@ -3104,12 +3264,19 @@ export class PartnersService {
    * pulling the orders repositories into this module.
    */
   async getMyOrders(
-    partnerId: number,
+    partnerId: number | null,
     limit = 50,
+    filters: { search?: string; status?: string } = {},
   ): Promise<PartnerOrderRowDto[]> {
+    // A null partner is the admin's view of every marketing partner at once
+    // (#071); the screen is the same, only the scope is wider.
+    const search = filters.search?.trim() || null;
+    const status = filters.status?.trim() || null;
     const rows = await this.dataSource.query(
       `SELECT o."orderNumber",
               o.status,
+              pa.id AS "partnerId",
+              pa."contactName" AS "partnerName",
               ${ORDER_REVENUE_SQL} AS "vndPrice",
               COALESCE(o."refundedAmountVnd", 0) AS "refundedAmountVnd",
               o."createdAt",
@@ -3163,14 +3330,19 @@ export class PartnersService {
        LEFT JOIN plan p ON p.id = oi."planId"
        LEFT JOIN order_partner_commission c ON c."orderId" = o.id
        LEFT JOIN partner_link l ON l.id = c."linkId"
-       WHERE o."attributedPartnerId" = $1 AND o."deletedAt" IS NULL
+       WHERE ($1::int IS NULL OR o."attributedPartnerId" = $1)
+         AND o."deletedAt" IS NULL
          -- Top-ups are the customer's business with their own eSIM, not the
          -- partner's referral (#025).
          AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
-       GROUP BY o.id, c."commissionVnd", c.status, l.code, pa."userId"
+         AND ($3::text IS NULL OR o.status = $3)
+         AND ($4::text IS NULL
+              OR o."orderNumber" ILIKE '%' || $4 || '%'
+              OR o."couponCode" ILIKE '%' || $4 || '%')
+       GROUP BY o.id, c."commissionVnd", c.status, l.code, pa.id, pa."userId"
        ORDER BY o."createdAt" DESC
        LIMIT $2`,
-      [partnerId, limit],
+      [partnerId, limit, status, search],
     );
 
     return rows.map((r: Record<string, any>) => {
@@ -3191,6 +3363,8 @@ export class PartnersService {
 
       return {
         orderNumber: r.orderNumber,
+        partnerId: Number(r.partnerId ?? 0),
+        partnerName: r.partnerName ?? null,
         status: r.status,
         vndPrice: Math.max(0, grossVnd - refundedVnd),
         grossVndPrice: grossVnd,
@@ -3818,11 +3992,13 @@ export class PartnersService {
    * partner has.
    */
   async getMyPurchases(
-    partnerId: number,
+    partnerId: number | null,
     filters: { search?: string; status?: string; limit?: number } = {},
   ): Promise<
     {
       orderNumber: string;
+      partnerId: number;
+      partnerName: string | null;
       status: string;
       orderType: string | null;
       paidVnd: number;
@@ -3833,7 +4009,12 @@ export class PartnersService {
       items: { planName: string | null; quantity: number; vndPrice: number }[];
     }[]
   > {
-    const partner = await this.getPartnerOrThrowById(partnerId);
+    // A null partner is the admin's view of every distribution partner at once
+    // (#071). Scoping by the partner's own user id is what makes a "purchase"
+    // a purchase, so the wide version joins partner rather than dropping it.
+    const partner = partnerId
+      ? await this.getPartnerOrThrowById(partnerId)
+      : null;
     const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
     const search = filters.search?.trim() || null;
     const status = filters.status?.trim() || null;
@@ -3841,6 +4022,8 @@ export class PartnersService {
     const rows = await this.dataSource.query(
       `SELECT o."orderNumber",
               o.status,
+              pa.id AS "partnerId",
+              pa."contactName" AS "partnerName",
               o."orderType",
               ${ORDER_REVENUE_SQL} AS "paidVnd",
               -- Before any discount, so the page can show what the margin was.
@@ -3863,9 +4046,13 @@ export class PartnersService {
                 WHERE oi2."orderId" = o.id
               ) AS "esimCount"
        FROM "order" o
+       JOIN partner pa
+         ON pa."userId" = o."userId"
+        AND pa."deletedAt" IS NULL
+        AND pa."partnerType" = '${PartnerTypeEnum.DISTRIBUTION}'
        LEFT JOIN order_item oi ON oi."orderId" = o.id
        LEFT JOIN plan p ON p.id = oi."planId"
-       WHERE o."userId" = $1
+       WHERE ($1::int IS NULL OR o."userId" = $1)
          AND o."deletedAt" IS NULL
          AND ($2::text IS NULL OR o.status = $2)
          AND (
@@ -3873,14 +4060,16 @@ export class PartnersService {
            OR o."orderNumber" ILIKE '%' || $3 || '%'
            OR p.name ILIKE '%' || $3 || '%'
          )
-       GROUP BY o.id
+       GROUP BY o.id, pa.id
        ORDER BY o."createdAt" DESC
        LIMIT $4`,
-      [partner.userId, status, search, limit],
+      [partner?.userId ?? null, status, search, limit],
     );
 
     return (rows as Record<string, any>[]).map((row) => ({
       orderNumber: String(row.orderNumber),
+      partnerId: Number(row.partnerId ?? 0),
+      partnerName: row.partnerName ?? null,
       status: String(row.status),
       orderType: row.orderType ?? null,
       paidVnd: Number(row.paidVnd ?? 0),

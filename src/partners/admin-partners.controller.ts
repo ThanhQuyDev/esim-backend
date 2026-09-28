@@ -234,6 +234,54 @@ export class AdminPartnersController {
     return this.partnersService.adminListCommissions(query);
   }
 
+  /** "Đơn hàng đối tác": the partner screens, with the scope opened up (#071). */
+  @Get('orders')
+  @HttpCode(HttpStatus.OK)
+  listPartnerOrders(
+    @Query()
+    query: {
+      partnerType?: string;
+      partnerId?: number;
+      search?: string;
+      status?: string;
+      limit?: number;
+    },
+  ) {
+    return this.partnersService.adminListPartnerOrders(query);
+  }
+
+  /** The names for the "lọc theo đối tác" select box (#071). */
+  @Get('orders/partner-options')
+  @HttpCode(HttpStatus.OK)
+  partnerOptions(@Query('partnerType') partnerType?: string) {
+    return this.partnersService.adminPartnerOptions(partnerType);
+  }
+
+  /** The admin's partner-order list as a spreadsheet (#071). */
+  @Get('orders/export-excel')
+  @HttpCode(HttpStatus.OK)
+  async exportPartnerOrders(
+    @Query()
+    query: {
+      partnerType?: string;
+      partnerId?: number;
+      search?: string;
+      status?: string;
+    },
+    @Res() res: Response,
+  ): Promise<void> {
+    const buffer =
+      await this.partnersService.adminExportPartnerOrdersToExcel(query);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="don-hang-doi-tac-${stamp}.xlsx"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   /** The four figures at the head of "Tài chính" (#067). */
   @Get('payouts/summary')
   @HttpCode(HttpStatus.OK)

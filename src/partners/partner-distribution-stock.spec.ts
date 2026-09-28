@@ -119,6 +119,10 @@ describe('PartnersService.getMyPurchases (#046)', () => {
     const { service } = buildService([
       {
         orderNumber: 'ORD-1',
+        // Whose purchase this is — the partner's own screen ignores it, the
+        // admin's list across every partner needs it (#071).
+        partnerId: '8',
+        partnerName: 'Công ty ABC',
         status: 'completed',
         orderType: 'ESIM',
         paidVnd: '900000',
@@ -133,6 +137,8 @@ describe('PartnersService.getMyPurchases (#046)', () => {
     await expect(service.getMyPurchases(8)).resolves.toEqual([
       {
         orderNumber: 'ORD-1',
+        partnerId: 8,
+        partnerName: 'Công ty ABC',
         status: 'completed',
         orderType: 'ESIM',
         paidVnd: 900_000,

@@ -28,6 +28,13 @@ export class PartnerOrderRowDto {
   @ApiProperty({ type: String, example: 'paid' })
   status!: string;
 
+  /** Whose order this is — only interesting on the admin's list (#071). */
+  @ApiProperty({ type: Number, example: 14 })
+  partnerId!: number;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Nguyễn Văn A' })
+  partnerName!: string | null;
+
   @ApiProperty({ type: Number, example: 290000 })
   /** Revenue after refunds — what this order is actually worth now (#018). */
   vndPrice!: number;
