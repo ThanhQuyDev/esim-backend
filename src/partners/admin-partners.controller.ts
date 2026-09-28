@@ -33,6 +33,7 @@ import {
   BulkPartnerStatusDto,
   UpdatePartnerAdminNoteDto,
   UpdatePartnerProfileByAdminDto,
+  UpdateReconciliationStatusDto,
   UpdatePartnerAffiliateGrantDto,
   UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerStatusDto,
@@ -100,6 +101,44 @@ export class AdminPartnersController {
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="danh-sach-doi-tac-${stamp}.xlsx"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
+  /** The reconciliation list: one row per partner for one period (#065). */
+  @Get('reconciliations')
+  @HttpCode(HttpStatus.OK)
+  adminListReconciliations(
+    @Query() query: { period?: string; search?: string; status?: string },
+  ) {
+    return this.partnersService.adminListReconciliations(query);
+  }
+
+  /** Sign off (or hold) one or more statements (#065). */
+  @Patch('reconciliations/status')
+  @HttpCode(HttpStatus.OK)
+  adminSetReconciliationStatus(
+    @Request() req: { user: { id: number } },
+    @Body() dto: UpdateReconciliationStatusDto,
+  ) {
+    return this.partnersService.adminSetReconciliationStatus(dto, req.user.id);
+  }
+
+  /** The reconciliation list as a spreadsheet (#066). */
+  @Get('reconciliations/export-excel')
+  @HttpCode(HttpStatus.OK)
+  async exportReconciliations(
+    @Query() query: { period?: string; search?: string; status?: string },
+    @Res() res: Response,
+  ): Promise<void> {
+    const buffer =
+      await this.partnersService.adminExportReconciliationsToExcel(query);
+    const period = query.period || new Date().toISOString().slice(0, 7);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="doi-soat-hoa-hong-${period}.xlsx"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);

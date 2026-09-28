@@ -11,6 +11,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -113,6 +114,34 @@ export class UpdatePartnerProfileByAdminDto {
   @IsInt()
   @Min(0)
   depositMaxVnd?: number | null;
+}
+
+/** Sign off (or hold) one or more reconciliation statements (#065). */
+export class UpdateReconciliationStatusDto {
+  @ApiProperty({ type: [Number], example: [12, 18] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(200)
+  @IsInt({ each: true })
+  partnerIds!: number[];
+
+  @ApiProperty({ example: '2026-09' })
+  @IsString()
+  @MaxLength(7)
+  period!: string;
+
+  @ApiProperty({
+    example: 'approved',
+    description: 'pending | reviewing | approved',
+  })
+  @IsIn(['pending', 'reviewing', 'approved'])
+  status!: string;
+
+  @ApiPropertyOptional({ type: String, maxLength: 1000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
 }
 
 /** An admin's own note on a partner (#056). */

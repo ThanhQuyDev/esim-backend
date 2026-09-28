@@ -21,6 +21,7 @@ import { CouponEntity } from '../coupons/infrastructure/persistence/relational/e
 import { PartnerMemberAttributionEntity } from './infrastructure/persistence/relational/entities/partner-member-attribution.entity';
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
+import { PartnerReconciliationEntity } from './infrastructure/persistence/relational/entities/partner-reconciliation.entity';
 import { MailModule } from '../mail/mail.module';
 
 @Module({
@@ -45,6 +46,7 @@ import { MailModule } from '../mail/mail.module';
       PartnerMemberAttributionEntity,
       PartnerSessionEventEntity,
       PartnerStatusChangeEntity,
+      PartnerReconciliationEntity,
     ]),
   ],
   controllers: [

@@ -46,6 +46,7 @@ import { CouponEntity } from '../coupons/infrastructure/persistence/relational/e
 import { PartnerMemberAttributionEntity } from './infrastructure/persistence/relational/entities/partner-member-attribution.entity';
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
+import { PartnerReconciliationEntity } from './infrastructure/persistence/relational/entities/partner-reconciliation.entity';
 import {
   AdminCreatePartnerDto,
   PartnerApplyDto,
@@ -66,6 +67,7 @@ import {
   RejectPartnerDto,
   UpdatePartnerProfileByAdminDto,
   UpdatePartnerStatusDto,
+  UpdateReconciliationStatusDto,
 } from './dto/admin-partner.dto';
 import {
   CreatePartnerLinkDto,
@@ -399,6 +401,8 @@ export class PartnersService {
     private readonly sessionEventRepository: Repository<PartnerSessionEventEntity>,
     @InjectRepository(PartnerStatusChangeEntity)
     private readonly statusChangeRepository: Repository<PartnerStatusChangeEntity>,
+    @InjectRepository(PartnerReconciliationEntity)
+    private readonly reconciliationRepository: Repository<PartnerReconciliationEntity>,
     private readonly mailService: MailService,
     /**
      * Only to build a payment URL for a card top-up (#047). Provided directly
@@ -1690,6 +1694,228 @@ export class PartnersService {
         partners: n(commissions?.reversedPartners),
       },
     };
+  }
+
+  /**
+   * The reconciliation list: one row per partner for one period (#065).
+   *
+   * The commission list is a row per order, which is the wrong grain for a
+   * monthly sign-off — an admin approves "tháng 9 của đối tác A", not four
+   * hundred commissions one at a time.
+   *
+   * Everything except the status and the note is worked out from the
+   * commissions each time. Storing a copy would go stale the first time an
+   * order was refunded, and a statement that disagrees with the orders behind
+   * it is worse than no statement.
+   */
+  async adminListReconciliations(query: {
+    period?: string;
+    search?: string;
+    status?: string;
+  }): Promise<{
+    period: string;
+    rows: {
+      partnerId: number;
+      contactName: string | null;
+      contactEmail: string | null;
+      validOrders: number;
+      esimsSold: number;
+      viaCouponPercent: number;
+      revenueVnd: number;
+      commissionVnd: number;
+      status: string;
+      note: string | null;
+    }[];
+  }> {
+    const period = /^\d{4}-\d{2}$/.test(query.period ?? '')
+      ? (query.period as string)
+      : new Date().toISOString().slice(0, 7);
+    const [year, month] = period.split('-').map(Number);
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 1);
+
+    const search = query.search?.trim() || null;
+    const asId = Number((query.search ?? '').trim().replace(/^#/, ''));
+    const searchId = Number.isInteger(asId) && asId > 0 ? asId : null;
+
+    const rows = await this.dataSource.query(
+      `SELECT p.id AS "partnerId",
+              p."contactName",
+              p."contactEmail",
+              agg."validOrders",
+              agg."esimsSold",
+              agg."viaCouponOrders",
+              agg."revenueVnd",
+              agg."commissionVnd",
+              r.status AS "storedStatus",
+              r.note
+       FROM partner p
+       JOIN LATERAL (
+         -- One row per order inside here, so an order with five lines still
+         -- counts once and its value is not multiplied by five.
+         SELECT COUNT(*) FILTER (WHERE o.status = ANY($6)) AS "validOrders",
+                COALESCE(SUM(items.qty) FILTER (WHERE o.status = ANY($6)), 0) AS "esimsSold",
+                COUNT(*) FILTER (
+                  WHERE o.status = ANY($6) AND o."couponCode" IS NOT NULL
+                ) AS "viaCouponOrders",
+                COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+                  WHERE o.status = ANY($6)
+                ), 0) AS "revenueVnd",
+                COALESCE(SUM(c."commissionVnd") FILTER (
+                  WHERE c.status <> 'reversed'
+                ), 0) AS "commissionVnd"
+         FROM order_partner_commission c
+         JOIN "order" o
+           ON o.id = c."orderId"
+          AND o."deletedAt" IS NULL
+          AND o."createdAt" >= $1 AND o."createdAt" < $2
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(SUM(oi.quantity), 0) AS qty
+           FROM order_item oi WHERE oi."orderId" = o.id
+         ) items ON TRUE
+         WHERE c."partnerId" = p.id
+       ) agg ON TRUE
+       LEFT JOIN partner_reconciliation r
+         ON r."partnerId" = p.id AND r.period = $3
+       WHERE p."deletedAt" IS NULL
+         AND agg."validOrders" > 0
+         AND ($4::text IS NULL
+              OR p."contactName" ILIKE '%' || $4 || '%'
+              OR p."contactEmail" ILIKE '%' || $4 || '%'
+              OR p."contactPhone" ILIKE '%' || $4 || '%'
+              OR ($5::int IS NOT NULL AND p.id = $5))
+       ORDER BY agg."commissionVnd" DESC`,
+      [start, end, period, search, searchId, SETTLED_ORDER_STATUS_LIST],
+    );
+
+    const wanted = query.status && query.status !== 'all' ? query.status : null;
+
+    return {
+      period,
+      rows: (rows as Record<string, any>[])
+        .map((row) => {
+          const validOrders = Number(row.validOrders ?? 0);
+          const viaCoupon = Number(row.viaCouponOrders ?? 0);
+          return {
+            partnerId: Number(row.partnerId),
+            contactName: row.contactName ?? null,
+            contactEmail: row.contactEmail ?? null,
+            validOrders,
+            esimsSold: Number(row.esimsSold ?? 0),
+            // Share of the completed orders that arrived through a code.
+            viaCouponPercent:
+              validOrders > 0
+                ? Math.round((viaCoupon / validOrders) * 1000) / 10
+                : 0,
+            revenueVnd: Number(row.revenueVnd ?? 0),
+            commissionVnd: Number(row.commissionVnd ?? 0),
+            // No row yet means nobody has looked at this month.
+            status: row.storedStatus ?? 'pending',
+            note: row.note ?? null,
+          };
+        })
+        .filter((row) => !wanted || row.status === wanted),
+    };
+  }
+
+  /**
+   * Sign off (or hold) one or more statements (#065).
+   *
+   * Upserted per partner and period, so ticking twenty rows and approving them
+   * is one decision recorded twenty times rather than twenty screens.
+   */
+  async adminSetReconciliationStatus(
+    dto: UpdateReconciliationStatusDto,
+    adminId: number,
+  ): Promise<{ updated: number }> {
+    const partnerIds = [...new Set(dto.partnerIds)];
+    let updated = 0;
+
+    for (const partnerId of partnerIds) {
+      const existing = await this.reconciliationRepository.findOne({
+        where: { partnerId, period: dto.period },
+      });
+
+      if (existing) {
+        existing.status = dto.status;
+        // An omitted note leaves the previous one alone: an admin approving a
+        // row should not silently erase what somebody wrote on it.
+        if (dto.note !== undefined) existing.note = dto.note.trim() || null;
+        existing.updatedByAdminId = adminId;
+        await this.reconciliationRepository.save(existing);
+      } else {
+        await this.reconciliationRepository.save(
+          this.reconciliationRepository.create({
+            partnerId,
+            period: dto.period,
+            status: dto.status,
+            note: dto.note?.trim() || null,
+            updatedByAdminId: adminId,
+          }),
+        );
+      }
+      updated += 1;
+    }
+
+    return { updated };
+  }
+
+  /** The reconciliation list as a spreadsheet (#066). */
+  async adminExportReconciliationsToExcel(query: {
+    period?: string;
+    search?: string;
+    status?: string;
+  }): Promise<Buffer> {
+    const { period, rows } = await this.adminListReconciliations(query);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet(`Doi soat ${period}`);
+    sheet.columns = [
+      { header: 'Mã ID', key: 'id', width: 10 },
+      { header: 'Đối tác', key: 'name', width: 28 },
+      { header: 'Email', key: 'email', width: 28 },
+      { header: 'Kỳ đối soát', key: 'period', width: 14 },
+      { header: 'Số đơn hợp lệ', key: 'orders', width: 16 },
+      { header: 'Tổng eSIM đã bán', key: 'esims', width: 18 },
+      { header: '% qua mã', key: 'viaCoupon', width: 12 },
+      { header: 'Tổng doanh số (VND)', key: 'revenue', width: 20 },
+      { header: 'Tổng hoa hồng (VND)', key: 'commission', width: 20 },
+      { header: 'Trạng thái', key: 'status', width: 18 },
+      { header: 'Ghi chú', key: 'note', width: 40 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    const STATUS_LABEL: Record<string, string> = {
+      pending: 'Chờ xác nhận',
+      reviewing: 'Đang kiểm tra',
+      approved: 'Đã duyệt',
+    };
+
+    for (const row of rows) {
+      sheet.addRow({
+        id: row.partnerId,
+        name: row.contactName ?? '',
+        email: row.contactEmail ?? '',
+        period,
+        orders: row.validOrders,
+        esims: row.esimsSold,
+        viaCoupon: row.viaCouponPercent,
+        revenue: row.revenueVnd,
+        commission: row.commissionVnd,
+        status: STATUS_LABEL[row.status] ?? row.status,
+        note: row.note ?? '',
+      });
+    }
+
+    for (const key of ['revenue', 'commission']) {
+      sheet.getColumn(key).numFmt = '#,##0';
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   async adminFindById(id: number): Promise<PartnerEntity> {
