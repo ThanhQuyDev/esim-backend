@@ -61,6 +61,18 @@ export class AdminPartnersController {
   }
 
   /**
+   * What esim.vn keeps from each kind of partner, over a period (#050).
+   */
+  @Get('revenue-by-type')
+  @HttpCode(HttpStatus.OK)
+  adminRevenueByPartnerType(@Query() query: { from?: string; to?: string }) {
+    return this.partnersService.adminRevenueByPartnerType({
+      from: query.from,
+      to: query.to,
+    });
+  }
+
+  /**
    * Run the weekly tier review now. Same code path as the Sunday cron — useful
    * after changing tier thresholds, or to re-check a partner who just crossed one.
    */

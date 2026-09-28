@@ -3004,6 +3004,155 @@ export class PartnersService {
   }
 
   /** Numbers behind the admin "Tổng quan đối tác" screen. */
+  /**
+   * What esim.vn actually keeps from each kind of partner (#050).
+   *
+   * Not what the orders were rung up at: "doanh thu của đối tác là số tiền mà
+   * esim.vn thu về thực tế". For a marketing partner that is the order value
+   * less the commission paid away; for a distribution or API partner it is what
+   * they paid us for the eSIMs — their buying price *is* our revenue.
+   *
+   * Both halves are measured for every type rather than assumed, because a
+   * distribution partner granted the affiliate programme (#048) earns on both
+   * sides. An order is only counted once: a partner's own purchase that was
+   * credited to somebody else belongs to that somebody else.
+   */
+  async adminRevenueByPartnerType(
+    range: { from?: string; to?: string } = {},
+  ): Promise<{
+    range: { from: string; to: string };
+    previousRange: { from: string; to: string };
+    byType: {
+      partnerType: string;
+      partners: number;
+      revenueVnd: number;
+      previousRevenueVnd: number;
+      growthPercent: number;
+      /** Order value credited to them, before commission was paid away. */
+      attributedGrossVnd: number;
+      commissionVnd: number;
+      /** What they paid us for stock. */
+      purchasesVnd: number;
+    }[];
+    totalRevenueVnd: number;
+    previousTotalRevenueVnd: number;
+    growthPercent: number;
+  }> {
+    const { from, to } = resolveSummaryRange(range);
+    // The same span again, ending where this one starts: comparing a week to a
+    // month would make any number look like growth.
+    const spanMs = to.getTime() - from.getTime();
+    const prevFrom = new Date(from.getTime() - spanMs);
+    const prevTo = from;
+
+    const params = [from, to, prevFrom, prevTo, SETTLED_ORDER_STATUS_LIST];
+
+    // The affiliate side: orders credited to a partner, net of what we paid
+    // them for it. A reversed commission was never paid, so it comes back.
+    const attributed = await this.dataSource.query(
+      `SELECT p."partnerType" AS "partnerType",
+              COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+                WHERE o."createdAt" >= $1 AND o."createdAt" < $2), 0) AS "grossVnd",
+              COALESCE(SUM(
+                COALESCE(c."commissionVnd", 0) - COALESCE(c."reversedCommissionVnd", 0)
+              ) FILTER (WHERE o."createdAt" >= $1 AND o."createdAt" < $2), 0) AS "commissionVnd",
+              COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+                WHERE o."createdAt" >= $3 AND o."createdAt" < $4), 0) AS "prevGrossVnd",
+              COALESCE(SUM(
+                COALESCE(c."commissionVnd", 0) - COALESCE(c."reversedCommissionVnd", 0)
+              ) FILTER (WHERE o."createdAt" >= $3 AND o."createdAt" < $4), 0) AS "prevCommissionVnd"
+       FROM "order" o
+       JOIN partner p ON p.id = o."attributedPartnerId"
+       LEFT JOIN order_partner_commission c
+         ON c."orderId" = o.id AND c.status <> 'reversed'
+       WHERE o."deletedAt" IS NULL
+         AND o.status = ANY($5)
+         AND o."createdAt" >= $3 AND o."createdAt" < $2
+       GROUP BY 1`,
+      params,
+    );
+
+    // The distribution side: what the partner paid us. An order of theirs that
+    // was credited to another partner is that partner's, not theirs, so it is
+    // left out here and counted above.
+    const purchases = await this.dataSource.query(
+      `SELECT p."partnerType" AS "partnerType",
+              COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+                WHERE o."createdAt" >= $1 AND o."createdAt" < $2), 0) AS "purchasesVnd",
+              COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+                WHERE o."createdAt" >= $3 AND o."createdAt" < $4), 0) AS "prevPurchasesVnd"
+       FROM "order" o
+       JOIN partner p ON p."userId" = o."userId"
+       WHERE o."deletedAt" IS NULL
+         AND o.status = ANY($5)
+         AND (o."attributedPartnerId" IS NULL OR o."attributedPartnerId" = p.id)
+         AND o."createdAt" >= $3 AND o."createdAt" < $2
+       GROUP BY 1`,
+      params,
+    );
+
+    const counts = await this.dataSource.query(
+      `SELECT "partnerType", COUNT(*) AS "partners"
+       FROM partner
+       WHERE "deletedAt" IS NULL AND status <> 'rejected'
+       GROUP BY 1`,
+    );
+
+    const n = (v: unknown) => Number(v ?? 0);
+    const types = new Set<string>([
+      ...(counts as Record<string, any>[]).map((r) => String(r.partnerType)),
+      ...(attributed as Record<string, any>[]).map((r) =>
+        String(r.partnerType),
+      ),
+      ...(purchases as Record<string, any>[]).map((r) => String(r.partnerType)),
+    ]);
+
+    const byType = [...types].sort().map((partnerType) => {
+      const a = (attributed as Record<string, any>[]).find(
+        (r) => r.partnerType === partnerType,
+      );
+      const b = (purchases as Record<string, any>[]).find(
+        (r) => r.partnerType === partnerType,
+      );
+      const c = (counts as Record<string, any>[]).find(
+        (r) => r.partnerType === partnerType,
+      );
+
+      const attributedGrossVnd = n(a?.grossVnd);
+      const commissionVnd = n(a?.commissionVnd);
+      const purchasesVnd = n(b?.purchasesVnd);
+      const revenueVnd = attributedGrossVnd - commissionVnd + purchasesVnd;
+      const previousRevenueVnd =
+        n(a?.prevGrossVnd) - n(a?.prevCommissionVnd) + n(b?.prevPurchasesVnd);
+
+      return {
+        partnerType,
+        partners: n(c?.partners),
+        revenueVnd,
+        previousRevenueVnd,
+        growthPercent: growthPercent(revenueVnd, previousRevenueVnd),
+        attributedGrossVnd,
+        commissionVnd,
+        purchasesVnd,
+      };
+    });
+
+    const totalRevenueVnd = byType.reduce((sum, r) => sum + r.revenueVnd, 0);
+    const previousTotalRevenueVnd = byType.reduce(
+      (sum, r) => sum + r.previousRevenueVnd,
+      0,
+    );
+
+    return {
+      range: { from: from.toISOString(), to: to.toISOString() },
+      previousRange: { from: prevFrom.toISOString(), to: prevTo.toISOString() },
+      byType,
+      totalRevenueVnd,
+      previousTotalRevenueVnd,
+      growthPercent: growthPercent(totalRevenueVnd, previousTotalRevenueVnd),
+    };
+  }
+
   async adminOverview() {
     const [counts] = await this.dataSource.query(
       `SELECT
