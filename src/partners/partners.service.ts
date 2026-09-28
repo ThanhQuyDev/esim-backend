@@ -138,6 +138,26 @@ type WalletTransactionInput = {
  * One-line rendering of a partner's saved payout account, used when a
  * withdrawal request does not carry its own account details.
  */
+/**
+ * What a distribution partner pays for an eSIM at their tier (#073).
+ *
+ * Cost plus a markup, not list minus a discount — the two are not the same
+ * sum, and the brief is explicit: "giá gốc là 100.000đ + (100.000đ x 10%) =
+ * 110.000đ". The higher the tier the smaller the markup, so the price moves
+ * towards what the eSIM actually cost us.
+ *
+ * Rounded to the dong, because a price with a fraction of a dong on it cannot
+ * be charged or displayed.
+ */
+export function partnerUnitPriceVnd(
+  costVnd: number,
+  costMarkupPercent: number,
+): number {
+  const cost = Math.max(0, Number(costVnd) || 0);
+  const markup = Math.max(0, Number(costMarkupPercent) || 0);
+  return Math.round(cost * (1 + markup / 100));
+}
+
 function formatPartnerBankAccount(partner: {
   bankName?: string | null;
   bankAccountNumber?: string | null;
@@ -3173,6 +3193,11 @@ export class PartnersService {
         minVolumeVnd: dto.minVolumeVnd ?? 0,
         commissionPercent: dto.commissionPercent ?? 0,
         maxDiscountPercent: dto.maxDiscountPercent ?? 0,
+        // The deposit route and the markup a distribution tier buys (#073).
+        minDepositVnd: dto.minDepositVnd ?? 0,
+        costMarkupPercent: dto.costMarkupPercent ?? 0,
+        // Negotiated rather than earned (#074).
+        isInternal: dto.isInternal ?? false,
         // Each tier carries its own attribution window (#037).
         attributionDays: dto.attributionDays ?? PARTNER_LINK_ATTRIBUTION_DAYS,
         sortOrder: dto.sortOrder ?? 0,
@@ -3202,6 +3227,13 @@ export class PartnersService {
       ...(dto.commissionPercent !== undefined && {
         commissionPercent: dto.commissionPercent,
       }),
+      ...(dto.minDepositVnd !== undefined && {
+        minDepositVnd: dto.minDepositVnd,
+      }),
+      ...(dto.costMarkupPercent !== undefined && {
+        costMarkupPercent: dto.costMarkupPercent,
+      }),
+      ...(dto.isInternal !== undefined && { isInternal: dto.isInternal }),
       ...(dto.attributionDays !== undefined && {
         attributionDays: dto.attributionDays,
       }),
@@ -3777,29 +3809,77 @@ export class PartnersService {
     let promoted = 0;
     for (const partner of partners) {
       try {
-        const [row] = await this.dataSource.query(
-          `SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueVnd",
-                  COUNT(*)::int AS "validOrders"
-           FROM "order" o
-           WHERE o."attributedPartnerId" = $1
-             AND o."deletedAt" IS NULL
-             AND o.status IN ('paid', 'completed')`,
-          [partner.id],
-        );
+        const distribution =
+          partner.partnerType === PartnerTypeEnum.DISTRIBUTION;
+
+        // What "doanh thu" means depends on which side of the programme the
+        // partner is on: orders credited to a marketing partner, orders a
+        // distribution partner placed themselves (#072, #073).
+        const [row] = distribution
+          ? await this.dataSource.query(
+              `SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueVnd",
+                      COUNT(*)::int AS "validOrders"
+               FROM "order" o
+               JOIN partner p ON p."userId" = o."userId"
+               WHERE p.id = $1
+                 AND o."deletedAt" IS NULL
+                 AND o.status IN ('paid', 'completed')`,
+              [partner.id],
+            )
+          : await this.dataSource.query(
+              `SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueVnd",
+                      COUNT(*)::int AS "validOrders"
+               FROM "order" o
+               WHERE o."attributedPartnerId" = $1
+                 AND o."deletedAt" IS NULL
+                 AND o.status IN ('paid', 'completed')`,
+              [partner.id],
+            );
         const revenueVnd = Number(row?.revenueVnd ?? 0);
         const validOrders = Number(row?.validOrders ?? 0);
 
+        // A distribution partner also qualifies on what they are holding on
+        // deposit right now (#073) — either route alone is enough.
+        const depositVnd = distribution
+          ? Number(
+              (
+                await this.walletRepository.findOne({
+                  where: { partnerId: partner.id },
+                })
+              )?.balanceVnd ?? 0,
+            )
+          : 0;
+
         const tiers = await this.tierRepository.find({
-          where: { partnerType: partner.partnerType, isActive: true },
+          // An internal tier is negotiated, not earned, so the review neither
+          // promotes anybody onto one nor considers it a rung (#074).
+          where: {
+            partnerType: partner.partnerType,
+            isActive: true,
+            isInternal: false,
+          },
           order: { minVolumeVnd: 'ASC' },
         });
-        // Highest tier whose threshold the partner has already cleared.
-        const earned = [...tiers]
-          .reverse()
-          .find((t) => revenueVnd >= Number(t.minVolumeVnd));
 
-        const currentTier = tiers.find((t) => t.tierCode === partner.tierCode);
+        const qualifies = (t: PartnerTierEntity) =>
+          revenueVnd >= Number(t.minVolumeVnd) ||
+          (Number(t.minDepositVnd) > 0 &&
+            depositVnd >= Number(t.minDepositVnd));
+
+        // Highest tier whose threshold the partner has already cleared.
+        const earned = [...tiers].reverse().find(qualifies);
+
+        const currentTier = await this.tierRepository.findOne({
+          where: {
+            partnerType: partner.partnerType,
+            tierCode: partner.tierCode ?? '',
+          },
+        });
+
+        // Somebody placed on an internal tier stays there: the review is not
+        // allowed to undo a negotiated rate (#074).
         const shouldPromote =
+          !currentTier?.isInternal &&
           !!earned &&
           earned.tierCode !== partner.tierCode &&
           Number(earned.minVolumeVnd) > Number(currentTier?.minVolumeVnd ?? -1);
@@ -3839,10 +3919,30 @@ export class PartnersService {
   /** Tiers a partner can be placed in, for the "Hạng đối tác" comparison. */
   async getMyTiers(partnerId: number): Promise<PartnerTierEntity[]> {
     const partner = await this.getPartnerOrThrowById(partnerId);
-    return this.tierRepository.find({
-      where: { partnerType: partner.partnerType, isActive: true },
+    const tiers = await this.tierRepository.find({
+      where: {
+        partnerType: partner.partnerType,
+        isActive: true,
+        // The public ladder. An internal tier is a private arrangement and
+        // publishing it would invite every other partner to ask for it (#074).
+        isInternal: false,
+      },
       order: { sortOrder: 'ASC', minVolumeVnd: 'ASC' },
     });
+
+    // The one exception: a partner on an internal tier must still be able to
+    // see the terms they are actually on.
+    if (
+      partner.tierCode &&
+      !tiers.some((t) => t.tierCode === partner.tierCode)
+    ) {
+      const own = await this.tierRepository.findOne({
+        where: { partnerType: partner.partnerType, tierCode: partner.tierCode },
+      });
+      if (own) tiers.push(own);
+    }
+
+    return tiers;
   }
 
   /**

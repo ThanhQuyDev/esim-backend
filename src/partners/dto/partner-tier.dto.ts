@@ -60,6 +60,37 @@ export class CreatePartnerTierDto {
   @Min(1)
   attributionDays?: number;
 
+  @ApiPropertyOptional({
+    type: Number,
+    example: 100000000,
+    description:
+      'Ký quỹ tối thiểu cũng đạt hạng này — thay thế cho doanh thu, không phải điều kiện thứ hai (#073). 0 = chỉ xét doanh thu.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minDepositVnd?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 10,
+    description:
+      '% cộng vào giá gốc cho đối tác phân phối (#073): 10 nghĩa là eSIM giá vốn 100.000đ được mua với 110.000đ.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  costMarkupPercent?: number;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Hạng nội bộ: không hiện trong bảng xếp hạng công khai, không được xét thăng hạng tự động (#074).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isInternal?: boolean;
+
   @ApiPropertyOptional({ type: Number, example: 0 })
   @IsOptional()
   @IsInt()
@@ -72,6 +103,37 @@ export class CreatePartnerTierDto {
 }
 
 export class UpdatePartnerTierDto {
+  @ApiPropertyOptional({
+    type: Number,
+    example: 100000000,
+    description:
+      'Ký quỹ tối thiểu cũng đạt hạng này — thay thế cho doanh thu, không phải điều kiện thứ hai (#073). 0 = chỉ xét doanh thu.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minDepositVnd?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 10,
+    description:
+      '% cộng vào giá gốc cho đối tác phân phối (#073): 10 nghĩa là eSIM giá vốn 100.000đ được mua với 110.000đ.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  costMarkupPercent?: number;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Hạng nội bộ: không hiện trong bảng xếp hạng công khai, không được xét thăng hạng tự động (#074).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isInternal?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
