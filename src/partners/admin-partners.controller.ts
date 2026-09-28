@@ -26,6 +26,7 @@ import {
   AssignPartnerTierDto,
   ProcessPartnerPayoutDto,
   RejectPartnerDto,
+  UpdatePartnerAffiliateGrantDto,
   UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerStatusDto,
 } from './dto/admin-partner.dto';
@@ -200,6 +201,16 @@ export class AdminPartnersController {
       Number(id),
       dto.canCustomLinkCode,
     );
+  }
+
+  /** Tick/untick "được phân quyền affiliate" for this partner (#048). */
+  @Patch(':id/affiliate-grant')
+  @HttpCode(HttpStatus.OK)
+  setAffiliateGrant(
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerAffiliateGrantDto,
+  ) {
+    return this.partnersService.setAffiliateGrant(Number(id), dto.canAffiliate);
   }
 
   @Patch(':id/tier')

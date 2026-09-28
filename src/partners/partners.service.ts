@@ -783,6 +783,20 @@ export class PartnersService {
     });
   }
 
+  /**
+   * May this partner run the affiliate programme (#048)?
+   *
+   * A marketing partner is the affiliate programme. A distribution partner buys
+   * stock, and only earns commission as well when esim.vn has granted it.
+   */
+  private assertMayAffiliate(partner: PartnerEntity, what: string): void {
+    if (partner.partnerType === PartnerTypeEnum.KOL) return;
+    if (partner.canAffiliate) return;
+    throw new BadRequestException(
+      `Tài khoản của bạn chưa được cấp quyền tiếp thị nên không dùng được ${what}. Liên hệ esim.vn nếu bạn muốn tham gia chương trình tiếp thị.`,
+    );
+  }
+
   async createDepositRequest(
     partnerId: number,
     dto: CreateDepositRequestDto,
@@ -937,11 +951,12 @@ export class PartnersService {
     const partner = await this.partnerRepository.findOne({
       where: { id: partnerId },
     });
-    if (!partner || partner.partnerType !== PartnerTypeEnum.KOL) {
-      throw new ForbiddenException(
-        'Chỉ đối tác KOL mới có thể tạo link tiếp thị.',
-      );
+    if (!partner) {
+      throw new ForbiddenException('Không tìm thấy đối tác.');
     }
+    // A distribution partner may create links too, once esim.vn has granted
+    // them the affiliate programme (#048).
+    this.assertMayAffiliate(partner, 'link tiếp thị');
 
     // A memorable code is the whole point when it has to be read aloud in a
     // video, but it is a privilege an admin grants per partner (#014) — every
@@ -1153,6 +1168,13 @@ export class PartnersService {
   }
 
   async createPayoutRequest(partnerId: number, dto: CreatePartnerPayoutDto) {
+    // Withdrawing is part of the affiliate programme: a distributor's ký quỹ
+    // balance is there to buy stock with (#048).
+    this.assertMayAffiliate(
+      await this.getPartnerOrThrowById(partnerId),
+      'chức năng rút tiền',
+    );
+
     const summary = await this.getWalletSummaryForPartner(partnerId);
     if (dto.amountVnd > summary.availableBalanceVnd) {
       throw new BadRequestException(
@@ -1337,6 +1359,23 @@ export class PartnersService {
   ): Promise<PartnerEntity> {
     const partner = await this.adminFindById(id);
     partner.status = dto.status;
+    return this.partnerRepository.save(partner);
+  }
+
+  /**
+   * Let a distribution partner run the affiliate programme too, or stop them
+   * (#048).
+   *
+   * Revoking hides the screens and refuses new links or codes, but leaves what
+   * they already created alone: a code printed on somebody's video is still a
+   * code customers are typing, and the commission already earned is theirs.
+   */
+  async setAffiliateGrant(
+    id: number,
+    canAffiliate: boolean,
+  ): Promise<PartnerEntity> {
+    const partner = await this.adminFindById(id);
+    partner.canAffiliate = canAffiliate;
     return this.partnerRepository.save(partner);
   }
 
@@ -2015,11 +2054,7 @@ export class PartnersService {
    */
   async createMyCoupon(partnerId: number, dto: CreatePartnerCouponDto) {
     const partner = await this.getPartnerOrThrowById(partnerId);
-    if (partner.partnerType !== PartnerTypeEnum.KOL) {
-      throw new ForbiddenException(
-        'Chỉ đối tác tiếp thị mới tạo được mã giảm giá.',
-      );
-    }
+    this.assertMayAffiliate(partner, 'mã giảm giá');
 
     const tier = partner.tierCode
       ? await this.tierRepository.findOne({

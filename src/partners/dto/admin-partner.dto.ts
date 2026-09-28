@@ -43,6 +43,13 @@ export class UpdatePartnerLinkCodePermissionDto {
   canCustomLinkCode!: boolean;
 }
 
+/** Tick/untick the affiliate grant for a distribution partner (#048). */
+export class UpdatePartnerAffiliateGrantDto {
+  @ApiProperty({ type: Boolean })
+  @IsBoolean()
+  canAffiliate!: boolean;
+}
+
 export class AdjustPartnerWalletDto {
   @ApiProperty({ type: Number, example: 500000 })
   @IsInt()

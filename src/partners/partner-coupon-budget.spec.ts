@@ -14,6 +14,8 @@ function buildService(opts: {
   commissionPercent: number;
   takenCode?: string;
   partnerType?: PartnerTypeEnum;
+  /** #048: a distribution partner esim.vn has granted the programme to. */
+  canAffiliate?: boolean;
 }) {
   const save = jest
     .fn()
@@ -24,6 +26,7 @@ function buildService(opts: {
     getPartnerOrThrowById: jest.fn().mockResolvedValue({
       id: 5,
       partnerType: opts.partnerType ?? PartnerTypeEnum.KOL,
+      canAffiliate: opts.canAffiliate ?? false,
       tierCode: opts.commissionPercent > 0 ? 'GOLD' : null,
     }),
     tierRepository: {
@@ -106,14 +109,26 @@ describe('PartnersService — a partner funding their own discount (#028)', () =
     });
   });
 
-  it('should refuse a distribution partner, who earns no commission', async () => {
+  it('should refuse a distribution partner who has not been granted the programme', async () => {
+    // #048 opened the affiliate programme to a distributor esim.vn has granted
+    // it to; without the grant the answer is still no.
     const { service } = buildService({
       commissionPercent: 20,
       partnerType: PartnerTypeEnum.DISTRIBUTION,
     });
 
     await expect(service.createMyCoupon(5, DTO)).rejects.toThrow(
-      'Chỉ đối tác tiếp thị',
+      'chưa được cấp quyền tiếp thị',
     );
+  });
+
+  it('should allow a distribution partner who has been granted it (#048)', async () => {
+    const { service } = buildService({
+      commissionPercent: 20,
+      partnerType: PartnerTypeEnum.DISTRIBUTION,
+      canAffiliate: true,
+    });
+
+    await expect(service.createMyCoupon(5, DTO)).resolves.toBeDefined();
   });
 });

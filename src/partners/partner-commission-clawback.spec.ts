@@ -181,7 +181,10 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
   it('should refuse a withdrawal while the balance is negative', async () => {
     const service = buildSummaryService(-50000);
     Object.assign(service, {
-      getPartnerOrThrowById: jest.fn(),
+      // A marketing partner, so the affiliate grant never comes into it (#048).
+      getPartnerOrThrowById: jest
+        .fn()
+        .mockResolvedValue({ id: 5, partnerType: 'kol' }),
       payoutRepository: {
         createQueryBuilder: () => sum(0),
         create: (row: unknown) => row,

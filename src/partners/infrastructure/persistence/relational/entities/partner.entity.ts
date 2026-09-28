@@ -109,6 +109,18 @@ export class PartnerEntity extends EntityRelationalHelper {
   updatedAt!: Date;
 
   /**
+   * Whether this distribution partner may also run the affiliate programme
+   * (#048).
+   *
+   * Off by default: the marketing screens — link tiếp thị, mã giảm giá, hoa
+   * hồng, rút tiền — stay out of a distributor's portal until esim.vn grants
+   * it. A marketing partner *is* the affiliate programme, so the flag does not
+   * apply to them; `partnerMayAffiliate` reads it that way.
+   */
+  @Column({ type: Boolean, default: false })
+  canAffiliate!: boolean;
+
+  /**
    * When the current tier took effect (#042).
    *
    * A tier change is never retroactive: orders placed after this moment earn at
