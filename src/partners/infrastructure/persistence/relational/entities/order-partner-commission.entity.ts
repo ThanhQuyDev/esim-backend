@@ -58,6 +58,13 @@ export class OrderPartnerCommissionEntity extends EntityRelationalHelper {
   @Column({ type: String, default: OrderPartnerCommissionStatusEnum.PENDING })
   status!: OrderPartnerCommissionStatusEnum;
 
+  /**
+   * Why a `rejected` row earned nothing — a value of
+   * `CommissionRejectionReasonEnum` (#041). Null on every other status.
+   */
+  @Column({ type: String, length: 64, nullable: true })
+  rejectionReason!: string | null;
+
   @Column({ type: Number, nullable: true })
   rewardTransactionId!: number | null;
 

@@ -48,6 +48,24 @@ export enum OrderPartnerCommissionStatusEnum {
   PENDING = 'pending',
   CREDITED = 'credited',
   REVERSED = 'reversed',
+  /** Refused outright, and worth 0đ — see `rejectionReason` (#041). */
+  REJECTED = 'rejected',
+}
+
+/**
+ * Why an order earned the partner nothing (#041).
+ *
+ * A self-referral is always refused: the buyer's details are the partner's own.
+ * The reason is kept so whoever answers the partner's complaint can say which
+ * detail matched, rather than reading it off a server log.
+ */
+export enum CommissionRejectionReasonEnum {
+  /** The order was placed from the partner's own account. */
+  SELF_ACCOUNT = 'self_account',
+  SELF_EMAIL = 'self_email',
+  SELF_PHONE = 'self_phone',
+  SELF_TAX_CODE = 'self_tax_code',
+  SELF_BANK_ACCOUNT = 'self_bank_account',
 }
 
 export enum PartnerPayoutStatusEnum {

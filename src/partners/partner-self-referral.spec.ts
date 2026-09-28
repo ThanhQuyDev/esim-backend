@@ -1,4 +1,8 @@
 import { PartnersService, classifyPartnerOrder } from './partners.service';
+import {
+  CommissionRejectionReasonEnum,
+  OrderPartnerCommissionStatusEnum,
+} from './partners.enum';
 
 /**
  * A partner buying through their own link (#095).
@@ -10,7 +14,11 @@ import { PartnersService, classifyPartnerOrder } from './partners.service';
  *
  * Only the unambiguous half is covered here: the buyer IS the partner's own
  * account. The same-IP-different-account case is a judgement call (a hotel or
- * office network shares one address) and is still waiting on Thọ.
+ * office network shares one address) and is marked for review instead (#036).
+ *
+ * The other registered details — email, phone, tax code, payout account — are
+ * covered in `partner-self-referral-details.spec.ts` (#041), which is also
+ * where the refusal being *recorded* rather than dropped is pinned down.
  */
 describe('PartnersService — self-referral', () => {
   const PARTNER = { id: 5, userId: 11, tierCode: 'silver' };
@@ -45,8 +53,14 @@ describe('PartnersService — self-referral', () => {
       buyerUserId: 11,
     });
 
-    expect(result).toBeNull();
-    expect(commissionRepository.save).not.toHaveBeenCalled();
+    // Worth nothing, and saying so: the row is what answers the partner when
+    // they write in to ask (#041). It used to be dropped, leaving a log line.
+    expect(result).toMatchObject({
+      commissionVnd: 0,
+      status: OrderPartnerCommissionStatusEnum.REJECTED,
+      rejectionReason: CommissionRejectionReasonEnum.SELF_ACCOUNT,
+    });
+    expect(commissionRepository.save).toHaveBeenCalledTimes(1);
   });
 
   it('should still pay for an order somebody else placed', async () => {

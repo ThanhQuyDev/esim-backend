@@ -1669,6 +1669,7 @@ export class OrdersService {
               order,
             ),
             status: partnerCommission.status,
+            rejectionReason: partnerCommission.rejectionReason,
             tierSnapshot: partnerCommission.tierSnapshot,
           }
         : null,

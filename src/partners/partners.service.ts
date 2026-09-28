@@ -71,6 +71,7 @@ import {
   UpdatePartnerTierDto,
 } from './dto/partner-tier.dto';
 import {
+  CommissionRejectionReasonEnum,
   OrderPartnerCommissionStatusEnum,
   PartnerDepositRequestStatusEnum,
   PartnerLinkStatusEnum,
@@ -139,12 +140,48 @@ export interface OrderPartnerCommissionSummary {
   linkCode: string | null;
   commissionVnd: number;
   status: string;
+  /** Why a `rejected` commission earned nothing — see #041. */
+  rejectionReason: string | null;
   tierSnapshot: string | null;
   createdAt: Date;
 }
 /** Order states that will never pay a commission, however they got here. */
 /** Orders that only top up an eSIM the customer already has (#025). */
 const TOPUP_ORDER_TYPE = 'TOPUP';
+
+/**
+ * Comparisons for the self-referral check (#041).
+ *
+ * Written down rather than inlined because the whole check turns on them: a
+ * partner who registered `+84 901 234 567` and ordered as `0901234567` is the
+ * same person, and a check that missed it would be no check at all.
+ */
+function sameEmail(a?: string | null, b?: string | null): boolean {
+  const left = a?.trim().toLowerCase();
+  const right = b?.trim().toLowerCase();
+  return Boolean(left && right && left === right);
+}
+
+/** Vietnamese numbers, written any of the usual ways: 0901…, +84901…, 84901… */
+function normalisePhone(value?: string | null): string | null {
+  const digits = value?.replace(/\D/g, '');
+  if (!digits || digits.length < 8) return null;
+  const national = digits.startsWith('84') ? digits.slice(2) : digits;
+  return national.replace(/^0+/, '');
+}
+
+function samePhone(a?: string | null, b?: string | null): boolean {
+  const left = normalisePhone(a);
+  const right = normalisePhone(b);
+  return Boolean(left && right && left === right);
+}
+
+/** Tax codes and account numbers: spaces and dashes are decoration. */
+function sameDigits(a?: string | null, b?: string | null): boolean {
+  const left = a?.replace(/\D/g, '');
+  const right = b?.replace(/\D/g, '');
+  return Boolean(left && right && left.length >= 6 && left === right);
+}
 
 /**
  * What one attributed order is worth to the partner (#020).
@@ -246,7 +283,14 @@ export function classifyPartnerOrder(
 } {
   // Said first, because "đơn không phát sinh hoa hồng" would leave the partner
   // wondering; this one has a reason they can act on.
-  if (isSelfReferral) {
+  //
+  // A `rejected` commission is the same verdict reached from the other side:
+  // the buyer's details matched the partner's own registration, and the row
+  // records which one (#041).
+  if (
+    isSelfReferral ||
+    commissionStatus === OrderPartnerCommissionStatusEnum.REJECTED
+  ) {
     return { validity: 'invalid', invalidReason: 'self_referral' };
   }
   if (commissionStatus === OrderPartnerCommissionStatusEnum.REVERSED) {
@@ -937,6 +981,7 @@ export class PartnersService {
         linkCode: row.link?.code ?? null,
         commissionVnd: Number(row.commissionVnd) || 0,
         status: row.status,
+        rejectionReason: row.rejectionReason ?? null,
         tierSnapshot: row.tierSnapshot ?? null,
         createdAt: row.createdAt,
       });
@@ -3026,6 +3071,93 @@ export class PartnersService {
    * order list disagree with what they actually did. It is simply marked as
    * earning nothing, with the reason shown.
    */
+  /**
+   * Whether this order is the partner referring themselves (#041).
+   *
+   * Setting up a link and then buying through it is the oldest way to turn a
+   * commission into a discount, and changing the email on the order is the
+   * oldest way around a check on the account alone. So every detail the partner
+   * registered with is compared: the account, the contact email and phone, the
+   * tax code on the order's invoice, and — for somebody running a second
+   * partner account — the bank account the commission would be paid into.
+   *
+   * Returns the detail that matched, or null. Never throws: a lookup that fails
+   * must not stop an order, and the caller treats "no match" as "pay them".
+   */
+  async detectSelfReferral(
+    partner: PartnerEntity,
+    order: { orderId: number; buyerUserId?: number | null },
+  ): Promise<CommissionRejectionReasonEnum | null> {
+    if (partner.userId && partner.userId === order.buyerUserId) {
+      return CommissionRejectionReasonEnum.SELF_ACCOUNT;
+    }
+
+    try {
+      if (order.buyerUserId) {
+        const buyer = await this.userRepository.findOne({
+          where: { id: order.buyerUserId },
+        });
+
+        if (
+          buyer &&
+          sameEmail(buyer.email, partner.contactEmail) &&
+          // The partner's own account is the case above; this is a second
+          // account opened on the same address.
+          buyer.id !== partner.userId
+        ) {
+          return CommissionRejectionReasonEnum.SELF_EMAIL;
+        }
+        if (buyer && samePhone(buyer.phoneNumber, partner.contactPhone)) {
+          return CommissionRejectionReasonEnum.SELF_PHONE;
+        }
+
+        // A partner buying through a second partner account of their own: the
+        // payout details are what give it away.
+        const buyerPartner = await this.partnerRepository.findOne({
+          where: { userId: order.buyerUserId },
+        });
+        if (buyerPartner && buyerPartner.id !== partner.id) {
+          if (sameEmail(buyerPartner.contactEmail, partner.contactEmail)) {
+            return CommissionRejectionReasonEnum.SELF_EMAIL;
+          }
+          if (samePhone(buyerPartner.contactPhone, partner.contactPhone)) {
+            return CommissionRejectionReasonEnum.SELF_PHONE;
+          }
+          if (sameDigits(buyerPartner.taxCode, partner.taxCode)) {
+            return CommissionRejectionReasonEnum.SELF_TAX_CODE;
+          }
+          if (
+            sameDigits(
+              buyerPartner.bankAccountNumber,
+              partner.bankAccountNumber,
+            )
+          ) {
+            return CommissionRejectionReasonEnum.SELF_BANK_ACCOUNT;
+          }
+        }
+      }
+
+      // The invoice is where a company buyer's tax code lands.
+      if (partner.taxCode) {
+        const [invoice] = await this.dataSource.query(
+          `SELECT "taxCode" FROM invoice WHERE "orderId" = $1 LIMIT 1`,
+          [order.orderId],
+        );
+        if (invoice && sameDigits(invoice.taxCode, partner.taxCode)) {
+          return CommissionRejectionReasonEnum.SELF_TAX_CODE;
+        }
+      }
+    } catch (error) {
+      // Never at the cost of the order: an unreadable lookup means we simply
+      // do not know, and not knowing is not a reason to withhold a commission.
+      this.logger.warn(
+        `Order ${order.orderId}: self-referral check failed — ${String(error)}`,
+      );
+    }
+
+    return null;
+  }
+
   async createPendingCommissionForOrder(params: {
     orderId: number;
     partnerId: number;
@@ -3046,11 +3178,28 @@ export class PartnersService {
     // referral.
     if (params.orderType === TOPUP_ORDER_TYPE) return null;
 
-    if (params.buyerUserId && partner.userId === params.buyerUserId) {
+    // A partner buying through their own link, under any of the details they
+    // registered with (#041, #095). Recorded rather than dropped, so the reason
+    // is there when they ask why.
+    const selfReferral = await this.detectSelfReferral(partner, {
+      orderId: params.orderId,
+      buyerUserId: params.buyerUserId,
+    });
+    if (selfReferral) {
       this.logger.warn(
-        `Order ${params.orderId}: no commission, partner ${partner.id} bought through their own link.`,
+        `Order ${params.orderId}: no commission for partner ${partner.id} — self-referral (${selfReferral}).`,
       );
-      return null;
+      return this.commissionRepository.save(
+        this.commissionRepository.create({
+          orderId: params.orderId,
+          partnerId: params.partnerId,
+          linkId: params.linkId,
+          commissionVnd: 0,
+          tierSnapshot: partner.tierCode ?? null,
+          status: OrderPartnerCommissionStatusEnum.REJECTED,
+          rejectionReason: selfReferral,
+        }),
+      );
     }
 
     const tier = partner.tierCode

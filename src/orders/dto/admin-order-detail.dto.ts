@@ -204,8 +204,18 @@ export class AdminOrderPartnerCommissionDto {
   })
   commissionPercent: number;
 
-  @ApiProperty({ type: String, description: 'pending | credited | reversed' })
+  @ApiProperty({
+    type: String,
+    description: 'pending | credited | reversed | rejected',
+  })
   status: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Why a rejected commission earned nothing: self_account, self_email, self_phone, self_tax_code or self_bank_account (#041).',
+  })
+  rejectionReason?: string | null;
 
   @ApiPropertyOptional({ type: String })
   tierSnapshot?: string | null;
