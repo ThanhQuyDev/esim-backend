@@ -34,6 +34,8 @@ import {
   UpdatePartnerAdminNoteDto,
   UpdatePartnerProfileByAdminDto,
   UpdateReconciliationStatusDto,
+  QueryPartnerPayoutDto,
+  BulkPayoutDecisionDto,
   UpdatePartnerAffiliateGrantDto,
   UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerStatusDto,
@@ -42,10 +44,7 @@ import {
   CreatePartnerTierDto,
   UpdatePartnerTierDto,
 } from './dto/partner-tier.dto';
-import {
-  PartnerDepositRequestStatusEnum,
-  PartnerPayoutStatusEnum,
-} from './partners.enum';
+import { PartnerDepositRequestStatusEnum } from './partners.enum';
 
 @ApiTags('Admin Partners')
 @ApiBearerAuth()
@@ -242,10 +241,38 @@ export class AdminPartnersController {
     return this.partnersService.adminPayoutSummary();
   }
 
+  /** The withdrawal list as a spreadsheet (#070). */
+  @Get('payouts/export-excel')
+  @HttpCode(HttpStatus.OK)
+  async exportPayouts(
+    @Query() query: QueryPartnerPayoutDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const buffer = await this.partnersService.adminExportPayoutsToExcel(query);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="yeu-cau-rut-tien-${stamp}.xlsx"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
+  /** "Duyệt chi" or "Từ chối" for the rows an admin ticked (#069). */
+  @Patch('payouts/bulk-decision')
+  @HttpCode(HttpStatus.OK)
+  bulkPayoutDecision(
+    @Body() dto: BulkPayoutDecisionDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminBulkPayoutDecision(dto, req.user.id);
+  }
+
   @Get('payouts')
   @HttpCode(HttpStatus.OK)
-  listPayouts(@Query('status') status?: PartnerPayoutStatusEnum) {
-    return this.partnersService.adminListPayouts(status);
+  listPayouts(@Query() query: QueryPartnerPayoutDto) {
+    return this.partnersService.adminListPayouts(query);
   }
 
   @Post('payouts/:id/approve')

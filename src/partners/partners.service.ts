@@ -68,6 +68,7 @@ import {
   UpdatePartnerProfileByAdminDto,
   UpdatePartnerStatusDto,
   UpdateReconciliationStatusDto,
+  BulkPayoutDecisionDto,
 } from './dto/admin-partner.dto';
 import {
   CreatePartnerLinkDto,
@@ -151,6 +152,29 @@ function formatPartnerBankAccount(partner: {
   ].filter((v): v is string => !!v && v.trim().length > 0);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
+
+/** A withdrawal request with the partner and the account behind it (#069). */
+type AdminPayoutRow = {
+  id: number;
+  partnerId: number;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  partnerType: string | null;
+  amountVnd: number;
+  status: string;
+  adminNote: string | null;
+  createdAt: Date;
+  processedAt: Date | null;
+  /** The month the request was made, as `YYYY-MM`. */
+  period: string;
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  bankAccountHolder: string | null;
+  bankBranch: string | null;
+  bankAccountLast4: string | null;
+  bankAccountInfo: string | null;
+};
 
 /** An admin list row: the partner plus the numbers the console triages on. */
 type AdminPartnerListRow = PartnerEntity & {
@@ -1215,6 +1239,12 @@ export class PartnersService {
         partnerId,
         amountVnd: Math.round(dto.amountVnd),
         bankAccountInfo,
+        // The same account field by field, so the admin's popup and the export
+        // do not have to unpick the joined string (#069).
+        bankName: partner.bankName ?? null,
+        bankAccountNumber: partner.bankAccountNumber ?? null,
+        bankAccountHolder: partner.bankAccountHolder ?? null,
+        bankBranch: partner.bankBranch ?? null,
         status: PartnerPayoutStatusEnum.PENDING,
       }),
     );
@@ -2673,12 +2703,229 @@ export class PartnersService {
     return { data, totalCount: count };
   }
 
-  async adminListPayouts(status?: PartnerPayoutStatusEnum) {
-    return this.payoutRepository.find({
-      where: status ? { status } : {},
-      order: { createdAt: 'DESC' },
-      take: 200,
-    });
+  /**
+   * The withdrawal list on "Tài chính" (#068, #069).
+   *
+   * Joined to the partner because every filter the brief asks for — name,
+   * email, phone, id — lives there rather than on the payout, and because a
+   * row reading "Đối tác #14" is not something a finance person can act on.
+   *
+   * The bank details come off the payout's own snapshot where there is one, so
+   * an account the partner has since edited does not rewrite the history of
+   * where money was actually sent; the older rows fall back to the profile.
+   */
+  async adminListPayouts(query: {
+    status?: string;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: AdminPayoutRow[]; totalCount: number }> {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
+
+    const search = query.search?.trim() || null;
+    const asId = Number((query.search ?? '').trim().replace(/^#/, ''));
+    const searchId = Number.isInteger(asId) && asId > 0 ? asId : null;
+
+    const from = query.dateFrom ? new Date(query.dateFrom) : null;
+    // An inclusive end date: "đến 30/09" means the whole of the 30th.
+    const to = query.dateTo ? new Date(query.dateTo) : null;
+    if (to) to.setDate(to.getDate() + 1);
+
+    const status = query.status && query.status !== 'all' ? query.status : null;
+
+    const where = `WHERE ($1::text IS NULL OR pay.status = $1)
+         AND ($2::text IS NULL
+              OR p."contactName" ILIKE '%' || $2 || '%'
+              OR p."contactEmail" ILIKE '%' || $2 || '%'
+              OR p."contactPhone" ILIKE '%' || $2 || '%'
+              OR ($3::int IS NOT NULL AND p.id = $3))
+         AND ($4::timestamptz IS NULL OR pay."createdAt" >= $4)
+         AND ($5::timestamptz IS NULL OR pay."createdAt" < $5)`;
+    const params = [status, search, searchId, from, to];
+
+    const [[counted], rows] = await Promise.all([
+      this.dataSource.query(
+        `SELECT COUNT(*)::int AS total
+         FROM partner_payout pay
+         JOIN partner p ON p.id = pay."partnerId"
+         ${where}`,
+        params,
+      ),
+      this.dataSource.query(
+        `SELECT pay.id,
+                pay."partnerId",
+                pay."amountVnd",
+                pay.status,
+                pay."adminNote",
+                pay."createdAt",
+                pay."processedAt",
+                pay."bankAccountInfo",
+                p."contactName",
+                p."contactEmail",
+                p."contactPhone",
+                p."partnerType",
+                -- The snapshot where the payout has one, the profile otherwise.
+                COALESCE(pay."bankName", p."bankName") AS "bankName",
+                COALESCE(pay."bankAccountNumber", p."bankAccountNumber") AS "bankAccountNumber",
+                COALESCE(pay."bankAccountHolder", p."bankAccountHolder") AS "bankAccountHolder",
+                COALESCE(pay."bankBranch", p."bankBranch") AS "bankBranch"
+         FROM partner_payout pay
+         JOIN partner p ON p.id = pay."partnerId"
+         ${where}
+         ORDER BY pay."createdAt" DESC
+         LIMIT ${limit} OFFSET ${(page - 1) * limit}`,
+        params,
+      ),
+    ]);
+
+    return {
+      data: (rows as Record<string, any>[]).map((row) => {
+        const createdAt = new Date(row.createdAt);
+        const account = row.bankAccountNumber ?? null;
+        return {
+          id: Number(row.id),
+          partnerId: Number(row.partnerId),
+          contactName: row.contactName ?? null,
+          contactEmail: row.contactEmail ?? null,
+          contactPhone: row.contactPhone ?? null,
+          partnerType: row.partnerType ?? null,
+          amountVnd: Number(row.amountVnd ?? 0),
+          status: row.status,
+          adminNote: row.adminNote ?? null,
+          createdAt,
+          processedAt: row.processedAt ? new Date(row.processedAt) : null,
+          // "Kỳ tài chính" is the month the partner asked in, which is what a
+          // payout run is grouped by.
+          period: `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`,
+          bankName: row.bankName ?? null,
+          bankAccountNumber: account,
+          bankAccountHolder: row.bankAccountHolder ?? null,
+          bankBranch: row.bankBranch ?? null,
+          // The list shows only the last four digits; the popup has the rest.
+          bankAccountLast4: account ? String(account).slice(-4) : null,
+          bankAccountInfo: row.bankAccountInfo ?? null,
+        };
+      }),
+      totalCount: Number(counted?.total ?? 0),
+    };
+  }
+
+  /**
+   * "Duyệt chi" or "Từ chối" for the rows an admin ticked (#069).
+   *
+   * A refusal must carry a reason because the partner sees it on their own
+   * withdrawal screen — "bị từ chối" with nothing after it is a support
+   * ticket, not an answer. Approving needs no such explanation.
+   *
+   * One already-processed row does not sink the batch: it is reported as
+   * skipped, so ticking twenty and finding one was handled a minute ago still
+   * settles the other nineteen.
+   */
+  async adminBulkPayoutDecision(
+    dto: BulkPayoutDecisionDto,
+    adminId: number,
+  ): Promise<{ updated: number; skipped: number[] }> {
+    if (dto.decision === 'reject' && !dto.adminNote?.trim()) {
+      throw new BadRequestException(
+        'Vui lòng nhập lý do từ chối để đối tác nhìn thấy.',
+      );
+    }
+
+    const ids = [...new Set(dto.ids)];
+    const skipped: number[] = [];
+    let updated = 0;
+
+    for (const id of ids) {
+      try {
+        if (dto.decision === 'approve') {
+          await this.approvePayout(id, adminId);
+        } else {
+          await this.rejectPayout(id, dto.adminNote, adminId);
+        }
+        updated += 1;
+      } catch {
+        skipped.push(id);
+      }
+    }
+
+    return { updated, skipped };
+  }
+
+  /** The withdrawal list as a spreadsheet (#070). */
+  async adminExportPayoutsToExcel(query: {
+    status?: string;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<Buffer> {
+    const MAX_ROWS = 5_000;
+    const rows: AdminPayoutRow[] = [];
+    for (let page = 1; rows.length < MAX_ROWS; page += 1) {
+      const { data } = await this.adminListPayouts({
+        ...query,
+        page,
+        limit: 200,
+      });
+      rows.push(...data);
+      if (data.length < 200) break;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Yeu cau rut tien');
+    sheet.columns = [
+      { header: 'Mã ID đối tác', key: 'partnerId', width: 14 },
+      { header: 'Đối tác', key: 'name', width: 28 },
+      { header: 'Email', key: 'email', width: 28 },
+      { header: 'Kỳ tài chính', key: 'period', width: 14 },
+      { header: 'Số tiền (VND)', key: 'amount', width: 18 },
+      { header: 'Ngân hàng', key: 'bankName', width: 22 },
+      { header: 'Số tài khoản', key: 'bankAccountNumber', width: 22 },
+      { header: 'Chủ tài khoản', key: 'bankAccountHolder', width: 24 },
+      { header: 'Chi nhánh', key: 'bankBranch', width: 24 },
+      { header: 'Ngày yêu cầu', key: 'createdAt', width: 20 },
+      { header: 'Trạng thái', key: 'status', width: 16 },
+      { header: 'Ghi chú / lý do', key: 'note', width: 40 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    const STATUS_LABEL: Record<string, string> = {
+      pending: 'Chờ duyệt',
+      approved: 'Đã duyệt',
+      rejected: 'Từ chối',
+      paid: 'Đã thanh toán',
+    };
+
+    for (const row of rows) {
+      sheet.addRow({
+        partnerId: row.partnerId,
+        name: row.contactName ?? '',
+        email: row.contactEmail ?? '',
+        period: row.period,
+        amount: row.amountVnd,
+        bankName: row.bankName ?? '',
+        // As text: a long account number would otherwise come out as 8.85e+12.
+        bankAccountNumber: row.bankAccountNumber
+          ? `'${row.bankAccountNumber}`
+          : '',
+        bankAccountHolder: row.bankAccountHolder ?? '',
+        bankBranch: row.bankBranch ?? '',
+        createdAt: row.createdAt,
+        status: STATUS_LABEL[row.status] ?? row.status,
+        note: row.adminNote ?? '',
+      });
+    }
+
+    sheet.getColumn('amount').numFmt = '#,##0';
+    sheet.getColumn('createdAt').numFmt = 'dd/mm/yyyy hh:mm';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   async approvePayout(
@@ -2704,8 +2951,15 @@ export class PartnersService {
     if (payout.status !== PartnerPayoutStatusEnum.PENDING) {
       throw new BadRequestException('Yêu cầu rút tiền này đã được xử lý.');
     }
+    // The partner sees this on their own withdrawal screen, so "bị từ chối"
+    // with nothing after it is not an answer (#069).
+    if (!adminNote?.trim()) {
+      throw new BadRequestException(
+        'Vui lòng nhập lý do từ chối để đối tác nhìn thấy.',
+      );
+    }
     payout.status = PartnerPayoutStatusEnum.REJECTED;
-    payout.adminNote = adminNote ?? null;
+    payout.adminNote = adminNote.trim();
     payout.processedByAdminId = adminId;
     payout.processedAt = new Date();
     return this.payoutRepository.save(payout);

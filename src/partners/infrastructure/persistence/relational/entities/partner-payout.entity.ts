@@ -28,8 +28,28 @@ export class PartnerPayoutEntity extends EntityRelationalHelper {
   @Column({ type: 'decimal', precision: 14, scale: 0 })
   amountVnd!: number;
 
+  /** The account as one line, kept for the rows created before #069. */
   @Column({ type: String, nullable: true })
   bankAccountInfo?: string | null;
+
+  /**
+   * The same account, snapshotted field by field (#069).
+   *
+   * The joined string is fine to show and useless to export or to print "4 số
+   * đuôi" from, so each part is kept on its own. Null on old rows, where the
+   * list falls back to the partner's current profile.
+   */
+  @Column({ type: String, nullable: true })
+  bankName?: string | null;
+
+  @Column({ type: String, nullable: true })
+  bankAccountNumber?: string | null;
+
+  @Column({ type: String, nullable: true })
+  bankAccountHolder?: string | null;
+
+  @Column({ type: String, nullable: true })
+  bankBranch?: string | null;
 
   @Index()
   @Column({ type: String, default: PartnerPayoutStatusEnum.PENDING })

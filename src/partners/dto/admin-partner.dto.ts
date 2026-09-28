@@ -116,6 +116,71 @@ export class UpdatePartnerProfileByAdminDto {
   depositMaxVnd?: number | null;
 }
 
+/** Filters on the withdrawal list (#068). */
+export class QueryPartnerPayoutDto {
+  @ApiPropertyOptional({
+    description: 'all | pending | approved | rejected | paid',
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Tên, email, số điện thoại hoặc mã ID đối tác',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-01' })
+  @IsOptional()
+  @IsString()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-30' })
+  @IsOptional()
+  @IsString()
+  dateTo?: string;
+
+  @ApiPropertyOptional({ type: Number, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ type: Number, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}
+
+/** "Duyệt chi" or "Từ chối" for the rows an admin ticked (#069). */
+export class BulkPayoutDecisionDto {
+  @ApiProperty({ type: [Number], example: [4, 7] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(200)
+  @IsInt({ each: true })
+  ids!: number[];
+
+  @ApiProperty({ example: 'approve', description: 'approve | reject' })
+  @IsIn(['approve', 'reject'])
+  decision!: 'approve' | 'reject';
+
+  @ApiPropertyOptional({
+    type: String,
+    maxLength: 1000,
+    description: 'Bắt buộc khi từ chối — đối tác sẽ nhìn thấy lý do này.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  adminNote?: string;
+}
+
 /** Sign off (or hold) one or more reconciliation statements (#065). */
 export class UpdateReconciliationStatusDto {
   @ApiProperty({ type: [Number], example: [12, 18] })
