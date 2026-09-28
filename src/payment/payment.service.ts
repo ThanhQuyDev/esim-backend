@@ -5,6 +5,7 @@ import { OrdersService } from '../orders/orders.service';
 import { AllConfigType } from '../config/config.type';
 import { SubmitOrderDto } from '../orders/dto/submit-order.dto';
 import { hashIpForFraudWatch } from '../orders/order-fraud-signals';
+import { PARTNER_DEPOSIT_REF_PREFIX } from '../partners/partners.constants';
 import { CustomPaymentLinksService } from '../custom-payment-links/custom-payment-links.service';
 import { CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX } from '../custom-payment-links/custom-payment-links.enum';
 import { TopupService } from '../topup/topup.service';
@@ -490,6 +491,28 @@ export class PaymentService {
     // up to OnePay and the customer-facing return page.
     if (orderNumber.startsWith(`${TOPUP_ORDER_NUMBER_PREFIX}-`)) {
       return this.handleTopupIpn(query, orderNumber);
+    }
+
+    // A partner topping up their ký quỹ wallet by card (#047). Its own prefix
+    // because it is not an order at all: nothing is delivered, the money simply
+    // lands in the wallet less the gateway's fee.
+    if (orderNumber.startsWith(`${PARTNER_DEPOSIT_REF_PREFIX}-`)) {
+      const isSuccess = this.onepayService.isPaymentSuccess(query);
+      const request = await this.partnersService.confirmCardTopupByOnePay(
+        orderNumber,
+        query['vpc_TransactionNo'] ?? null,
+        isSuccess,
+      );
+      if (!request) {
+        this.logger.warn(
+          `OnePay IPN: partner top-up not found for ${orderNumber}`,
+        );
+        return { code: '01' };
+      }
+      this.logger.log(
+        `OnePay IPN: partner top-up ${request.id} ${isSuccess ? 'credited' : 'failed'} (ref=${orderNumber})`,
+      );
+      return { code: '00' };
     }
 
     // Custom Payment Links use a dedicated VORD- prefix; route those to the

@@ -10,7 +10,10 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PartnerTierEvaluationEntity } from './infrastructure/persistence/relational/entities/partner-tier-evaluation.entity';
 import {
+  PARTNER_CARD_TOPUP_FEE_PERCENT,
+  PARTNER_DEPOSIT_MAX_VND,
   PARTNER_DEPOSIT_MIN_VND,
+  PARTNER_DEPOSIT_REF_PREFIX,
   PARTNER_PAYOUT_MIN_VND,
 } from './partners.constants';
 import { ConfigService } from '@nestjs/config';
@@ -22,6 +25,7 @@ import * as ExcelJS from 'exceljs';
 import { In, DataSource, EntityManager, MoreThan, Repository } from 'typeorm';
 import { AllConfigType } from '../config/config.type';
 import { MailService } from '../mail/mail.service';
+import { OnepayService } from '../payment/onepay.service';
 import { RoleEnum } from '../roles/roles.enum';
 import { StatusEnum } from '../statuses/statuses.enum';
 import { UserEntity } from '../users/infrastructure/persistence/relational/entities/user.entity';
@@ -79,11 +83,37 @@ import {
   PartnerStatusEnum,
   PartnerTypeEnum,
   PartnerWalletStatusEnum,
+  PartnerTopupMethodEnum,
   PartnerWalletTransactionTypeEnum,
   SessionEventTypeEnum,
   SessionShapeEnum,
   PARTNER_LINK_ATTRIBUTION_DAYS,
 } from './partners.enum';
+
+/**
+ * What a partner needs in order to pay (#047).
+ *
+ * One shape for both methods: a transfer gets a QR and the account to send to, a
+ * card gets a URL to open. The three amounts are always there, because the
+ * amount paid and the amount credited are different numbers for a card.
+ */
+export type PartnerTopupInstruction = {
+  id: number;
+  amountVnd: number;
+  feeVnd: number;
+  creditedVnd: number;
+  method: PartnerTopupMethodEnum;
+  bankTransferCode: string;
+  status: PartnerDepositRequestStatusEnum;
+  /** Bank transfer only. */
+  qrUrl?: string;
+  accountNumber?: string;
+  accountName?: string;
+  bankCode?: string;
+  /** Card only. */
+  paymentUrl?: string;
+  paymentRef?: string;
+};
 
 type WalletTransactionInput = {
   sourceType?: string | null;
@@ -354,6 +384,12 @@ export class PartnersService {
     @InjectRepository(PartnerSessionEventEntity)
     private readonly sessionEventRepository: Repository<PartnerSessionEventEntity>,
     private readonly mailService: MailService,
+    /**
+     * Only to build a payment URL for a card top-up (#047). Provided directly
+     * in this module rather than importing PaymentModule, which would close a
+     * cycle back through OrdersModule.
+     */
+    private readonly onepayService: OnepayService,
   ) {}
 
   /**
@@ -726,6 +762,15 @@ export class PartnersService {
       /** How many payments that was, for "từ N lần thanh toán" (#029). */
       payoutCount: Number(paidPayouts?.count ?? 0),
       status: wallet.status,
+      /**
+       * The rules the top-up screen has to state, from the one place they are
+       * declared, so the form and the server cannot disagree (#047).
+       */
+      topupPolicy: {
+        minVnd: PARTNER_DEPOSIT_MIN_VND,
+        maxVnd: PARTNER_DEPOSIT_MAX_VND,
+        cardFeePercent: PARTNER_CARD_TOPUP_FEE_PERCENT,
+      },
     };
   }
 
@@ -738,7 +783,10 @@ export class PartnersService {
     });
   }
 
-  async createDepositRequest(partnerId: number, dto: CreateDepositRequestDto) {
+  async createDepositRequest(
+    partnerId: number,
+    dto: CreateDepositRequestDto,
+  ): Promise<PartnerTopupInstruction> {
     // A marketing partner has nothing to deposit against — they earn
     // commission, they do not buy stock (#013). The portal hides the screen;
     // this is the rule itself, so a stale tab or a direct call cannot open a
@@ -757,34 +805,117 @@ export class PartnersService {
       );
     }
 
+    const amountVnd = Math.round(dto.amountVnd);
+    if (amountVnd < PARTNER_DEPOSIT_MIN_VND) {
+      throw new BadRequestException(
+        `Số tiền nạp tối thiểu là ${PARTNER_DEPOSIT_MIN_VND.toLocaleString('vi-VN')}đ.`,
+      );
+    }
+    if (amountVnd > PARTNER_DEPOSIT_MAX_VND) {
+      throw new BadRequestException(
+        `Số tiền nạp tối đa mỗi lần là ${PARTNER_DEPOSIT_MAX_VND.toLocaleString('vi-VN')}đ.`,
+      );
+    }
+
+    const method = dto.method ?? PartnerTopupMethodEnum.BANK_TRANSFER;
+    // A card payment goes through OnePay, which charges for it, and the brief
+    // puts that cost on the partner: 100.000đ sent by card credits 94.000đ
+    // (#047). A transfer costs nothing and is credited in full.
+    const feeVnd =
+      method === PartnerTopupMethodEnum.CARD
+        ? Math.round((amountVnd * PARTNER_CARD_TOPUP_FEE_PERCENT) / 100)
+        : 0;
+    const creditedVnd = amountVnd - feeVnd;
+
     const bankTransferCode = generateBankTransferCode();
     const request = await this.depositRequestRepository.save(
       this.depositRequestRepository.create({
         partnerId,
-        amountVnd: Math.round(dto.amountVnd),
+        amountVnd,
+        method,
+        feeVnd,
+        creditedVnd,
         bankTransferCode,
         status: PartnerDepositRequestStatusEnum.PENDING,
       }),
     );
 
+    const common = {
+      id: request.id,
+      amountVnd,
+      feeVnd,
+      creditedVnd,
+      method,
+      bankTransferCode,
+      status: request.status,
+    };
+
+    if (method === PartnerTopupMethodEnum.CARD) {
+      // The reference carries the row id so the IPN can find it without a
+      // lookup table, and the prefix tells it apart from an order (#047).
+      const paymentRef = `${PARTNER_DEPOSIT_REF_PREFIX}-${request.id}-${bankTransferCode}`;
+      const paymentUrl = this.onepayService.buildPaymentUrl({
+        orderNumber: paymentRef,
+        vndAmount: amountVnd,
+        clientIp: '127.0.0.1',
+        orderInfo: `Nap ky quy doi tac #${partnerId}`,
+        title: 'Nạp ký quỹ đối tác',
+        cardList: 'INTERNATIONAL',
+      });
+      return { ...common, paymentRef, paymentUrl };
+    }
+
     const qrUrl = buildVietQrUrl({
       bankCode: sepay.bankCode,
       accountNumber: sepay.accountNumber,
       accountName: sepay.accountName,
-      amountVnd: request.amountVnd,
+      amountVnd,
       transferCode: bankTransferCode,
     });
 
     return {
-      id: request.id,
-      amountVnd: request.amountVnd,
-      bankTransferCode,
+      ...common,
       qrUrl,
       accountNumber: sepay.accountNumber,
       accountName: sepay.accountName,
       bankCode: sepay.bankCode,
-      status: request.status,
     };
+  }
+
+  /**
+   * Credit a card top-up once OnePay says the payment went through (#047).
+   *
+   * Idempotent, like the SePay path: OnePay redelivers its notification, and a
+   * partner reloading the return page must not top up twice.
+   */
+  async confirmCardTopupByOnePay(
+    paymentRef: string,
+    paymentId: string | null,
+    isSuccess: boolean,
+  ): Promise<PartnerDepositRequestEntity | null> {
+    const id = Number(paymentRef.split('-')[1]);
+    if (!Number.isInteger(id) || id <= 0) return null;
+
+    const request = await this.depositRequestRepository.findOne({
+      where: { id },
+    });
+    if (!request) return null;
+    if (request.status !== PartnerDepositRequestStatusEnum.PENDING) {
+      return request;
+    }
+
+    if (!isSuccess) {
+      request.status = PartnerDepositRequestStatusEnum.CANCELLED;
+      request.paymentId = paymentId;
+      return this.depositRequestRepository.save(request);
+    }
+
+    request.paymentId = paymentId;
+    return this.creditDepositRequest(request, {
+      adminId: null,
+      reason: `Nạp ký quỹ qua thẻ (OnePay), phí ${PARTNER_CARD_TOPUP_FEE_PERCENT}%`,
+      metadata: paymentId ? { onepayTransactionNo: paymentId } : undefined,
+    });
   }
 
   async getMyDepositRequests(partnerId: number) {
@@ -1365,10 +1496,15 @@ export class PartnersService {
       metadata?: Record<string, unknown>;
     },
   ): Promise<PartnerDepositRequestEntity> {
+    // What reaches the wallet, not what was sent: a card top-up has the
+    // gateway's fee taken out of it (#047). Rows written before the fee existed
+    // have no `creditedVnd`, and for those the two are the same number.
+    const creditVnd = Number(request.creditedVnd ?? request.amountVnd);
+
     const transaction = await this.createWalletTransaction(
       request.partnerId,
       PartnerWalletTransactionTypeEnum.DEPOSIT,
-      request.amountVnd,
+      creditVnd,
       {
         sourceType: 'partner_deposit_request',
         sourceId: String(request.id),
@@ -2915,6 +3051,8 @@ export class PartnersService {
       policy: {
         payoutMinVnd: PARTNER_PAYOUT_MIN_VND,
         depositMinVnd: PARTNER_DEPOSIT_MIN_VND,
+        depositMaxVnd: PARTNER_DEPOSIT_MAX_VND,
+        cardTopupFeePercent: PARTNER_CARD_TOPUP_FEE_PERCENT,
       },
       topPartners: topPartners.map((t: Record<string, any>) => ({
         id: Number(t.id),

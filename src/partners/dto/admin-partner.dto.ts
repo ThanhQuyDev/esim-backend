@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  PARTNER_DEPOSIT_MAX_VND,
   PARTNER_DEPOSIT_MIN_VND,
   PARTNER_PAYOUT_MIN_VND,
 } from '../partners.constants';
@@ -9,10 +10,11 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
-import { PartnerStatusEnum } from '../partners.enum';
+import { PartnerStatusEnum, PartnerTopupMethodEnum } from '../partners.enum';
 
 export class RejectPartnerDto {
   @ApiProperty({ example: 'Thông tin doanh nghiệp chưa đầy đủ' })
@@ -73,7 +75,18 @@ export class CreateDepositRequestDto {
   @ApiProperty({ type: Number, example: 5000000 })
   @IsInt()
   @Min(PARTNER_DEPOSIT_MIN_VND)
+  @Max(PARTNER_DEPOSIT_MAX_VND)
   amountVnd!: number;
+
+  @ApiPropertyOptional({
+    enum: PartnerTopupMethodEnum,
+    default: PartnerTopupMethodEnum.BANK_TRANSFER,
+    description:
+      'bank_transfer: SePay QR, credited in full. card: OnePay, with the gateway fee taken out of what is credited (#047).',
+  })
+  @IsOptional()
+  @IsEnum(PartnerTopupMethodEnum)
+  method?: PartnerTopupMethodEnum;
 }
 
 export class CreatePartnerPayoutDto {

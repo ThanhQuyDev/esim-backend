@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PartnerTierEvaluationEntity } from './infrastructure/persistence/relational/entities/partner-tier-evaluation.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { OnepayService } from '../payment/onepay.service';
 import { PartnersController } from './partners.controller';
 import { AdminPartnersController } from './admin-partners.controller';
 import { PartnerLinksPublicController } from './partner-links-public.controller';
@@ -50,7 +51,7 @@ import { MailModule } from '../mail/mail.module';
     PartnerLinksPublicController,
     SessionEventsPublicController,
   ],
-  providers: [PartnersService],
+  providers: [PartnersService, OnepayService],
   exports: [PartnersService],
 })
 export class PartnersModule {}

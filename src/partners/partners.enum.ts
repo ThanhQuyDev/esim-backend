@@ -106,3 +106,14 @@ export enum SessionShapeEnum {
   /** Dozens of plans in seconds: nobody reads that fast. */
   INHUMAN_SPEED = 'inhuman_speed',
 }
+
+/**
+ * How a partner tops up their ký quỹ wallet (#047).
+ *
+ * A bank transfer is matched by SePay and credited in full. A card payment goes
+ * through OnePay and carries the gateway's fee, which the partner pays.
+ */
+export enum PartnerTopupMethodEnum {
+  BANK_TRANSFER = 'bank_transfer',
+  CARD = 'card',
+}
