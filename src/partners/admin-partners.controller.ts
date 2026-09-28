@@ -9,8 +9,10 @@ import {
   Post,
   Query,
   Request,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../roles/roles.decorator';
@@ -83,6 +85,24 @@ export class AdminPartnersController {
       { from: query.from, to: query.to },
       query.groupBy,
     );
+  }
+
+  /** The partner list as a spreadsheet, with the screen's filters (#062). */
+  @Get('export-excel')
+  @HttpCode(HttpStatus.OK)
+  async exportPartners(
+    @Query() query: QueryPartnerDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const buffer = await this.partnersService.adminExportPartnersToExcel(query);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="danh-sach-doi-tac-${stamp}.xlsx"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
   }
 
   /** The four figures at the head of the partner list (#057). */

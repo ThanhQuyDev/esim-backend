@@ -1505,6 +1505,115 @@ export class PartnersService {
     );
   }
 
+  /**
+   * The partner list as a spreadsheet (#062).
+   *
+   * Same filters as the screen, because an admin exports what they are looking
+   * at: filtering to "đang tạm khoá, hạng Vàng" and then getting the whole
+   * programme in the file would be a trap. The columns are the ones the list
+   * shows plus the contract lines, which is what the file is usually opened for.
+   */
+  async adminExportPartnersToExcel(query: QueryPartnerDto): Promise<Buffer> {
+    // Everything that matches, not one page of it — an export of page 1 is
+    // rarely what anybody wanted. `adminList` caps a page at 50, so the pages
+    // are walked; the ceiling is there so one filter-less export cannot pull
+    // the whole table into memory.
+    const MAX_ROWS = 5_000;
+    const PAGE_SIZE = 50;
+    const rows: AdminPartnerListRow[] = [];
+    for (let page = 1; rows.length < MAX_ROWS; page += 1) {
+      const { data } = await this.adminList({
+        ...query,
+        page,
+        limit: PAGE_SIZE,
+      });
+      rows.push(...(data as AdminPartnerListRow[]));
+      if (data.length < PAGE_SIZE) break;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Danh sách đối tác');
+    sheet.columns = [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: 'Tên đối tác', key: 'name', width: 28 },
+      { header: 'Email', key: 'email', width: 28 },
+      { header: 'Số điện thoại', key: 'phone', width: 16 },
+      { header: 'Loại đối tác', key: 'type', width: 18 },
+      { header: 'Pháp nhân', key: 'legal', width: 12 },
+      { header: 'Công ty', key: 'company', width: 26 },
+      { header: 'Mã số thuế', key: 'taxCode', width: 16 },
+      { header: 'Kênh bán', key: 'channel', width: 30 },
+      { header: 'Hạng', key: 'tier', width: 12 },
+      { header: 'Trạng thái', key: 'status', width: 18 },
+      { header: 'Doanh thu 30 ngày (VND)', key: 'revenue30d', width: 22 },
+      { header: 'Số dư ví (VND)', key: 'wallet', width: 18 },
+      { header: 'Khả dụng (VND)', key: 'available', width: 18 },
+      { header: 'Tổng đơn', key: 'orders', width: 12 },
+      { header: 'Tỷ lệ hoàn (%)', key: 'refundRate', width: 14 },
+      { header: 'Đăng nhập gần nhất', key: 'lastLogin', width: 20 },
+      { header: 'Ngày đăng ký', key: 'createdAt', width: 16 },
+      { header: 'Thông tin hợp đồng', key: 'contract', width: 40 },
+      { header: 'Ghi chú của quản trị viên', key: 'adminNote', width: 40 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    const TYPE_LABEL: Record<string, string> = {
+      kol: 'Đối tác tiếp thị',
+      distribution: 'Đối tác phân phối',
+    };
+    const STATUS_LABEL: Record<string, string> = {
+      pending: 'Chờ duyệt',
+      active: 'Đang hoạt động',
+      hold: 'Tạm khoá',
+      disabled: 'Đã khoá',
+      rejected: 'Bị từ chối',
+    };
+    const asDate = (value: Date | string | null | undefined) =>
+      value ? new Date(value).toLocaleString('vi-VN') : '';
+
+    for (const row of rows) {
+      sheet.addRow({
+        id: row.id,
+        name: row.companyName || row.contactName,
+        email: row.contactEmail,
+        phone: row.contactPhone,
+        type: TYPE_LABEL[row.partnerType] ?? row.partnerType,
+        legal: row.legalType === 'company' ? 'Công ty' : 'Cá nhân',
+        company: row.companyName ?? '',
+        taxCode: row.taxCode ?? '',
+        channel: Object.entries(row.channelInfo ?? {})
+          .map(([key, value]) => `${key}: ${String(value)}`)
+          .join(' · '),
+        tier: row.tierCode ?? '',
+        status: STATUS_LABEL[row.status] ?? row.status,
+        revenue30d: Number(row.revenue30dVnd ?? 0),
+        wallet: Number(row.walletBalanceVnd ?? 0),
+        available: Number(row.availableBalanceVnd ?? 0),
+        orders: Number(row.totalOrders ?? 0),
+        refundRate: Number(row.refundRatePercent ?? 0),
+        lastLogin: asDate(row.lastLoginAt),
+        createdAt: asDate(row.createdAt),
+        // One cell, one line per contract detail: the file is read by a person,
+        // not parsed.
+        contract: (row.contractInfo ?? [])
+          .map((line) => `${line.label}: ${line.value}`)
+          .join('\n'),
+        adminNote: row.adminNote ?? '',
+      });
+    }
+
+    for (const key of ['revenue30d', 'wallet', 'available']) {
+      sheet.getColumn(key).numFmt = '#,##0';
+    }
+    sheet.getColumn('contract').alignment = { wrapText: true, vertical: 'top' };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
   async adminFindById(id: number): Promise<PartnerEntity> {
     const partner = await this.partnerRepository.findOne({
       where: { id },
