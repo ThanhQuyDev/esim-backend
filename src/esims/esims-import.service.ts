@@ -284,7 +284,11 @@ export class EsimsImportService {
               }
 
               if (Object.keys(planPatch).length > 0) {
-                await this.planRepository.update(existingPlan.id, planPatch);
+                // Through the service, not the repository: it is what converts
+                // the new đồng prices into the USD columns (#009). Straight to
+                // the repository, a re-upload left `usdPrice` at its old value
+                // and orders for this plan kept totalling the stale figure.
+                await this.plansService.update(existingPlan.id, planPatch);
                 if (planPatch.costPrice || planPatch.retailPrice) {
                   result.planUpdated++;
                   this.logger.log(

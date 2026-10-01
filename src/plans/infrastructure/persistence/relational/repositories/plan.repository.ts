@@ -5,7 +5,7 @@ import { PlanEntity } from '../entities/plan.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterPlanDto, SortPlanDto } from '../../../../dto/query-plan.dto';
 import { Plan } from '../../../../domain/plan';
-import { PlanRepository } from '../../plan.repository';
+import { LocalStockSummary, PlanRepository } from '../../plan.repository';
 import { PlanMapper } from '../mappers/plan.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import {
@@ -50,36 +50,7 @@ export class PlansRelationalRepository implements PlanRepository {
         { search: `%${filterOptions.search}%` },
       );
 
-      if (filterOptions?.isCheapest !== undefined) {
-        qb.andWhere('plan."isCheapest" = :isCheapest', {
-          isCheapest: filterOptions.isCheapest,
-        });
-      }
-      if (filterOptions?.isActive !== undefined) {
-        qb.andWhere('plan."isActive" = :isActive', {
-          isActive: filterOptions.isActive,
-        });
-      }
-      if (filterOptions?.isLocalInventory !== undefined) {
-        qb.andWhere('plan."isLocalInventory" = :isLocalInventory', {
-          isLocalInventory: filterOptions.isLocalInventory,
-        });
-      }
-      if (filterOptions?.destinationId !== undefined) {
-        qb.andWhere('plan."destinationId" = :destinationId', {
-          destinationId: filterOptions.destinationId,
-        });
-      }
-      if (filterOptions?.regionId !== undefined) {
-        qb.andWhere('plan."regionId" = :regionId', {
-          regionId: filterOptions.regionId,
-        });
-      }
-      if (filterOptions?.provider?.length) {
-        qb.andWhere('plan."provider" IN (:...providers)', {
-          providers: filterOptions.provider,
-        });
-      }
+      this.applyColumnFilters(qb, filterOptions);
       this.applyLocationAndCallSmsFilters(qb, filterOptions);
       if (filterOptions?.duration !== undefined) {
         qb.andWhere('plan."durationDays" = :duration', {
@@ -152,6 +123,15 @@ export class PlansRelationalRepository implements PlanRepository {
     if (filterOptions?.provider?.length) {
       where.provider = In(filterOptions.provider);
     }
+    if (filterOptions?.apn) {
+      where.apn = filterOptions.apn;
+    }
+    if (filterOptions?.isNonHkIp !== undefined) {
+      where.isNonHkIp = filterOptions.isNonHkIp;
+    }
+    if (filterOptions?.topUp !== undefined) {
+      where.topUp = filterOptions.topUp;
+    }
 
     // Joined location and call/SMS filters require a query builder.
     if (
@@ -168,36 +148,7 @@ export class PlansRelationalRepository implements PlanRepository {
       qb.leftJoin('region.destinations', 'regionDest');
       qb.leftJoin('destination', 'child', 'child."parentId" = dest.id');
 
-      if (filterOptions?.isCheapest !== undefined) {
-        qb.andWhere('plan."isCheapest" = :isCheapest', {
-          isCheapest: filterOptions.isCheapest,
-        });
-      }
-      if (filterOptions?.isActive !== undefined) {
-        qb.andWhere('plan."isActive" = :isActive', {
-          isActive: filterOptions.isActive,
-        });
-      }
-      if (filterOptions?.isLocalInventory !== undefined) {
-        qb.andWhere('plan."isLocalInventory" = :isLocalInventory', {
-          isLocalInventory: filterOptions.isLocalInventory,
-        });
-      }
-      if (filterOptions?.destinationId !== undefined) {
-        qb.andWhere('plan."destinationId" = :destinationId', {
-          destinationId: filterOptions.destinationId,
-        });
-      }
-      if (filterOptions?.regionId !== undefined) {
-        qb.andWhere('plan."regionId" = :regionId', {
-          regionId: filterOptions.regionId,
-        });
-      }
-      if (filterOptions?.provider?.length) {
-        qb.andWhere('plan."provider" IN (:...providers)', {
-          providers: filterOptions.provider,
-        });
-      }
+      this.applyColumnFilters(qb, filterOptions);
       this.applyLocationAndCallSmsFilters(qb, filterOptions);
       if (filterOptions.duration !== undefined) {
         qb.andWhere('plan."durationDays" = :duration', {
@@ -299,6 +250,35 @@ export class PlansRelationalRepository implements PlanRepository {
     );
 
     return PlanMapper.toDomain(updatedEntity);
+  }
+
+  /**
+   * Off-sale in one statement (#005): only rows that are active right now get
+   * flagged, which is what makes the switch reversible — a plan an admin had
+   * already deactivated is left alone and stays off when the supplier returns.
+   */
+  async deactivatePlansForProvider(provider: string): Promise<number> {
+    const result = await this.plansRepository.query(
+      `UPDATE "plan"
+       SET "isActive" = false, "disabledByProvider" = true, "updatedAt" = now()
+       WHERE "deletedAt" IS NULL
+         AND lower("provider") = $1
+         AND "isActive" = true`,
+      [provider],
+    );
+    return Array.isArray(result) ? ((result[1] as number) ?? 0) : 0;
+  }
+
+  async reactivatePlansDisabledByProvider(provider: string): Promise<number> {
+    const result = await this.plansRepository.query(
+      `UPDATE "plan"
+       SET "isActive" = true, "disabledByProvider" = false, "updatedAt" = now()
+       WHERE "deletedAt" IS NULL
+         AND lower("provider") = $1
+         AND "disabledByProvider" = true`,
+      [provider],
+    );
+    return Array.isArray(result) ? ((result[1] as number) ?? 0) : 0;
   }
 
   async markCheapestPlans(): Promise<void> {
@@ -457,60 +437,111 @@ export class PlansRelationalRepository implements PlanRepository {
    */
   async countAvailableEsimsByPlanIds(
     planIds: number[],
-  ): Promise<Record<number, number>> {
+  ): Promise<Record<number, LocalStockSummary>> {
     if (!planIds.length) return {};
 
-    const rows: { planId: string | number; count: string | number }[] =
-      await this.plansRepository.query(
-        `SELECT "planId", COUNT(*) AS count FROM "esim"
+    const rows: {
+      planId: string | number;
+      count: string | number;
+      earliestExpiresAt: Date | string | null;
+    }[] = await this.plansRepository.query(
+      // An expired eSIM is not sellable stock (#021): delivery refuses it, so
+      // counting it here made the storefront advertise stock it would then
+      // fail to hand over.
+      //
+      // The earliest expiry comes back in the same pass (#070). It is the only
+      // activation deadline that is true of whichever eSIM the customer happens
+      // to be handed: stock imported in different batches expires on different
+      // dates, so promising the latest would be a promise we cannot keep.
+      `SELECT "planId", COUNT(*) AS count, MIN("expiresAt") AS "earliestExpiresAt"
+           FROM "esim"
            WHERE "planId" = ANY($1)
              AND "status" = 'available'
              AND "orderItemId" IS NULL
              AND "userId" IS NULL
              AND "deletedAt" IS NULL
+             AND ("expiresAt" IS NULL OR "expiresAt" >= now())
            GROUP BY "planId"`,
-        [planIds],
-      );
+      [planIds],
+    );
 
-    return rows.reduce<Record<number, number>>((acc, row) => {
-      acc[Number(row.planId)] = Number(row.count);
+    return rows.reduce<Record<number, LocalStockSummary>>((acc, row) => {
+      acc[Number(row.planId)] = {
+        count: Number(row.count),
+        earliestExpiresAt: row.earliestExpiresAt
+          ? new Date(row.earliestExpiresAt)
+          : null,
+      };
       return acc;
     }, {});
   }
 
+  /**
+   * Fill the VND and USD figures for cost / price / retail on every plan (#009).
+   *
+   * Two families of supplier:
+   *  • dollar-quoted (every API supplier) — `costPrice`/`price`/`retailPrice`
+   *    are dollars, multiply for đồng;
+   *  • đồng-quoted (Viettel and the other local inventory, uploaded by Excel,
+   *    plus any supplier whose `currency` is VND) — divide for dollars.
+   *
+   * `isLocalInventory = true OR currency = 'VND'` on purpose: the previous
+   * version keyed the two branches off different conditions (`currency != 'VND'`
+   * vs `isLocalInventory = true`), so a non-local plan quoted in đồng matched
+   * neither and kept a stale figure for both currencies.
+   *
+   * `$1::numeric` on every use: with a bare `$1` Postgres infers the parameter
+   * as integer from the surrounding literal, so a real exchange rate
+   * (25887.097637) was rejected and the whole method threw. The caller logs and
+   * swallows that, which made the failure invisible.
+   */
   async updateAllVndPrices(rate: number): Promise<void> {
-    // Non-local plans: price is in USD → convert to VND at the exchange rate.
+    if (!(rate > 0)) return;
+
+    const DONG_QUOTED = `("isLocalInventory" = true OR "currency" = 'VND')`;
+    const DOLLAR_QUOTED = `("isLocalInventory" IS NOT TRUE AND "currency" <> 'VND')`;
+
+    // Dollar-quoted: đồng is the derived side. Rounded to thousands, the way
+    // prices are shown.
     await this.plansRepository.query(
-      `UPDATE "plan" SET "vndPrice" = ROUND("price" * $1 / 1000) * 1000 WHERE "deletedAt" IS NULL AND "currency" != 'VND' AND ("isLocalInventory" IS NULL OR "isLocalInventory" = false)`,
+      `UPDATE "plan" SET
+         "vndPrice" = ROUND("price" * $1::numeric / 1000) * 1000,
+         "vndCostPrice" = ROUND("costPrice" * $1::numeric / 1000) * 1000,
+         "vndRetailPrice" = ROUND("retailPrice" * $1::numeric / 1000) * 1000,
+         "usdPrice" = "price",
+         "usdCostPrice" = "costPrice",
+         "usdRetailPrice" = "retailPrice"
+       WHERE "deletedAt" IS NULL AND ${DOLLAR_QUOTED}`,
       [rate],
     );
 
-    // Local inventory plans (e.g. Viettel): price is already in VND, so copy
-    // it straight across — no exchange-rate multiplication.
+    // Đồng-quoted: dollars are the derived side. Without this, a Viettel plan
+    // reported its đồng figure as dollars — a ~25,000x overstatement wherever a
+    // total mixes suppliers.
     await this.plansRepository.query(
-      `UPDATE "plan" SET "vndPrice" = ROUND("price" / 1000) * 1000 WHERE "deletedAt" IS NULL AND "isLocalInventory" = true`,
-    );
-
-    // Non-local plans already hold dollars in `price`.
-    await this.plansRepository.query(
-      `UPDATE "plan" SET "usdPrice" = "price" WHERE "deletedAt" IS NULL AND "isLocalInventory" IS NOT TRUE`,
-    );
-
-    // Local plans have no supplier dollar price at all, so derive one from the
-    // VND price. Without this they reported their đồng figure as dollars.
-    // `$1::numeric` on both uses: with a bare `$1 > 0` Postgres infers the
-    // parameter as integer from the literal, so a real exchange rate
-    // (25887.097637) was rejected and this whole method threw. The caller
-    // logs and swallows that, so the failure was invisible while local plans
-    // silently kept a stale usdPrice.
-    await this.plansRepository.query(
-      `UPDATE "plan" SET "usdPrice" = ROUND("vndPrice"::numeric / $1::numeric, 2) WHERE "deletedAt" IS NULL AND "isLocalInventory" = true AND $1::numeric > 0`,
+      `UPDATE "plan" SET
+         "vndPrice" = ROUND("price" / 1000) * 1000,
+         "vndCostPrice" = ROUND("costPrice"),
+         "vndRetailPrice" = ROUND("retailPrice"),
+         "usdPrice" = ROUND("price"::numeric / $1::numeric, 2),
+         "usdCostPrice" = ROUND("costPrice"::numeric / $1::numeric, 2),
+         "usdRetailPrice" = ROUND("retailPrice"::numeric / $1::numeric, 2)
+       WHERE "deletedAt" IS NULL AND ${DONG_QUOTED}`,
       [rate],
     );
   }
 
   async remove(id: Plan['id']): Promise<void> {
     await this.plansRepository.softDelete(id);
+  }
+
+  async getDistinctApns(): Promise<string[]> {
+    const rows: { apn: string }[] = await this.plansRepository.query(
+      `SELECT DISTINCT "apn" FROM "plan"
+       WHERE "deletedAt" IS NULL AND "apn" IS NOT NULL AND btrim("apn") <> ''
+       ORDER BY "apn"`,
+    );
+    return rows.map((row) => row.apn);
   }
 
   async getDistinctProvidersByDestinationId(
@@ -643,6 +674,59 @@ export class PlansRelationalRepository implements PlanRepository {
 
     const entities = await qb.getMany();
     return entities.map((entity) => PlanMapper.toDomain(entity));
+  }
+
+  /**
+   * Filters that are plain columns on `plan`.
+   *
+   * Extracted because the three query paths in `findManyWithPagination` each had
+   * their own copy: that is how the two halves of the price conversion drifted
+   * apart in #009, and a new filter added to two of three branches would be
+   * silently ignored on the third.
+   */
+  private applyColumnFilters(
+    qb: SelectQueryBuilder<PlanEntity>,
+    f?: FilterPlanDto | null,
+  ): void {
+    if (f?.isCheapest !== undefined) {
+      qb.andWhere('plan."isCheapest" = :isCheapest', {
+        isCheapest: f.isCheapest,
+      });
+    }
+    if (f?.isActive !== undefined) {
+      qb.andWhere('plan."isActive" = :isActive', { isActive: f.isActive });
+    }
+    if (f?.isLocalInventory !== undefined) {
+      qb.andWhere('plan."isLocalInventory" = :isLocalInventory', {
+        isLocalInventory: f.isLocalInventory,
+      });
+    }
+    if (f?.destinationId !== undefined) {
+      qb.andWhere('plan."destinationId" = :destinationId', {
+        destinationId: f.destinationId,
+      });
+    }
+    if (f?.regionId !== undefined) {
+      qb.andWhere('plan."regionId" = :regionId', { regionId: f.regionId });
+    }
+    if (f?.provider?.length) {
+      qb.andWhere('plan."provider" IN (:...providers)', {
+        providers: f.provider,
+      });
+    }
+    // #010 — APN is matched exactly: it is picked from a select box of the
+    // distinct values, not typed.
+    if (f?.apn) {
+      qb.andWhere('plan."apn" = :apn', { apn: f.apn });
+    }
+    if (f?.isNonHkIp !== undefined) {
+      qb.andWhere('COALESCE(plan."isNonHkIp", false) = :isNonHkIp', {
+        isNonHkIp: f.isNonHkIp,
+      });
+    }
+    if (f?.topUp !== undefined) {
+      qb.andWhere('COALESCE(plan."topUp", false) = :topUp', { topUp: f.topUp });
+    }
   }
 
   private applyLocationAndCallSmsFilters(

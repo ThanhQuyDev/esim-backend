@@ -19,6 +19,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { partnerDeviceFingerprint } from './partner-device-fingerprint';
+import {
+  PartnerPurchaseQuote,
+  partnerPurchaseQuote,
+  partnerPurchaseRejection,
+  partnerPurchaseUnitPriceVnd,
+} from './partner-purchase';
+import {
+  buildPurchaseDeliveryWorkbook,
+  purchaseDeliveryFilename,
+} from './purchase-delivery-workbook';
+import { PartnerEsimFaultReportEntity } from './infrastructure/persistence/relational/entities/partner-esim-fault-report.entity';
 import * as ExcelJS from 'exceljs';
 import { In, DataSource, EntityManager, MoreThan, Repository } from 'typeorm';
 import { AllConfigType } from '../config/config.type';
@@ -55,6 +66,11 @@ import {
 import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
 import { RequestBankAccountChangeDto } from './dto/partner-bank-account.dto';
+import {
+  buildReconciliationWorkbook,
+  ReconciliationTransaction,
+} from './reconciliation-workbook';
+import { ESIM_COMPANY, RECONCILIATION_VAT_PERCENT } from './company-details';
 import {
   QueryPartnerDto,
   QueryPartnerCommissionDto,
@@ -95,6 +111,7 @@ import {
   PartnerStatusEnum,
   PartnerTypeEnum,
   PartnerWalletStatusEnum,
+  PartnerEsimFaultStatusEnum,
   PartnerTopupMethodEnum,
   PartnerWalletTransactionTypeEnum,
   SessionEventTypeEnum,
@@ -456,6 +473,8 @@ export class PartnersService {
     private readonly notificationRepository: Repository<PartnerNotificationEntity>,
     @InjectRepository(PartnerNotificationReadEntity)
     private readonly notificationReadRepository: Repository<PartnerNotificationReadEntity>,
+    @InjectRepository(PartnerEsimFaultReportEntity)
+    private readonly faultReportRepository: Repository<PartnerEsimFaultReportEntity>,
     private readonly mailService: MailService,
     /**
      * Only to build a payment URL for a card top-up (#047). Provided directly
@@ -3604,7 +3623,13 @@ export class PartnersService {
   async getMyOrders(
     partnerId: number | null,
     limit = 50,
-    filters: { search?: string; status?: string } = {},
+    filters: {
+      search?: string;
+      status?: string;
+      /** Chỉ lấy đơn đặt trong khoảng này — dùng cho file đối soát tháng (#006). */
+      from?: Date;
+      to?: Date;
+    } = {},
   ): Promise<PartnerOrderRowDto[]> {
     // A null partner is the admin's view of every marketing partner at once
     // (#071); the screen is the same, only the scope is wider.
@@ -3677,10 +3702,19 @@ export class PartnersService {
          AND ($4::text IS NULL
               OR o."orderNumber" ILIKE '%' || $4 || '%'
               OR o."couponCode" ILIKE '%' || $4 || '%')
+         AND ($5::timestamptz IS NULL OR o."createdAt" >= $5)
+         AND ($6::timestamptz IS NULL OR o."createdAt" < $6)
        GROUP BY o.id, c."commissionVnd", c.status, l.code, pa.id, pa."userId"
        ORDER BY o."createdAt" DESC
        LIMIT $2`,
-      [partnerId, limit, status, search],
+      [
+        partnerId,
+        limit,
+        status,
+        search,
+        filters.from ?? null,
+        filters.to ?? null,
+      ],
     );
 
     return rows.map((r: Record<string, any>) => {
@@ -4106,6 +4140,134 @@ export class PartnersService {
   }
 
   /**
+   * Dựng file .xlsx đối soát cho một đối tác (#006).
+   *
+   * Trả về null nếu dựng hỏng, và người gọi vẫn gửi email như cũ: mất file đính
+   * kèm còn hơn mất cả thông báo đối soát của cả tháng chỉ vì một hồ sơ thiếu
+   * dữ liệu.
+   */
+  private async buildReconciliationAttachment(
+    partnerId: number,
+    period: string,
+    dates: { periodStart: Date; periodEnd: Date; issuedAt: Date },
+    commissionVnd: number,
+  ): Promise<{ filename: string; content: Buffer } | null> {
+    try {
+      const partner = await this.partnerRepository.findOne({
+        where: { id: partnerId },
+      });
+      if (!partner) return null;
+
+      const transactions = await this.partnerReconciliationTransactions(
+        partnerId,
+        period,
+      );
+
+      const content = await buildReconciliationWorkbook({
+        partyA: ESIM_COMPANY,
+        partyB: {
+          // Đối tác cá nhân không có tên công ty hay MST — dùng tên liên hệ và
+          // để trống, thay vì in ra chữ "null" trên văn bản hai bên ký.
+          name: partner.companyName?.trim() || partner.contactName,
+          address: partner.businessAddress?.trim() || '',
+          taxCode: partner.taxCode?.trim() || '',
+          representative: partner.contactName,
+          position: '',
+        },
+        periodStart: dates.periodStart,
+        periodEnd: dates.periodEnd,
+        issuedAt: dates.issuedAt,
+        contractLines: (partner.contractInfo ?? [])
+          .filter((line) => line?.label || line?.value)
+          .map((line) =>
+            [line.label, line.value].filter(Boolean).join(' ').trim(),
+          ),
+        commissionVnd,
+        vatPercent: RECONCILIATION_VAT_PERCENT,
+        transactions,
+      });
+
+      return {
+        filename: `doi-soat-${period}-doi-tac-${partnerId}.xlsx`,
+        content,
+      };
+    } catch (err) {
+      this.logger.error(
+        `Reconciliation attachment for partner ${partnerId} (${period}) failed: ${
+          (err as Error).message
+        }`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Các đơn đứng sau con số hoa hồng của một kỳ, cho sheet "Chi tiết giao dịch"
+   * (#006).
+   *
+   * Dùng lại `getMyOrders` — chính read model của màn hình đơn hàng đối tác và
+   * của file xuất Excel ở #027 — thay vì viết câu truy vấn song song. Một bảng
+   * kê không cộng ra đúng con số trên biên bản hai bên ký còn tệ hơn là không
+   * có bảng kê.
+   */
+  async partnerReconciliationTransactions(
+    partnerId: number,
+    period: string,
+  ): Promise<ReconciliationTransaction[]> {
+    const [year, month] = period.split('-').map(Number);
+    const from = new Date(year, month - 1, 1);
+    const to = new Date(year, month, 1);
+
+    const orders = await this.getMyOrders(partnerId, 5000, { from, to });
+
+    // Cùng bộ nhãn với file xuất ở #027, để đối tác đọc hai file thấy giống nhau.
+    const statusLabels: Record<string, string> = {
+      pending: 'Chờ xác nhận',
+      credited: 'Đã duyệt',
+      reversed: 'Hoàn tiền',
+      rejected: 'Không duyệt',
+    };
+
+    return (
+      orders
+        // Sắp xếp xuôi thời gian: biên bản đọc từ đầu kỳ tới cuối kỳ.
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        )
+        .map((order) => ({
+          orderNumber: order.orderNumber,
+          products: (order.items ?? [])
+            .map((item) =>
+              item.refunded
+                ? `${item.planName} (đã hoàn)`
+                : `${item.planName}${item.quantity > 1 ? ` x${item.quantity}` : ''}`,
+            )
+            .join(' + '),
+          revenueVnd: Number(order.vndPrice ?? 0),
+          source: order.linkCode
+            ? `Link - ${order.linkCode}`
+            : order.couponCode
+              ? `Mã - ${order.couponCode}`
+              : '—',
+          customer:
+            order.customerType === 'new' ? 'Khách mới' : 'Khách quay lại',
+          esims: Number(order.esimCount ?? 0),
+          commissionPercent:
+            order.commissionPercent == null
+              ? null
+              : Number(order.commissionPercent),
+          commissionVnd: Number(order.commissionVnd ?? 0),
+          status:
+            statusLabels[order.commissionStatus ?? ''] ??
+            'Không phát sinh hoa hồng',
+          createdAt: new Date(order.createdAt),
+        }))
+    );
+  }
+
+  /**
    * Email each partner the previous month's statement (#076).
    *
    * Runs daily and does nothing on all but one day: the schedule is a setting,
@@ -4135,10 +4297,24 @@ export class PartnersService {
 
     const { rows } = await this.adminListReconciliations({ period });
 
+    // Ngày cuối của kỳ: ngày 0 của tháng kế tiếp.
+    const periodEnd = new Date(
+      previous.getFullYear(),
+      previous.getMonth() + 1,
+      0,
+    );
+
     let sent = 0;
     for (const row of rows) {
       if (!row.contactEmail) continue;
       try {
+        const attachment = await this.buildReconciliationAttachment(
+          row.partnerId,
+          period,
+          { periodStart: previous, periodEnd, issuedAt: today },
+          row.commissionVnd,
+        );
+
         await this.mailService.sendPartnerReconciliationStatement({
           to: row.contactEmail,
           contactName: row.contactName ?? 'Quý đối tác',
@@ -4148,6 +4324,7 @@ export class PartnersService {
           viaCouponPercent: row.viaCouponPercent,
           revenueVnd: row.revenueVnd,
           commissionVnd: row.commissionVnd,
+          ...(attachment ? { attachment } : {}),
         });
         sent++;
       } catch (err) {
@@ -4469,6 +4646,12 @@ export class PartnersService {
       paidVnd: number;
       listVnd: number;
       refundedVnd: number;
+      /** Doanh thu bán ra theo giá niêm yết esim.vn. */
+      listPriceVnd: number;
+      /** Giá vốn đã trừ ví, đã trừ phần hoàn lại. */
+      walletCostVnd: number;
+      /** Doanh thu bán ra − giá vốn đã trừ ví; có thể âm. */
+      marginVnd: number;
       esimCount: number;
       createdAt: string;
       items: { planName: string | null; quantity: number; vndPrice: number }[];
@@ -4494,6 +4677,20 @@ export class PartnersService {
               -- Before any discount, so the page can show what the margin was.
               COALESCE(NULLIF(o."subtotalVndPrice", 0), ${ORDER_REVENUE_SQL}) AS "listVnd",
               COALESCE(o."refundedAmountVnd", 0) AS "refundedVnd",
+              -- "Doanh thu bán ra" = giá niêm yết esim.vn (chốt 02/10/2026,
+              -- phương án a): đối tác không nhập giá bán của họ, nên đây là
+              -- con số duy nhất hệ thống biết chắc.
+              COALESCE(SUM(p."vndPrice" * oi.quantity), 0) AS "listPriceVnd",
+              -- Giá vốn thật sự đã trừ ví, đã trừ phần hoàn lại. Lấy từ sổ ví
+              -- chứ không từ tổng đơn: hoàn tiền eSIM lỗi (#046) ghi vào ví và
+              -- không đụng tới đơn, nên tổng đơn sẽ nói sai.
+              (
+                SELECT COALESCE(-SUM(t."amountVnd"), 0)::bigint
+                  FROM partner_wallet_transaction t
+                 WHERE t."orderId" = o.id
+                   AND t.type IN ('${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE}',
+                                  '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')
+              ) AS "walletCostVnd",
               o."createdAt",
               COALESCE(
                 json_agg(
@@ -4540,6 +4737,13 @@ export class PartnersService {
       paidVnd: Number(row.paidVnd ?? 0),
       listVnd: Number(row.listVnd ?? 0),
       refundedVnd: Number(row.refundedVnd ?? 0),
+      listPriceVnd: Number(row.listPriceVnd ?? 0),
+      walletCostVnd: Number(row.walletCostVnd ?? 0),
+      /**
+       * Chênh lệch đối tác lãi nếu bán đúng giá niêm yết. Âm là có thật khi
+       * markup của hạng vượt giá niêm yết — hiện nguyên số âm thay vì kẹp về 0.
+       */
+      marginVnd: Number(row.listPriceVnd ?? 0) - Number(row.walletCostVnd ?? 0),
       esimCount: Number(row.esimCount ?? 0),
       createdAt: row.createdAt,
       items: (row.items ?? []).map((item: Record<string, unknown>) => ({
@@ -4548,6 +4752,495 @@ export class PartnersService {
         vndPrice: Number(item.vndPrice ?? 0),
       })),
     }));
+  }
+
+  /**
+   * Markup giá vốn của hạng đối tác đang giữ (#046).
+   *
+   * Chưa gán hạng thì markup 0 — bán đúng giá vốn. Chọn 0 thay vì chặn mua vì
+   * một đối tác đã nạp tiền mà không mua được hàng là lỗi nặng hơn, và esim.vn
+   * nhìn thấy ngay khi đơn về không có lãi.
+   */
+  private async purchaseMarkupPercentFor(
+    partner: PartnerEntity,
+  ): Promise<number> {
+    if (!partner.tierCode) return 0;
+    const tier = await this.tierRepository.findOne({
+      where: {
+        partnerType: partner.partnerType,
+        tierCode: partner.tierCode,
+      },
+    });
+    return Number(tier?.costMarkupPercent ?? 0);
+  }
+
+  /**
+   * Bảng giá cho trang "Sản phẩm & bảng giá" của đối tác phân phối (#046).
+   *
+   * Chốt 02/10/2026: đối tác mua được **mọi gói** đang bán, không có danh sách
+   * riêng. Nên bộ lọc duy nhất là `isActive` — cùng điều kiện với trang bán lẻ,
+   * để đối tác không thấy một gói mà khách của họ không tra cứu được.
+   *
+   * Gói chưa có giá vốn (`vndCostPrice = 0`, job tỷ giá chưa chạy tới) vẫn hiện
+   * nhưng `purchasable = false`: giấu đi thì đối tác tưởng esim.vn không bán
+   * gói đó, còn bán ở mức 0đ thì tặng không hàng loạt.
+   */
+  async getPurchaseCatalogue(
+    partnerId: number,
+    filters: { search?: string; destinationId?: number; limit?: number } = {},
+  ): Promise<{
+    markupPercent: number;
+    plans: {
+      id: number;
+      name: string;
+      slug: string;
+      destinationName: string | null;
+      durationDays: number;
+      dataMb: number;
+      /** Giá niêm yết esim.vn — "Doanh thu bán ra" của đối tác. */
+      listPriceVnd: number;
+      /** Giá đối tác phải trả: giá vốn + markup hạng. */
+      unitPriceVnd: number;
+      /** Chênh lệch một eSIM nếu bán đúng giá niêm yết. */
+      marginVnd: number;
+      purchasable: boolean;
+    }[];
+  }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const markupPercent = await this.purchaseMarkupPercentFor(partner);
+    const limit = Math.min(Math.max(filters.limit ?? 100, 1), 500);
+    const search = filters.search?.trim() || null;
+
+    const rows = await this.dataSource.query(
+      `SELECT p.id,
+              p.name,
+              p.slug,
+              d.name AS "destinationName",
+              p."durationDays",
+              p."dataMb",
+              p."vndPrice",
+              p."vndCostPrice"
+         FROM plan p
+         LEFT JOIN destination d ON d.id = p."destinationId"
+        WHERE p."isActive" = true
+          AND p."deletedAt" IS NULL
+          AND ($1::int IS NULL OR p."destinationId" = $1)
+          AND (
+            $2::text IS NULL
+            OR p.name ILIKE '%' || $2 || '%'
+            OR d.name ILIKE '%' || $2 || '%'
+          )
+        ORDER BY d.name NULLS LAST, p."vndPrice" ASC
+        LIMIT $3`,
+      [filters.destinationId ?? null, search, limit],
+    );
+
+    return {
+      markupPercent,
+      plans: (rows as Record<string, any>[]).map((row) => {
+        const listPriceVnd = Number(row.vndPrice ?? 0);
+        const unitPriceVnd = partnerPurchaseUnitPriceVnd(
+          Number(row.vndCostPrice ?? 0),
+          markupPercent,
+        );
+        return {
+          id: Number(row.id),
+          name: String(row.name),
+          slug: String(row.slug),
+          destinationName: row.destinationName ?? null,
+          durationDays: Number(row.durationDays ?? 0),
+          dataMb: Number(row.dataMb ?? 0),
+          listPriceVnd,
+          unitPriceVnd,
+          marginVnd: listPriceVnd - unitPriceVnd,
+          purchasable: unitPriceVnd > 0,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Báo giá trước khi đối tác bấm mua (#046).
+   *
+   * Cùng một hàm thuần với lúc trừ ví, nên con số trên nút "Mua" không bao giờ
+   * lệch số thực trừ. Trả cả lý do từ chối để nút biết khi nào phải mờ đi.
+   */
+  async quotePurchase(
+    partnerId: number,
+    planId: number,
+    quantity: number,
+  ): Promise<PartnerPurchaseQuote & { rejection: string | null }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const plan = await this.dataSource.query(
+      `SELECT "vndPrice", "vndCostPrice" FROM plan
+        WHERE id = $1 AND "isActive" = true AND "deletedAt" IS NULL`,
+      [planId],
+    );
+    if (!plan.length) {
+      throw new NotFoundException('Không tìm thấy gói này.');
+    }
+
+    const wallet = await this.getOrCreateWallet(partnerId);
+    const quote = partnerPurchaseQuote({
+      unitCostVnd: Number(plan[0].vndCostPrice ?? 0),
+      costMarkupPercent: await this.purchaseMarkupPercentFor(partner),
+      listPriceVnd: Number(plan[0].vndPrice ?? 0),
+      quantity,
+    });
+
+    return {
+      ...quote,
+      rejection: partnerPurchaseRejection(
+        {
+          partnerType: partner.partnerType,
+          partnerStatus: partner.status,
+          walletLocked: wallet.status !== PartnerWalletStatusEnum.ACTIVE,
+          balanceVnd: Number(wallet.balanceVnd),
+        },
+        quote,
+      ),
+    };
+  }
+
+  /**
+   * Trừ ví cho một đơn mua hàng, có khoá dòng ví (#046).
+   *
+   * Khoá bi quan là bắt buộc ở đây chứ không phải thừa: hai tab cùng bấm mua
+   * sẽ cùng đọc số dư cũ, và cả hai đều thấy "đủ tiền" — đối tác mua được
+   * nhiều hơn số tiền đã nạp. Kiểm tra số dư nằm **trong** transaction, sau khi
+   * đã khoá, nên lần thứ hai đọc được số dư đã trừ.
+   *
+   * `idempotencyKey` là mã đơn: gọi lại cùng một đơn không trừ thêm lần nữa.
+   */
+  async debitWalletForPurchase(
+    partnerId: number,
+    input: {
+      orderId: number;
+      orderNumber: string;
+      amountVnd: number;
+      reason?: string;
+    },
+  ): Promise<PartnerWalletTransactionEntity> {
+    const amount = Math.round(Number(input.amountVnd));
+    if (amount <= 0) {
+      throw new BadRequestException('Số tiền trừ ví phải lớn hơn 0.');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const wallet = await this.getOrCreateWalletWithManager(
+        partnerId,
+        manager,
+      );
+      const locked = await manager
+        .getRepository(PartnerWalletEntity)
+        .createQueryBuilder('wallet')
+        .setLock('pessimistic_write')
+        .where('wallet.id = :id', { id: wallet.id })
+        .getOne();
+
+      const balanceVnd = Number(locked?.balanceVnd ?? wallet.balanceVnd);
+      if (balanceVnd < amount) {
+        const thieu = amount - balanceVnd;
+        throw new BadRequestException(
+          `Số dư ví không đủ: cần ${amount.toLocaleString('vi-VN')}đ, còn thiếu ${thieu.toLocaleString('vi-VN')}đ. Vui lòng nạp thêm.`,
+        );
+      }
+
+      return this.createWalletTransactionWithManager(
+        partnerId,
+        PartnerWalletTransactionTypeEnum.ORDER_PURCHASE,
+        -amount,
+        {
+          orderId: input.orderId,
+          sourceType: 'order',
+          sourceId: String(input.orderId),
+          idempotencyKey: `purchase:${input.orderNumber}`,
+          reason: input.reason ?? `Mua hàng đơn ${input.orderNumber}`,
+        },
+        manager,
+      );
+    });
+  }
+
+  /**
+   * Trả tiền về ví khi đơn bị huỷ hoặc eSIM lỗi được duyệt hoàn (#046).
+   *
+   * `suffix` tách các lần hoàn một phần của cùng một đơn ra khỏi nhau: không có
+   * nó, lần hoàn thứ hai trùng `idempotencyKey` với lần đầu và bị nuốt mất, đối
+   * tác báo 2 eSIM lỗi mà chỉ nhận lại tiền của 1.
+   */
+  async refundWalletForPurchase(
+    partnerId: number,
+    input: {
+      orderId: number;
+      orderNumber: string;
+      amountVnd: number;
+      suffix: string;
+      reason: string;
+      createdByAdminId?: number;
+    },
+  ): Promise<PartnerWalletTransactionEntity> {
+    const amount = Math.round(Number(input.amountVnd));
+    if (amount <= 0) {
+      throw new BadRequestException('Số tiền hoàn phải lớn hơn 0.');
+    }
+    return this.createWalletTransaction(
+      partnerId,
+      PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL,
+      amount,
+      {
+        orderId: input.orderId,
+        sourceType: 'order',
+        sourceId: String(input.orderId),
+        idempotencyKey: `purchase-reversal:${input.orderNumber}:${input.suffix}`,
+        reason: input.reason,
+        createdByAdminId: input.createdByAdminId ?? null,
+      },
+    );
+  }
+
+  /**
+   * File Excel giao eSIM của một đơn đối tác tự mua (#046).
+   *
+   * Tìm đơn theo mã **và** theo chủ đơn: `orderNumber` đoán được, nên không
+   * kiểm chủ sở hữu ở đây là để đối tác này tải được eSIM của đối tác khác.
+   */
+  async buildPurchaseDelivery(
+    partnerId: number,
+    orderNumber: string,
+  ): Promise<{ filename: string; content: Buffer }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+
+    const rows = await this.dataSource.query(
+      `SELECT o.id,
+              o."orderNumber",
+              o."createdAt",
+              p.name AS "planName",
+              oi.quantity,
+              e.iccid,
+              e.lpa,
+              e."smdpAddress",
+              e."activationCode",
+              e.qrcode,
+              e."apnValue",
+              e.status AS "esimStatus",
+              e."expiresAt"
+         FROM "order" o
+         JOIN order_item oi ON oi."orderId" = o.id
+         LEFT JOIN plan p ON p.id = oi."planId"
+         LEFT JOIN esim e ON e."orderItemId" = oi.id
+        WHERE o."orderNumber" = $1
+          AND o."userId" = $2
+          AND o."deletedAt" IS NULL
+        ORDER BY e.id`,
+      [orderNumber, partner.userId],
+    );
+
+    if (!rows.length) {
+      throw new NotFoundException(`Không tìm thấy đơn ${orderNumber}.`);
+    }
+
+    const first = rows[0] as Record<string, any>;
+    const costRow = await this.dataSource.query(
+      `SELECT COALESCE(-SUM("amountVnd"), 0)::bigint AS "costVnd"
+         FROM partner_wallet_transaction
+        WHERE "orderId" = $1
+          AND type IN ('${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE}',
+                       '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')`,
+      [first.id],
+    );
+    const totalVnd = Number(costRow[0]?.costVnd ?? 0);
+    const quantity = Number(first.quantity ?? 0);
+
+    const content = await buildPurchaseDeliveryWorkbook({
+      orderNumber: String(first.orderNumber),
+      partnerName: partner.contactName ?? `Đối tác #${partner.id}`,
+      planName: first.planName ?? '',
+      orderedAt: new Date(first.createdAt),
+      quantity,
+      unitPriceVnd: quantity > 0 ? Math.round(totalVnd / quantity) : 0,
+      totalVnd,
+      esims: (rows as Record<string, any>[])
+        .filter((row) => row.iccid)
+        .map((row) => ({
+          iccid: String(row.iccid),
+          lpa: row.lpa ?? null,
+          smdpAddress: row.smdpAddress ?? null,
+          activationCode: row.activationCode ?? null,
+          qrcode: row.qrcode ?? null,
+          apnValue: row.apnValue ?? null,
+          status: String(row.esimStatus ?? ''),
+          expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
+        })),
+    });
+
+    return {
+      filename: purchaseDeliveryFilename(String(first.orderNumber)),
+      content,
+    };
+  }
+
+  /**
+   * Đối tác báo một eSIM đã mua bị lỗi (#046, quyết định A4).
+   *
+   * Chỉ tạo phiếu, **không** hoàn tiền: admin duyệt tay mới có tiền về ví.
+   * eSIM phải thuộc một đơn của chính đối tác này — không kiểm thì bất kỳ ai
+   * cũng gõ được một ICCID lạ vào và xin hoàn tiền cho hàng của người khác.
+   */
+  async reportFaultyEsim(
+    partnerId: number,
+    input: { orderNumber: string; iccid: string; reason: string },
+  ): Promise<PartnerEsimFaultReportEntity> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const iccid = input.iccid.trim();
+    const reason = input.reason.trim();
+    if (!iccid) {
+      throw new BadRequestException('Thiếu ICCID của eSIM bị lỗi.');
+    }
+    if (!reason) {
+      throw new BadRequestException('Vui lòng mô tả lỗi để esim.vn kiểm tra.');
+    }
+
+    const rows = await this.dataSource.query(
+      `SELECT o.id AS "orderId"
+         FROM esim e
+         JOIN order_item oi ON oi.id = e."orderItemId"
+         JOIN "order" o ON o.id = oi."orderId"
+        WHERE e.iccid = $1
+          AND o."orderNumber" = $2
+          AND o."userId" = $3
+          AND o."deletedAt" IS NULL
+        LIMIT 1`,
+      [iccid, input.orderNumber, partner.userId],
+    );
+    if (!rows.length) {
+      throw new NotFoundException(
+        `Không tìm thấy eSIM ${iccid} trong đơn ${input.orderNumber} của bạn.`,
+      );
+    }
+
+    const open = await this.faultReportRepository.findOne({
+      where: { iccid, status: PartnerEsimFaultStatusEnum.PENDING },
+    });
+    if (open) {
+      throw new BadRequestException(
+        `eSIM ${iccid} đã có phiếu báo lỗi đang chờ esim.vn xử lý.`,
+      );
+    }
+
+    return this.faultReportRepository.save(
+      this.faultReportRepository.create({
+        partnerId,
+        orderId: Number(rows[0].orderId),
+        orderNumber: input.orderNumber,
+        iccid,
+        reason,
+        status: PartnerEsimFaultStatusEnum.PENDING,
+        refundVnd: 0,
+      }),
+    );
+  }
+
+  /** Phiếu báo lỗi của một đối tác, hoặc của tất cả khi admin xem (#046). */
+  async getEsimFaultReports(
+    partnerId: number | null,
+    filters: { status?: string; limit?: number } = {},
+  ): Promise<PartnerEsimFaultReportEntity[]> {
+    const take = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+    return this.faultReportRepository.find({
+      where: {
+        ...(partnerId ? { partnerId } : {}),
+        ...(filters.status
+          ? { status: filters.status as PartnerEsimFaultStatusEnum }
+          : {}),
+      },
+      order: { createdAt: 'DESC' },
+      take,
+    });
+  }
+
+  /**
+   * Admin duyệt hoặc từ chối một phiếu báo eSIM lỗi (#046).
+   *
+   * Duyệt thì tiền về ví ngay, với `suffix` là id phiếu: hai eSIM lỗi của cùng
+   * một đơn là hai phiếu, hai khoá idempotency khác nhau, nên lần hoàn thứ hai
+   * không bị nuốt mất.
+   *
+   * Số tiền hoàn mặc định là **giá vốn một eSIM của chính đơn đó** — lấy từ sổ
+   * ví chia cho số eSIM đã cấp, chứ không tính lại từ bảng giá: giá vốn trôi
+   * theo tỷ giá, tính lại sau vài tháng sẽ ra một con số đối tác chưa từng trả.
+   */
+  async reviewEsimFaultReport(
+    reportId: number,
+    adminId: number,
+    decision: { approve: boolean; refundVnd?: number; adminNote?: string },
+  ): Promise<PartnerEsimFaultReportEntity> {
+    const report = await this.faultReportRepository.findOne({
+      where: { id: reportId },
+    });
+    if (!report) {
+      throw new NotFoundException(`Không tìm thấy phiếu báo lỗi ${reportId}.`);
+    }
+    if (report.status !== PartnerEsimFaultStatusEnum.PENDING) {
+      throw new BadRequestException(
+        `Phiếu ${reportId} đã được xử lý rồi (${report.status}).`,
+      );
+    }
+
+    report.reviewedByAdminId = adminId;
+    report.reviewedAt = new Date();
+    report.adminNote = decision.adminNote?.trim() || null;
+
+    if (!decision.approve) {
+      report.status = PartnerEsimFaultStatusEnum.REJECTED;
+      report.refundVnd = 0;
+      return this.faultReportRepository.save(report);
+    }
+
+    const refundVnd =
+      decision.refundVnd !== undefined
+        ? Math.round(decision.refundVnd)
+        : await this.unitCostOfPurchase(report.orderId);
+
+    if (refundVnd <= 0) {
+      throw new BadRequestException(
+        'Không xác định được số tiền hoàn cho đơn này. Nhập số tiền cụ thể.',
+      );
+    }
+
+    await this.refundWalletForPurchase(report.partnerId, {
+      orderId: report.orderId,
+      orderNumber: report.orderNumber,
+      amountVnd: refundVnd,
+      suffix: `fault-${report.id}`,
+      reason: `Hoàn tiền eSIM lỗi ${report.iccid} — đơn ${report.orderNumber}`,
+      createdByAdminId: adminId,
+    });
+
+    report.status = PartnerEsimFaultStatusEnum.APPROVED;
+    report.refundVnd = refundVnd;
+    return this.faultReportRepository.save(report);
+  }
+
+  /** Giá vốn một eSIM của một đơn, theo sổ ví chia cho số eSIM đã cấp. */
+  private async unitCostOfPurchase(orderId: number): Promise<number> {
+    const rows = await this.dataSource.query(
+      `SELECT
+         (SELECT COALESCE(-SUM("amountVnd"), 0)::bigint
+            FROM partner_wallet_transaction
+           WHERE "orderId" = $1
+             AND type IN ('${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE}',
+                          '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')
+         ) AS "costVnd",
+         (SELECT count(*)::int FROM esim e
+            JOIN order_item oi ON oi.id = e."orderItemId"
+           WHERE oi."orderId" = $1
+         ) AS "esimCount"`,
+      [orderId],
+    );
+    const costVnd = Number(rows[0]?.costVnd ?? 0);
+    const esimCount = Number(rows[0]?.esimCount ?? 0);
+    return esimCount > 0 ? Math.round(costVnd / esimCount) : 0;
   }
 
   /**
@@ -5675,7 +6368,8 @@ export class PartnersService {
     };
   }
 
-  private async getPartnerOrThrowById(id: number): Promise<PartnerEntity> {
+  /** Public vì `PartnerPurchaseService` ở module khác cần hồ sơ đối tác (#046). */
+  async getPartnerOrThrowById(id: number): Promise<PartnerEntity> {
     const partner = await this.partnerRepository.findOne({ where: { id } });
     if (!partner) throw new NotFoundException(`Partner ${id} not found`);
     return partner;

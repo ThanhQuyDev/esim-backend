@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -12,6 +13,12 @@ export class FilterFaqDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  /** Trạng thái hoạt động, for the CMS list filter (#050). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class FindAllFaqsDto {

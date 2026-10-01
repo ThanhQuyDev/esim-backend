@@ -34,4 +34,10 @@ export abstract class FaqRepository {
   ): Promise<Faq | null>;
 
   abstract remove(id: Faq['id']): Promise<void>;
+
+  /** Flip `isActive` on many FAQs at once; returns how many (#051). */
+  abstract bulkSetActive(ids: Faq['id'][], isActive: boolean): Promise<number>;
+
+  /** Delete many FAQs at once; returns how many (#051). */
+  abstract bulkRemove(ids: Faq['id'][]): Promise<number>;
 }

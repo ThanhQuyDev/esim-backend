@@ -20,6 +20,12 @@ export class FilterBlogDto {
   @IsBoolean()
   isPublished?: boolean;
 
+  /** "Nổi bật" — the flag the CMS list shows as a column (#045, #046). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isPopular?: boolean;
+
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()

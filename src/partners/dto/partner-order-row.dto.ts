@@ -22,7 +22,7 @@ export class PartnerOrderItemDto {
  * the partner never sees the buyer's identity, just what was bought.
  */
 export class PartnerOrderRowDto {
-  @ApiProperty({ type: String, example: 'ORD-1788909565715-U13KQW' })
+  @ApiProperty({ type: String, example: 'ORD-260925210805694-NZ7UEC' })
   orderNumber!: string;
 
   @ApiProperty({ type: String, example: 'paid' })

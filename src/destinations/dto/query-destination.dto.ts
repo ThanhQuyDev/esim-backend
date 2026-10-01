@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsNumber,
   IsOptional,
@@ -29,6 +30,20 @@ export class FilterDestinationDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /**
+   * Suppliers to match against the free-text `providers` column (#034).
+   *
+   * That column is typed by hand, so there is no guarantee whether it holds the
+   * slug (`airalo`) or the display name (`Airalo`) — the repository matches each
+   * entry as a case-insensitive substring and a destination qualifies if it
+   * mentions ANY of them.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  providers?: string[];
 }
 
 export class SortDestinationDto {

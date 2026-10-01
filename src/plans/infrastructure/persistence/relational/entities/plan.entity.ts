@@ -122,6 +122,26 @@ export class PlanEntity extends EntityRelationalHelper {
   usdPrice: number;
 
   /**
+   * Cost and retail price in BOTH currencies, for every supplier (#009).
+   *
+   * `costPrice` / `retailPrice` stay in whatever the supplier quotes, so they
+   * cannot be summed or compared across suppliers; these can. They are filled
+   * the moment a plan is created (API sync or Excel upload) and refreshed by the
+   * hourly exchange-rate pass.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  usdCostPrice: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  usdRetailPrice: number;
+
+  @Column({ type: 'bigint', default: 0 })
+  vndCostPrice: number;
+
+  @Column({ type: 'bigint', default: 0 })
+  vndRetailPrice: number;
+
+  /**
    * Exit IP is local rather than routed via Hong Kong. Apps that geo-block
    * Hong Kong routing (TikTok, ChatGPT) work on these (#041).
    */
@@ -141,6 +161,31 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   apn: string | null;
 
+  /**
+   * How many days the customer has to activate the eSIM before it is wasted
+   * (#070). Suppliers quote 30–180 days and state it per package; null means this
+   * one has not told us, and the storefront then stays generic rather than
+   * printing a date it cannot stand behind.
+   *
+   * Local stock does not use this: those eSIMs carry a printed expiry date from
+   * the import file instead, read off the eSIM rows.
+   */
+  @Column({ type: 'int', nullable: true })
+  activationValidityDays: number | null;
+
+  /**
+   * "Giờ làm mới mỗi ngày" (#063). Null where the supplier has not told us —
+   * better to say nothing on the storefront than to guess at when a customer's
+   * data comes back. Stored as text rather than a PG enum so adding a third
+   * policy later is a code change, not a migration on a hot table.
+   */
+  @Column({ type: String, nullable: true })
+  dailyResetPolicy: string | null;
+
+  /** Hours east of UTC; only meaningful for a calendar-day reset. */
+  @Column({ type: 'int', nullable: true })
+  dailyResetUtcOffset: number | null;
+
   @Column({ type: Boolean, default: false })
   hotSpot: boolean;
 
@@ -153,6 +198,15 @@ export class PlanEntity extends EntityRelationalHelper {
   @Index()
   @Column({ type: Boolean, default: true })
   isActive: boolean;
+
+  /**
+   * True only while this plan is off BECAUSE its supplier was switched off
+   * (#005). Switching the supplier back on reactivates exactly these rows, so a
+   * plan an admin deactivated by hand stays deactivated.
+   */
+  @Index()
+  @Column({ type: Boolean, default: false })
+  disabledByProvider: boolean;
 
   @CreateDateColumn()
   createdAt: Date;

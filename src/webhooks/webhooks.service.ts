@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+﻿import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { EsimsService } from '../esims/esims.service';
@@ -29,7 +29,7 @@ export class WebhooksService {
     private readonly usersService: UsersService,
   ) {}
 
-  // ─── Airalo ──────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Airalo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   verifyAiraloSignature(rawBody: Buffer, signature: string): void {
     const airaloConfig = this.configService.get('airalo', { infer: true });
@@ -61,7 +61,7 @@ export class WebhooksService {
       `Airalo webhook received: request_id=${requestId}, code=${orderData?.code}, sims=${sims?.length ?? 0}`,
     );
 
-    // No SIM data — just an async confirmation
+    // No SIM data â€” just an async confirmation
     if (!sims?.length) {
       this.logger.log(
         `Airalo webhook has no SIM data (request_id=${requestId}), skipping`,
@@ -258,7 +258,7 @@ export class WebhooksService {
       return;
     }
 
-    // 3. Upsert eSIM records — match each eSIM to the correct order item
+    // 3. Upsert eSIM records â€” match each eSIM to the correct order item
     // by comparing packageCode from response with providerPlanId from plan.
     // Track how many eSIMs have been assigned to each order item vs its quantity.
     const assignedCountMap = new Map<number, number>();
@@ -354,7 +354,7 @@ export class WebhooksService {
       }
     }
 
-    // Send purchase email for EsimAccess esims — all order items
+    // Send purchase email for EsimAccess esims â€” all order items
     const allOrderItemIds = orderItems.map((item) => item.id);
     await this.sendPurchaseEmailsForOrderItems(
       userId,
@@ -363,7 +363,7 @@ export class WebhooksService {
     );
   }
 
-  // ─── Gadget Korea ─────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Gadget Korea â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   verifyGadgetKoreaSignature(rawBody: Buffer, signature: string): void {
     const gadgetKoreaConfig = this.configService.get('gadgetKorea', {
@@ -506,7 +506,7 @@ export class WebhooksService {
     await this.sendPurchaseEmailAfterWebhook(userId, orderItemId, topupId);
   }
 
-  // ─── Shared ──────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Shared â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private async sendPurchaseEmailsForOrderItems(
     userId: number | null,
@@ -541,6 +541,8 @@ export class WebhooksService {
           apn: esim.apnValue,
           phoneNumber: esim.phoneNumber,
           planName: orderItem?.plan?.name ?? '',
+          callMinutes: orderItem?.plan?.call ?? null,
+          smsCount: orderItem?.plan?.sms ?? null,
           orderNumber: order?.orderNumber ?? orderRef ?? '',
         });
       }
@@ -581,6 +583,8 @@ export class WebhooksService {
           apn: esim.apnValue,
           phoneNumber: esim.phoneNumber,
           planName: orderItem.plan?.name ?? '',
+          callMinutes: orderItem.plan?.call ?? null,
+          smsCount: orderItem.plan?.sms ?? null,
           orderNumber: order?.orderNumber ?? orderRef ?? '',
         });
       }
@@ -591,7 +595,7 @@ export class WebhooksService {
     }
   }
 
-  // ─── MicroEsim ─────────────────────────────────────────────────────────────
+  // â”€â”€â”€ MicroEsim â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * Handle an async callback from MicroEsim. The provider pushes a single-device
@@ -603,11 +607,11 @@ export class WebhooksService {
     await this.microEsimService.handleCallback(payload);
   }
 
-  // ─── BILLION ───────────────────────────────────────────────────────────────
+  // â”€â”€â”€ BILLION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * Handle a BILLION notification. BILLION wraps notices in the same
-   * `{ tradeType, tradeTime, tradeData }` envelope as its requests — we only act
+   * `{ tradeType, tradeTime, tradeData }` envelope as its requests â€” we only act
    * on N009 (ESIM QR Code), passing `tradeData` to BillionService for
    * idempotent provisioning. N012 (profile status change) and other notices are
    * logged and acknowledged. BILLION defines no signature header for notices;

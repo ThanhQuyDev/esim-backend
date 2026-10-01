@@ -10,6 +10,7 @@ import {
 } from '../../custom-payment-link.repository';
 import { CustomPaymentLinkMapper } from '../mappers/custom-payment-link.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { CustomPaymentLinkStatus } from '../../../../custom-payment-links.enum';
 
 @Injectable()
 export class CustomPaymentLinkRelationalRepository implements CustomPaymentLinkRepository {
@@ -123,5 +124,27 @@ export class CustomPaymentLinkRelationalRepository implements CustomPaymentLinkR
 
   async remove(id: CustomPaymentLink['id']): Promise<void> {
     await this.customPaymentLinkRepository.delete(id);
+  }
+
+  /**
+   * One statement for the whole sweep (#056). `status = PENDING` is part of the
+   * WHERE, so a link the IPN settled a moment ago is never overwritten — whoever
+   * gets there first wins, and it cannot be both.
+   */
+  async expirePendingCreatedBefore(createdBefore: Date): Promise<number> {
+    const result = await this.customPaymentLinkRepository
+      .createQueryBuilder()
+      .update(CustomPaymentLinkEntity)
+      .set({
+        status: CustomPaymentLinkStatus.FAILED,
+        expiredAt: () => 'NOW()',
+      })
+      .where('status = :pending', {
+        pending: CustomPaymentLinkStatus.PENDING,
+      })
+      .andWhere('"createdAt" < :createdBefore', { createdBefore })
+      .execute();
+
+    return result.affected ?? 0;
   }
 }

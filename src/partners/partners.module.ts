@@ -25,6 +25,7 @@ import { PartnerReconciliationEntity } from './infrastructure/persistence/relati
 import { PartnerProgramSettingEntity } from './infrastructure/persistence/relational/entities/partner-program-setting.entity';
 import { PartnerNotificationEntity } from './infrastructure/persistence/relational/entities/partner-notification.entity';
 import { PartnerNotificationReadEntity } from './infrastructure/persistence/relational/entities/partner-notification-read.entity';
+import { PartnerEsimFaultReportEntity } from './infrastructure/persistence/relational/entities/partner-esim-fault-report.entity';
 import { MailModule } from '../mail/mail.module';
 
 @Module({
@@ -53,6 +54,8 @@ import { MailModule } from '../mail/mail.module';
       PartnerProgramSettingEntity,
       PartnerNotificationEntity,
       PartnerNotificationReadEntity,
+      // Đối tác báo eSIM lỗi, admin duyệt tay mới hoàn tiền (#046).
+      PartnerEsimFaultReportEntity,
     ]),
   ],
   controllers: [

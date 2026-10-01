@@ -41,6 +41,13 @@ export class AdminWalletUserDto {
 
   @ApiProperty({ type: String, nullable: true })
   lastName!: string | null;
+
+  /**
+   * The EFFECTIVE tier — `tierOverride ?? automaticTier(spend)` — resolved the
+   * same way the customer list resolves it, so the two screens agree (#057).
+   */
+  @ApiProperty({ enum: MembershipTierEnum })
+  membershipTier!: MembershipTierEnum;
 }
 
 export class AdminWalletListItemDto {

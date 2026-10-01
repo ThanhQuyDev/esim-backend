@@ -80,6 +80,22 @@ export class CustomPaymentLinkEntity extends EntityRelationalHelper {
   })
   virtualOrderId: string;
 
+  /** When an admin confirmed the outcome by hand (#056). */
+  @Column({ type: 'timestamp', nullable: true })
+  confirmedAt?: Date | null;
+
+  /** Which admin confirmed it — a manual money decision must be attributable. */
+  @Column({ type: Number, nullable: true })
+  confirmedByAdminId?: number | null;
+
+  /**
+   * When the sweep gave up on it after OnePay's window (#056). Set only for an
+   * auto-expiry, which is what lets a late successful IPN still be honoured
+   * without overturning a real failure.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  expiredAt?: Date | null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

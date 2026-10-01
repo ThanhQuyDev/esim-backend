@@ -12,6 +12,7 @@ import { Destination } from '../../../../domain/destination';
 import { DestinationRepository } from '../../destination.repository';
 import { DestinationMapper } from '../mappers/destination.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { buildProvidersTextFilter } from '../../../../../utils/providers-text-filter';
 
 @Injectable()
 export class DestinationsRelationalRepository implements DestinationRepository {
@@ -67,6 +68,14 @@ export class DestinationsRelationalRepository implements DestinationRepository {
         isActive: filterOptions.isActive,
       });
     }
+    const providersFilter = buildProvidersTextFilter(
+      'destination',
+      filterOptions?.providers,
+    );
+    if (providersFilter) {
+      qb.andWhere(providersFilter.sql, providersFilter.params);
+    }
+
     if (filterOptions?.search) {
       // Match the localized titles too, not just the internal `name`: the
       // storefront cards show `titleVi` / `title`, so a customer typing what

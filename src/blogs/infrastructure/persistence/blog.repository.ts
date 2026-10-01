@@ -45,6 +45,11 @@ export abstract class BlogRepository {
 
   abstract findCategories(lang?: string): Promise<string[]>;
 
+  /** Authors that have articles, for the CMS filter's select box (#046). */
+  abstract findAuthorOptions(
+    lang?: string,
+  ): Promise<{ slug: string; name: string }[]>;
+
   abstract findParentsByCategory(
     lang?: string,
   ): Promise<Record<string, string[]>>;

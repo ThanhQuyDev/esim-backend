@@ -165,8 +165,13 @@ export class TicketsController {
   @Get(':id')
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ type: Ticket })
+  /**
+   * Opening the detail is what moves a NEW ticket to IN_PROGRESS (#061) — this is
+   * the moment somebody actually picked it up. Admin-only, so a customer reading
+   * their own ticket cannot trigger it.
+   */
   findById(@Param('id') id: number): Promise<Ticket | null> {
-    return this.ticketsService.findById(id);
+    return this.ticketsService.findByIdForAdmin(id);
   }
 
   @ApiBearerAuth()

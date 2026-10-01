@@ -12,6 +12,7 @@ import { Region } from '../../../../domain/region';
 import { RegionRepository } from '../../region.repository';
 import { RegionMapper } from '../mappers/region.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { buildProvidersTextFilter } from '../../../../../utils/providers-text-filter';
 
 @Injectable()
 export class RegionsRelationalRepository implements RegionRepository {
@@ -80,6 +81,14 @@ export class RegionsRelationalRepository implements RegionRepository {
       qb.andWhere('region."isPopular" = :isPopular', {
         isPopular: filterOptions.isPopular,
       });
+    }
+
+    const providersFilter = buildProvidersTextFilter(
+      'region',
+      filterOptions?.providers,
+    );
+    if (providersFilter) {
+      qb.andWhere(providersFilter.sql, providersFilter.params);
     }
 
     if (filterOptions?.search) {

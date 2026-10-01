@@ -29,10 +29,32 @@ export class FindAllSupportedDevicesDto {
   @Min(1)
   limit?: number;
 
-  @ApiPropertyOptional({ enum: DeviceType })
+  /**
+   * One or more device types, comma-separated (#052). The CMS filter is a
+   * multi-select, and a single value used to be compared with `=` — so picking two
+   * types matched nothing at all.
+   */
+  @ApiPropertyOptional({
+    enum: DeviceType,
+    isArray: true,
+    description: 'Comma-separated list, e.g. "Tablets,Laptops"',
+  })
   @IsOptional()
-  @IsEnum(DeviceType)
-  type?: DeviceType;
+  @Transform(({ value }) => {
+    const raw: unknown[] = Array.isArray(value)
+      ? value
+      : String(value ?? '').split(',');
+    const cleaned = raw.map((entry) => String(entry).trim()).filter(Boolean);
+    return cleaned.length ? cleaned : undefined;
+  })
+  @IsEnum(DeviceType, { each: true })
+  type?: DeviceType[];
+
+  /** Nhà sản xuất, from the CMS filter's select box (#052). */
+  @ApiPropertyOptional({ description: 'Exact manufacturer name' })
+  @IsOptional()
+  @IsString()
+  manufacturer?: string;
 
   @ApiPropertyOptional({ description: 'Search by device name' })
   @IsOptional()

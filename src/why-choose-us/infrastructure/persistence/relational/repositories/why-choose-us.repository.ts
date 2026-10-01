@@ -108,6 +108,12 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
       );
     }
 
+    if (filterOptions?.isActive !== undefined) {
+      qb.andWhere('whyChooseUs.isActive = :isActive', {
+        isActive: filterOptions.isActive,
+      });
+    }
+
     if (sortOptions?.length) {
       sortOptions.forEach((sort) => {
         qb.addOrderBy(

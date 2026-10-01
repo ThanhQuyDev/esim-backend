@@ -57,6 +57,9 @@ export class BlogMapper {
       raw.plans?.map((plan) => PlanMapper.toDomain(plan)),
       parsePlanOrder(raw.planOrder),
     );
+    // The durable references (#047). The repository re-resolves `plans` from
+    // these after mapping, so a catalogue re-import cannot orphan the article.
+    domainEntity.planCodes = raw.planCodes ?? undefined;
     domainEntity.faqs = raw.faqs?.map((faq) => FaqMapper.toDomain(faq));
     domainEntity.faqEnabled = raw.faqEnabled;
     domainEntity.isPopular = raw.isPopular;
@@ -94,6 +97,9 @@ export class BlogMapper {
     // Remember the typed order; leave it alone when the plans were not loaded.
     if (domainEntity.plans !== undefined) {
       persistenceEntity.planOrder = serializePlanOrder(domainEntity.plans);
+    }
+    if (domainEntity.planCodes !== undefined) {
+      persistenceEntity.planCodes = domainEntity.planCodes;
     }
     persistenceEntity.faqs = domainEntity.faqs?.map((faq) =>
       FaqMapper.toPersistence(faq),

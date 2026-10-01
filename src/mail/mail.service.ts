@@ -10,6 +10,7 @@ import path from 'path';
 import { AllConfigType } from '../config/config.type';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import Handlebars from 'handlebars';
+import { createEsimLookupToken } from '../esims/esim-lookup-token';
 
 export interface EsimPurchaseMailData {
   to: string;
@@ -23,6 +24,13 @@ export interface EsimPurchaseMailData {
   phoneNumber: string | null;
   planName: string;
   orderNumber: string;
+  /**
+   * Call minutes / SMS the plan includes (#023). A customer who bought a
+   * call-and-SMS eSIM was never told so anywhere — not in this email, not in
+   * their profile. 0 or null means data-only and the rows are left out.
+   */
+  callMinutes?: number | null;
+  smsCount?: number | null;
 }
 
 export interface InvoiceIssuedMailData {
@@ -43,6 +51,13 @@ export interface InvoiceIssuedMailData {
  * not be followed from the button next to it.
  */
 export const PARTNER_SIGN_IN_PATH = '/auth/sign-in';
+
+/**
+ * Public eSIM lookup page on the storefront (#003), Vietnamese slug because `vi`
+ * is the default locale and carries no prefix. Kept next to the other email
+ * paths so a rename shows up here rather than inside a template string.
+ */
+export const ESIM_LOOKUP_PATH = '/tra-cuu-esim';
 
 /**
  * Where a rejected applicant fills the form in again (#003). The rejection
@@ -66,6 +81,21 @@ export interface PartnerAccountCreatedMailData {
   temporaryPassword: string;
 }
 
+/**
+ * A support-ticket email (#059).
+ *
+ * `ticketDescription` is what the customer wrote (acknowledgement); `replyBody`
+ * is what an admin wrote (reply). One of the two is set, depending on which mail
+ * is going out.
+ */
+export interface TicketMailData {
+  to: string;
+  ticketNumber: string;
+  ticketSubject: string;
+  ticketDescription?: string | null;
+  replyBody?: string | null;
+}
+
 /** An announcement going out by email (#079). */
 export interface PartnerNotificationMailData {
   to: string;
@@ -85,6 +115,11 @@ export interface PartnerReconciliationMailData {
   viaCouponPercent: number;
   revenueVnd: number;
   commissionVnd: number;
+  /**
+   * Biên bản đối soát .xlsx (#006). Thiếu nó thì email vẫn gửi với 5 chỉ số như
+   * trước — mất file đính kèm còn hơn mất cả thông báo đối soát của cả tháng.
+   */
+  attachment?: { filename: string; content: Buffer };
 }
 
 @Injectable()
@@ -260,10 +295,31 @@ export class MailService {
     const backendDomain = this.configService.get('app.backendDomain', {
       infer: true,
     });
+    const frontendDomain = this.configService.get('app.frontendDomain', {
+      infer: true,
+    });
     const qrCodeUrl =
       data.esimId && data.qrAccessToken
         ? `${backendDomain}/api/v1/esims/${data.esimId}/qrcode?token=${data.qrAccessToken}`
         : '';
+
+    // Self-service usage page (#003). The token stands in for the ICCID so the
+    // customer can forward this link to whoever is travelling with the eSIM
+    // without handing them enough to order a topup on it.
+    //
+    // Signing needs a secret, and a deployment missing one must NOT cost the
+    // customer their eSIM: the link is a convenience, the email is the delivery.
+    // Without it the template's `{{#if usageCheckUrl}}` simply hides the button.
+    let usageCheckUrl = '';
+    if (data.esimId && frontendDomain) {
+      try {
+        usageCheckUrl = `${frontendDomain}${ESIM_LOOKUP_PATH}?token=${createEsimLookupToken(data.esimId)}`;
+      } catch (err) {
+        this.logger.error(
+          `sendEsimPurchase: could not build the usage lookup link: ${(err as Error).message}`,
+        );
+      }
+    }
 
     const context = {
       iccid: data.iccid,
@@ -274,7 +330,12 @@ export class MailService {
       phoneNumber: data.phoneNumber ?? '',
       planName: data.planName,
       orderNumber: data.orderNumber,
+      // Empty string rather than 0, so `{{#if}}` in the template treats a
+      // data-only plan as "no allowance" instead of printing "0 phút".
+      callMinutes: Number(data.callMinutes) > 0 ? Number(data.callMinutes) : '',
+      smsCount: Number(data.smsCount) > 0 ? Number(data.smsCount) : '',
       qrCodeBase64: qrCodeUrl,
+      usageCheckUrl,
       logoUrl: BRAND_LOGO_URL,
       app_name: appName,
       subject: template.subject,
@@ -574,6 +635,95 @@ ${data.body}`,
   }
 
   /**
+   * A support email: the acknowledgement of a new ticket, or an admin's reply
+   * (#059).
+   *
+   * Both carry the ticket number in the subject, which is the shared reference
+   * between the email thread and the CMS thread — and what a reply has to be
+   * matched back to. `replyTo` is the support mailbox rather than the sending
+   * address, so a customer pressing Reply reaches somewhere that is read.
+   */
+  private async sendTicketEmail(
+    templateName:
+      | 'ticket_acknowledgement'
+      | 'ticket_admin_reply'
+      | 'ticket_resolved_closed',
+    data: TicketMailData,
+  ): Promise<void> {
+    const template = await this.emailTemplatesService.findByName(templateName);
+    if (!template) {
+      this.logger.error(
+        `Email template "${templateName}" not found — ticket ${data.ticketNumber} was not emailed`,
+      );
+      return;
+    }
+
+    const appName = this.configService.get('app.name', { infer: true });
+
+    // The mailbox the poller actually reads, so Reply can never land somewhere
+    // nobody looks (#062). Falls back to the brand constant when inbound mail is
+    // not configured — the address shown is then still a real mailbox.
+    const inboundUser = this.configService.get('mail.inbound.user', {
+      infer: true,
+    });
+    const supportEmail = inboundUser || SUPPORT_EMAIL;
+
+    const context = {
+      ticketNumber: data.ticketNumber,
+      ticketSubject: data.ticketSubject,
+      ticketDescription: data.ticketDescription ?? '',
+      replyBody: data.replyBody ?? '',
+      app_name: appName,
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      // Sent AS the support mailbox (#062), so the From a customer sees is the
+      // one their reply reaches. Falls back to the primary transport when the
+      // support SMTP credentials are not configured.
+      transportName: 'support',
+      to: data.to,
+      replyTo: supportEmail,
+      subject: subjectCompiled,
+      // A plain-text part that still carries the reference, for clients that
+      // never render the HTML.
+      text: `[${data.ticketNumber}] ${data.ticketSubject}
+
+${data.replyBody ?? data.ticketDescription ?? ''}`,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
+    });
+  }
+
+  /** "Cảm ơn bạn đã liên hệ" — sent once, when the ticket is opened (#059). */
+  async sendTicketAcknowledgement(data: TicketMailData): Promise<void> {
+    await this.sendTicketEmail('ticket_acknowledgement', data);
+  }
+
+  /** An admin's reply, emailed to the customer (#059). */
+  async sendTicketReply(data: TicketMailData): Promise<void> {
+    await this.sendTicketEmail('ticket_admin_reply', data);
+  }
+
+  /**
+   * The notice that a ticket was marked resolved and is now closing (#061).
+   *
+   * Replying to it reopens the ticket, which is why this template keeps the
+   * "you can reply" footer rather than signing off for good.
+   */
+  async sendTicketResolved(data: TicketMailData): Promise<void> {
+    await this.sendTicketEmail('ticket_resolved_closed', data);
+  }
+
+  /**
    * The monthly statement a partner gets by email (#076).
    *
    * Numbers arrive already formatted, because a partner reading "18.000.000đ"
@@ -623,6 +773,18 @@ ${data.body}`,
       templatePath: '',
       context: {},
       html: htmlCompiled,
+      ...(data.attachment
+        ? {
+            attachments: [
+              {
+                filename: data.attachment.filename,
+                content: data.attachment.content,
+                contentType:
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              },
+            ],
+          }
+        : {}),
     });
   }
 

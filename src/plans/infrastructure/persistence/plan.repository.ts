@@ -4,6 +4,15 @@ import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { Plan } from '../../domain/plan';
 import { FilterPlanDto, SortPlanDto } from '../../dto/query-plan.dto';
 
+/**
+ * What one local-inventory plan has left in the warehouse: how many eSIMs, and
+ * the soonest any of them expires (#040, #070).
+ */
+export type LocalStockSummary = {
+  count: number;
+  earliestExpiresAt: Date | null;
+};
+
 export abstract class PlanRepository {
   abstract create(
     data: Omit<Plan, 'id' | 'createdAt' | 'deletedAt' | 'updatedAt'>,
@@ -22,12 +31,14 @@ export abstract class PlanRepository {
   abstract findById(id: Plan['id']): Promise<NullableType<Plan>>;
 
   /**
-   * Unsold eSIMs per plan, for local inventory. Keyed by plan id; a plan with
-   * no stock left is simply absent from the map.
+   * Unsold eSIMs per plan, for local inventory, plus the earliest expiry among
+   * them — the activation deadline that holds for whichever one the customer is
+   * handed (#070). Keyed by plan id; a plan with no stock left is simply absent
+   * from the map.
    */
   abstract countAvailableEsimsByPlanIds(
     planIds: number[],
-  ): Promise<Record<number, number>>;
+  ): Promise<Record<number, LocalStockSummary>>;
 
   abstract findBySlug(slug: Plan['slug']): Promise<NullableType<Plan>>;
 
@@ -37,6 +48,16 @@ export abstract class PlanRepository {
   ): Promise<Plan | null>;
 
   abstract markCheapestPlans(): Promise<void>;
+
+  /**
+   * Take every active plan of one supplier off sale, flagging the rows as
+   * `disabledByProvider` so they can be restored later (#005). Returns the
+   * number of rows deactivated.
+   */
+  abstract deactivatePlansForProvider(provider: string): Promise<number>;
+
+  /** Reactivate only the rows flagged `disabledByProvider` (#005). */
+  abstract reactivatePlansDisabledByProvider(provider: string): Promise<number>;
 
   /** Recount units sold per plan, destination and region (#053). */
   abstract recalculateSoldCounts(): Promise<void>;
@@ -56,6 +77,9 @@ export abstract class PlanRepository {
   abstract updateAllVndPrices(rate: number): Promise<void>;
 
   abstract remove(id: Plan['id']): Promise<void>;
+
+  /** Distinct non-empty APN values, to populate the CMS filter (#010). */
+  abstract getDistinctApns(): Promise<string[]>;
 
   abstract getDistinctProvidersByDestinationId(
     destinationId: number,

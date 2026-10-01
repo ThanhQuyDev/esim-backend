@@ -45,6 +45,16 @@ class TopupCheckoutResponse {
   paymentUrl!: string;
 }
 
+/** Outcome of a topup paid from the eXu balance (#028) — no gateway step. */
+class TopupWalletResponse {
+  /** True only when the provider actually applied the recharge. */
+  success!: boolean;
+  orderId!: string;
+  status!: string;
+  vndAmount!: number;
+  walletSpentVndAmount!: number;
+}
+
 class TopupBankTransferResponse {
   success!: true;
   orderId!: string;
@@ -111,6 +121,22 @@ export class TopupController {
     @Body() dto: AdminManualTopupDto,
   ): Promise<AdminManualTopupResponse> {
     return this.topupService.adminManualTopup(dto, req.user.id);
+  }
+
+  /**
+   * Topup paid from the customer's own eXu balance (#028).
+   *
+   * Nothing to redirect to: the balance is held, the order is marked paid and the
+   * recharge runs here, so the caller gets the final outcome in the response.
+   */
+  @Post('wallet')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: TopupWalletResponse })
+  async walletCheckout(
+    @Request() req: { user: { id: number } },
+    @Body() dto: TopupCheckoutDto,
+  ): Promise<TopupWalletResponse> {
+    return this.topupService.checkoutWithWallet(req.user.id, dto);
   }
 
   @Post('bank-transfer')

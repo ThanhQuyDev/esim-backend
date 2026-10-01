@@ -124,14 +124,18 @@ describe('Customer list summary', () => {
     expect(referralQuery.params[0]).toEqual([7]);
   });
 
-  it('should use two set-based queries, never one per row', async () => {
+  it('should use set-based queries, never one per row', async () => {
+    const ids = [1, 2, 3, 4, 5];
     const { queries } = await listUsers({
-      users: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }],
+      users: ids.map((id) => ({ id })),
     });
 
-    expect(queries).toHaveLength(2);
+    // One query per fact the list needs — referral code, paid orders and the eXu
+    // wallet (#038) — and each one takes the whole page's ids at once. Counting
+    // the queries is the point: a per-row lookup would be 5, then 50.
+    expect(queries).toHaveLength(3);
     for (const query of queries) {
-      expect(query.params[0]).toEqual([1, 2, 3, 4, 5]);
+      expect(query.params[0]).toEqual(ids);
     }
   });
 

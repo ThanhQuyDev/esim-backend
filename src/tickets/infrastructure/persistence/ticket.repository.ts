@@ -21,6 +21,14 @@ export abstract class TicketRepository {
 
   abstract findById(id: Ticket['id']): Promise<NullableType<Ticket>>;
 
+  /** Look a ticket up by the reference in an email subject (#059). */
+  abstract findByTicketNumber(
+    ticketNumber: string,
+  ): Promise<NullableType<Ticket>>;
+
+  /** Tickets resolved before `cutoff` and still awaiting auto-close (#061). */
+  abstract findResolvedBefore(cutoff: Date): Promise<Ticket[]>;
+
   /** Tickets opened with this email since `since` — the per-email spam limit (#033). */
   abstract countByEmailSince(email: string, since: Date): Promise<number>;
 

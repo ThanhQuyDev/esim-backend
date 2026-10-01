@@ -8,10 +8,12 @@ import {
   Delete,
   UseGuards,
   Query,
+  Request,
 } from '@nestjs/common';
 import { CustomPaymentLinksService } from './custom-payment-links.service';
 import { CreateCustomPaymentLinkDto } from './dto/create-custom-payment-link.dto';
 import { UpdateCustomPaymentLinkDto } from './dto/update-custom-payment-link.dto';
+import { ConfirmCustomPaymentLinkDto } from './dto/confirm-custom-payment-link.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -81,6 +83,26 @@ export class CustomPaymentLinksController {
   })
   findById(@Param('id') id: string) {
     return this.customPaymentLinksService.findById(id);
+  }
+
+  /**
+   * An admin confirms what happened to a pending link (#056) — declared before
+   * `PATCH :id`, which would otherwise capture "confirm" as part of the id.
+   */
+  @Patch(':id/confirm')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: CustomPaymentLink })
+  confirm(
+    @Request() request: { user?: { id?: number | string } },
+    @Param('id') id: string,
+    @Body() dto: ConfirmCustomPaymentLinkDto,
+  ) {
+    const adminUserId = Number(request?.user?.id);
+    return this.customPaymentLinksService.confirmManually(
+      id,
+      dto.isPaid,
+      Number.isInteger(adminUserId) ? adminUserId : undefined,
+    );
   }
 
   @Patch(':id')

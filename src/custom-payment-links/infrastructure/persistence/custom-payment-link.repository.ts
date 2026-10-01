@@ -41,4 +41,10 @@ export abstract class CustomPaymentLinkRepository {
   ): Promise<CustomPaymentLink | null>;
 
   abstract remove(id: CustomPaymentLink['id']): Promise<void>;
+
+  /**
+   * Move every still-pending link created before `createdBefore` to FAILED,
+   * stamping `expiredAt` (#056). Returns how many.
+   */
+  abstract expirePendingCreatedBefore(createdBefore: Date): Promise<number>;
 }

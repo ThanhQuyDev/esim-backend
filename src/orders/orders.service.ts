@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { SubmitOrderDto } from './dto/submit-order.dto';
@@ -29,10 +30,18 @@ import { AllConfigType } from '../config/config.type';
 import { CouponsService } from '../coupons/coupons.service';
 import { EsimsService } from '../esims/esims.service';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
-import { AdminOrderDetailDto } from './dto/admin-order-detail.dto';
+import {
+  AdminOrderDetailDto,
+  AdminOrderTopupDto,
+} from './dto/admin-order-detail.dto';
 import { CartsService } from '../carts/carts.service';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
+import { ExchangeRateService } from '../plans/exchange-rate.service';
+import { User } from '../users/domain/user';
+import { CreateUserDto } from '../users/dto/create-user.dto';
+import { RoleEnum } from '../roles/roles.enum';
+import { StatusEnum } from '../statuses/statuses.enum';
 import { Plan } from '../plans/domain/plan';
 import { WalletsService } from '../wallets/wallets.service';
 import type { ReferralValidationResult } from '../wallets/wallets.service';
@@ -42,6 +51,7 @@ import { InvoiceRepository } from '../invoices/infrastructure/persistence/invoic
 import { InvoiceStatus } from '../invoices/invoices.enum';
 import { PartnersService } from '../partners/partners.service';
 import { SessionShapeEnum } from '../partners/partners.enum';
+import { generateOrderNumber } from '../utils/order-number';
 
 const VND_ROUNDING_UNIT = 1000;
 
@@ -153,6 +163,12 @@ export class OrdersService {
     private readonly walletsService: WalletsService,
     private readonly invoiceRepository: InvoiceRepository,
     private readonly partnersService: PartnersService,
+    private readonly exchangeRateService: ExchangeRateService,
+    /**
+     * Chỉ dùng để định giá lại dòng hàng của đơn đối tác (#046) — repository
+     * của order_item không có `vndPrice` trong DTO cập nhật.
+     */
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -404,7 +420,7 @@ export class OrdersService {
     );
 
     // 3. Create order
-    const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const orderNumber = generateOrderNumber();
     const order = await this.orderRepository.create({
       userId,
       orderNumber,
@@ -1033,9 +1049,13 @@ export class OrdersService {
    * A line that was accepted but is still waiting on the provider's webhook
    * (Airalo, Billion, MicroEsim deliver asynchronously) is left alone.
    */
-  async retryProvisioning(orderId: number): Promise<{
+  async retryProvisioning(
+    orderId: number,
+    options: { itemIds?: number[] } = {},
+  ): Promise<{
     retriedItemIds: number[];
     skippedItemIds: number[];
+    emailsSent: number;
     message: string;
   }> {
     const order = await this.orderRepository.findById(orderId);
@@ -1047,7 +1067,27 @@ export class OrdersService {
       );
     }
 
-    const items = await this.orderItemsService.findByOrderId(orderId);
+    const allItems = await this.orderItemsService.findByOrderId(orderId);
+
+    // An explicit selection from the picker (#014) narrows WHICH lines are
+    // considered — it never overrides the eligibility rules below, so ticking a
+    // line that already has an eSIM still cannot buy a second one.
+    const chosen = options.itemIds?.length
+      ? new Set(options.itemIds.map(Number))
+      : null;
+    if (chosen) {
+      const known = new Set(allItems.map((item) => Number(item.id)));
+      const unknown = [...chosen].filter((id) => !known.has(id));
+      if (unknown.length) {
+        throw new UnprocessableEntityException(
+          `Order ${order.orderNumber} has no item(s) ${unknown.join(', ')}`,
+        );
+      }
+    }
+    const items = chosen
+      ? allItems.filter((item) => chosen.has(Number(item.id)))
+      : allItems;
+
     const esims = await this.esimsService.findByOrderItemIds(
       items.map((item) => Number(item.id)),
     );
@@ -1074,6 +1114,7 @@ export class OrdersService {
       return {
         retriedItemIds,
         skippedItemIds,
+        emailsSent: 0,
         message:
           'Không có sản phẩm nào cần gọi lại: tất cả đã có eSIM hoặc đã được nhà cung cấp tiếp nhận.',
       };
@@ -1085,10 +1126,34 @@ export class OrdersService {
 
     await this.submitProviders(orderId, { onlyItemIds: retriedItemIds });
 
+    // Mail whatever came back on this run (#014). Suppliers that deliver over a
+    // webhook (Airalo, Billion, MicroEsim) have nothing yet, and their webhook
+    // sends the email itself when the eSIM lands — so 0 here is a normal
+    // outcome, not a failure.
+    let emailsSent = 0;
+    try {
+      const mailed = await this.resendEsimEmail(orderId, {
+        onlyOrderItemIds: retriedItemIds,
+      });
+      emailsSent = mailed.sent;
+    } catch (err) {
+      // The supplier call already succeeded; a mail failure must not turn that
+      // into an error the admin reads as "the retry did not work".
+      this.logger.error(
+        `retryProvisioning: re-order succeeded but email failed for order ${order.orderNumber}: ${(err as Error).message}`,
+      );
+    }
+
+    const emailNote =
+      emailsSent > 0
+        ? ` Đã gửi lại email eSIM (${emailsSent} eSIM).`
+        : ' Nhà cung cấp giao bất đồng bộ nên eSIM chưa về; email sẽ tự gửi khi eSIM về.';
+
     return {
       retriedItemIds,
       skippedItemIds,
-      message: `Đã gọi lại nhà cung cấp cho ${retriedItemIds.length} sản phẩm.`,
+      emailsSent,
+      message: `Đã gọi lại nhà cung cấp cho ${retriedItemIds.length} sản phẩm.${emailNote}`,
     };
   }
 
@@ -1370,17 +1435,19 @@ export class OrdersService {
    */
   async submitManualOrder(
     adminUserId: number,
-    dto: { email: string; packageCode: string; slug: string; quantity: number },
+    dto: {
+      email: string;
+      packageCode: string;
+      slug: string;
+      quantity: number;
+      customerName?: string | null;
+    },
   ): Promise<Order> {
-    // 1. Resolve buyer by email
-    const buyer = await this.usersService.findByEmail(dto.email);
-    if (!buyer) {
-      throw new NotFoundException(
-        `Buyer with email ${dto.email} not found. Please ensure the user account exists.`,
-      );
-    }
-
-    // 2. Resolve plan by slug (primary) and verify packageCode
+    // 1. Resolve plan by slug (primary) and verify packageCode.
+    //
+    // Before the buyer, because resolving the buyer now has a side effect: it
+    // creates the account (#041). A bad plan must not leave a stray account
+    // behind for an order that never happened.
     const plan = await this.plansService.findBySlug(dto.slug);
     if (!plan) {
       throw new NotFoundException(`Plan slug ${dto.slug} not found`);
@@ -1391,6 +1458,19 @@ export class OrdersService {
       );
     }
 
+    // 2. Resolve the buyer, creating the account when there is none (#041).
+    //
+    // The whole point of đặt đơn hộ is that the customer does not want to touch
+    // the website, so refusing an unknown email meant telling them to go and
+    // register first — the errand the feature exists to remove.
+    const buyer =
+      (await this.usersService.findByEmail(dto.email)) ??
+      (await this.createBuyerForManualOrder(
+        adminUserId,
+        dto.email,
+        dto.customerName ?? null,
+      ));
+
     // 3. Build a SubmitOrderDto-compatible payload (no coupon/wallet/referral for manual orders)
     const submitDto: SubmitOrderDto = {
       currency: plan.currency,
@@ -1398,8 +1478,16 @@ export class OrdersService {
       paymentMethod: 'admin_manual',
     };
 
-    // 4. Create pending order at VND rate (use 1 to avoid hitting the FX API; cost figures
-    // are not critical for an admin-bypassed order, the payable VND price is still correct).
+    // 4. Create the pending order at the real USD→VND rate.
+    //
+    // This used to pass no rate at all, on the reasoning that "cost figures are
+    // not critical for an admin-bypassed order". They are: with no rate,
+    // `createPendingOrder` stores `vndCostPrice = 0` on the order and on every
+    // item, so an đặt đơn hộ order showed no giá vốn on its detail page and
+    // contributed nothing to the margin on the overview — it looked like pure
+    // profit (#042). The rate is cached for an hour and never throws, so there
+    // is no FX call to avoid.
+    const vndRate = await this.exchangeRateService.getUsdToVndRate();
     const orderNumber = `MAN-${Date.now()}-${Math.random()
       .toString(36)
       .substring(2, 8)
@@ -1408,6 +1496,7 @@ export class OrdersService {
       Number(buyer.id),
       submitDto,
       orderNumber,
+      vndRate,
     );
 
     this.logger.log(
@@ -1437,6 +1526,132 @@ export class OrdersService {
   }
 
   /**
+   * Đối tác phân phối tự đặt mua hàng bằng ví ký quỹ (#046).
+   *
+   * Giống `submitManualOrder` ở chỗ không đi qua cổng thanh toán, khác ở ba
+   * điểm quan trọng:
+   *
+   * 1. Đơn được **định giá lại** theo giá vốn + markup hạng của đối tác. Giữ
+   *    nguyên giá bán lẻ sẽ cộng vào doanh thu esim.vn một khoản chưa ai trả.
+   * 2. Ví bị trừ **trước** khi gọi nhà cung cấp, qua `onDebit`. Trừ sau thì có
+   *    lúc đối tác đã cầm eSIM mà ví không còn đủ tiền để trừ. `onDebit` ném
+   *    lỗi thì đơn dừng ở `pending` và không có eSIM nào được cấp.
+   * 3. **Không gửi email eSIM**: chốt 02/10/2026, đối tác nhận hàng bằng file
+   *    Excel tải về. Gửi hàng trăm email cho một lần mua 100 cái là spam chính
+   *    hộp thư của đối tác.
+   */
+  async submitPartnerPurchase(input: {
+    buyerUserId: number;
+    planId: number;
+    quantity: number;
+    unitPriceVnd: number;
+    onDebit: (orderId: number, orderNumber: string) => Promise<void>;
+  }): Promise<Order> {
+    const plan = await this.plansService.findById(input.planId);
+    if (!plan) {
+      throw new NotFoundException(`Plan ${input.planId} not found`);
+    }
+    if (!plan.isActive) {
+      throw new BadRequestException(
+        `Plan ${input.planId} is no longer on sale`,
+      );
+    }
+
+    const vndRate = await this.exchangeRateService.getUsdToVndRate();
+    const orderNumber = `PTN-${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase()}`;
+
+    const order = await this.createPendingOrder(
+      input.buyerUserId,
+      {
+        currency: plan.currency,
+        items: [{ planId: plan.id, quantity: input.quantity }],
+        paymentMethod: 'partner_wallet',
+      } as SubmitOrderDto,
+      orderNumber,
+      vndRate,
+    );
+
+    // Định giá lại theo giá đối tác. `createPendingOrder` tính theo giá bán lẻ
+    // vì nó dùng chung với giỏ hàng của khách; ở đây số tiền thật là số tiền
+    // trừ khỏi ví, nên mọi cột doanh thu của đơn phải mang đúng số đó.
+    const totalVnd = input.unitPriceVnd * input.quantity;
+    await this.orderRepository.update(order.id, {
+      vndPrice: totalVnd,
+      subtotalVndPrice: totalVnd,
+      payableVndPrice: totalVnd,
+      eligibleSpendVnd: totalVnd,
+      discountAmount: 0,
+      couponDiscountVndAmount: 0,
+    } as Partial<Order>);
+    await this.dataSource.query(
+      `UPDATE order_item SET "vndPrice" = $1 WHERE "orderId" = $2`,
+      [input.unitPriceVnd, order.id],
+    );
+
+    // Trừ ví trước khi có bất kỳ eSIM nào tồn tại. Không bọc try/catch: ví
+    // thiếu tiền thì đơn phải dừng lại ở đây, không được cấp hàng.
+    await input.onDebit(order.id, orderNumber);
+
+    await this.finalizePaidOrder(order.id, {
+      paymentMethod: 'partner_wallet',
+      paymentId: `PARTNER-${input.buyerUserId}`,
+      mutedEmail: true,
+    });
+
+    try {
+      await this.submitProviders(order.id, { mutedEmail: true });
+    } catch (err) {
+      // Nuốt lỗi ở đây để trả đơn về cho phía gọi đếm số eSIM thực cấp và
+      // quyết định hoàn tiền — ném ra sẽ giấu mất đơn vừa bị trừ tiền.
+      this.logger.error(
+        `submitPartnerPurchase: provider submission failed for ${orderNumber}: ${(err as Error).message}`,
+      );
+    }
+
+    const finalOrder = await this.orderRepository.findById(order.id);
+    return finalOrder ?? order;
+  }
+
+  /**
+   * Create the buyer's account so an đặt đơn hộ order has an owner (#041).
+   *
+   * Deliberately WITHOUT a password. The customer asked staff to order for them
+   * precisely because they did not want to deal with the website, so minting a
+   * temporary password and emailing it would put the errand back — and an
+   * unsolicited credentials email to someone who never signed up is worse than
+   * no email. The account is otherwise a normal customer account: the eSIM is
+   * delivered to this address, the order shows up under it, and if they ever do
+   * want to sign in, "quên mật khẩu" sets a password the usual way.
+   *
+   * The name is whatever the admin typed; blank leaves it null rather than
+   * guessing one from the email address.
+   */
+  private async createBuyerForManualOrder(
+    adminUserId: number,
+    email: string,
+    customerName: string | null,
+  ): Promise<User> {
+    const name = customerName?.trim() || null;
+
+    const buyer = await this.usersService.create({
+      email,
+      firstName: name,
+      lastName: null,
+      role: { id: RoleEnum.user },
+      status: { id: StatusEnum.active },
+    } as CreateUserDto);
+
+    this.logger.log(
+      `submitManualOrder: admin ${adminUserId} created account ${buyer.id} for ${email} (no password set)`,
+    );
+
+    return buyer;
+  }
+
+  /**
    * Resend the eSIM activation email for an existing paid order. Looks up the
    * eSIMs already stored against the order's items and reuses the same mail
    * template as the initial purchase flow.
@@ -1447,7 +1662,10 @@ export class OrdersService {
    * misleading UX where clicking "Resend eSIM" would silently dispatch an
    * invoice mail.
    */
-  async resendEsimEmail(orderId: number): Promise<{
+  async resendEsimEmail(
+    orderId: number,
+    options: { onlyOrderItemIds?: number[] } = {},
+  ): Promise<{
     sent: number;
     skippedReason?: string;
   }> {
@@ -1459,10 +1677,19 @@ export class OrdersService {
       return { sent: 0, skippedReason: 'buyer-has-no-email' };
     }
 
-    const orderItems = await this.orderItemsService.findByOrderId(orderId);
-    if (!orderItems.length) {
+    const allItems = await this.orderItemsService.findByOrderId(orderId);
+    if (!allItems.length) {
       return { sent: 0, skippedReason: 'no-order-items' };
     }
+
+    // The retry button mails only the lines it just re-ordered (#014): mailing
+    // the whole order would send the customer a second copy of every eSIM they
+    // already had.
+    const orderItems = options.onlyOrderItemIds?.length
+      ? allItems.filter((item) =>
+          options.onlyOrderItemIds!.includes(Number(item.id)),
+        )
+      : allItems;
 
     const esims = await this.esimsService.findByOrderItemIds(
       orderItems.map((i) => i.id),
@@ -1498,6 +1725,8 @@ export class OrdersService {
           apn: esim.apnValue,
           phoneNumber: esim.phoneNumber,
           planName: plan?.name ?? '',
+          callMinutes: plan?.call ?? null,
+          smsCount: plan?.sms ?? null,
           orderNumber: order.orderNumber,
         });
         sent += 1;
@@ -1515,7 +1744,11 @@ export class OrdersService {
     userId: number,
     orderNumber: string,
     orderItemIds: number[],
-    localItems: Array<{ planId: number; plan: { name: string } }>,
+    // `call` / `sms` so the email can state the allowance (#023).
+    localItems: Array<{
+      planId: number;
+      plan: { name: string; call?: number | null; sms?: number | null };
+    }>,
   ): Promise<void> {
     if (orderItemIds.length === 0) return;
 
@@ -1538,6 +1771,8 @@ export class OrdersService {
           apn: esim.apnValue,
           phoneNumber: esim.phoneNumber,
           planName: plan?.plan.name ?? '',
+          callMinutes: plan?.plan.call ?? null,
+          smsCount: plan?.plan.sms ?? null,
           orderNumber,
         });
       }
@@ -1607,6 +1842,59 @@ export class OrdersService {
     return this.orderRepository.findById(id);
   }
 
+  /**
+   * The topup half of an order detail (#015): what the package gave, and the
+   * eSIM it was applied to so the result can be reconciled.
+   *
+   * The package details come from the snapshot stored at checkout, never from a
+   * fresh provider lookup — a catalogue that has moved on must not rewrite
+   * history on a past order.
+   */
+  private async buildTopupDetail(
+    order: Order,
+  ): Promise<AdminOrderTopupDto | null> {
+    if (order.orderType !== 'TOPUP' || !order.targetIccid) return null;
+
+    const esim = await this.esimsService.findByIccid(order.targetIccid);
+    let planName: string | null = null;
+    if (esim?.planId != null) {
+      const plan = await this.plansService.findById(esim.planId);
+      planName = plan?.name ?? null;
+    }
+
+    // The order the eSIM came from, so an admin can jump back to the purchase.
+    let originalOrderId: number | null = null;
+    if (esim?.orderItemId != null) {
+      const orderItem = await this.orderItemsService.findById(esim.orderItemId);
+      originalOrderId =
+        orderItem?.orderId != null ? Number(orderItem.orderId) : null;
+    }
+
+    return {
+      targetIccid: order.targetIccid,
+      provider: order.topupProvider ?? null,
+      packageId: order.topupPackageId ?? null,
+      packageName: order.topupPackageName ?? null,
+      dataText: order.topupDataText ?? null,
+      durationDays: order.topupDurationDays ?? null,
+      isUnlimited: !!order.topupIsUnlimited,
+      targetEsim: esim
+        ? {
+            id: esim.id,
+            iccid: esim.iccid,
+            status: esim.status,
+            provider: esim.provider ?? null,
+            planName,
+            dataUsed: esim.dataUsed ?? null,
+            dataTotal: esim.dataTotal ?? null,
+            expiresAt: esim.expiresAt ?? null,
+            activatedAt: esim.activatedAt ?? null,
+            originalOrderId,
+          }
+        : null,
+    };
+  }
+
   async findDetailById(id: Order['id']): Promise<AdminOrderDetailDto | null> {
     const order = await this.orderRepository.findById(id);
     if (!order) return null;
@@ -1636,6 +1924,8 @@ export class OrdersService {
       esimsByOrderItemId.set(esim.orderItemId, list);
     }
 
+    const topup = await this.buildTopupDetail(order);
+
     return {
       id: order.id,
       userId: order.userId,
@@ -1650,6 +1940,8 @@ export class OrdersService {
         : null,
       orderNumber: order.orderNumber,
       status: order.status,
+      orderType: order.orderType ?? 'BUY_NEW',
+      topup,
       totalAmount: order.totalAmount,
       currency: order.currency,
       paymentMethod: order.paymentMethod,
@@ -1901,6 +2193,8 @@ export class OrdersService {
       }
     }
 
+    await this.markRefundedEsims(order.id, selectedItemIds);
+
     if (order.attributedPartnerId) {
       const totalOrderValue =
         Number(order.payableVndPrice ?? order.vndPrice ?? 0) +
@@ -1947,6 +2241,43 @@ export class OrdersService {
    * suppliers, and refunding the esimaccess line must NOT cancel the airalo
    * line sitting next to it.
    */
+  /**
+   * Put the refunded eSIMs into `refunded` status (#019).
+   *
+   * `cancelOrderWithSuppliers` only did this for local inventory, so an eSIM from
+   * esimaccess / airalo / gadgetkorea / microesim / billion stayed `sold` after a
+   * refund and the eSIM list showed it as a live eSIM. It is done here rather
+   * than in the supplier loop because it is bookkeeping, not a supplier call: the
+   * money has been given back whether or not the supplier's cancel API answered.
+   *
+   * `resolveDeliveredStatus` never overwrites `refunded`, so a late provider
+   * callback cannot resurrect one of these.
+   */
+  private async markRefundedEsims(
+    orderId: number,
+    onlyItemIds?: number[],
+  ): Promise<void> {
+    const allItems = await this.orderItemsService.findByOrderId(orderId);
+    const itemIds = (
+      onlyItemIds?.length
+        ? allItems.filter((item) => onlyItemIds.includes(Number(item.id)))
+        : allItems
+    ).map((item) => Number(item.id));
+    if (itemIds.length === 0) return;
+
+    const esims = await this.esimsService.findByOrderItemIds(itemIds);
+    for (const esim of esims) {
+      if (esim.status === 'refunded') continue;
+      try {
+        await this.esimsService.update(esim.id, { status: 'refunded' });
+      } catch (err) {
+        this.logger.error(
+          `refundOrder: failed to mark esim ${esim.id} refunded: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
   private async cancelOrderWithSuppliers(
     orderId: number,
     onlyItemIds?: number[],

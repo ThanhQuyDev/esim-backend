@@ -23,7 +23,7 @@ export class Order {
 
   @ApiProperty({
     type: String,
-    example: 'ORD-20260403-001',
+    example: 'ORD-260925210805694-NZ7UEC',
   })
   orderNumber!: string;
 
@@ -58,6 +58,22 @@ export class Order {
     example: 'bonbon-mobile-30days-3gb-topup',
   })
   topupPackageId?: string | null;
+
+  /** What the topup package gave, snapshotted at checkout (#015). */
+  @ApiPropertyOptional({
+    type: String,
+    example: '3 GB - 100 SMS - 100 Mins - 30 Days',
+  })
+  topupPackageName?: string | null;
+
+  @ApiPropertyOptional({ type: String, example: '3 GB' })
+  topupDataText?: string | null;
+
+  @ApiPropertyOptional({ type: Number, example: 30 })
+  topupDurationDays?: number | null;
+
+  @ApiPropertyOptional({ type: Boolean, example: false })
+  topupIsUnlimited?: boolean;
 
   @ApiProperty({
     type: Number,

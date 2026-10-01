@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { EsimEntity } from '../entities/esim.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterEsimDto, SortEsimDto } from '../../../../dto/query-esim.dto';
 import { Esim } from '../../../../domain/esim';
-import { EsimRepository } from '../../esim.repository';
+import { EsimRepository, EsimTopupSummary } from '../../esim.repository';
 import { EsimMapper } from '../mappers/esim.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 
@@ -39,6 +39,35 @@ export class EsimsRelationalRepository implements EsimRepository {
       .leftJoinAndSelect('plan.destination', 'destination')
       .leftJoinAndSelect('plan.region', 'region');
 
+    this.applyEsimFilters(qb, filterOptions);
+
+    if (sortOptions?.length) {
+      sortOptions.forEach((sort) => {
+        qb.addOrderBy(`esim.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
+      });
+    } else {
+      qb.orderBy('esim.createdAt', 'DESC');
+    }
+
+    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.take(paginationOptions.limit);
+
+    const [entities, count] = await qb.getManyAndCount();
+
+    return [entities.map((entity) => EsimMapper.toDomain(entity)), count];
+  }
+
+  /**
+   * Every filter the eSIM list understands.
+   *
+   * Shared with the Excel export so the file matches the screen (#027): the
+   * export applied four of them and silently ignored the six added in #020, so
+   * filtering by supplier and exporting handed back the whole table.
+   */
+  private applyEsimFilters(
+    qb: SelectQueryBuilder<EsimEntity>,
+    filterOptions?: FilterEsimDto | null,
+  ): void {
     if (filterOptions?.status) {
       qb.andWhere('esim.status = :status', { status: filterOptions.status });
     } else if (!filterOptions?.includeAll) {
@@ -61,20 +90,53 @@ export class EsimsRelationalRepository implements EsimRepository {
       });
     }
 
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(`esim.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
+    // #020 — filters over the plan behind the eSIM and over its dates.
+    if (filterOptions?.planType?.length) {
+      qb.andWhere('plan.type IN (:...planTypes)', {
+        planTypes: filterOptions.planType,
       });
-    } else {
-      qb.orderBy('esim.createdAt', 'DESC');
     }
-
-    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
-    qb.take(paginationOptions.limit);
-
-    const [entities, count] = await qb.getManyAndCount();
-
-    return [entities.map((entity) => EsimMapper.toDomain(entity)), count];
+    if (filterOptions?.provider?.length) {
+      // Local inventory carries the supplier on the plan, API providers on the
+      // eSIM row itself — matching only one of them would miss half the rows.
+      qb.andWhere('COALESCE(esim.provider, plan.provider) IN (:...providers)', {
+        providers: filterOptions.provider,
+      });
+    }
+    if (filterOptions?.hasCallSms === true) {
+      qb.andWhere('(COALESCE(plan.sms, 0) > 0 OR COALESCE(plan.call, 0) > 0)');
+    } else if (filterOptions?.hasCallSms === false) {
+      qb.andWhere(
+        '(COALESCE(plan.sms, 0) <= 0 AND COALESCE(plan.call, 0) <= 0)',
+      );
+    }
+    if (filterOptions?.topUp !== undefined) {
+      qb.andWhere('COALESCE(plan."topUp", false) = :topUp', {
+        topUp: filterOptions.topUp,
+      });
+    }
+    // A bare `to` date has to cover that whole day, so it compares against the
+    // start of the next one — `<=` would drop everything dated that day.
+    if (filterOptions?.createdFrom) {
+      qb.andWhere('esim."createdAt" >= :createdFrom', {
+        createdFrom: filterOptions.createdFrom,
+      });
+    }
+    if (filterOptions?.createdTo) {
+      qb.andWhere(`esim."createdAt" < (:createdTo::date + INTERVAL '1 day')`, {
+        createdTo: filterOptions.createdTo,
+      });
+    }
+    if (filterOptions?.expiresFrom) {
+      qb.andWhere('esim."expiresAt" >= :expiresFrom', {
+        expiresFrom: filterOptions.expiresFrom,
+      });
+    }
+    if (filterOptions?.expiresTo) {
+      qb.andWhere(`esim."expiresAt" < (:expiresTo::date + INTERVAL '1 day')`, {
+        expiresTo: filterOptions.expiresTo,
+      });
+    }
   }
 
   async findById(id: Esim['id']): Promise<NullableType<Esim>> {
@@ -136,23 +198,163 @@ export class EsimsRelationalRepository implements EsimRepository {
   }
 
   async findAvailableByPlanId(planId: number, limit: number): Promise<Esim[]> {
-    const entities = await this.esimsRepository.find({
-      where: {
-        planId,
-        status: 'available',
-        orderItemId: null as any,
-        userId: null as any,
-      },
+    const entities = await this.esimsRepository
+      .createQueryBuilder('esim')
+      .where('esim."planId" = :planId', { planId })
+      .andWhere(`esim.status = 'available'`)
+      .andWhere('esim."orderItemId" IS NULL')
+      .andWhere('esim."userId" IS NULL')
+      // An eSIM past its expiry must never be handed to a customer (#021).
+      // FEFO below made this worse than random: an expired eSIM sorts FIRST, so
+      // the one delivered was the most expired one in stock.
+      .andWhere('(esim."expiresAt" IS NULL OR esim."expiresAt" >= now())')
       // FEFO — sell the eSIM closest to expiry first to avoid stale stock
       // expiring unsold. eSIMs with no expiry (expiresAt = null) sort last,
       // falling back to FIFO by createdAt.
-      order: {
-        expiresAt: { direction: 'ASC', nulls: 'LAST' },
-        createdAt: 'ASC',
-      },
-      take: limit,
-    });
+      .orderBy('esim."expiresAt"', 'ASC', 'NULLS LAST')
+      .addOrderBy('esim."createdAt"', 'ASC')
+      .take(limit)
+      .getMany();
     return entities.map(EsimMapper.toDomain);
+  }
+
+  /**
+   * How many times each of these eSIMs has been topped up, and when last (#025).
+   *
+   * Derived from the orders rather than a flag on the eSIM: a topup IS a paid
+   * TOPUP order against the ICCID, so this is right for eSIMs topped up before
+   * any flag existed and cannot drift out of step with the orders.
+   *
+   * Only paid orders count — a pending or failed topup added nothing.
+   */
+  async countTopupsByIccids(
+    iccids: string[],
+  ): Promise<Map<string, EsimTopupSummary>> {
+    const result = new Map<string, EsimTopupSummary>();
+    if (!iccids.length) return result;
+
+    const rows: {
+      iccid: string;
+      count: string | number;
+      lastAt: Date | null;
+      vndPrice: string | number | null;
+      vndCostPrice: string | number | null;
+      packageNames: string | null;
+    }[] = await this.esimsRepository.query(
+      // The sums are what the export reconciles on (#027): an eSIM can be topped
+      // up several times and each one cost money of its own.
+      `SELECT "targetIccid" AS iccid,
+              COUNT(*) AS count,
+              MAX("createdAt") AS "lastAt",
+              SUM("vndPrice") AS "vndPrice",
+              SUM("vndCostPrice") AS "vndCostPrice",
+              STRING_AGG(
+                COALESCE(NULLIF("topupPackageName", ''), "topupPackageId"),
+                ', ' ORDER BY "createdAt" DESC
+              ) AS "packageNames"
+         FROM "order"
+        WHERE "targetIccid" = ANY($1)
+          AND "orderType" = 'TOPUP'
+          AND "status" = 'paid'
+          AND "deletedAt" IS NULL
+        GROUP BY "targetIccid"`,
+      [iccids],
+    );
+
+    for (const row of rows) {
+      result.set(row.iccid, {
+        count: Number(row.count) || 0,
+        lastAt: row.lastAt ?? null,
+        vndPrice: Number(row.vndPrice) || 0,
+        vndCostPrice: Number(row.vndCostPrice) || 0,
+        packageNames: row.packageNames ?? null,
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Every topup applied to one eSIM, newest first (#026).
+   *
+   * Reads the snapshot the topup order stored at checkout (#015) rather than
+   * asking the provider now: the package may have been withdrawn or repriced, and
+   * the eSIM detail has to report the deal that was actually bought.
+   */
+  async findTopupsByIccid(iccid: string): Promise<
+    {
+      orderId: number;
+      orderNumber: string;
+      packageId: string | null;
+      packageName: string | null;
+      dataText: string | null;
+      durationDays: number | null;
+      isUnlimited: boolean;
+      vndPrice: number;
+      vndCostPrice: number;
+      provider: string | null;
+      createdAt: Date;
+    }[]
+  > {
+    if (!iccid) return [];
+    const rows: Record<string, unknown>[] = await this.esimsRepository.query(
+      `SELECT "id" AS "orderId", "orderNumber", "topupPackageId" AS "packageId",
+              "topupPackageName" AS "packageName", "topupDataText" AS "dataText",
+              "topupDurationDays" AS "durationDays",
+              "topupIsUnlimited" AS "isUnlimited",
+              "vndPrice", "vndCostPrice", "topupProvider" AS "provider",
+              "createdAt"
+         FROM "order"
+        WHERE "targetIccid" = $1
+          AND "orderType" = 'TOPUP'
+          AND "status" = 'paid'
+          AND "deletedAt" IS NULL
+        ORDER BY "createdAt" DESC`,
+      [iccid],
+    );
+
+    return rows.map((row) => ({
+      orderId: Number(row.orderId),
+      orderNumber: String(row.orderNumber ?? ''),
+      packageId: (row.packageId as string) ?? null,
+      packageName: (row.packageName as string) ?? null,
+      dataText: (row.dataText as string) ?? null,
+      durationDays:
+        row.durationDays == null ? null : Number(row.durationDays) || null,
+      isUnlimited: !!row.isUnlimited,
+      vndPrice: Number(row.vndPrice) || 0,
+      vndCostPrice: Number(row.vndCostPrice) || 0,
+      provider: (row.provider as string) ?? null,
+      createdAt: row.createdAt as Date,
+    }));
+  }
+
+  /**
+   * Unsold local-inventory eSIMs whose expiry has already passed (#021).
+   *
+   * They are dead stock: delivery skips them, so they have to be visible to an
+   * admin instead of silently padding the stock figure.
+   */
+  async countExpiredAvailableByPlanIds(
+    planIds: number[],
+  ): Promise<Record<number, number>> {
+    if (!planIds.length) return {};
+    const rows: { planId: string | number; count: string | number }[] =
+      await this.esimsRepository.query(
+        `SELECT "planId", COUNT(*) AS count FROM "esim"
+           WHERE "planId" = ANY($1)
+             AND "status" = 'available'
+             AND "orderItemId" IS NULL
+             AND "userId" IS NULL
+             AND "deletedAt" IS NULL
+             AND "expiresAt" IS NOT NULL
+             AND "expiresAt" < now()
+           GROUP BY "planId"`,
+        [planIds],
+      );
+    return rows.reduce<Record<number, number>>((acc, row) => {
+      acc[Number(row.planId)] = Number(row.count);
+      return acc;
+    }, {});
   }
 
   async update(id: Esim['id'], payload: Partial<Esim>): Promise<Esim> {
@@ -251,23 +453,8 @@ export class EsimsRelationalRepository implements EsimRepository {
       .createQueryBuilder('esim')
       .leftJoinAndSelect('esim.plan', 'plan');
 
-    if (filterOptions?.status) {
-      qb.andWhere('esim.status = :status', { status: filterOptions.status });
-    }
-    if (filterOptions?.userId !== undefined) {
-      qb.andWhere('esim.userId = :userId', { userId: filterOptions.userId });
-    }
-    if (filterOptions?.search) {
-      qb.andWhere(
-        '(esim.iccid ILIKE :search OR esim.esimTranNo ILIKE :search)',
-        { search: `%${filterOptions.search}%` },
-      );
-    }
-    if (filterOptions?.planName) {
-      qb.andWhere('plan.name ILIKE :planName', {
-        planName: `%${filterOptions.planName}%`,
-      });
-    }
+    // The same filters the list applies, so the file matches the screen (#027).
+    this.applyEsimFilters(qb, filterOptions);
 
     qb.orderBy('esim.createdAt', 'DESC');
 

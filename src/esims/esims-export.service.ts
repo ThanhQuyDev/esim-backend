@@ -31,6 +31,20 @@ export function exportPlanTypeLabel(type: string | null | undefined): string {
   return EXPORT_PLAN_TYPE_LABELS[type] ?? type;
 }
 
+/**
+ * Call / SMS allowance of the plan behind an eSIM (#027).
+ *
+ * An eSIM has no minutes of its own — it inherits the plan's — so a row with no
+ * plan loaded reports 0 rather than an empty cell that looks like a data error.
+ */
+function callMinutesOf(esim: Esim): number {
+  return Number(esim.plan?.call) || 0;
+}
+
+function smsCountOf(esim: Esim): number {
+  return Number(esim.plan?.sms) || 0;
+}
+
 /** Sale status as the CMS labels it; unknown statuses pass through unchanged. */
 export function exportSaleStatusLabel(
   status: string | null | undefined,
@@ -44,7 +58,23 @@ export class EsimsExportService {
   constructor(private readonly esimsRepository: EsimRepository) {}
 
   async exportToExcel(filterOptions?: FilterEsimDto | null): Promise<Buffer> {
-    const esims = await this.esimsRepository.findAllForExport(filterOptions);
+    const rows = await this.esimsRepository.findAllForExport(filterOptions);
+
+    // Which of these have been topped up (#025). One query for the whole file.
+    const topups = await this.esimsRepository.countTopupsByIccids(
+      rows.map((esim) => esim.iccid).filter(Boolean),
+    );
+    const esims = rows.map((esim) => {
+      const topup = topups.get(esim.iccid);
+      return {
+        ...esim,
+        topupCount: topup?.count ?? 0,
+        lastTopupAt: topup?.lastAt ?? null,
+        topupPackageNames: topup?.packageNames ?? '',
+        topupVndPrice: topup?.vndPrice ?? 0,
+        topupVndCostPrice: topup?.vndCostPrice ?? 0,
+      };
+    });
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'eSIM Management System';
@@ -63,6 +93,21 @@ export class EsimsExportService {
       { header: 'Thời hạn (ngày)', key: 'durationDays', width: 15 },
       { header: 'Loại gói', key: 'planType', width: 24 },
       { header: 'Trạng thái bán', key: 'saleStatus', width: 18 },
+      // Call / SMS allowance of the plan behind the eSIM (#027).
+      { header: 'Call/SMS', key: 'hasCallSms', width: 12 },
+      { header: 'Số phút gọi', key: 'callMinutes', width: 14 },
+      { header: 'Số SMS', key: 'smsCount', width: 12 },
+      // Cost and selling price of the eSIM itself (#027). Both currencies are
+      // maintained for every supplier since #009, so these are comparable.
+      { header: 'Giá gốc eSIM (VNĐ)', key: 'esimCostVnd', width: 20 },
+      { header: 'Giá bán eSIM (VNĐ)', key: 'esimPriceVnd', width: 20 },
+      // Whether this eSIM has been topped up, and how often (#025).
+      { header: 'Đã Topup', key: 'toppedUp', width: 12 },
+      { header: 'Số lần Topup', key: 'topupCount', width: 14 },
+      { header: 'Gói Topup', key: 'topupPackageNames', width: 34 },
+      { header: 'Giá gốc Topup (VNĐ)', key: 'topupCostVnd', width: 20 },
+      { header: 'Giá bán Topup (VNĐ)', key: 'topupPriceVnd', width: 20 },
+      { header: 'Topup lần cuối', key: 'lastTopupAt', width: 20 },
       { header: 'Status', key: 'status', width: 12 },
       { header: 'Phone Number', key: 'phoneNumber', width: 18 },
       { header: 'eSIM Tran No', key: 'esimTranNo', width: 20 },
@@ -91,8 +136,9 @@ export class EsimsExportService {
     };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    // Add data rows
-    esims.forEach((esim: Esim) => {
+    // Add data rows. The rolled-up topup figures were attached above, so the row
+    // type is wider than `Esim`.
+    esims.forEach((esim) => {
       worksheet.addRow({
         id: esim.id,
         iccid: esim.iccid,
@@ -101,6 +147,21 @@ export class EsimsExportService {
         durationDays: esim.plan?.durationDays ?? '',
         planType: exportPlanTypeLabel(esim.plan?.type),
         saleStatus: exportSaleStatusLabel(esim.status),
+        // Blank rather than "No"/0 for an eSIM never topped up, so the column
+        // reads as a list of the ones that were.
+        toppedUp: (esim.topupCount ?? 0) > 0 ? 'Topup' : '',
+        topupCount: (esim.topupCount ?? 0) > 0 ? esim.topupCount : '',
+        topupPackageNames: esim.topupPackageNames || '',
+        topupCostVnd: esim.topupVndCostPrice || '',
+        topupPriceVnd: esim.topupVndPrice || '',
+        lastTopupAt: esim.lastTopupAt ? this.formatDate(esim.lastTopupAt) : '',
+        // Call / SMS and the eSIM's own money columns (#027).
+        hasCallSms:
+          callMinutesOf(esim) > 0 || smsCountOf(esim) > 0 ? 'Có' : 'Không',
+        callMinutes: callMinutesOf(esim) || '',
+        smsCount: smsCountOf(esim) || '',
+        esimCostVnd: Number(esim.plan?.vndCostPrice) || '',
+        esimPriceVnd: Number(esim.plan?.vndPrice) || '',
         status: esim.status,
         phoneNumber: esim.phoneNumber ?? '',
         esimTranNo: esim.esimTranNo ?? '',

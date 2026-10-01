@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Destination } from '../../destinations/domain/destination';
 import { Region } from '../../regions/domain/region';
+import { DailyResetPolicyEnum } from '../plan-daily-reset';
 
 const idType = Number;
 
@@ -107,6 +108,34 @@ export class Plan {
   })
   usdPrice: number;
 
+  @ApiProperty({
+    type: Number,
+    example: 1.1,
+    description: 'Cost price in USD for every provider (#009).',
+  })
+  usdCostPrice: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 4.5,
+    description: 'Retail price in USD for every provider (#009).',
+  })
+  usdRetailPrice: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 28000,
+    description: 'Cost price in VND',
+  })
+  vndCostPrice: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 115000,
+    description: 'Retail price in VND',
+  })
+  vndRetailPrice: number;
+
   @ApiPropertyOptional({
     type: Number,
     example: 12,
@@ -136,6 +165,61 @@ export class Plan {
 
   @ApiPropertyOptional({ type: String, example: 'internet' })
   apn: string | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 180,
+    description:
+      'Days the customer has to activate the eSIM, as the supplier states it (#070). Null when not stated.',
+  })
+  activationValidityDays: number | null;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      tiktokIos: { type: 'boolean' },
+      tiktokAndroid: { type: 'boolean' },
+      tiktokAllDevices: { type: 'boolean' },
+      chatGpt: { type: 'boolean' },
+      known: { type: 'boolean' },
+    },
+    description:
+      'Computed, not stored: whether TikTok and ChatGPT work on this plan, from the uploaded APN table or the esimaccess "nonhkip" marker (#065, #067). Absent on responses that do not compute it.',
+  })
+  appSupport?: {
+    tiktokIos: boolean;
+    tiktokAndroid: boolean;
+    /** TikTok on BOTH platforms — the only claim that holds for an unknown device. */
+    tiktokAllDevices: boolean;
+    chatGpt: boolean;
+    /** Whether the APN table had an answer at all — all-false otherwise means 'unknown'. */
+    known: boolean;
+  } | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '2026-03-30',
+    description:
+      'Computed, not stored: the date the eSIM must be activated by, as yyyy-mm-dd in Vietnam time. Counted from this response for API suppliers, or taken from the printed expiry of local stock (#070). Absent when the supplier has not stated a window.',
+  })
+  activationDeadline?: string | null;
+
+  @ApiPropertyOptional({
+    enum: DailyResetPolicyEnum,
+    example: DailyResetPolicyEnum.Rolling24h,
+    description:
+      'When the daily allowance starts over ("Giờ làm mới mỗi ngày"). Null where the supplier has not stated it.',
+  })
+  dailyResetPolicy: DailyResetPolicyEnum | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 8,
+    description:
+      'Hours east of UTC the calendar-day reset is counted in. Only meaningful for a calendar-day policy.',
+  })
+  dailyResetUtcOffset: number | null;
 
   @ApiProperty({
     type: Boolean,

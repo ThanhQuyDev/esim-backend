@@ -38,6 +38,7 @@ import {
   UpdatePartnerLinkDto,
 } from './dto/partner-link.dto';
 import { PartnerOrderRowDto } from './dto/partner-order-row.dto';
+import { ReportFaultyEsimDto } from './dto/partner-esim-fault.dto';
 
 @ApiTags('Partners')
 @Controller({ path: 'partners', version: '1' })
@@ -281,6 +282,119 @@ export class PartnersController {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
     return this.partnersService.getMyPurchases(partner.id, {
       search: query.search,
+      status: query.status,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+  }
+
+  /**
+   * Bảng giá đối tác cho trang "Sản phẩm & bảng giá" (#046).
+   *
+   * Mọi gói đang bán đều mua được; gói chưa có giá vốn trả về
+   * `purchasable: false` để nút mua mờ đi thay vì biến mất khỏi danh sách.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/catalogue')
+  @HttpCode(HttpStatus.OK)
+  async getMyCatalogue(
+    @Request() req: { user: { id: number } },
+    @Query()
+    query: { search?: string; destinationId?: string; limit?: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getPurchaseCatalogue(partner.id, {
+      search: query.search,
+      destinationId: query.destinationId
+        ? Number(query.destinationId)
+        : undefined,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+  }
+
+  /** Số tiền sẽ bị trừ, tính trước khi đối tác bấm mua (#046). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/purchases/quote')
+  @HttpCode(HttpStatus.OK)
+  async quoteMyPurchase(
+    @Request() req: { user: { id: number } },
+    @Query() query: { planId: string; quantity: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.quotePurchase(
+      partner.id,
+      Number(query.planId),
+      Number(query.quantity),
+    );
+  }
+
+  /**
+   * Tải file Excel chứa eSIM của một đơn đối tác tự mua (#046).
+   *
+   * Đây là cách giao hàng duy nhất của luồng này — chốt 02/10/2026.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/purchases/:orderNumber/esims')
+  @HttpCode(HttpStatus.OK)
+  async downloadPurchasedEsims(
+    @Request() req: { user: { id: number } },
+    @Param('orderNumber') orderNumber: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    const file = await this.partnersService.buildPurchaseDelivery(
+      partner.id,
+      orderNumber,
+    );
+
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${file.filename}"`,
+      'Content-Length': file.content.length.toString(),
+    });
+    res.end(file.content);
+  }
+
+  /**
+   * Đối tác báo một eSIM đã mua bị lỗi (#046).
+   *
+   * Chỉ tạo phiếu — tiền chỉ về ví sau khi esim.vn duyệt (quyết định A4).
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/esim-faults')
+  @HttpCode(HttpStatus.CREATED)
+  async reportFaultyEsim(
+    @Request() req: { user: { id: number } },
+    @Body() dto: ReportFaultyEsimDto,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.reportFaultyEsim(partner.id, {
+      orderNumber: dto.orderNumber,
+      iccid: dto.iccid,
+      reason: dto.reason,
+    });
+  }
+
+  /** Các phiếu báo lỗi của chính đối tác này và tình trạng xử lý (#046). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/esim-faults')
+  @HttpCode(HttpStatus.OK)
+  async getMyEsimFaults(
+    @Request() req: { user: { id: number } },
+    @Query() query: { status?: string; limit?: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getEsimFaultReports(partner.id, {
       status: query.status,
       limit: query.limit ? Number(query.limit) : undefined,
     });

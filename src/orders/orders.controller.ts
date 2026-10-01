@@ -44,6 +44,7 @@ import { infinityPagination } from '../utils/infinity-pagination';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
 import { AdminOrderDetailDto } from './dto/admin-order-detail.dto';
 import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
+import { RetryProvisioningDto } from './dto/retry-provisioning.dto';
 import { clientIp } from '../tickets/ticket-spam-guard';
 import { hashIpForFraudWatch } from './order-fraud-signals';
 
@@ -190,8 +191,13 @@ export class OrdersController {
   @Post(':id/retry-provisioning')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: String, required: true })
-  retryProvisioning(@Param('id') id: Order['id']) {
-    return this.ordersService.retryProvisioning(Number(id));
+  retryProvisioning(
+    @Param('id') id: Order['id'],
+    @Body() dto?: RetryProvisioningDto,
+  ) {
+    return this.ordersService.retryProvisioning(Number(id), {
+      itemIds: dto?.itemIds,
+    });
   }
 
   @Post(':id/refund')

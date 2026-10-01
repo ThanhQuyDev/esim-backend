@@ -43,7 +43,11 @@ export class OrdersRelationalRepository implements OrderRepository {
       filterOptions?.userEmail ||
       filterOptions?.orderNumber ||
       filterOptions?.hasInvoice !== undefined ||
-      filterOptions?.invoiceStatus
+      filterOptions?.invoiceStatus ||
+      // #017 — kind and the created-date range need SQL of their own.
+      filterOptions?.kind ||
+      filterOptions?.createdFrom ||
+      filterOptions?.createdTo
     ) {
       return this.findManyWithAdvancedFilters(
         filterOptions,
@@ -112,6 +116,38 @@ export class OrdersRelationalRepository implements OrderRepository {
       qb.andWhere('"order"."userId" = :userId', {
         userId: filterOptions.userId,
       });
+    }
+
+    // #017 — kind of order. The three are mutually exclusive: an ordinary eSIM
+    // purchase is one that is neither a topup nor commissioned, so the three
+    // filters partition the list instead of overlapping on affiliate topups.
+    const EARNED_COMMISSION = `"order"."id" IN (
+      SELECT "opc"."orderId" FROM "order_partner_commission" "opc"
+    )`;
+    if (filterOptions.kind === 'topup') {
+      qb.andWhere(`"order"."orderType" = 'TOPUP'`);
+    } else if (filterOptions.kind === 'affiliate') {
+      qb.andWhere(EARNED_COMMISSION);
+    } else if (filterOptions.kind === 'esim') {
+      qb.andWhere(`COALESCE("order"."orderType", 'BUY_NEW') <> 'TOPUP'`);
+      qb.andWhere(`NOT (${EARNED_COMMISSION})`);
+    }
+
+    // #017 — created-date range. `createdTo` is given as a bare date and must
+    // cover that whole day, so it compares against the start of the NEXT day
+    // rather than midnight, which would drop everything ordered that day.
+    if (filterOptions.createdFrom) {
+      qb.andWhere('"order"."createdAt" >= :createdFrom', {
+        createdFrom: filterOptions.createdFrom,
+      });
+    }
+    if (filterOptions.createdTo) {
+      qb.andWhere(
+        `"order"."createdAt" < (:createdTo::date + INTERVAL '1 day')`,
+        {
+          createdTo: filterOptions.createdTo,
+        },
+      );
     }
 
     // Filter by iccid: match on order.targetIccid OR via esim -> order_item
@@ -200,10 +236,36 @@ export class OrdersRelationalRepository implements OrderRepository {
       .innerJoin('order_item', 'oi', 'oi."orderId" = "order".id')
       .leftJoin('plan', 'p', 'p.id = oi."planId"')
       .leftJoin('user', 'u', 'u.id = "order"."userId"')
+      // Order-level columns for the reconciliation sheet (#018).
+      .leftJoin('order_partner_commission', 'opc', 'opc."orderId" = "order".id')
+      .leftJoin('partner', 'pt', 'pt.id = opc."partnerId"')
+      .leftJoin('invoice', 'inv', 'inv."orderId" = "order".id')
       .where('"order"."deletedAt" IS NULL')
-      .select('"order"."orderNumber"', 'orderNumber')
+      .select('"order"."id"', 'orderId')
+      .addSelect('"order"."orderNumber"', 'orderNumber')
       .addSelect('"order"."status"', 'orderStatus')
       .addSelect('"order"."createdAt"', 'orderCreatedAt')
+      .addSelect('"order"."orderType"', 'orderType')
+      .addSelect('"order"."paymentMethod"', 'paymentMethod')
+      .addSelect('"order"."couponCode"', 'couponCode')
+      .addSelect('"order"."referralCode"', 'referralCode')
+      .addSelect('"order"."couponDiscountVndAmount"', 'couponDiscountVndAmount')
+      .addSelect(
+        '"order"."referralDiscountVndAmount"',
+        'referralDiscountVndAmount',
+      )
+      .addSelect('"order"."cashbackAmountVnd"', 'cashbackAmountVnd')
+      .addSelect('"order"."walletSpentVndAmount"', 'walletSpentVndAmount')
+      // A company partner is settled under its company name; an individual has
+      // only a contact name.
+      .addSelect(
+        `COALESCE(NULLIF(TRIM(pt."companyName"), ''), pt."contactName")`,
+        'partnerName',
+      )
+      .addSelect('opc."commissionVnd"', 'partnerCommissionVnd')
+      .addSelect('inv.status', 'invoiceStatus')
+      .addSelect('inv."companyName"', 'invoiceCompanyName')
+      .addSelect('inv."taxCode"', 'invoiceTaxCode')
       .addSelect('u.email', 'customerEmail')
       .addSelect('p.provider', 'provider')
       .addSelect('p.name', 'planName')
@@ -223,6 +285,7 @@ export class OrdersRelationalRepository implements OrderRepository {
     this.applyAdvancedFilters(qb, filterOptions ?? {});
 
     const rows = await qb.getRawMany<{
+      orderId: string | number;
       orderNumber: string;
       orderStatus: string;
       orderCreatedAt: Date;
@@ -236,13 +299,32 @@ export class OrdersRelationalRepository implements OrderRepository {
       vndCostPrice: string | number;
       vndPrice: string | number;
       iccids: string | null;
+      orderType: string | null;
+      paymentMethod: string | null;
+      couponCode: string | null;
+      referralCode: string | null;
+      couponDiscountVndAmount: string | number | null;
+      referralDiscountVndAmount: string | number | null;
+      cashbackAmountVnd: string | number | null;
+      walletSpentVndAmount: string | number | null;
+      partnerName: string | null;
+      partnerCommissionVnd: string | number | null;
+      invoiceStatus: string | null;
+      invoiceCompanyName: string | null;
+      invoiceTaxCode: string | null;
     }>();
 
     return rows.map((row) => ({
       ...row,
+      orderId: Number(row.orderId ?? 0),
       quantity: Number(row.quantity ?? 0),
       vndCostPrice: Number(row.vndCostPrice ?? 0),
       vndPrice: Number(row.vndPrice ?? 0),
+      couponDiscountVndAmount: Number(row.couponDiscountVndAmount ?? 0),
+      referralDiscountVndAmount: Number(row.referralDiscountVndAmount ?? 0),
+      cashbackAmountVnd: Number(row.cashbackAmountVnd ?? 0),
+      walletSpentVndAmount: Number(row.walletSpentVndAmount ?? 0),
+      partnerCommissionVnd: Number(row.partnerCommissionVnd ?? 0),
     }));
   }
 

@@ -74,6 +74,18 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
       baseWhere.planId = filterOptions.planId;
     }
 
+    // Meta copy filters (#048), deliberately separate from `search`: they are
+    // what an admin uses to find "which pages say X", while `search` answers
+    // "which page is this".
+    const metaTitle = filterOptions?.metaTitle?.trim();
+    if (metaTitle) {
+      baseWhere.metaTitle = ILike(`%${metaTitle}%`);
+    }
+    const metaDescription = filterOptions?.metaDescription?.trim();
+    if (metaDescription) {
+      baseWhere.metaDescription = ILike(`%${metaDescription}%`);
+    }
+
     // Search is by page URL only (#005): the admin types a page ("/home",
     // "destination") to edit that page's config. Also matching the meta
     // title/description surfaced unrelated pages whose copy merely contained
@@ -177,5 +189,47 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
       url: In(unique),
     });
     return result.affected ?? 0;
+  }
+
+  /**
+   * Bulk status change (#049). One statement for the whole selection, so 50
+   * rows cost one round trip instead of 50 — and either all of them flip or none
+   * do.
+   */
+  async bulkSetActive(
+    ids: SeoConfig['id'][],
+    isActive: boolean,
+  ): Promise<number> {
+    const unique = this.uniqueIds(ids);
+    if (!unique.length) return 0;
+    const result = await this.seoConfigsRepository.update(
+      { id: In(unique) },
+      { isActive },
+    );
+    return result.affected ?? 0;
+  }
+
+  /** Bulk soft-delete (#049), matching what `remove` does for one row. */
+  async bulkRemove(ids: SeoConfig['id'][]): Promise<number> {
+    const unique = this.uniqueIds(ids);
+    if (!unique.length) return 0;
+    const result = await this.seoConfigsRepository.softDelete({
+      id: In(unique),
+    });
+    return result.affected ?? 0;
+  }
+
+  /**
+   * Whole positive numbers only. A bad id would otherwise reach `IN (...)` and
+   * make the whole statement fail, taking the valid rows with it.
+   */
+  private uniqueIds(ids: SeoConfig['id'][]): number[] {
+    return Array.from(
+      new Set(
+        ids
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    );
   }
 }

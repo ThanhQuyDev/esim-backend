@@ -16,8 +16,16 @@ const ITEMS = [
   { id: 13, vndPrice: 50000, planId: 3 },
 ];
 
+/** eSIMs of the order, keyed by the order item they belong to. */
+const ESIMS = [
+  { id: 101, orderItemId: 11, status: 'sold' },
+  { id: 102, orderItemId: 12, status: 'sold' },
+  { id: 103, orderItemId: 13, status: 'sold' },
+];
+
 function makeService() {
   const itemUpdates: { id: unknown; payload: Record<string, unknown> }[] = [];
+  const esimUpdates: { id: unknown; payload: Record<string, unknown> }[] = [];
   const cancelled: number[] = [];
 
   const orderRepository = { findById: jest.fn().mockResolvedValue(ORDER) };
@@ -31,6 +39,15 @@ function makeService() {
   const walletsService = {
     refundOrder: jest.fn().mockResolvedValue({ id: 1 }),
   };
+  const esimsService = {
+    findByOrderItemIds: jest.fn((ids: number[]) =>
+      Promise.resolve(ESIMS.filter((esim) => ids.includes(esim.orderItemId))),
+    ),
+    update: jest.fn((id: unknown, payload: Record<string, unknown>) => {
+      esimUpdates.push({ id, payload });
+      return Promise.resolve(payload);
+    }),
+  };
 
   // Build the instance without the DI container: this test is about the
   // refund rules, not about wiring.
@@ -39,6 +56,7 @@ function makeService() {
   internals.orderRepository = orderRepository;
   internals.orderItemsService = orderItemsService;
   internals.walletsService = walletsService;
+  internals.esimsService = esimsService;
   internals.partnersService = { reverseCommissionForOrder: jest.fn() };
   internals.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
 
@@ -50,7 +68,14 @@ function makeService() {
     },
   );
 
-  return { service, itemUpdates, cancelled, walletsService, orderItemsService };
+  return {
+    service,
+    itemUpdates,
+    esimUpdates,
+    cancelled,
+    walletsService,
+    orderItemsService,
+  };
 }
 
 describe('Per-item order refund', () => {
@@ -117,5 +142,84 @@ describe('Per-item order refund', () => {
     // Every supplier cancelled, and no per-line status juggling.
     expect(cancelled).toEqual([11, 12, 13]);
     expect(itemUpdates).toHaveLength(0);
+  });
+});
+
+/**
+ * #019 — "esim đó trong trang quản lý esim cũng phải chuyển qua trạng thái hoàn
+ * tiền". Only local inventory used to get this, so an eSIM from esimaccess,
+ * airalo, gadgetkorea, microesim or billion stayed `sold` after a refund and the
+ * eSIM list showed it as live.
+ */
+describe('Refunded eSIMs switch to refunded status (#019)', () => {
+  it('should marks the eSIM of the refunded line, whatever the supplier', async () => {
+    const { service, esimUpdates } = makeService();
+
+    await service.refundOrder(
+      7 as never,
+      { mode: 'wallet', amountVnd: 250000, orderItemIds: [12] } as never,
+      1,
+    );
+
+    expect(esimUpdates).toEqual([{ id: 102, payload: { status: 'refunded' } }]);
+  });
+
+  it('should leaves the eSIMs of the other lines alone', async () => {
+    const { service, esimUpdates } = makeService();
+
+    await service.refundOrder(
+      7 as never,
+      { mode: 'wallet', amountVnd: 250000, orderItemIds: [12] } as never,
+      1,
+    );
+
+    expect(esimUpdates.map((update) => update.id)).not.toContain(101);
+    expect(esimUpdates.map((update) => update.id)).not.toContain(103);
+  });
+
+  it('should marks every eSIM when the whole order is refunded', async () => {
+    const { service, esimUpdates } = makeService();
+
+    await service.refundOrder(
+      7 as never,
+      { mode: 'wallet', amountVnd: 400000 } as never,
+      1,
+    );
+
+    expect(esimUpdates.map((update) => update.id).sort()).toEqual([
+      101, 102, 103,
+    ]);
+  });
+
+  it('should does not rewrite an eSIM that is already refunded', async () => {
+    const { service, esimUpdates } = makeService();
+    ESIMS[1].status = 'refunded';
+    try {
+      await service.refundOrder(
+        7 as never,
+        { mode: 'wallet', amountVnd: 250000, orderItemIds: [12] } as never,
+        1,
+      );
+      expect(esimUpdates).toHaveLength(0);
+    } finally {
+      ESIMS[1].status = 'sold';
+    }
+  });
+
+  it('should keeps the refund a success when marking an eSIM fails', async () => {
+    // The money has been given back; a failed bookkeeping write must not make
+    // the whole refund look like it did not happen.
+    const { service } = makeService();
+    (
+      service as unknown as { esimsService: { update: jest.Mock } }
+    ).esimsService.update = jest.fn().mockRejectedValue(new Error('db down'));
+
+    await expect(
+      service.refundOrder(
+        7 as never,
+        { mode: 'wallet', amountVnd: 250000, orderItemIds: [12] } as never,
+        1,
+      ),
+    ).resolves.toBeDefined();
   });
 });

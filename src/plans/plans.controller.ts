@@ -89,6 +89,17 @@ export class PlansController {
     return infinityPagination(data, { page, limit }, count);
   }
 
+  /** Distinct APN values, for the CMS filter's select box (#010). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('apn-options')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: [String] })
+  async apnOptions(): Promise<{ data: string[] }> {
+    return { data: await this.plansService.getDistinctApns() };
+  }
+
   @ApiBearerAuth()
   @Roles(RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)

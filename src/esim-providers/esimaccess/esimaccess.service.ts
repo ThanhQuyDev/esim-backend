@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { AllConfigType } from '../../config/config.type';
 import { PlansService } from '../../plans/plans.service';
+import { parseValidityDays } from '../../plans/plan-activation';
 import { DestinationsService } from '../../destinations/destinations.service';
 import { RegionsService } from '../../regions/regions.service';
 import { ProfitMarginsService } from '../../profit-margins/profit-margins.service';
@@ -397,6 +398,9 @@ export class EsimAccessService {
       isAbleMultidate: pkg.dataType === 2,
       isKyc: false,
       apn: null,
+      // How long the customer has to activate before the eSIM is wasted (#070).
+      // esimaccess calls this the unused-package validity and quotes it in days.
+      activationValidityDays: parseValidityDays(pkg.unusedValidTime),
       hotSpot: true,
       hotSpotAllow: this.formatHotSpotAllow(planType, dataMb),
       // The provider states this in the package name — "… (nonhkip)" — and

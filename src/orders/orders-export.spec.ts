@@ -1,4 +1,4 @@
-import { Workbook } from 'exceljs';
+﻿import { Workbook } from 'exceljs';
 import {
   OrdersExportService,
   exportFileTimestamp,
@@ -18,6 +18,7 @@ function makeService(rows: Record<string, unknown>[]) {
 
 function row(overrides: Record<string, unknown>) {
   return {
+    orderId: 1,
     orderNumber: 'ORD-1',
     orderStatus: 'paid',
     orderCreatedAt: new Date('2026-09-09T03:00:00.000Z'),
@@ -31,6 +32,20 @@ function row(overrides: Record<string, unknown>) {
     vndCostPrice: 100000,
     vndPrice: 150000,
     iccids: '8934079000000000001',
+    // Order-level columns (#018).
+    orderType: 'BUY_NEW',
+    paymentMethod: 'onepay',
+    couponCode: null,
+    referralCode: null,
+    couponDiscountVndAmount: 0,
+    referralDiscountVndAmount: 0,
+    cashbackAmountVnd: 0,
+    walletSpentVndAmount: 0,
+    partnerName: null,
+    partnerCommissionVnd: 0,
+    invoiceStatus: null,
+    invoiceCompanyName: null,
+    invoiceTaxCode: null,
     ...overrides,
   };
 }
@@ -62,8 +77,8 @@ describe('Order reconciliation export', () => {
 
   it('should total cost, revenue and profit for the supplier statement', async () => {
     const service = makeService([
-      row({ vndCostPrice: 100000, vndPrice: 150000 }),
-      row({ vndCostPrice: 200000, vndPrice: 260000 }),
+      row({ orderId: 1, vndCostPrice: 100000, vndPrice: 150000 }),
+      row({ orderId: 2, vndCostPrice: 200000, vndPrice: 260000 }),
     ]);
 
     const { rows } = await readSheet(await service.exportToExcel());
@@ -78,6 +93,7 @@ describe('Order reconciliation export', () => {
     const service = makeService([
       row({ vndCostPrice: 100000, vndPrice: 150000 }),
       row({
+        orderId: 2,
         itemStatus: 'refunded',
         vndCostPrice: 999000,
         vndPrice: 999000,
@@ -87,11 +103,161 @@ describe('Order reconciliation export', () => {
     const { rows } = await readSheet(await service.exportToExcel());
     const totals = rows[rows.length - 1] as unknown[];
 
-    // The refunded line is still in the sheet…
+    // The refunded line is still in the sheetâ€¦
     expect(JSON.stringify(rows)).toContain('refunded');
-    // …but money already given back must not be billed to the supplier.
+    // â€¦but money already given back must not be billed to the supplier.
     expect(totals).toContain(100000);
     expect(totals).not.toContain(1099000);
+  });
+});
+
+/**
+ * #018 â€” the sheet also has to carry the affiliate, invoice, payment, discount
+ * and eXU columns. They are ORDER-level, while a row is an order LINE, so the
+ * thing to pin down is that they are written once per order.
+ */
+describe('Order-level columns on the reconciliation export (#018)', () => {
+  it('should writes the affiliate, invoice, payment and discount columns', async () => {
+    const service = makeService([
+      row({
+        paymentMethod: 'bank_transfer',
+        couponCode: 'SALE10',
+        referralCode: 'REF-ABC',
+        couponDiscountVndAmount: 20000,
+        referralDiscountVndAmount: 5000,
+        cashbackAmountVnd: 7000,
+        walletSpentVndAmount: 30000,
+        partnerName: 'Cong ty ABC',
+        partnerCommissionVnd: 15000,
+        invoiceStatus: 'ISSUED',
+        invoiceCompanyName: 'Cong ty XYZ',
+        invoiceTaxCode: '0101234567',
+      }),
+    ]);
+
+    const flat = JSON.stringify(
+      (await readSheet(await service.exportToExcel())).rows,
+    );
+
+    for (const expected of [
+      'bank_transfer',
+      'SALE10',
+      'REF-ABC',
+      'Cong ty ABC',
+      'ISSUED',
+      'Cong ty XYZ',
+      '0101234567',
+    ]) {
+      expect(flat).toContain(expected);
+    }
+  });
+
+  it('should adds the coupon and referral discounts together', async () => {
+    const service = makeService([
+      row({ couponDiscountVndAmount: 20000, referralDiscountVndAmount: 5000 }),
+    ]);
+
+    const { rows } = await readSheet(await service.exportToExcel());
+
+    expect(rows[1] as unknown[]).toContain(25000);
+  });
+
+  it('should computes profit after discount over the whole order, not one line', async () => {
+    // One order, two supplier lines: revenue 300k, cost 200k, discount 25k.
+    const service = makeService([
+      row({
+        orderId: 7,
+        vndCostPrice: 100000,
+        vndPrice: 150000,
+        couponDiscountVndAmount: 25000,
+      }),
+      row({
+        orderId: 7,
+        provider: 'airalo',
+        vndCostPrice: 100000,
+        vndPrice: 150000,
+        couponDiscountVndAmount: 25000,
+      }),
+    ]);
+
+    const { rows } = await readSheet(await service.exportToExcel());
+
+    // 300000 - 200000 - 25000
+    expect(rows[1] as unknown[]).toContain(75000);
+  });
+
+  it('should writes the order-level money once per order, so a SUM is not multiplied by the line count', async () => {
+    const service = makeService([
+      row({
+        orderId: 7,
+        couponDiscountVndAmount: 25000,
+        cashbackAmountVnd: 7000,
+      }),
+      row({
+        orderId: 7,
+        provider: 'airalo',
+        couponDiscountVndAmount: 25000,
+        cashbackAmountVnd: 7000,
+      }),
+    ]);
+
+    const { rows } = await readSheet(await service.exportToExcel());
+    const totals = rows[rows.length - 1] as unknown[];
+
+    // 25.000Ä‘ and 7.000Ä‘ once, not twice â€” this is the whole point of writing
+    // order-level values on the first line only.
+    expect(totals).toContain(25000);
+    expect(totals).toContain(7000);
+    expect(totals).not.toContain(50000);
+    expect(totals).not.toContain(14000);
+  });
+
+  it('should labels the kind of order', async () => {
+    const service = makeService([
+      row({ orderId: 1, orderType: 'TOPUP' }),
+      row({
+        orderId: 2,
+        partnerName: 'Cong ty ABC',
+        partnerCommissionVnd: 15000,
+      }),
+      row({ orderId: 3 }),
+    ]);
+
+    const { rows } = await readSheet(await service.exportToExcel());
+    const flat = JSON.stringify(rows);
+
+    expect(flat).toContain('Topup');
+    expect(flat).toContain('Affiliate');
+    expect(flat).toContain('eSIM');
+  });
+
+  /** The cell under a given header, on the first data row. */
+  function cellUnder(rows: unknown[][], header: string): unknown {
+    const index = (rows[0] as unknown[]).indexOf(header);
+    return (rows[1] as unknown[])[index];
+  }
+
+  it('should leaves the commission percent blank when there is no commission', async () => {
+    const service = makeService([row({ partnerCommissionVnd: 0 })]);
+
+    const { rows } = await readSheet(await service.exportToExcel());
+
+    expect(cellUnder(rows, '% hoa hồng')).toBe('');
+  });
+
+  it('should states the commission as a share of what the order brought in', async () => {
+    // 15.000 / 150.000 = 10%
+    const service = makeService([
+      row({
+        vndPrice: 150000,
+        partnerCommissionVnd: 15000,
+        partnerName: 'ABC',
+      }),
+    ]);
+
+    const { rows } = await readSheet(await service.exportToExcel());
+
+    expect(cellUnder(rows, '% hoa hồng')).toBe('10%');
   });
 });
 

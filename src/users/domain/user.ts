@@ -99,6 +99,38 @@ export class User {
   @ApiPropertyOptional({ type: Number, example: 3 })
   paidOrderCount?: number;
 
+  /**
+   * Spendable eXu right now (#038) — the same figure
+   * `WalletsService.getAvailableBalance` returns: zero while the wallet is
+   * locked or past its expiry, and net of eXu already held against an order.
+   * Filled in for the admin customer list; undefined elsewhere.
+   */
+  @ApiPropertyOptional({ type: Number, example: 50000 })
+  exuBalanceVnd?: number;
+
+  /**
+   * What the wallet ledger holds, before expiry, lock or holds are applied
+   * (#038). Carried so the list can explain a spendable balance of 0 instead of
+   * looking like the eXu vanished.
+   */
+  @ApiPropertyOptional({ type: Number, example: 70000 })
+  exuGrossBalanceVnd?: number;
+
+  /** eXu committed to an order that has not been paid yet (#038). */
+  @ApiPropertyOptional({ type: Number, example: 20000 })
+  exuHeldVnd?: number;
+
+  /**
+   * When the eXu balance expires (#038) — 365 days, pushed back each time the
+   * customer earns more. Null means nothing has ever been earned.
+   */
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  exuExpiresAt?: Date | null;
+
+  /** `user_wallet.status` — `active` unless an admin locked it (#038). */
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'active' })
+  exuWalletStatus?: string | null;
+
   @ApiPropertyOptional({ enum: MembershipTierEnum, nullable: true })
   tierOverride: MembershipTierEnum | null;
 

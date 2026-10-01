@@ -1,18 +1,33 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MaxLength,
   Min,
 } from 'class-validator';
 
 export class SubmitManualOrderDto {
-  @ApiProperty({ example: 'khachquen@example.com' })
+  @ApiProperty({
+    example: 'khachquen@example.com',
+    description:
+      'Buyer email. An account is created for it when none exists yet (#041).',
+  })
   @IsEmail()
   @IsNotEmpty()
   email: string;
+
+  /**
+   * Buyer's name, used only when the account has to be created (#041). Left out,
+   * the new account has no name rather than one guessed from the email.
+   */
+  @ApiPropertyOptional({ example: 'Nguyễn Văn A' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  customerName?: string;
 
   @ApiProperty({
     example: 'JC056',

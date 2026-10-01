@@ -11,12 +11,18 @@ export abstract class SupportedDeviceRepository {
   abstract findAllWithPagination({
     paginationOptions,
     type,
+    manufacturer,
     search,
   }: {
     paginationOptions: IPaginationOptions;
-    type?: DeviceType;
+    /** One or more device types; several widen the result (#052). */
+    type?: DeviceType[];
+    manufacturer?: string;
     search?: string;
   }): Promise<[SupportedDevice[], number]>;
+
+  /** Distinct manufacturer names, for the CMS filter's select box (#052). */
+  abstract findManufacturers(): Promise<string[]>;
 
   /** Every matching device, in display order (#047). */
   abstract findGrouped(search?: string): Promise<SupportedDevice[]>;

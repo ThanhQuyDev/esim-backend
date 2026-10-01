@@ -2,6 +2,10 @@ import { Plan } from '../../../../domain/plan';
 import { PlanEntity } from '../entities/plan.entity';
 import { DestinationMapper } from '../../../../../destinations/infrastructure/persistence/relational/mappers/destination.mapper';
 import { RegionMapper } from '../../../../../regions/infrastructure/persistence/relational/mappers/region.mapper';
+import {
+  DAILY_RESET_POLICIES,
+  DailyResetPolicyEnum,
+} from '../../../../plan-daily-reset';
 
 export class PlanMapper {
   static toDomain(raw: PlanEntity): Plan {
@@ -39,11 +43,29 @@ export class PlanMapper {
     domainEntity.discount = raw.discount;
     domainEntity.vndPrice = Number(raw.vndPrice);
     domainEntity.usdPrice = Number(raw.usdPrice ?? 0);
+    domainEntity.usdCostPrice = Number(raw.usdCostPrice ?? 0);
+    domainEntity.usdRetailPrice = Number(raw.usdRetailPrice ?? 0);
+    domainEntity.vndCostPrice = Number(raw.vndCostPrice ?? 0);
+    domainEntity.vndRetailPrice = Number(raw.vndRetailPrice ?? 0);
     domainEntity.isNonHkIp = !!raw.isNonHkIp;
     domainEntity.isKyc = raw.isKyc;
     domainEntity.isLocalInventory = raw.isLocalInventory;
     domainEntity.tags = raw.tags ?? null;
     domainEntity.apn = raw.apn;
+    domainEntity.activationValidityDays =
+      raw.activationValidityDays != null
+        ? Number(raw.activationValidityDays)
+        : null;
+    // Stored as text, so an unrecognised value (hand-edited row, a policy an
+    // older build wrote) reads back as "not stated" instead of leaking a string
+    // the storefront has no copy for.
+    domainEntity.dailyResetPolicy = DAILY_RESET_POLICIES.includes(
+      raw.dailyResetPolicy as DailyResetPolicyEnum,
+    )
+      ? (raw.dailyResetPolicy as DailyResetPolicyEnum)
+      : null;
+    domainEntity.dailyResetUtcOffset =
+      raw.dailyResetUtcOffset != null ? Number(raw.dailyResetUtcOffset) : null;
     domainEntity.hotSpot = raw.hotSpot;
     domainEntity.hotSpotAllow = raw.hotSpotAllow;
     domainEntity.lastSyncedAt = raw.lastSyncedAt;
@@ -88,11 +110,20 @@ export class PlanMapper {
     persistenceEntity.discount = domainEntity.discount;
     persistenceEntity.vndPrice = domainEntity.vndPrice;
     persistenceEntity.usdPrice = domainEntity.usdPrice;
+    persistenceEntity.usdCostPrice = domainEntity.usdCostPrice;
+    persistenceEntity.usdRetailPrice = domainEntity.usdRetailPrice;
+    persistenceEntity.vndCostPrice = domainEntity.vndCostPrice;
+    persistenceEntity.vndRetailPrice = domainEntity.vndRetailPrice;
     persistenceEntity.isNonHkIp = domainEntity.isNonHkIp;
     persistenceEntity.isKyc = domainEntity.isKyc;
     persistenceEntity.isLocalInventory = domainEntity.isLocalInventory;
     persistenceEntity.tags = domainEntity.tags ?? null;
     persistenceEntity.apn = domainEntity.apn;
+    persistenceEntity.activationValidityDays =
+      domainEntity.activationValidityDays ?? null;
+    persistenceEntity.dailyResetPolicy = domainEntity.dailyResetPolicy ?? null;
+    persistenceEntity.dailyResetUtcOffset =
+      domainEntity.dailyResetUtcOffset ?? null;
     persistenceEntity.hotSpot = domainEntity.hotSpot;
     persistenceEntity.hotSpotAllow = domainEntity.hotSpotAllow;
     persistenceEntity.lastSyncedAt = domainEntity.lastSyncedAt;

@@ -62,6 +62,20 @@ export class CustomPaymentLink {
   })
   virtualOrderId: string;
 
+  /** When an admin confirmed the outcome by hand (#056). */
+  @ApiProperty({ type: Date, nullable: true })
+  confirmedAt?: Date | null;
+
+  @ApiProperty({ type: Number, nullable: true })
+  confirmedByAdminId?: number | null;
+
+  /**
+   * When the sweep gave up on it after OnePay's window (#056). Set only for an
+   * auto-expiry, so a late successful IPN can still be honoured.
+   */
+  @ApiProperty({ type: Date, nullable: true })
+  expiredAt?: Date | null;
+
   @ApiProperty({
     type: String,
   })

@@ -1,4 +1,4 @@
-import { TopupService } from './topup.service';
+﻿import { TopupService } from './topup.service';
 import { TopupProvider } from './dto/topup-package.dto';
 import { OrderType, TOPUP_ORDER_STATUS } from './topup.constants';
 
@@ -8,8 +8,8 @@ import { OrderType, TOPUP_ORDER_STATUS } from './topup.constants';
  * A DB-catalogued provider's `providerPlanId` is NOT unique across our `plan`
  * rows (a bad gadgetkorea import once gave 1786 plans the same value). When the
  * DTO's `packageId` was that value, picking any package charged for whichever
- * row matched first — a customer selecting a 599.000đ package was billed
- * 1.649.000đ. `packageId` is therefore `plan.id`, and the provider-side id is
+ * row matched first â€” a customer selecting a 599.000Ä‘ package was billed
+ * 1.649.000Ä‘. `packageId` is therefore `plan.id`, and the provider-side id is
  * resolved from the plan only at submit time.
  */
 
@@ -85,12 +85,15 @@ function buildService(overrides: Record<string, unknown> = {}) {
     deps.microEsimService as never,
     deps.onepayService as never,
     deps.profitMarginsService as never,
+    // #028 — WalletsService and InvoicesService.
+    {} as never,
+    {} as never,
     deps.configService as never,
   );
   return { service, deps };
 }
 
-describe('TopupService — DB-catalogued package identity', () => {
+describe('TopupService â€” DB-catalogued package identity', () => {
   it('should give every package a distinct packageId even when providerPlanId collides', async () => {
     const { service } = buildService();
 
@@ -120,7 +123,7 @@ describe('TopupService — DB-catalogued package identity', () => {
     expect(packages[0].retailPrice).toBe(30);
     // The second plan cost us 48.73 and our tiers price it at 70, while the
     // provider catalogue still says 63.35. Preferring their number sold the
-    // topup below our own margin — `price` is the column the tier job keeps
+    // topup below our own margin â€” `price` is the column the tier job keeps
     // up to date, `retailPrice` is never recalculated.
     expect(packages[1].retailPrice).toBe(70);
   });

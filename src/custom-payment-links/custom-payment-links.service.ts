@@ -6,8 +6,10 @@ import {
   Injectable,
   HttpStatus,
   Logger,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { CreateCustomPaymentLinkDto } from './dto/create-custom-payment-link.dto';
 import { UpdateCustomPaymentLinkDto } from './dto/update-custom-payment-link.dto';
@@ -21,8 +23,10 @@ import { OnepayService } from '../payment/onepay.service';
 import { AllConfigType } from '../config/config.type';
 import {
   CustomPaymentLinkStatus,
+  CUSTOM_PAYMENT_LINK_EXPIRY_MINUTES,
   CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX,
 } from './custom-payment-links.enum';
+import { generateOrderNumber } from '../utils/order-number';
 
 export interface CreateCustomLinkInput {
   customerEmail: string;
@@ -190,10 +194,9 @@ export class CustomPaymentLinksService {
       });
     }
 
-    const virtualOrderId = `${CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX}${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase()}`;
+    const virtualOrderId = generateOrderNumber(
+      CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX,
+    );
 
     let createdBy: User | null = null;
     if (input.adminUserId !== undefined) {
@@ -241,7 +244,11 @@ export class CustomPaymentLinksService {
 
   /**
    * Mark a custom payment link as PAID/FAILED based on the OnePay IPN result.
-   * Idempotent — a link that's already in a terminal state is not re-updated.
+   *
+   * Idempotent for a settled link, with one exception: a link the sweep gave up
+   * on (#056) is still promoted to PAID by a late successful IPN. Auto-expiry is a
+   * guess about silence, and a real payment must win over it — but only in that
+   * direction, and never over a genuine failure or an admin's decision.
    */
   async finalizeFromIpn(
     virtualOrderId: string,
@@ -252,15 +259,106 @@ export class CustomPaymentLinksService {
         virtualOrderId,
       );
     if (!link) return null;
-    if (link.status !== CustomPaymentLinkStatus.PENDING) return link;
+
+    const autoExpired =
+      link.status === CustomPaymentLinkStatus.FAILED &&
+      !!link.expiredAt &&
+      !link.confirmedAt;
+
+    if (link.status !== CustomPaymentLinkStatus.PENDING) {
+      if (!(autoExpired && payload.isSuccess)) return link;
+      this.logger.warn(
+        `Custom payment link ${virtualOrderId} was auto-expired but OnePay reports success — promoting to PAID`,
+      );
+    }
 
     const updated = await this.customPaymentLinkRepository.update(link.id, {
       status: payload.isSuccess
         ? CustomPaymentLinkStatus.PAID
         : CustomPaymentLinkStatus.FAILED,
       paymentId: payload.paymentId ?? null,
+      // Cleared on a promotion, so the record no longer reads as "expired".
+      ...(autoExpired && payload.isSuccess ? { expiredAt: null } : {}),
     });
 
     return updated ?? link;
+  }
+
+  /**
+   * An admin says what really happened to a pending link (#056).
+   *
+   * Needed because the outcome only ever arrived via OnePay's IPN: a customer who
+   * paid on a device that never returned, or never paid at all, left the link in
+   * "Chờ thanh toán" indefinitely.
+   *
+   * Only a pending or auto-expired link can be confirmed. A link OnePay already
+   * settled, or another admin already confirmed, is left alone — overwriting that
+   * would quietly rewrite a money record.
+   */
+  async confirmManually(
+    id: CustomPaymentLink['id'],
+    isPaid: boolean,
+    adminUserId?: number,
+  ): Promise<CustomPaymentLink> {
+    const link = await this.customPaymentLinkRepository.findById(id);
+    if (!link) {
+      throw new NotFoundException(`Custom payment link ${id} not found`);
+    }
+
+    const autoExpired =
+      link.status === CustomPaymentLinkStatus.FAILED &&
+      !!link.expiredAt &&
+      !link.confirmedAt;
+
+    if (link.status !== CustomPaymentLinkStatus.PENDING && !autoExpired) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: {
+          status: `Link is already ${link.status} and cannot be confirmed again`,
+        },
+      });
+    }
+
+    const updated = await this.customPaymentLinkRepository.update(id, {
+      status: isPaid
+        ? CustomPaymentLinkStatus.PAID
+        : CustomPaymentLinkStatus.FAILED,
+      confirmedAt: new Date(),
+      confirmedByAdminId: adminUserId ?? null,
+      // An admin's word replaces the sweep's guess.
+      expiredAt: null,
+    });
+
+    this.logger.log(
+      `Admin ${adminUserId ?? 'unknown'} marked custom payment link ${link.virtualOrderId} as ${
+        isPaid ? 'PAID' : 'FAILED'
+      }`,
+    );
+
+    return updated ?? link;
+  }
+
+  /**
+   * Move links nobody paid within OnePay's window out of the pending tab (#056).
+   *
+   * Every ten minutes rather than every minute: the window is 30 minutes, so this
+   * is accurate to well inside it while costing one indexed statement per run.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async expireStaleLinks(): Promise<number> {
+    const cutoff = new Date(
+      Date.now() - CUSTOM_PAYMENT_LINK_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    const expired =
+      await this.customPaymentLinkRepository.expirePendingCreatedBefore(cutoff);
+
+    if (expired > 0) {
+      this.logger.log(
+        `Expired ${expired} custom payment link(s) unpaid after ${CUSTOM_PAYMENT_LINK_EXPIRY_MINUTES} minutes`,
+      );
+    }
+
+    return expired;
   }
 }

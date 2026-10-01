@@ -11,8 +11,10 @@ import { Blog } from '../../../../domain/blog';
 import { FilterBlogDto, SortBlogDto } from '../../../../dto/find-all-blogs.dto';
 import { BlogRepository, LegacyBlogAuthor } from '../../blog.repository';
 import { BlogMapper } from '../mappers/blog.mapper';
+import { PlanMapper } from '../../../../../plans/infrastructure/persistence/relational/mappers/plan.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { parsePlanOrder, sortByPlanOrder } from '../../../../blog-plan-order';
+import { toAuthorSlug } from '../../../../../authors/author-slug';
 
 @Injectable()
 export class BlogRelationalRepository implements BlogRepository {
@@ -43,7 +45,11 @@ export class BlogRelationalRepository implements BlogRepository {
         (await this.miniTagRepository.findOneBy({ id: data.miniTag.id })) ??
         null;
     }
-    if (data.plans?.length) {
+    // Codes are the durable link (#047); the join table is rewritten from them so
+    // everything that still joins on `blog_plans` keeps working.
+    if (data.planCodes?.length) {
+      persistenceModel.plans = await this.findPlansByCodes(data.planCodes);
+    } else if (data.plans?.length) {
       persistenceModel.plans = await this.planRepository.findBy({
         id: In(data.plans.map((p) => p.id)),
       });
@@ -57,6 +63,39 @@ export class BlogRelationalRepository implements BlogRepository {
       this.blogRepository.create(persistenceModel),
     );
     return BlogMapper.toDomain(newEntity);
+  }
+
+  /** Plans for a list of slugs / supplier package codes, in the order given. */
+  private async findPlansByCodes(codes: string[]): Promise<PlanEntity[]> {
+    const wanted = codes.map((code) => code.trim()).filter(Boolean);
+    if (!wanted.length) return [];
+
+    const plans = await this.planRepository
+      .createQueryBuilder('plan')
+      .where('plan.slug IN (:...wanted)', { wanted })
+      .orWhere('plan."providerPlanId" IN (:...wanted)', { wanted })
+      .getMany();
+
+    const byCode = new Map<string, PlanEntity>();
+    for (const plan of plans) {
+      for (const key of [plan.slug, plan.providerPlanId]) {
+        if (!key) continue;
+        const current = byCode.get(key);
+        // Same tie-break as `resolvePlansFromCodes`: active first, then lowest id.
+        if (
+          !current ||
+          (plan.isActive !== current.isActive
+            ? plan.isActive
+            : plan.id < current.id)
+        ) {
+          byCode.set(key, plan);
+        }
+      }
+    }
+
+    return wanted
+      .map((code) => byCode.get(code))
+      .filter((plan): plan is PlanEntity => !!plan);
   }
 
   async findAllWithPagination({
@@ -91,6 +130,7 @@ export class BlogRelationalRepository implements BlogRepository {
         'blog.category',
         'blog.parent',
         'blog.planOrder',
+        'blog.planCodes',
         'blog.timeRead',
         'blog.isPublished',
         'blog.publishedAt',
@@ -108,6 +148,12 @@ export class BlogRelationalRepository implements BlogRepository {
     if (filterOptions?.isPublished !== undefined) {
       qb.andWhere('blog.isPublished = :isPublished', {
         isPublished: filterOptions.isPublished,
+      });
+    }
+
+    if (filterOptions?.isPopular !== undefined) {
+      qb.andWhere('blog.isPopular = :isPopular', {
+        isPopular: filterOptions.isPopular,
       });
     }
 
@@ -215,21 +261,24 @@ export class BlogRelationalRepository implements BlogRepository {
       }
     }
 
-    return [
-      entities.map((entity) => {
-        const blog = BlogMapper.toDomain(entity);
-        // Same typed order as the post's plans (#057).
-        blog.planIds = (
-          sortByPlanOrder(
-            (planIdsMap.get(entity.id) ?? []).map((id) => ({ id })),
-            parsePlanOrder(entity.planOrder),
-          ) ?? []
-        ).map(({ id }) => id);
-        blog.faqIds = faqIdsMap.get(entity.id) ?? [];
-        return blog;
-      }),
-      count,
-    ];
+    const blogs = entities.map((entity) => {
+      const blog = BlogMapper.toDomain(entity);
+      // Same typed order as the post's plans (#057).
+      blog.planIds = (
+        sortByPlanOrder(
+          (planIdsMap.get(entity.id) ?? []).map((id) => ({ id })),
+          parsePlanOrder(entity.planOrder),
+        ) ?? []
+      ).map(({ id }) => id);
+      blog.faqIds = faqIdsMap.get(entity.id) ?? [];
+      return blog;
+    });
+
+    // Codes win over the join table wherever they are set (#047), so the list's
+    // `planIds` agree with what the article page will actually show.
+    await this.resolvePlansFromCodes(blogs);
+
+    return [blogs, count];
   }
 
   async findLegacyAuthors(): Promise<LegacyBlogAuthor[]> {
@@ -251,6 +300,66 @@ export class BlogRelationalRepository implements BlogRepository {
     }));
   }
 
+  /**
+   * Replace each article's `plans` with the ones its `planCodes` resolve to
+   * (#047).
+   *
+   * This is what makes the link survive a catalogue re-import: `blog_plans` is
+   * keyed by plan id, so recreated plan rows break it, while a slug or a supplier
+   * package code comes back unchanged. An article with no codes — one saved
+   * before this existed — keeps whatever the join table gave it.
+   *
+   * One query for the whole batch, never one per article.
+   */
+  private async resolvePlansFromCodes(blogs: Blog[]): Promise<void> {
+    const codes = [
+      ...new Set(
+        blogs.flatMap((blog) => blog.planCodes ?? []).filter((code) => !!code),
+      ),
+    ];
+    if (!codes.length) return;
+
+    const plans = await this.planRepository
+      .createQueryBuilder('plan')
+      .where('plan.slug IN (:...codes)', { codes })
+      .orWhere('plan."providerPlanId" IN (:...codes)', { codes })
+      .getMany();
+
+    // A slug is unique, so it always names exactly one plan. `providerPlanId` has
+    // no unique index and can repeat across suppliers, so an active plan wins and
+    // the lowest id breaks a remaining tie — arbitrary, but stable, which beats
+    // the list changing between two page loads.
+    const byCode = new Map<string, PlanEntity>();
+    const better = (candidate: PlanEntity, current: PlanEntity) =>
+      candidate.isActive !== current.isActive
+        ? candidate.isActive
+        : candidate.id < current.id;
+
+    for (const plan of plans) {
+      for (const key of [plan.slug, plan.providerPlanId]) {
+        if (!key) continue;
+        const current = byCode.get(key);
+        if (!current || better(plan, current)) byCode.set(key, plan);
+      }
+    }
+
+    for (const blog of blogs) {
+      const wanted = blog.planCodes;
+      if (!wanted?.length) continue;
+
+      // Order follows the codes, so the editor's order is what the page shows.
+      // A code that resolves to nothing is dropped rather than rendered empty —
+      // the code itself stays stored, so it starts working again if the plan
+      // comes back.
+      const resolved = wanted
+        .map((code) => byCode.get(code))
+        .filter((plan): plan is PlanEntity => !!plan);
+
+      blog.plans = resolved.map((plan) => PlanMapper.toDomain(plan));
+      blog.planIds = resolved.map((plan) => plan.id);
+    }
+  }
+
   async findById(id: Blog['id']): Promise<NullableType<Blog>> {
     const entity = await this.blogRepository.findOne({
       where: { id },
@@ -262,7 +371,10 @@ export class BlogRelationalRepository implements BlogRepository {
       },
     });
 
-    return entity ? BlogMapper.toDomain(entity) : null;
+    if (!entity) return null;
+    const blog = BlogMapper.toDomain(entity);
+    await this.resolvePlansFromCodes([blog]);
+    return blog;
   }
 
   async findBySlug(slug: string): Promise<NullableType<Blog>> {
@@ -277,7 +389,10 @@ export class BlogRelationalRepository implements BlogRepository {
       },
     });
 
-    return entity ? BlogMapper.toDomain(entity) : null;
+    if (!entity) return null;
+    const blog = BlogMapper.toDomain(entity);
+    await this.resolvePlansFromCodes([blog]);
+    return blog;
   }
 
   async findByIds(ids: Blog['id'][]): Promise<Blog[]> {
@@ -291,7 +406,9 @@ export class BlogRelationalRepository implements BlogRepository {
       },
     });
 
-    return entities.map((entity) => BlogMapper.toDomain(entity));
+    const blogs = entities.map((entity) => BlogMapper.toDomain(entity));
+    await this.resolvePlansFromCodes(blogs);
+    return blogs;
   }
 
   async update(id: Blog['id'], payload: Partial<Blog>): Promise<Blog> {
@@ -322,7 +439,12 @@ export class BlogRelationalRepository implements BlogRepository {
         : null;
     }
 
-    if (payload.plans !== undefined) {
+    // Codes win when they were sent, and rewrite the join table (#047). An update
+    // that sends neither leaves both alone.
+    if (payload.planCodes !== undefined) {
+      merged.plans = await this.findPlansByCodes(payload.planCodes ?? []);
+      merged.planCodes = payload.planCodes ?? [];
+    } else if (payload.plans !== undefined) {
       merged.plans = payload.plans?.length
         ? await this.planRepository.findBy({
             id: In(payload.plans.map((p) => p.id)),
@@ -362,6 +484,59 @@ export class BlogRelationalRepository implements BlogRepository {
     const results = await qb.getRawMany();
 
     return results.map((r) => r.category);
+  }
+
+  /**
+   * The authors that actually have articles, for the CMS filter's select box
+   * (#046) — derived from the articles rather than from the user table, so the
+   * list never offers an author with nothing to show.
+   *
+   * `slug` is what the filter matches on. Articles written before author
+   * profiles existed carry only a byline, so their slug is derived from the name
+   * the same way `findAuthorBySlug` does it; that is also what makes them
+   * selectable at all.
+   */
+  async findAuthorOptions(
+    lang?: string,
+  ): Promise<{ slug: string; name: string }[]> {
+    const qb = this.blogRepository
+      .createQueryBuilder('blog')
+      .leftJoin('blog.authorProfile', 'authorProfile')
+      .select([
+        'authorProfile.slug AS "profileSlug"',
+        'authorProfile.name AS "profileName"',
+        'blog.author AS "byline"',
+      ])
+      .where('authorProfile.slug IS NOT NULL OR blog.author IS NOT NULL');
+
+    if (lang) {
+      qb.andWhere('blog.language = :lang', { lang });
+    }
+
+    const rows = await qb
+      .groupBy('authorProfile.slug')
+      .addGroupBy('authorProfile.name')
+      .addGroupBy('blog.author')
+      .getRawMany<{
+        profileSlug: string | null;
+        profileName: string | null;
+        byline: string | null;
+      }>();
+
+    // A profile and a legacy byline can name the same person; keyed by slug so
+    // they collapse into one option, with the profile's name preferred.
+    const bySlug = new Map<string, string>();
+    for (const row of rows) {
+      const name = (row.profileName ?? row.byline ?? '').trim();
+      if (!name) continue;
+      const slug = row.profileSlug ?? toAuthorSlug(name);
+      if (!slug) continue;
+      if (row.profileSlug || !bySlug.has(slug)) bySlug.set(slug, name);
+    }
+
+    return [...bySlug.entries()]
+      .map(([slug, name]) => ({ slug, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
   }
 
   async findParentsByCategory(

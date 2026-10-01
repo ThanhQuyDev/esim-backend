@@ -96,6 +96,154 @@ describe('Destination search filter', () => {
   });
 });
 
+/**
+ * #034 — the admin list filters. `providers` is the interesting one: the column
+ * is free text an admin types, so there is nothing to compare exactly against.
+ */
+describe('Destination providers filter', () => {
+  function run(filterOptions: Record<string, unknown>) {
+    const captured: CapturedWhere[] = [];
+    const qb = fakeQueryBuilder(captured);
+    const repo = new DestinationsRelationalRepository({
+      createQueryBuilder: () => qb,
+    } as never);
+
+    return repo
+      .findManyWithPagination({
+        filterOptions: filterOptions as never,
+        sortOptions: null,
+        paginationOptions: { page: 1, limit: 20 },
+      })
+      .then(() => captured);
+  }
+
+  /** The WHERE fragment carrying the provider substring parameters. */
+  function providerClause(captured: CapturedWhere[]) {
+    return captured.find((c) => c.sql.includes(':provider0'));
+  }
+
+  it('should matches each supplier as a case-insensitive substring', async () => {
+    const captured = await run({ providers: ['airalo'] });
+    const clause = providerClause(captured);
+
+    expect(clause?.sql).toContain('destination.providers ILIKE :provider0');
+    expect(clause?.params).toEqual({ provider0: '%airalo%' });
+  });
+
+  it('should ORs several suppliers together, so picking two widens the result', async () => {
+    // A destination served by Airalo alone must still match a filter of
+    // Airalo + Viettel; ANDing them would return nothing.
+    const captured = await run({ providers: ['airalo', 'Viettel'] });
+    const clause = providerClause(captured);
+
+    expect(clause?.sql).toBe(
+      '(destination.providers ILIKE :provider0 OR destination.providers ILIKE :provider1)',
+    );
+    expect(clause?.params).toEqual({
+      provider0: '%airalo%',
+      provider1: '%Viettel%',
+    });
+  });
+
+  it('should ignores blank entries instead of matching everything', async () => {
+    // '' would become ILIKE '%%' and quietly match the whole catalogue.
+    const captured = await run({ providers: ['', '   '] });
+
+    expect(providerClause(captured)).toBeUndefined();
+  });
+
+  it('should adds no clause at all when no supplier is picked', async () => {
+    const captured = await run({ providers: [] });
+
+    expect(providerClause(captured)).toBeUndefined();
+  });
+
+  it('should still filters on Nổi bật and Hoạt động as booleans', async () => {
+    const captured = await run({ isPopular: true, isActive: false });
+
+    expect(captured).toEqual(
+      expect.arrayContaining([
+        {
+          sql: 'destination.isPopular = :isPopular',
+          params: { isPopular: true },
+        },
+        {
+          sql: 'destination.isActive = :isActive',
+          params: { isActive: false },
+        },
+      ]),
+    );
+  });
+
+  it('should treats Không (false) as a real choice, not as "unset"', async () => {
+    // `if (isPopular)` instead of `!== undefined` would drop this filter and
+    // silently show the featured destinations too.
+    const captured = await run({ isPopular: false });
+
+    expect(captured).toEqual(
+      expect.arrayContaining([
+        {
+          sql: 'destination.isPopular = :isPopular',
+          params: { isPopular: false },
+        },
+      ]),
+    );
+  });
+});
+
+/** #036 — the same three filters on Khu vực, through the shared helper. */
+describe('Region list filters', () => {
+  function run(filterOptions: Record<string, unknown>) {
+    const captured: CapturedWhere[] = [];
+    const qb = fakeQueryBuilder(captured);
+    const repo = new RegionsRelationalRepository(
+      { createQueryBuilder: () => qb } as never,
+      {} as never,
+    );
+
+    return repo
+      .findManyWithPagination({
+        filterOptions: filterOptions as never,
+        sortOptions: null,
+        paginationOptions: { page: 1, limit: 20 },
+      })
+      .then(() => captured);
+  }
+
+  it('should matches suppliers against the region column, not the destination one', async () => {
+    const captured = await run({ providers: ['airalo', 'Airalo'] });
+    const clause = captured.find((c) => c.sql.includes(':provider0'));
+
+    expect(clause?.sql).toBe(
+      '(region.providers ILIKE :provider0 OR region.providers ILIKE :provider1)',
+    );
+    expect(clause?.params).toEqual({
+      provider0: '%airalo%',
+      provider1: '%Airalo%',
+    });
+  });
+
+  it('should adds no supplier clause when nothing is picked', async () => {
+    const captured = await run({ providers: [] });
+
+    expect(captured.find((c) => c.sql.includes(':provider0'))).toBeUndefined();
+  });
+
+  it('should filters Nổi bật and Hoạt động, treating false as a real choice', async () => {
+    const captured = await run({ isPopular: false, isActive: true });
+
+    expect(captured).toEqual(
+      expect.arrayContaining([
+        {
+          sql: 'region."isPopular" = :isPopular',
+          params: { isPopular: false },
+        },
+        { sql: 'region."isActive" = :isActive', params: { isActive: true } },
+      ]),
+    );
+  });
+});
+
 describe('Region search filter', () => {
   it('should match region titles and member-destination titles', async () => {
     const captured: CapturedWhere[] = [];

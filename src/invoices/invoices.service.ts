@@ -26,6 +26,16 @@ export interface CreateInvoiceForOrderInput {
   invoiceEmail: string;
 }
 
+/**
+ * Order states with nothing left to invoice (#011). A partial refund leaves the
+ * order `paid` with a payable remainder, so it is deliberately not in here.
+ */
+export const NON_INVOICEABLE_ORDER_STATUSES = new Set([
+  'failed',
+  'refunded',
+  'cancelled',
+]);
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
@@ -220,6 +230,19 @@ export class InvoicesService {
     const order = await this.orderService.findById(orderId);
     if (!order) {
       throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // A failed order was never paid and a refunded one has been paid back, so an
+    // invoice for either would document money esim.vn does not hold (#011). The
+    // CMS hides the button; this is what makes the rule hold for a stale tab or
+    // a direct call.
+    if (
+      NON_INVOICEABLE_ORDER_STATUSES.has((order.status ?? '').toLowerCase())
+    ) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { order: `cannotInvoiceOrderWithStatus:${order.status}` },
+      });
     }
 
     const existing = await this.invoiceRepository.findByOrderId(orderId);

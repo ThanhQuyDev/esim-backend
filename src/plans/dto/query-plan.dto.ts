@@ -67,6 +67,32 @@ export class FilterPlanDto {
   provider?: string[];
 
   @ApiPropertyOptional({
+    type: String,
+    description:
+      'Exact APN, chosen from the distinct values in /plans/apn-options (#010)',
+  })
+  @IsOptional()
+  @IsString()
+  apn?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Exit IP is local rather than routed via Hong Kong, i.e. TikTok and ChatGPT work (#010, #041)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isNonHkIp?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Whether the plan can be topped up (#010)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  topUp?: boolean;
+
+  @ApiPropertyOptional({
     type: Number,
     description: 'Filter by duration in days',
   })

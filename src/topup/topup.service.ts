@@ -28,6 +28,7 @@ import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 import { TopupPackageDto, TopupProvider } from './dto/topup-package.dto';
 import {
   AdminManualTopupDto,
+  EXU_WALLET_PAYMENT_METHOD,
   TopupCheckoutDto,
   TopupPaymentMethod,
 } from './dto/topup-checkout.dto';
@@ -40,6 +41,8 @@ import {
 } from './topup.constants';
 import { Plan } from '../plans/domain/plan';
 import { FilterPlanDto } from '../plans/dto/query-plan.dto';
+import { WalletsService } from '../wallets/wallets.service';
+import { InvoicesService } from '../invoices/invoices.service';
 
 const PROVIDER_NAME_TO_ENUM: Record<string, TopupProvider> = {
   airalo: TopupProvider.AIRALO,
@@ -119,8 +122,79 @@ export class TopupService {
     private readonly microEsimService: MicroEsimService,
     private readonly onepayService: OnepayService,
     private readonly profitMarginsService: ProfitMarginsService,
+    private readonly walletsService: WalletsService,
+    private readonly invoicesService: InvoicesService,
     private readonly configService: ConfigService<AllConfigType>,
   ) {}
+
+  /**
+   * Topup paid out of the customer's eXu balance (#028).
+   *
+   * There is no gateway to come back from, so the whole thing settles here: hold
+   * the balance, mark the order paid, capture the hold, recharge. `createHold`
+   * is what refuses an insufficient or locked balance, before any of that.
+   *
+   * A topup earns no cashback, no referral and no commission (#032) — the order
+   * is created with those at 0 and nothing here adds them.
+   */
+  async checkoutWithWallet(
+    userId: number,
+    dto: TopupCheckoutDto,
+  ): Promise<{
+    success: boolean;
+    orderId: string;
+    status: string;
+    vndAmount: number;
+    walletSpentVndAmount: number;
+  }> {
+    const { order, vndAmount } = await this.createPendingTopupOrder(
+      userId,
+      dto,
+    );
+
+    try {
+      await this.walletsService.createHold(order.id, userId, vndAmount);
+    } catch (err) {
+      // Not enough eXu, or the wallet is locked. Fail the order rather than
+      // leaving a pending topup nobody will ever pay.
+      await this.orderRepository.update(order.id, {
+        status: TOPUP_ORDER_STATUS.FAILED,
+      } as never);
+      this.logger.warn(
+        `Topup ${order.orderNumber}: eXu hold failed (${(err as Error).message})`,
+      );
+      throw err;
+    }
+
+    await this.orderRepository.update(order.id, {
+      status: TOPUP_ORDER_STATUS.PAID,
+      paymentMethod: EXU_WALLET_PAYMENT_METHOD,
+      walletSpentVndAmount: vndAmount,
+      // Nothing is left to collect through a gateway.
+      payableVndPrice: 0,
+    } as never);
+
+    await this.walletsService.captureHoldForOrder(order.id);
+
+    this.logger.log(
+      `Topup ${order.orderNumber} paid from eXu balance (user=${userId}, vnd=${vndAmount})`,
+    );
+
+    await this.executeTopup(order.orderNumber);
+
+    const finalized = await this.orderRepository.findByOrderNumber(
+      order.orderNumber,
+    );
+    const status = finalized?.status ?? TOPUP_ORDER_STATUS.PAID;
+
+    return {
+      success: status === TOPUP_ORDER_STATUS.COMPLETED,
+      orderId: order.orderNumber,
+      status,
+      vndAmount,
+      walletSpentVndAmount: vndAmount,
+    };
+  }
 
   /**
    * Returns the unified topup package list for an iccid.
@@ -242,6 +316,14 @@ export class TopupService {
       .substring(2, 8)
       .toUpperCase()}`;
 
+    // Cost in đồng, so the order detail and the reports can state the margin on a
+    // topup (#015). It used to be stored as 0, which made every topup look like
+    // pure profit.
+    const vndCostPrice = roundVndToThousands(
+      (await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)) *
+        (Number(pkg.price) || 0),
+    );
+
     const order = await this.orderRepository.create({
       userId,
       orderNumber,
@@ -250,6 +332,12 @@ export class TopupService {
       targetIccid: dto.iccid,
       topupProvider: dto.provider,
       topupPackageId: dto.packageId,
+      // Snapshot of what the package gave: the provider catalogue changes, the
+      // order must not (#015).
+      topupPackageName: pkg.name ?? null,
+      topupDataText: pkg.dataAmountText ?? null,
+      topupDurationDays: pkg.durationDays ?? null,
+      topupIsUnlimited: !!pkg.isUnlimited,
       totalAmount: pkg.retailPrice,
       currency: 'USD',
       paymentMethod: dto.paymentMethod,
@@ -257,7 +345,7 @@ export class TopupService {
       couponCode: null,
       discountAmount: 0,
       vndPrice: vndAmount,
-      vndCostPrice: 0,
+      vndCostPrice,
       subtotalVndPrice: vndAmount,
       couponDiscountVndAmount: 0,
       referralCode: null,
@@ -271,6 +359,19 @@ export class TopupService {
       refundStatus: null,
       refundedAmountVnd: 0,
     });
+
+    // VAT invoice request, if the customer filled it in (#028). Best-effort: the
+    // topup itself must not fail because the invoice row could not be written —
+    // an admin can add it from the order afterwards.
+    if (dto.invoice) {
+      try {
+        await this.invoicesService.createForOrder(order.id, dto.invoice);
+      } catch (err) {
+        this.logger.error(
+          `Topup ${order.orderNumber}: could not attach the invoice request: ${(err as Error).message}`,
+        );
+      }
+    }
 
     return { order, vndAmount };
   }

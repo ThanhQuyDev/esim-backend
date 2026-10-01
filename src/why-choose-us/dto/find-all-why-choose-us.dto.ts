@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -17,6 +18,15 @@ export class FilterWhyChooseUsDto {
   @IsOptional()
   @IsString()
   type?: string;
+
+  /** Trạng thái hoạt động, for the CMS list filter (#054). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class SortWhyChooseUsDto {
@@ -59,6 +69,15 @@ export class QueryWhyChooseUsDto {
   @IsOptional()
   @IsString()
   type?: string;
+
+  /** Trạng thái hoạt động (#054). */
+  @ApiPropertyOptional({ type: Boolean, description: 'Filter by active flag' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  isActive?: boolean;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsDateString,
   IsNumber,
   IsOptional,
   IsString,
@@ -37,6 +38,76 @@ export class FilterEsimDto {
   @IsOptional()
   @IsBoolean()
   includeAll?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Plan type of the eSIM: fixed, daily, unlimited, unlimited-reduce (#020)',
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  planType?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Supplier of the eSIM (#020)',
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  provider?: string[];
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'true: only eSIMs whose plan includes call minutes or SMS; false: data-only (#020)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  hasCallSms?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Whether the plan behind the eSIM can be topped up (#020)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  topUp?: boolean;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    description: 'eSIMs created on or after this date, inclusive (#020)',
+  })
+  @IsOptional()
+  @IsDateString()
+  createdFrom?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    description: 'eSIMs created on or before this date, whole day (#020)',
+  })
+  @IsOptional()
+  @IsDateString()
+  createdTo?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    description: 'eSIMs expiring on or after this date, inclusive (#020)',
+  })
+  @IsOptional()
+  @IsDateString()
+  expiresFrom?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    description: 'eSIMs expiring on or before this date, whole day (#020)',
+  })
+  @IsOptional()
+  @IsDateString()
+  expiresTo?: string;
 }
 
 export class SortEsimDto {

@@ -15,6 +15,10 @@ export class OrderMapper {
     domainEntity.targetIccid = raw.targetIccid ?? null;
     domainEntity.topupProvider = raw.topupProvider ?? null;
     domainEntity.topupPackageId = raw.topupPackageId ?? null;
+    domainEntity.topupPackageName = raw.topupPackageName ?? null;
+    domainEntity.topupDataText = raw.topupDataText ?? null;
+    domainEntity.topupDurationDays = raw.topupDurationDays ?? null;
+    domainEntity.topupIsUnlimited = !!raw.topupIsUnlimited;
     domainEntity.totalAmount = Number(raw.totalAmount);
     domainEntity.currency = raw.currency;
     domainEntity.paymentMethod = raw.paymentMethod;
@@ -76,6 +80,18 @@ export class OrderMapper {
     }
     if (domainEntity.topupPackageId !== undefined) {
       persistenceEntity.topupPackageId = domainEntity.topupPackageId;
+    }
+    if (domainEntity.topupPackageName !== undefined) {
+      persistenceEntity.topupPackageName = domainEntity.topupPackageName;
+    }
+    if (domainEntity.topupDataText !== undefined) {
+      persistenceEntity.topupDataText = domainEntity.topupDataText;
+    }
+    if (domainEntity.topupDurationDays !== undefined) {
+      persistenceEntity.topupDurationDays = domainEntity.topupDurationDays;
+    }
+    if (domainEntity.topupIsUnlimited !== undefined) {
+      persistenceEntity.topupIsUnlimited = domainEntity.topupIsUnlimited;
     }
     if (domainEntity.totalAmount !== undefined) {
       persistenceEntity.totalAmount = domainEntity.totalAmount;

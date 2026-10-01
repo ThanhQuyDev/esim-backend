@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 import { SupportedDeviceEntity } from '../entities/supported-device.entity';
 import {
   SupportedDevice,
@@ -45,14 +45,21 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
   async findAllWithPagination({
     paginationOptions,
     type,
+    manufacturer,
     search,
   }: {
     paginationOptions: IPaginationOptions;
-    type?: DeviceType;
+    type?: DeviceType[];
+    manufacturer?: string;
     search?: string;
   }): Promise<[SupportedDevice[], number]> {
     const where: Record<string, unknown> = {};
-    if (type) where.type = type;
+    // `In`, not `=`: the CMS filter is a multi-select, so two picked types have to
+    // widen the result rather than match nothing (#052).
+    if (type?.length) {
+      where.type = type.length === 1 ? type[0] : In(type);
+    }
+    if (manufacturer) where.manufacturer = manufacturer;
     if (search) where.device = ILike(`%${search}%`);
 
     const sorted = await this.findSorted(where);
@@ -61,6 +68,40 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
       sorted.slice(start, start + paginationOptions.limit),
       sorted.length,
     ];
+  }
+
+  /**
+   * Distinct manufacturer names (#052), ordered the way the public list orders
+   * brands: numbered ones first, then alphabetically — so the filter box reads in
+   * the same order as the site.
+   */
+  async findManufacturers(): Promise<string[]> {
+    const rows = await this.repo
+      .createQueryBuilder('device')
+      .select('device.manufacturer', 'manufacturer')
+      .addSelect('MAX(device.manufacturerOrder)', 'brandOrder')
+      .where("device.manufacturer IS NOT NULL AND device.manufacturer <> ''")
+      .groupBy('device.manufacturer')
+      .getRawMany<{
+        manufacturer: string;
+        brandOrder: number | string | null;
+      }>();
+
+    return rows
+      .map((row) => ({
+        manufacturer: row.manufacturer,
+        // 0 / null both mean "not numbered", which sorts after every numbered brand.
+        order: Number(row.brandOrder) || 0,
+      }))
+      .sort((a, b) => {
+        if (a.order !== b.order) {
+          if (!a.order) return 1;
+          if (!b.order) return -1;
+          return a.order - b.order;
+        }
+        return a.manufacturer.localeCompare(b.manufacturer, 'vi');
+      })
+      .map((row) => row.manufacturer);
   }
 
   async findGrouped(search?: string): Promise<SupportedDevice[]> {

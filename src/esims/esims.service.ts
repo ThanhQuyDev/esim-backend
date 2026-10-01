@@ -129,7 +129,7 @@ export class EsimsService {
     });
   }
 
-  findManyWithPagination({
+  async findManyWithPagination({
     filterOptions,
     sortOptions,
     paginationOptions,
@@ -138,10 +138,36 @@ export class EsimsService {
     sortOptions?: SortEsimDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Esim[], number]> {
-    return this.esimsRepository.findManyWithPagination({
+    const [esims, count] = await this.esimsRepository.findManyWithPagination({
       filterOptions,
       sortOptions,
       paginationOptions,
+    });
+    return [await this.attachTopupInfo(esims), count];
+  }
+
+  /**
+   * Mark which eSIMs have been topped up (#025).
+   *
+   * One extra query for the page, not one per row, and keyed on ICCID because
+   * that is what a topup order records.
+   */
+  async attachTopupInfo(esims: Esim[]): Promise<Esim[]> {
+    const iccids = esims.map((esim) => esim.iccid).filter(Boolean);
+    if (iccids.length === 0) return esims;
+
+    const topups = await this.esimsRepository.countTopupsByIccids(iccids);
+
+    return esims.map((esim) => {
+      const info = topups.get(esim.iccid);
+      return {
+        ...esim,
+        topupCount: info?.count ?? 0,
+        lastTopupAt: info?.lastAt ?? null,
+        // The package names come from the same rolled-up query, so the customer's
+        // profile can name what was topped up without a second round trip (#031).
+        topupPackageNames: info?.packageNames ?? null,
+      };
     });
   }
 
@@ -149,8 +175,14 @@ export class EsimsService {
     return this.esimsRepository.findById(id);
   }
 
-  findByIdWithRelations(id: Esim['id']): Promise<NullableType<Esim>> {
-    return this.esimsRepository.findByIdWithRelations(id);
+  async findByIdWithRelations(id: Esim['id']): Promise<NullableType<Esim>> {
+    const esim = await this.esimsRepository.findByIdWithRelations(id);
+    if (!esim) return null;
+    const [withTopup] = await this.attachTopupInfo([esim]);
+    // The detail also lists WHICH packages were applied and at what price (#026);
+    // the list view only needs the count.
+    const topups = await this.esimsRepository.findTopupsByIccid(esim.iccid);
+    return { ...withTopup, topups };
   }
 
   findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {

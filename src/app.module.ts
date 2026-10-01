@@ -40,7 +40,10 @@ import { EsimProvidersModule } from './esim-providers/esim-providers.module';
 import { ProfitMarginsModule } from './profit-margins/profit-margins.module';
 import { ProviderDepositsModule } from './provider-deposits/provider-deposits.module';
 import { ProviderSurchargesModule } from './provider-surcharges/provider-surcharges.module';
+import { ProvidersModule } from './providers/providers.module';
+import { AuthPagesModule } from './auth-pages/auth-pages.module';
 import { PartnersModule } from './partners/partners.module';
+import { PartnerPurchaseModule } from './partner-purchase/partner-purchase.module';
 
 const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
   useClass: TypeOrmConfigService,
@@ -74,6 +77,10 @@ import { HeroBannersModule } from './hero-banners/hero-banners.module';
 import { FootersModule } from './footers/footers.module';
 
 import { TopBarsModule } from './top-bars/top-bars.module';
+import { MenuSlidesModule } from './menu-slides/menu-slides.module';
+import { SiteScriptsModule } from './site-scripts/site-scripts.module';
+import { ManufacturerNotesModule } from './manufacturer-notes/manufacturer-notes.module';
+import { ApnSupportModule } from './apn-support/apn-support.module';
 import { OverviewModule } from './overview/overview.module';
 
 import { InvoicesModule } from './invoices/invoices.module';
@@ -90,6 +97,10 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     CustomPaymentLinksModule,
     InvoicesModule,
     TopBarsModule,
+    MenuSlidesModule,
+    SiteScriptsModule,
+    ManufacturerNotesModule,
+    ApnSupportModule,
     FootersModule,
     HeroBannersModule,
     ScheduleModule.forRoot(),
@@ -162,6 +173,8 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     ProfitMarginsModule,
     ProviderDepositsModule,
     ProviderSurchargesModule,
+    ProvidersModule,
+    AuthPagesModule,
     CouponsModule,
     PaymentModule,
     WalletsModule,
@@ -175,6 +188,9 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     OverviewModule,
     TicketsModule,
     PartnersModule,
+    // Đối tác phân phối tự đặt mua hàng (#046) — module lá, import cả
+    // PartnersModule lẫn OrdersModule nên phải đứng sau cả hai.
+    PartnerPurchaseModule,
   ],
 })
 export class AppModule {}

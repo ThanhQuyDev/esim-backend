@@ -97,6 +97,18 @@ export class BlogEntity extends EntityRelationalHelper {
   @Column({ type: 'simple-array', nullable: true })
   planOrder?: string[] | null;
 
+  /**
+   * Provider-sourced references to the related plans, in the order typed (#047) —
+   * a plan slug or the supplier's own package code.
+   *
+   * The durable link. `blog_plans` is keyed by plan id, and a full catalogue
+   * re-import recreates plan rows with new ids, which silently emptied the
+   * related-plans list on every older article. These survive that, so when they
+   * are present they are what the plans are resolved from.
+   */
+  @Column({ type: 'simple-array', nullable: true })
+  planCodes?: string[] | null;
+
   @ManyToMany(() => FaqEntity, { eager: false })
   @JoinTable({ name: 'blog_faqs' })
   faqs?: FaqEntity[];

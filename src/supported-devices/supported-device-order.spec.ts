@@ -98,7 +98,15 @@ describe('SupportedDevicesService — ordering by brand (#047)', () => {
       setManufacturerOrder: jest.fn().mockResolvedValue(undefined),
       setSortOrders: jest.fn().mockResolvedValue(undefined),
     };
-    const service = new SupportedDevicesService(repository as never);
+    // Faithful to the real service: a Map of brand -> note, empty when no brand
+    // carries an extra note (#079).
+    const notesService = {
+      findActiveMap: jest.fn().mockResolvedValue(new Map<string, string>()),
+    };
+    const service = new SupportedDevicesService(
+      repository as never,
+      notesService as never,
+    );
     return { service, repository };
   }
 

@@ -12,6 +12,7 @@ import {
 import { FaqsService } from './faqs.service';
 import { CreateFaqDto } from './dto/create-faq.dto';
 import { UpdateFaqDto } from './dto/update-faq.dto';
+import { BulkFaqIdsDto, BulkFaqStatusDto } from './dto/bulk-faq.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -106,6 +107,26 @@ export class FaqsController {
   })
   findById(@Param('id') id: string) {
     return this.faqsService.findById(id);
+  }
+
+  /**
+   * Bulk status change (#051) — declared before `PATCH :id` and `DELETE :id`,
+   * which would otherwise capture "bulk" as an id.
+   */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('bulk/status')
+  @ApiOkResponse({ description: 'How many FAQs were updated' })
+  bulkSetActive(@Body() dto: BulkFaqStatusDto): Promise<{ updated: number }> {
+    return this.faqsService.bulkSetActive(dto.ids, dto.isActive);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Delete('bulk')
+  @ApiOkResponse({ description: 'How many FAQs were deleted' })
+  bulkRemove(@Body() dto: BulkFaqIdsDto): Promise<{ deleted: number }> {
+    return this.faqsService.bulkRemove(dto.ids);
   }
 
   @ApiBearerAuth()

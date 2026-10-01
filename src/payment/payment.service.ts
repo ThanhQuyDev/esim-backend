@@ -19,6 +19,7 @@ import {
   buildVietQrUrl,
   extractBankTransferCode,
 } from './bank-transfer.util';
+import { generateOrderNumber } from '../utils/order-number';
 
 /** Shape returned by both bank-transfer checkout endpoints (buy-new + topup). */
 export interface BankTransferCheckoutResult {
@@ -63,7 +64,7 @@ export class PaymentService {
     userAgent?: string | null,
   ): Promise<{ paymentUrl: string; orderNumber: string }> {
     const rate = await this.fetchVndRate();
-    const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const orderNumber = generateOrderNumber();
     // The buyer's network and browser reach the order too: they feed the
     // fraud flags (#036) and the device backstop for attribution (#039).
     const order = await this.ordersService.createPendingOrder(
@@ -144,7 +145,7 @@ export class PaymentService {
     }
 
     const rate = await this.fetchVndRate();
-    const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const orderNumber = generateOrderNumber();
     const order = await this.ordersService.createPendingOrder(
       userId,
       dto,

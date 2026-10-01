@@ -16,6 +16,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Res,
+  SerializeOptions,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { renderEsimQrCode } from './esim-qrcode';
@@ -54,6 +55,16 @@ import { EsimsExportService } from './esims-export.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { DataUsageResult } from './esims.service';
+import {
+  CreateEsimLookupTokenDto,
+  EsimLookupResponseDto,
+  EsimLookupTokenResponseDto,
+} from './dto/esim-lookup.dto';
+import {
+  createEsimLookupToken,
+  maskIccid,
+  parseEsimLookupToken,
+} from './esim-lookup-token';
 
 @ApiTags('Esims')
 @Controller({ path: 'esims', version: '1' })
@@ -91,6 +102,65 @@ export class EsimsPublicController {
       'Cache-Control': 'public, max-age=86400',
     });
     res.send(buffer);
+  }
+
+  /**
+   * Turns an ICCID the customer typed on /tra-cuu-esim into a signed token, so
+   * the page they land on — and the link they forward to family — never carries
+   * the ICCID itself (#003).
+   *
+   * An unknown ICCID answers 404 with no detail: this is unauthenticated, and a
+   * richer error would turn it into an ICCID oracle.
+   */
+  @Post('lookup/token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: EsimLookupTokenResponseDto })
+  async createLookupToken(
+    @Body() dto: CreateEsimLookupTokenDto,
+  ): Promise<EsimLookupTokenResponseDto> {
+    const esim = await this.esimsService.findByIccid(dto.iccid);
+    if (!esim) {
+      throw new NotFoundException('esimNotFound');
+    }
+    return { token: createEsimLookupToken(esim.id) };
+  }
+
+  /** Usage of one eSIM for the public lookup page — no sign-in, token only. */
+  @Get('lookup')
+  @HttpCode(HttpStatus.OK)
+  @ApiQuery({ name: 'token', required: true, type: String })
+  @ApiOkResponse({ type: EsimLookupResponseDto })
+  async lookupByToken(
+    @Query('token') token: string,
+  ): Promise<EsimLookupResponseDto> {
+    const esimId = parseEsimLookupToken(token);
+    if (!esimId) {
+      throw new NotFoundException('esimNotFound');
+    }
+
+    const esim = await this.esimsService.findByIdWithRelations(esimId);
+    if (!esim) {
+      throw new NotFoundException('esimNotFound');
+    }
+
+    const usage = await this.esimsService.getDataUsage(esim);
+
+    return {
+      iccidMasked: maskIccid(esim.iccid),
+      planName: esim.plan?.name ?? null,
+      status: usage.status || esim.status,
+      isUnlimited: usage.isUnlimited,
+      totalMb: usage.total,
+      usedMb: usage.dataUsed,
+      remainingMb: usage.remaining,
+      durationDays: usage.durationDays ?? esim.plan?.durationDays ?? null,
+      activatedAt: usage.activatedAt ?? null,
+      expiredAt: usage.expiredAt,
+      lastUpdateTime: usage.lastUpdateTime,
+      usageAvailable: usage.usageAvailable !== false,
+      callMinutes: esim.plan?.call ?? null,
+      smsCount: esim.plan?.sms ?? null,
+    };
   }
 }
 
@@ -214,6 +284,10 @@ export class EsimsController {
   }
 
   @ApiOkResponse({ type: Esim })
+  // `User.email` is `@Expose({ groups: ['me', 'admin'] })`, so without this the
+  // serializer stripped the buyer's email out of the response and the CMS eSIM
+  // detail had an empty Email row (#024). Same group the users endpoints use.
+  @SerializeOptions({ groups: ['admin'] })
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: String, required: true })

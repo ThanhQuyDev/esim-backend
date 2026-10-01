@@ -8,7 +8,14 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
+import {
+  Brackets,
+  DataSource,
+  EntityManager,
+  In,
+  LessThan,
+  Repository,
+} from 'typeorm';
 import { EsimsService } from '../esims/esims.service';
 import { Order } from '../orders/domain/order';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
@@ -27,7 +34,9 @@ import { UserWalletEntity } from './infrastructure/persistence/relational/entiti
 import { WalletHoldEntity } from './infrastructure/persistence/relational/entities/wallet-hold.entity';
 import { WalletTransactionEntity } from './infrastructure/persistence/relational/entities/wallet-transaction.entity';
 import { UserSpendTransactionEntity } from './infrastructure/persistence/relational/entities/user-spend-transaction.entity';
+import { OrderType } from '../topup/topup.constants';
 import { resolveTierSummary } from './tier/tier.resolver';
+import { tierBands } from './tier/tier-bands';
 import { calculateCumulativeReversalVnd } from './wallets.refund';
 import {
   MembershipTierEnum,
@@ -178,6 +187,12 @@ export class WalletsService {
     page?: number;
     limit?: number;
     email?: string;
+    /** Mã khách hàng as staff sees it — `KH-000123`; digits only carry meaning (#057). */
+    customerCode?: string;
+    /** Tên khách hàng, matched across first and last name (#057). */
+    customerName?: string;
+    /** Hạng khách hàng — the EFFECTIVE tier, same as the customer list (#057). */
+    membershipTiers?: MembershipTierEnum[];
   }): Promise<{
     data: AdminWalletListItemDto[];
     hasNextPage: boolean;
@@ -194,6 +209,59 @@ export class WalletsService {
       queryBuilder.andWhere('u.email ILIKE :email', {
         email: `%${options.email}%`,
       });
+    }
+
+    if (options.customerCode) {
+      // Same rule as the customer list: whatever separators were typed, only the
+      // digits matter, and a code with none can match nothing.
+      const digits = options.customerCode.replace(/\D/g, '');
+      const userId = digits ? Number(digits) : 0;
+      queryBuilder.andWhere('wallet."userId" = :customerId', {
+        customerId: Number.isSafeInteger(userId) && userId > 0 ? userId : 0,
+      });
+    }
+
+    if (options.customerName?.trim()) {
+      const term = `%${options.customerName.trim()}%`;
+      // Matched against the full name too, so "Nguyễn Văn A" finds a row whose
+      // first and last name only match when joined.
+      queryBuilder.andWhere(
+        `(u."firstName" ILIKE :name
+          OR u."lastName" ILIKE :name
+          OR CONCAT(COALESCE(u."firstName", ''), ' ', COALESCE(u."lastName", '')) ILIKE :name)`,
+        { name: term },
+      );
+    }
+
+    if (options.membershipTiers?.length) {
+      // The effective tier is `tierOverride ?? automaticTier(spend)` and is never
+      // stored, so it becomes "pinned to this tier" OR "spend falls in its band" —
+      // the same translation the customer list does, over the shared bands (#057).
+      const bands = tierBands(options.membershipTiers);
+      if (bands.length) {
+        queryBuilder.andWhere(
+          new Brackets((qb) => {
+            qb.where('u."tierOverride" IN (:...pinnedTiers)', {
+              pinnedTiers: bands.map((band) => band.tier),
+            });
+            bands.forEach((band, index) => {
+              const floorKey = `tierFloor${index}`;
+              if (band.ceilingVnd === null) {
+                qb.orWhere(
+                  `(u."tierOverride" IS NULL AND u."lifetimeSpendVnd" >= :${floorKey})`,
+                  { [floorKey]: band.floorVnd },
+                );
+              } else {
+                const ceilingKey = `tierCeiling${index}`;
+                qb.orWhere(
+                  `(u."tierOverride" IS NULL AND u."lifetimeSpendVnd" BETWEEN :${floorKey} AND :${ceilingKey})`,
+                  { [floorKey]: band.floorVnd, [ceilingKey]: band.ceilingVnd },
+                );
+              }
+            });
+          }),
+        );
+      }
     }
 
     queryBuilder.orderBy('wallet.updatedAt', 'DESC');
@@ -213,6 +281,12 @@ export class WalletsService {
             email: wallet.user.email,
             firstName: wallet.user.firstName,
             lastName: wallet.user.lastName,
+            // The tier the customer list shows, resolved the same way so the two
+            // screens can be reconciled (#057).
+            membershipTier: resolveTierSummary(
+              Number(wallet.user.lifetimeSpendVnd ?? 0),
+              wallet.user.tierOverride,
+            ).membershipTier,
           }
         : null,
       balanceVnd: Number(wallet.balanceVnd),
@@ -565,10 +639,31 @@ export class WalletsService {
   }
 
   async completePaidOrderBenefits(order: Order): Promise<void> {
+    // A topup runs no promotion of any kind (#032): no coupon, no referral
+    // reward, no affiliate commission, no eXu cashback. The money still has to
+    // move, though — the eXu the customer spent is captured either way, and it
+    // is only the rewards below that are skipped.
+    const isTopup = order.orderType === OrderType.TOPUP;
+
+    // Lifetime spend is not one of the four programmes #032 excludes, and a
+    // topup order carries `eligibleSpendVnd = 0` anyway, so it stays as it was.
     await this.recordPurchaseSpend(order);
 
     if (order.walletSpentVndAmount > 0) {
       await this.captureHoldForOrder(order.id);
+    }
+
+    if (isTopup) {
+      // Guard, not an assumption: a topup order is created with these fields at
+      // zero, but that is the only thing stopping a reward today. If a figure
+      // ever lands on one — a bad migration, an admin edit, a future code path —
+      // it must not turn into eXu.
+      if (order.cashbackAmountVnd > 0) {
+        this.logger.warn(
+          `Order ${order.id} is a TOPUP carrying cashbackAmountVnd=${order.cashbackAmountVnd}; not credited (#032)`,
+        );
+      }
+      return;
     }
 
     if (order.cashbackAmountVnd > 0 && !order.cashbackTransactionId) {

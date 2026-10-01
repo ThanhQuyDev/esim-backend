@@ -33,6 +33,18 @@ export enum PartnerWalletTransactionTypeEnum {
   PAYOUT_REJECTED = 'payout_rejected',
 }
 
+/**
+ * Một lần đối tác báo eSIM lỗi (#046).
+ *
+ * Không có trạng thái "tự động duyệt": chốt 02/10/2026, mọi khoản hoàn đều
+ * phải qua người duyệt.
+ */
+export enum PartnerEsimFaultStatusEnum {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
 export enum PartnerDepositRequestStatusEnum {
   PENDING = 'pending',
   CONFIRMED = 'confirmed',

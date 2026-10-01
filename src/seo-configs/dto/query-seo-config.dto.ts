@@ -21,6 +21,22 @@ export class FilterSeoConfigDto {
   @IsString()
   search?: string;
 
+  /**
+   * Substring of the meta title (#048). Separate from {@link search}, which
+   * matches the URL only: searching "destination" there used to return
+   * "/en/home" because its copy happened to contain the word.
+   */
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  metaTitle?: string;
+
+  /** Substring of the meta description (#048). */
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  metaDescription?: string;
+
   @ApiPropertyOptional({ type: Number })
   @IsOptional()
   @IsNumber()

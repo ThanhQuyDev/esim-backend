@@ -4,6 +4,10 @@ export class Ticket {
   @ApiProperty({ type: Number })
   id: number;
 
+  /** The reference the customer sees, in every support email's subject (#059). */
+  @ApiPropertyOptional({ type: String, example: 'HT-000123' })
+  ticketNumber: string | null;
+
   @ApiProperty({ type: String, example: 'customer@example.com' })
   customerEmail: string;
 
@@ -37,6 +41,10 @@ export class Ticket {
     enum: ['open', 'in_progress', 'resolved', 'closed'],
   })
   status: string;
+
+  /** When it was marked resolved — the 48-hour auto-close clock (#061). */
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  resolvedAt: Date | null;
 
   @ApiProperty()
   createdAt: Date;

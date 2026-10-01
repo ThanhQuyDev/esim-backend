@@ -22,6 +22,7 @@ import {
   UpdateReferralCodeDto,
   UpdateWalletStatusDto,
 } from './dto/admin-wallet.dto';
+import { MembershipTierEnum } from './tier/tier.enum';
 import {
   AdminWalletListItemDto,
   ReferralProfileDto,
@@ -100,15 +101,32 @@ export class WalletsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('email') email?: string,
+    // Mã khách hàng / tên khách hàng / hạng khách hàng, mirroring the customer
+    // list so the two can be reconciled (#057).
+    @Query('customerCode') customerCode?: string,
+    @Query('customerName') customerName?: string,
+    @Query('membershipTiers') membershipTiers?: string,
   ): Promise<{
     data: AdminWalletListItemDto[];
     hasNextPage: boolean;
     totalCount: number;
   }> {
+    // Comma-separated, and only values that are real tiers — an unknown one is
+    // dropped rather than producing a band nobody asked for.
+    const tiers = (membershipTiers ?? '')
+      .split(',')
+      .map((tier) => tier.trim())
+      .filter((tier): tier is MembershipTierEnum =>
+        Object.values(MembershipTierEnum).includes(tier as MembershipTierEnum),
+      );
+
     return this.walletsService.listWallets({
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 10,
       email: email || undefined,
+      customerCode: customerCode || undefined,
+      customerName: customerName || undefined,
+      membershipTiers: tiers.length ? tiers : undefined,
     });
   }
 

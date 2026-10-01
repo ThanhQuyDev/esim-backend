@@ -69,8 +69,10 @@ describe('invoice email branding', () => {
     });
 
     expect(html).toContain(`<img src="${BRAND_LOGO_URL}"`);
-    expect(html).toContain(`mailto:${NEW_EMAIL}`);
-    expect(html).toContain(NEW_EMAIL);
+    // The address comes from the code constant, not from the stored HTML — that
+    // is the whole point of the placeholder the migration left behind.
+    expect(html).toContain(`mailto:${SUPPORT_EMAIL}`);
+    expect(html).toContain(SUPPORT_EMAIL);
     expect(html).not.toContain(OLD_EMAIL);
     // The order details must survive the patch untouched.
     expect(html).toContain('ES123');
@@ -88,8 +90,20 @@ describe('invoice email branding', () => {
   });
 
   it('should keep the support address in one place in code', () => {
-    expect(SUPPORT_EMAIL).toBe(NEW_EMAIL);
+    // The patched template must carry the placeholder and no address of its own,
+    // so moving the mailbox is a one-line change in `mail-branding.ts`.
+    expect(patched).toContain(SUPPORT_PLACEHOLDER);
+    expect(patched).not.toContain('@esim.vn');
+    expect(patched).not.toContain('@esim.com.vn');
+  });
+
+  it('should have moved off both superseded addresses', () => {
+    // `support@esim.vn` was what the seed wrote; `hotro@esim.com.vn` is what the
+    // 1788025100000 migration pointed at. #062 moved support to the mailbox the
+    // ticket poller actually reads, so the live constant is neither of them. The
+    // migration's own constants stay put: they record a patch that already ran.
     expect(SUPPORT_EMAIL).not.toBe(OLD_EMAIL);
+    expect(SUPPORT_EMAIL).not.toBe(NEW_EMAIL);
   });
 
   it('should leave an edited template alone when the header no longer matches', () => {

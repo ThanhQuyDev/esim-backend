@@ -85,6 +85,61 @@ class EnvironmentVariablesValidator {
   @IsBoolean()
   @IsOptional()
   MAIL_OTP_REQUIRE_TLS: boolean;
+
+  // #059 — the IMAP mailbox support replies arrive in. All optional: the poller
+  // stays off until MAIL_INBOUND_HOST is set.
+  @IsString()
+  @IsOptional()
+  MAIL_INBOUND_HOST: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(65535)
+  @IsOptional()
+  MAIL_INBOUND_PORT: number;
+
+  @IsString()
+  @IsOptional()
+  MAIL_INBOUND_USER: string;
+
+  @IsString()
+  @IsOptional()
+  MAIL_INBOUND_PASSWORD: string;
+
+  @IsBoolean()
+  @IsOptional()
+  MAIL_INBOUND_SECURE: boolean;
+
+  @IsString()
+  @IsOptional()
+  MAIL_INBOUND_MAILBOX: string;
+
+  // #062 — SMTP for the support mailbox, so ticket mail is sent as support@.
+  @IsString()
+  @IsOptional()
+  MAIL_SUPPORT_HOST: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(65535)
+  @IsOptional()
+  MAIL_SUPPORT_PORT: number;
+
+  @IsString()
+  @IsOptional()
+  MAIL_SUPPORT_USER: string;
+
+  @IsString()
+  @IsOptional()
+  MAIL_SUPPORT_PASSWORD: string;
+
+  @IsBoolean()
+  @IsOptional()
+  MAIL_SUPPORT_SECURE: boolean;
+
+  @IsString()
+  @IsOptional()
+  MAIL_SUPPORT_DEFAULT_NAME: string;
 }
 
 export default registerAs<MailConfig>('mail', () => {
@@ -117,6 +172,36 @@ export default registerAs<MailConfig>('mail', () => {
           : true,
       ignoreTLS: process.env.MAIL_OTP_IGNORE_TLS === 'true',
       requireTLS: process.env.MAIL_OTP_REQUIRE_TLS === 'true',
+    },
+    inbound: {
+      host: process.env.MAIL_INBOUND_HOST,
+      // 993 is implicit-TLS IMAP, which is what practically every provider
+      // offers; 143 + STARTTLS is the exception, hence the explicit flag.
+      port: process.env.MAIL_INBOUND_PORT
+        ? parseInt(process.env.MAIL_INBOUND_PORT, 10)
+        : 993,
+      user: process.env.MAIL_INBOUND_USER,
+      password: process.env.MAIL_INBOUND_PASSWORD,
+      secure:
+        process.env.MAIL_INBOUND_SECURE !== undefined
+          ? process.env.MAIL_INBOUND_SECURE === 'true'
+          : true,
+      mailbox: process.env.MAIL_INBOUND_MAILBOX || 'INBOX',
+    },
+    support: {
+      host: process.env.MAIL_SUPPORT_HOST,
+      // 465 is implicit TLS, which is what the esim.com.vn mail server offers
+      // alongside 587 + STARTTLS.
+      port: process.env.MAIL_SUPPORT_PORT
+        ? parseInt(process.env.MAIL_SUPPORT_PORT, 10)
+        : 465,
+      user: process.env.MAIL_SUPPORT_USER,
+      password: process.env.MAIL_SUPPORT_PASSWORD,
+      secure:
+        process.env.MAIL_SUPPORT_SECURE !== undefined
+          ? process.env.MAIL_SUPPORT_SECURE === 'true'
+          : true,
+      defaultName: process.env.MAIL_SUPPORT_DEFAULT_NAME,
     },
   };
 });

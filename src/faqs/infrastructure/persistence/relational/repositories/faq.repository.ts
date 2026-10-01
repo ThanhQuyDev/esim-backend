@@ -37,11 +37,23 @@ export class FaqRelationalRepository implements FaqRepository {
     // An array of where clauses is OR-ed by TypeORM. Matching url as well as
     // question/answer lets admins narrow a page's FAQs by typing its path
     // (e.g. "/home") instead of scanning every row.
-    let where: FindOptionsWhere<FaqEntity> | FindOptionsWhere<FaqEntity>[] = {};
+    // Everything that is a plain AND. Repeated into each OR branch below, or the
+    // status filter would apply to only one of the three searched columns (#050).
+    const baseWhere: FindOptionsWhere<FaqEntity> = {};
+    if (filterOptions?.isActive !== undefined) {
+      baseWhere.isActive = filterOptions.isActive;
+    }
+
+    let where: FindOptionsWhere<FaqEntity> | FindOptionsWhere<FaqEntity>[] =
+      baseWhere;
 
     if (filterOptions?.search) {
       const term = ILike(`%${filterOptions.search}%`);
-      where = [{ question: term }, { answer: term }, { url: term }];
+      where = [
+        { ...baseWhere, question: term },
+        { ...baseWhere, answer: term },
+        { ...baseWhere, url: term },
+      ];
     }
 
     const [entities, count] = await this.faqRepository.findAndCount({
@@ -145,5 +157,43 @@ export class FaqRelationalRepository implements FaqRepository {
 
   async remove(id: Faq['id']): Promise<void> {
     await this.faqRepository.delete(id);
+  }
+
+  /**
+   * Bulk status change (#051). One statement for the whole selection, so 50 rows
+   * cost one round trip instead of 50 — and either all of them flip or none do.
+   */
+  async bulkSetActive(ids: Faq['id'][], isActive: boolean): Promise<number> {
+    const unique = this.uniqueIds(ids);
+    if (!unique.length) return 0;
+    const result = await this.faqRepository.update(
+      { id: In(unique) },
+      { isActive },
+    );
+    return result.affected ?? 0;
+  }
+
+  /**
+   * Bulk delete (#051). A hard delete, because that is what `remove` does for one
+   * row — `faq` has no `deletedAt` column, so there is no soft delete to match.
+   */
+  async bulkRemove(ids: Faq['id'][]): Promise<number> {
+    const unique = this.uniqueIds(ids);
+    if (!unique.length) return 0;
+    const result = await this.faqRepository.delete({ id: In(unique) });
+    return result.affected ?? 0;
+  }
+
+  /**
+   * Non-empty strings only, de-duplicated. The id is a uuid; an empty or blank
+   * entry would otherwise reach `IN (...)` and make Postgres reject the whole
+   * statement, taking the valid rows with it.
+   */
+  private uniqueIds(ids: Faq['id'][]): string[] {
+    return Array.from(
+      new Set(
+        ids.map((id) => String(id ?? '').trim()).filter((id) => id.length > 0),
+      ),
+    );
   }
 }

@@ -98,4 +98,19 @@ export class FaqsService {
   remove(id: Faq['id']) {
     return this.faqRepository.remove(id);
   }
+
+  /** Turn many FAQs on or off at once (#051). */
+  async bulkSetActive(
+    ids: Faq['id'][],
+    isActive: boolean,
+  ): Promise<{ updated: number }> {
+    const updated = await this.faqRepository.bulkSetActive(ids, isActive);
+    return { updated };
+  }
+
+  /** Delete many FAQs at once (#051). */
+  async bulkRemove(ids: Faq['id'][]): Promise<{ deleted: number }> {
+    const deleted = await this.faqRepository.bulkRemove(ids);
+    return { deleted };
+  }
 }

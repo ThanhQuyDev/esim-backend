@@ -9,6 +9,7 @@ import {
   UseGuards,
   Query,
   ParseUUIDPipe,
+  Headers,
 } from '@nestjs/common';
 import { SupportedDevicesService } from './supported-devices.service';
 import { CreateSupportedDeviceDto } from './dto/create-supported-device.dto';
@@ -18,6 +19,7 @@ import { SaveSupportedDeviceOrderingDto } from './dto/save-supported-device-orde
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiHeader,
   ApiOkResponse,
   ApiParam,
   ApiTags,
@@ -69,6 +71,7 @@ export class SupportedDevicesController {
       await this.supportedDevicesService.findAllWithPagination({
         paginationOptions: { page, limit },
         type: query.type,
+        manufacturer: query.manufacturer,
         search: query.search,
       });
 
@@ -82,9 +85,33 @@ export class SupportedDevicesController {
   }
 
   @Get('grouped')
+  @ApiHeader({
+    name: 'x-custom-lang',
+    required: false,
+    description: "Language of each brand's extra note: vi or en (#079).",
+  })
   @ApiOkResponse()
-  async findGrouped(@Query('search') search?: string) {
-    return { data: await this.supportedDevicesService.findGrouped(search) };
+  async findGrouped(
+    @Query('search') search?: string,
+    @Headers('x-custom-lang') lang?: string,
+  ) {
+    return {
+      data: await this.supportedDevicesService.findGrouped(search, lang),
+    };
+  }
+
+  /**
+   * Manufacturer names for the CMS filter's select box (#052). Declared before
+   * `:id`, which would otherwise capture "manufacturers".
+   */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Get('manufacturers')
+  @ApiOkResponse({
+    description: 'Distinct manufacturer names, in display order',
+  })
+  async findManufacturers() {
+    return { data: await this.supportedDevicesService.findManufacturers() };
   }
 
   /** Brands with their models, for the CMS ordering screen (#047). */

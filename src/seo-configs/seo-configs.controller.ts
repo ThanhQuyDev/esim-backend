@@ -14,6 +14,10 @@ import {
 import { CreateSeoConfigDto } from './dto/create-seo-config.dto';
 import { UpdateSeoConfigDto } from './dto/update-seo-config.dto';
 import {
+  BulkSeoConfigIdsDto,
+  BulkSeoConfigStatusDto,
+} from './dto/bulk-seo-config.dto';
+import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
@@ -84,6 +88,32 @@ export class SeoConfigsController {
   @ApiParam({ name: 'id', type: String, required: true })
   findOne(@Param('id') id: SeoConfig['id']): Promise<NullableType<SeoConfig>> {
     return this.seoConfigsService.findById(id);
+  }
+
+  /**
+   * Bulk status change (#049) — declared before `PATCH :id` and `DELETE :id`,
+   * which would otherwise capture "bulk" as an id.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @ApiOkResponse({ description: 'How many configs were updated' })
+  @Patch('bulk/status')
+  @HttpCode(HttpStatus.OK)
+  bulkSetActive(
+    @Body() dto: BulkSeoConfigStatusDto,
+  ): Promise<{ updated: number }> {
+    return this.seoConfigsService.bulkSetActive(dto.ids, dto.isActive);
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @ApiOkResponse({ description: 'How many configs were deleted' })
+  @Delete('bulk')
+  @HttpCode(HttpStatus.OK)
+  bulkRemove(@Body() dto: BulkSeoConfigIdsDto): Promise<{ deleted: number }> {
+    return this.seoConfigsService.bulkRemove(dto.ids);
   }
 
   @ApiBearerAuth()

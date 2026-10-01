@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import * as crypto from 'crypto';
 import { AllConfigType } from '../../config/config.type';
 import { PlansService } from '../../plans/plans.service';
+import { parseValidityDays } from '../../plans/plan-activation';
 import { DestinationsService } from '../../destinations/destinations.service';
 import { RegionsService } from '../../regions/regions.service';
 import { ProviderSyncLogsService } from '../../provider-sync-logs/provider-sync-logs.service';
@@ -370,6 +371,9 @@ export class MicroEsimService {
       isAbleMultidate: false,
       isKyc,
       apn: item.apn || null,
+      // `validity_period` is free text ("180", "180 days"), so the day count is
+      // pulled out rather than trusted to be numeric (#070).
+      activationValidityDays: parseValidityDays(item.validity_period),
       hotSpot: true,
       hotSpotAllow: this.formatHotSpotAllow(type, dataMb),
       lastSyncedAt: new Date(),
@@ -856,6 +860,8 @@ export class MicroEsimService {
             apn: plan?.apn ?? '',
             phoneNumber: esim.phoneNumber ?? null,
             planName: plan?.name ?? '',
+            callMinutes: plan?.call ?? null,
+            smsCount: plan?.sms ?? null,
             orderNumber: topupId,
           });
         }

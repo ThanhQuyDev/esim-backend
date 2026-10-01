@@ -14,7 +14,7 @@ export class CreateOrderDto {
   @IsNumber()
   userId: number;
 
-  @ApiProperty({ example: 'ORD-20260403-001', type: String })
+  @ApiProperty({ example: 'ORD-260925210805694-NZ7UEC', type: String })
   @IsNotEmpty()
   @IsString()
   orderNumber: string;

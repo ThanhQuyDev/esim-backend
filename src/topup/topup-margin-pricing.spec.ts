@@ -1,18 +1,18 @@
-import { TopupService } from './topup.service';
+﻿import { TopupService } from './topup.service';
 import { TopupProvider } from './dto/topup-package.dto';
 import { FALLBACK_USD_VND_RATE } from './topup.constants';
 
 /**
  * Margin pricing on topup packages (#086).
  *
- * Topups are sold from three places — Airalo's API, eSIM Access's API, and our
+ * Topups are sold from three places â€” Airalo's API, eSIM Access's API, and our
  * own `plan` table for the providers with no topup API. Each one had a path
  * that quietly bypassed the profit tiers:
  *
- *   • the provider APIs fell back to the PROVIDER's retail price whenever the
+ *   â€¢ the provider APIs fell back to the PROVIDER's retail price whenever the
  *     FX rate lookup failed, i.e. a price carrying their margin and none of
  *     ours;
- *   • the DB catalogue preferred `plan.retailPrice`, a column the tier
+ *   â€¢ the DB catalogue preferred `plan.retailPrice`, a column the tier
  *     recalculation never touches, over `plan.price`, which it maintains.
  *
  * A topup must never be offered at a price the margin tiers did not produce.
@@ -56,6 +56,9 @@ function buildService(overrides: Record<string, unknown> = {}) {
     deps.microEsimService as never,
     deps.onepayService as never,
     deps.profitMarginsService as never,
+    // #028 — WalletsService and InvoicesService.
+    {} as never,
+    {} as never,
     deps.configService as never,
   );
   return { service, deps };
@@ -80,7 +83,7 @@ const AIRALO_PACKAGE = {
   is_unlimited: false,
   /** Our cost. */
   net_price: 10,
-  /** Airalo's own retail — never ours to resell. */
+  /** Airalo's own retail â€” never ours to resell. */
   price: 14,
 };
 
@@ -90,13 +93,13 @@ const ESIM_ACCESS_PACKAGE = {
   volume: 5 * 1024 * 1024 * 1024,
   dataType: 1,
   duration: 30,
-  /** Cost, in provider units (÷10000). */
+  /** Cost, in provider units (Ã·10000). */
   price: 120_000,
   /** Their retail, same units. */
   retailPrice: 160_000,
 };
 
-describe('TopupService — margin pricing', () => {
+describe('TopupService â€” margin pricing', () => {
   it('should apply our tiers to an Airalo package', async () => {
     const { service, deps } = buildService();
 
@@ -107,7 +110,7 @@ describe('TopupService — margin pricing', () => {
       25_000,
     );
 
-    // 10 USD cost × 25.000 × 2 = 500.000đ, not Airalo's 14 USD retail.
+    // 10 USD cost Ã— 25.000 Ã— 2 = 500.000Ä‘, not Airalo's 14 USD retail.
     expect(
       deps.profitMarginsService.calculateRetailVndFromCostUsd,
     ).toHaveBeenCalledWith(10, 25_000);
@@ -125,7 +128,7 @@ describe('TopupService — margin pricing', () => {
       null,
     );
 
-    // The old code handed back Airalo's 14 USD retail here — no margin at all.
+    // The old code handed back Airalo's 14 USD retail here â€” no margin at all.
     expect(
       deps.profitMarginsService.calculateRetailVndFromCostUsd,
     ).toHaveBeenCalledWith(10, FALLBACK_USD_VND_RATE);
@@ -161,7 +164,7 @@ describe('TopupService — margin pricing', () => {
       null,
     );
 
-    // Their retail is 16 USD; ours is cost × 2 = 24 USD.
+    // Their retail is 16 USD; ours is cost Ã— 2 = 24 USD.
     expect(dto.retailPrice).not.toBe(16);
     expect(dto.vndPrice).toBe(12 * FALLBACK_USD_VND_RATE * 2);
   });

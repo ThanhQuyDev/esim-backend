@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { TicketEntity } from '../entities/ticket.entity';
+import { TicketStatus } from '../../../../ticket-status';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { Ticket } from '../../../../domain/ticket';
 import { TicketRepository } from '../../ticket.repository';
@@ -67,6 +68,33 @@ export class TicketsRelationalRepository implements TicketRepository {
   async findById(id: Ticket['id']): Promise<NullableType<Ticket>> {
     const entity = await this.ticketsRepository.findOne({ where: { id } });
     return entity ? TicketMapper.toDomain(entity) : null;
+  }
+
+  async findByTicketNumber(
+    ticketNumber: string,
+  ): Promise<NullableType<Ticket>> {
+    const entity = await this.ticketsRepository.findOne({
+      where: { ticketNumber },
+    });
+    return entity ? TicketMapper.toDomain(entity) : null;
+  }
+
+  /**
+   * Resolved tickets past their grace period (#061).
+   *
+   * `resolvedAt IS NOT NULL` matters: a row that somehow sits in `resolved`
+   * without a timestamp has no clock to measure, and closing it immediately would
+   * be guessing.
+   */
+  async findResolvedBefore(cutoff: Date): Promise<Ticket[]> {
+    const entities = await this.ticketsRepository.find({
+      where: {
+        status: TicketStatus.RESOLVED,
+        resolvedAt: LessThan(cutoff),
+      },
+      order: { resolvedAt: 'ASC' },
+    });
+    return entities.map((entity) => TicketMapper.toDomain(entity));
   }
 
   async countByEmailSince(email: string, since: Date): Promise<number> {

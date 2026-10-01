@@ -71,6 +71,8 @@ export class WhyChooseUsController {
       ...query?.filters,
       search: query?.search || query?.filters?.search,
       type: query?.type || query?.filters?.type,
+      // `??`, not `||`: `false` is a real choice here, not "unset" (#054).
+      isActive: query?.isActive ?? query?.filters?.isActive,
     };
 
     const [data, count] = await this.whyChooseUsService.findAllWithPagination({

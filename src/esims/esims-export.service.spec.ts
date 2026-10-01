@@ -47,6 +47,8 @@ function esim(overrides: Record<string, unknown>) {
 async function exportRows(esims: unknown[]) {
   const service = new EsimsExportService({
     findAllForExport: jest.fn().mockResolvedValue(esims),
+    // #025 — the export now also asks which of these were topped up.
+    countTopupsByIccids: jest.fn().mockResolvedValue(new Map()),
   } as never);
 
   const buffer = await service.exportToExcel();

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsNumber,
   IsOptional,
@@ -24,6 +25,18 @@ export class FilterRegionDto {
   @IsOptional()
   @IsBoolean()
   isPopular?: boolean;
+
+  /**
+   * Suppliers to match against the free-text `providers` column (#036), exactly
+   * as the destination filter does: the column is typed by hand, so each entry
+   * is a case-insensitive substring and a region qualifies if it mentions ANY
+   * of them.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  providers?: string[];
 }
 
 export class SortRegionDto {

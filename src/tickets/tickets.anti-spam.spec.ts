@@ -25,13 +25,25 @@ const REQUEST: CreateTicketDto = {
 function makeService(opts: { sentByEmail?: number; duplicate?: boolean } = {}) {
   const repository = {
     create: jest.fn((data: object) => Promise.resolve({ id: 1, ...data })),
+    update: jest.fn((id: number, data: object) =>
+      Promise.resolve({ id, ...data }),
+    ),
     countByEmailSince: jest.fn().mockResolvedValue(opts.sentByEmail ?? 0),
     existsDuplicate: jest.fn().mockResolvedValue(opts.duplicate ?? false),
   };
   // The message repository is irrelevant to the spam rules (#032).
   const messages = { find: jest.fn(), create: jest.fn(), save: jest.fn() };
-  const service = new TicketsService(repository as never, messages as never);
-  return { service, repository };
+  // So is the acknowledgement email (#059) — a rejected request never reaches it.
+  const mailService = {
+    sendTicketAcknowledgement: jest.fn().mockResolvedValue(undefined),
+    sendTicketReply: jest.fn().mockResolvedValue(undefined),
+  };
+  const service = new TicketsService(
+    repository as never,
+    messages as never,
+    mailService as never,
+  );
+  return { service, repository, mailService };
 }
 
 async function statusOf(promise: Promise<unknown>): Promise<number | null> {

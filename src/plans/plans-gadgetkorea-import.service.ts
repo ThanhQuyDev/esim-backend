@@ -1,6 +1,8 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { Workbook } from 'exceljs';
 import { PlansService } from './plans.service';
+import { parseValidityDays } from './plan-activation';
+import { parseDailyResetPolicy } from './plan-daily-reset';
 import { DestinationsService } from '../destinations/destinations.service';
 import { RegionsService } from '../regions/regions.service';
 import { ImportResult } from './plans-import.service';
@@ -198,6 +200,10 @@ export class PlansGadgetkoreaImportService {
           const carrier = this.getString(row.getCell(COL.CARRIER).value);
           const operatorName = carrier ? carrier.replace(/\//g, ',') : null;
 
+          const dailyResetPolicy = parseDailyResetPolicy(
+            this.getString(row.getCell(COL.INITIALIZE_POLICY).value),
+          );
+
           const slug = this.buildPlanSlug(
             countryName,
             dataMb,
@@ -234,6 +240,19 @@ export class PlansGadgetkoreaImportService {
             operatorName,
             isKyc,
             apn,
+            // The Validity column is the activation window, not the usage
+            // period — currently 180 days for every GadgetKorea row (#070). The
+            // column was already mapped but never read until now.
+            activationValidityDays: parseValidityDays(
+              this.getString(row.getCell(COL.VALIDITY).value),
+            ),
+            // "Initialize policy" is the daily reset cycle — "reset 24h" on every
+            // row today (#071). Read rather than assumed, so a future sheet that
+            // says otherwise is honoured; unrecognised wording contributes no keys
+            // and falls through to the supplier default in PlansService.create.
+            ...(dailyResetPolicy
+              ? { dailyResetPolicy, dailyResetUtcOffset: null }
+              : {}),
             hotSpot,
             hotSpotAllow:
               this.getString(row.getCell(COL.HOT_SPOT_ALLOW).value) || null,

@@ -78,14 +78,21 @@ function makeService(existingPlan: Record<string, unknown> | null) {
       planCreates.push(payload);
       return Promise.resolve({ id: 99 });
     }),
+    // Price edits go through the SERVICE, not the repository: that is what
+    // converts the new đồng prices into the USD columns (#009).
+    update: jest.fn((_id: unknown, payload: Record<string, unknown>) => {
+      planUpdates.push(payload);
+      return Promise.resolve(payload);
+    }),
     // Stand-in margin tier: +20.000đ on top of the cost.
     localRetailVnd: jest.fn((cost: number) => Promise.resolve(cost + 20000)),
   };
   const planRepository = {
     findBySlug: jest.fn().mockResolvedValue(existingPlan),
-    update: jest.fn((_id: unknown, payload: Record<string, unknown>) => {
-      planUpdates.push(payload);
-      return Promise.resolve(payload);
+    update: jest.fn(() => {
+      throw new Error(
+        'Plan prices must be updated through PlansService so the USD columns are converted (#009)',
+      );
     }),
   };
   const destinationsService = {

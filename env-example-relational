@@ -42,6 +42,32 @@ MAIL_DEFAULT_EMAIL=noreply@example.com
 MAIL_DEFAULT_NAME=Api
 MAIL_CLIENT_PORT=1080
 
+# Support mailbox the ticket replies are read from (#059, #062).
+#
+# The host comes from the esim.com.vn mail server: MX is mx.000nethost.com and
+# mail.esim.com.vn answers on 993/143/465/587. Leave MAIL_INBOUND_HOST empty to
+# keep the poller off — the rest of the ticket flow (ticket number,
+# acknowledgement, admin reply by email) works without it.
+#
+# MAIL_INBOUND_USER must equal SUPPORT_EMAIL in src/mail/mail-branding.ts, or a
+# customer's reply lands in a mailbox nothing reads.
+MAIL_INBOUND_HOST=mail.esim.com.vn
+MAIL_INBOUND_PORT=993
+MAIL_INBOUND_USER=support@esim.com.vn
+MAIL_INBOUND_PASSWORD=
+MAIL_INBOUND_SECURE=true
+MAIL_INBOUND_MAILBOX=INBOX
+
+# SMTP for the same mailbox, so support mail is SENT AS support@esim.com.vn and
+# not merely replying to it (#062). Without MAIL_SUPPORT_HOST, support mail goes
+# out on the primary transport as before.
+MAIL_SUPPORT_HOST=mail.esim.com.vn
+MAIL_SUPPORT_PORT=465
+MAIL_SUPPORT_USER=support@esim.com.vn
+MAIL_SUPPORT_PASSWORD=
+MAIL_SUPPORT_SECURE=true
+MAIL_SUPPORT_DEFAULT_NAME=eSIM.vn Support
+
 AUTH_JWT_SECRET=secret
 AUTH_JWT_TOKEN_EXPIRES_IN=15m
 AUTH_REFRESH_SECRET=secret_for_refresh

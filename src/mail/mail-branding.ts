@@ -11,5 +11,16 @@
 export const BRAND_LOGO_URL =
   'https://res.cloudinary.com/drozbviwb/image/upload/v1780067058/logo_esimvn_zycejk.png';
 
-/** The mailbox support actually reads. */
-export const SUPPORT_EMAIL = 'hotro@esim.com.vn';
+/**
+ * The mailbox support actually reads.
+ *
+ * `support@esim.com.vn` as of #062 — the mailbox the ticket flow both sends from
+ * and polls for replies. It has to stay equal to `MAIL_INBOUND_USER`, or a
+ * customer pressing Reply on a ticket email reaches somewhere nobody reads and
+ * the reply never joins its thread. `TicketMailData` resolves `replyTo` from the
+ * polled mailbox for exactly that reason, with this as the fallback.
+ *
+ * (Was `hotro@esim.com.vn`, and before that `support@esim.vn` — note the
+ * different domain — which was unread; see the file comment above.)
+ */
+export const SUPPORT_EMAIL = 'support@esim.com.vn';

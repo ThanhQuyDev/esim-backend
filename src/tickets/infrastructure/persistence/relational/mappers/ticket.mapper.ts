@@ -5,6 +5,7 @@ export class TicketMapper {
   static toDomain(raw: TicketEntity): Ticket {
     const domainEntity = new Ticket();
     domainEntity.id = raw.id;
+    domainEntity.ticketNumber = raw.ticketNumber ?? null;
     domainEntity.customerEmail = raw.customerEmail;
     domainEntity.subject = raw.subject;
     domainEntity.description = raw.description;
@@ -14,6 +15,7 @@ export class TicketMapper {
     domainEntity.planDestination = raw.planDestination;
     domainEntity.attachments = raw.attachments;
     domainEntity.status = raw.status;
+    domainEntity.resolvedAt = raw.resolvedAt ?? null;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     return domainEntity;
@@ -24,6 +26,9 @@ export class TicketMapper {
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;
     }
+    if (domainEntity.ticketNumber !== undefined) {
+      persistenceEntity.ticketNumber = domainEntity.ticketNumber;
+    }
     persistenceEntity.customerEmail = domainEntity.customerEmail;
     persistenceEntity.subject = domainEntity.subject;
     persistenceEntity.description = domainEntity.description;
@@ -33,6 +38,9 @@ export class TicketMapper {
     persistenceEntity.planDestination = domainEntity.planDestination;
     persistenceEntity.attachments = domainEntity.attachments;
     persistenceEntity.status = domainEntity.status;
+    if (domainEntity.resolvedAt !== undefined) {
+      persistenceEntity.resolvedAt = domainEntity.resolvedAt;
+    }
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     return persistenceEntity;

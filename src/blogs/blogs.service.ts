@@ -121,6 +121,9 @@ export class BlogsService {
       isPopular: createBlogDto.isPopular ?? false,
       miniTag,
       plans,
+      // The durable reference (#047); the repository resolves it to plans and
+      // rewrites the join table from it.
+      planCodes: createBlogDto.planCodes,
       faqs,
     });
   }
@@ -267,6 +270,7 @@ export class BlogsService {
       isPopular: updateBlogDto.isPopular,
       miniTag,
       plans,
+      planCodes: updateBlogDto.planCodes,
       faqs,
     });
   }
@@ -303,6 +307,11 @@ export class BlogsService {
 
   findCategories(lang?: string) {
     return this.blogRepository.findCategories(lang);
+  }
+
+  /** Authors that have articles, for the CMS filter's select box (#046). */
+  findAuthorOptions(lang?: string) {
+    return this.blogRepository.findAuthorOptions(lang);
   }
 
   findParentsByCategory(lang?: string) {

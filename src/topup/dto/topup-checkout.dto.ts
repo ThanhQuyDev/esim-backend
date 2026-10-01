@@ -6,11 +6,54 @@ import {
   IsString,
   Length,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TopupProvider } from './topup-package.dto';
 
 export enum TopupPaymentMethod {
   ONEPAY = 'ONEPAY',
+  /** Paid out of the customer's eXu balance, with no gateway (#028). */
+  EXU_WALLET = 'EXU_WALLET',
+}
+
+/** `order.paymentMethod` for a topup settled from the eXu balance (#028). */
+export const EXU_WALLET_PAYMENT_METHOD = 'exu_wallet';
+
+/**
+ * VAT invoice details for a topup (#028), the same five fields the normal eSIM
+ * checkout collects. Optional: most customers do not ask for an invoice.
+ */
+export class TopupInvoiceDto {
+  @ApiProperty({ type: String, example: 'Công ty TNHH ABC' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(300)
+  companyName!: string;
+
+  @ApiProperty({ type: String, example: '0123456789' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  taxCode!: string;
+
+  @ApiProperty({ type: String, example: '123 Nguyễn Huệ, Q1, TP.HCM' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  address!: string;
+
+  @ApiProperty({ type: String, example: '+84901234567' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  invoicePhone!: string;
+
+  @ApiProperty({ type: String, example: 'finance@example.com' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  invoiceEmail!: string;
 }
 
 /**
@@ -42,6 +85,12 @@ export class TopupCheckoutDto {
   })
   @IsEnum(TopupPaymentMethod)
   paymentMethod!: TopupPaymentMethod;
+
+  @ApiPropertyOptional({ type: () => TopupInvoiceDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TopupInvoiceDto)
+  invoice?: TopupInvoiceDto;
 }
 
 /**

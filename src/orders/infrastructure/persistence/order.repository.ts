@@ -5,6 +5,8 @@ import { Order } from '../../domain/order';
 import { FilterOrderDto, SortOrderDto } from '../../dto/query-order.dto';
 
 export interface ReconciliationExportRow {
+  /** Groups the lines of one order, for the order-level columns below (#018). */
+  orderId: number;
   orderNumber: string;
   orderStatus: string;
   orderCreatedAt: Date;
@@ -18,6 +20,28 @@ export interface ReconciliationExportRow {
   vndCostPrice: number;
   vndPrice: number;
   iccids: string | null;
+
+  /**
+   * Order-level fields (#018). They belong to the ORDER, not the line, so the
+   * export writes each of them once per order — on its first line — and leaves
+   * them blank on the rest. Repeating them would make a plain SUM over the
+   * column count a three-line order's discount three times.
+   */
+  orderType: string | null;
+  paymentMethod: string | null;
+  couponCode: string | null;
+  referralCode: string | null;
+  couponDiscountVndAmount: number;
+  referralDiscountVndAmount: number;
+  cashbackAmountVnd: number;
+  walletSpentVndAmount: number;
+  /** Affiliate behind the order, when there is one. */
+  partnerName: string | null;
+  partnerCommissionVnd: number;
+  /** Invoice request attached to the order, when the customer asked for one. */
+  invoiceStatus: string | null;
+  invoiceCompanyName: string | null;
+  invoiceTaxCode: string | null;
 }
 
 export abstract class OrderRepository {

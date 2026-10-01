@@ -21,6 +21,7 @@ import { RolesGuard } from '../roles/roles.guard';
 import { PartnersService } from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
 import { CreatePartnerLinkDto } from './dto/partner-link.dto';
+import { ReviewEsimFaultDto } from './dto/partner-esim-fault.dto';
 import {
   QueryPartnerDto,
   QueryPartnerCommissionDto,
@@ -411,6 +412,40 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   updateTier(@Param('id') id: number, @Body() dto: UpdatePartnerTierDto) {
     return this.partnersService.updateTier(Number(id), dto);
+  }
+
+  /**
+   * Phiếu đối tác báo eSIM lỗi, chờ duyệt (#046).
+   *
+   * Phải đứng **trước** `@Get(':id')`, nếu không "esim-faults" sẽ bị khớp vào
+   * đó như một id đối tác và trả về 404 khó hiểu.
+   */
+  @Get('esim-faults')
+  @HttpCode(HttpStatus.OK)
+  listEsimFaults(@Query() query: { status?: string; limit?: string }) {
+    return this.partnersService.getEsimFaultReports(null, {
+      status: query.status,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+  }
+
+  /** Duyệt hoặc từ chối một phiếu; duyệt thì tiền về ví ngay (#046). */
+  @Patch('esim-faults/:reportId')
+  @HttpCode(HttpStatus.OK)
+  reviewEsimFault(
+    @Param('reportId') reportId: number,
+    @Body() dto: ReviewEsimFaultDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.reviewEsimFaultReport(
+      Number(reportId),
+      req.user.id,
+      {
+        approve: dto.approve,
+        refundVnd: dto.refundVnd,
+        adminNote: dto.adminNote,
+      },
+    );
   }
 
   @Get(':id')

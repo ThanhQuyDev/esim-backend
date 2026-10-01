@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsDateString,
   IsIn,
   IsNumber,
   IsOptional,
@@ -10,6 +11,15 @@ import {
 import { Transform, Type, plainToInstance } from 'class-transformer';
 import { Order } from '../domain/order';
 import { InvoiceStatus } from '../../invoices/invoices.enum';
+
+/**
+ * The three kinds of order an admin sorts by (#017).
+ *
+ * `esim` is deliberately "an ordinary purchase": not a topup AND with no partner
+ * commission, so the three are mutually exclusive and the counts add up.
+ */
+export const ORDER_KIND_VALUES = ['esim', 'affiliate', 'topup'] as const;
+export type OrderKind = (typeof ORDER_KIND_VALUES)[number];
 
 export class FilterOrderDto {
   @ApiPropertyOptional({
@@ -73,6 +83,36 @@ export class FilterOrderDto {
   @IsOptional()
   @IsIn(Object.values(InvoiceStatus))
   invoiceStatus?: InvoiceStatus;
+
+  @ApiPropertyOptional({
+    type: String,
+    enum: ORDER_KIND_VALUES,
+    description:
+      'esim = an ordinary eSIM purchase, affiliate = one that earned a partner ' +
+      'a commission, topup = a recharge of an existing eSIM (#017)',
+  })
+  @IsOptional()
+  @IsIn(ORDER_KIND_VALUES)
+  kind?: OrderKind;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    description: 'Orders created on or after this date, inclusive (#017)',
+  })
+  @IsOptional()
+  @IsDateString()
+  createdFrom?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    description:
+      'Orders created on or before this date. A bare date counts the whole day (#017)',
+  })
+  @IsOptional()
+  @IsDateString()
+  createdTo?: string;
 }
 
 export class SortOrderDto {

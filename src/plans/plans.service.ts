@@ -17,6 +17,13 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 import { DestinationsService } from '../destinations/destinations.service';
 import { RegionsService } from '../regions/regions.service';
 import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
+import { ExchangeRateService, convertAmount } from './exchange-rate.service';
+import { defaultDailyReset } from './plan-daily-reset';
+import { ApnSupportService } from '../apn-support/apn-support.service';
+import {
+  activationDeadlineFromDays,
+  activationDeadlineFromExpiry,
+} from './plan-activation';
 
 type PlanGroups = {
   dataPlans: Plan[];
@@ -25,6 +32,18 @@ type PlanGroups = {
   dailyUnlimited: Plan[];
   localEsim: Plan[];
   SmsCallEsim: Plan[];
+  /**
+   * Fixed-data plans that work with TikTok but lost the price de-duplication
+   * (#067, rendered by #068).
+   *
+   * `markCheapestPlans` keeps one plan per destination + type + data + duration,
+   * and the TikTok-capable variant is usually the dearer of the two — so it never
+   * reached the storefront at all, and the "works with TikTok" filter could not
+   * show it however it was written. They are returned in their own list rather
+   * than mixed into `dataPlans`, so the default view stays exactly as it is today
+   * and nothing else that reads `dataPlans` starts seeing extra plans.
+   */
+  tiktokHiddenByPrice: Plan[];
 };
 
 function hasPositivePlanValue(value: number | null | undefined): boolean {
@@ -49,6 +68,14 @@ function groupPlansBySimType(plans: Plan[]): PlanGroups {
     SmsCallEsim: plans.filter(
       (p) => !p.isLocalInventory && isSmsCallEsimPlan(p),
     ),
+    // Only the fixed-data group is de-duplicated by price, so only it can hide a
+    // TikTok-capable plan. The unlimited groups are returned whole already.
+    tiktokHiddenByPrice: standardPlans.filter(
+      (p) =>
+        p.type === 'fixed' &&
+        !p.isCheapest &&
+        p.appSupport?.tiktokAllDevices === true,
+    ),
   };
 }
 
@@ -62,7 +89,40 @@ export class PlansService {
     private readonly regionsService: RegionsService,
     @Inject(forwardRef(() => ProfitMarginsService))
     private readonly profitMarginsService: ProfitMarginsService,
+    private readonly exchangeRateService: ExchangeRateService,
+    private readonly apnSupportService: ApnSupportService,
   ) {}
+
+  /**
+   * Cost / price / retail in BOTH currencies for one plan (#009).
+   *
+   * A supplier quotes in one currency only — dollars over its API, or đồng in
+   * the Viettel and domestic-eSIM Excel upload — but the web has to compare and
+   * total them together, so every plan stores both.
+   */
+  private async convertPlanMoney(input: {
+    currency?: string | null;
+    isLocalInventory?: boolean;
+    costPrice?: number | null;
+    price?: number | null;
+    retailPrice?: number | null;
+  }): Promise<{
+    rate: number;
+    costPrice: { vnd: number; usd: number };
+    price: { vnd: number; usd: number };
+    retailPrice: { vnd: number; usd: number };
+  }> {
+    const rate = await this.exchangeRateService.getUsdToVndRate();
+    // Local inventory is quoted in đồng whatever the `currency` column says —
+    // the Excel upload does not set it.
+    const currency = input.isLocalInventory ? 'VND' : (input.currency ?? 'USD');
+    return {
+      rate,
+      costPrice: convertAmount(input.costPrice, currency, rate),
+      price: convertAmount(input.price, currency, rate),
+      retailPrice: convertAmount(input.retailPrice, currency, rate),
+    };
+  }
 
   async create(createPlanDto: CreatePlanDto): Promise<Plan> {
     const existingBySlug = await this.plansRepository.findBySlug(
@@ -76,6 +136,10 @@ export class PlansService {
     }
 
     const isLocalInventory = createPlanDto.isLocalInventory ?? false;
+    const supplierDailyReset = defaultDailyReset(
+      createPlanDto.provider,
+      isLocalInventory,
+    );
     // Local/Viettel costs and prices are VND. Apply existing Margin Tiers at
     // creation time; previously tiers only recalculated plans that already
     // existed when the tier was saved.
@@ -84,6 +148,17 @@ export class PlansService {
           createPlanDto.costPrice,
         )
       : null;
+
+    // Both currencies, computed here rather than left to the hourly pass (#009).
+    // A Viettel plan used to be stored with `usdPrice = 0` until that pass ran,
+    // and `getPlanUsdPrice` then recorded 0 as the order total.
+    const money = await this.convertPlanMoney({
+      currency: createPlanDto.currency,
+      isLocalInventory,
+      costPrice: createPlanDto.costPrice,
+      price: localRetailVnd ?? createPlanDto.price,
+      retailPrice: localRetailVnd ?? createPlanDto.retailPrice,
+    });
 
     return this.plansRepository.create({
       provider: createPlanDto.provider,
@@ -107,15 +182,29 @@ export class PlansService {
       isAbleMultidate: createPlanDto.isAbleMultidate ?? false,
       isCheapest: false,
       discount: createPlanDto.discount ?? 0,
-      vndPrice: localRetailVnd ?? createPlanDto.vndPrice ?? 0,
-      // Local inventory is priced in VND, so `price` is NOT dollars for it;
-      // the hourly exchange-rate job fills usdPrice in on its next run.
-      usdPrice: isLocalInventory ? 0 : (createPlanDto.price ?? 0),
+      vndPrice: localRetailVnd ?? createPlanDto.vndPrice ?? money.price.vnd,
+      usdPrice: money.price.usd,
+      usdCostPrice: money.costPrice.usd,
+      usdRetailPrice: money.retailPrice.usd,
+      vndCostPrice: money.costPrice.vnd,
+      vndRetailPrice: money.retailPrice.vnd,
       isNonHkIp: createPlanDto.isNonHkIp ?? false,
       isKyc: createPlanDto.isKyc ?? false,
       isLocalInventory,
       tags: createPlanDto.tags ?? null,
       apn: createPlanDto.apn ?? null,
+      activationValidityDays: createPlanDto.activationValidityDays ?? null,
+      // What the supplier resets by, unless the caller stated it outright
+      // (#063). Falling back to the supplier default means a plan typed in by
+      // hand is as informative as a synced one.
+      dailyResetPolicy:
+        createPlanDto.dailyResetPolicy ??
+        supplierDailyReset?.dailyResetPolicy ??
+        null,
+      dailyResetUtcOffset:
+        createPlanDto.dailyResetUtcOffset ??
+        supplierDailyReset?.dailyResetUtcOffset ??
+        null,
       hotSpot: createPlanDto.hotSpot ?? false,
       hotSpotAllow: createPlanDto.hotSpotAllow ?? null,
       lastSyncedAt: createPlanDto.lastSyncedAt ?? null,
@@ -202,6 +291,29 @@ export class PlansService {
       }
     }
 
+    // An admin editing a price must not leave the converted columns behind
+    // (#009). The current row supplies whatever the payload leaves out, since a
+    // partial edit still has to convert a complete set of three amounts.
+    const current = await this.plansRepository.findById(id);
+    const touchesMoney =
+      updatePlanDto.costPrice !== undefined ||
+      updatePlanDto.price !== undefined ||
+      updatePlanDto.retailPrice !== undefined ||
+      updatePlanDto.currency !== undefined ||
+      updatePlanDto.isLocalInventory !== undefined;
+    const money = touchesMoney
+      ? await this.convertPlanMoney({
+          currency: updatePlanDto.currency ?? current?.currency,
+          isLocalInventory:
+            updatePlanDto.isLocalInventory ??
+            current?.isLocalInventory ??
+            false,
+          costPrice: updatePlanDto.costPrice ?? current?.costPrice,
+          price: updatePlanDto.price ?? current?.price,
+          retailPrice: updatePlanDto.retailPrice ?? current?.retailPrice,
+        })
+      : null;
+
     return this.plansRepository.update(id, {
       provider: updatePlanDto.provider,
       providerPlanId: updatePlanDto.providerPlanId,
@@ -235,10 +347,24 @@ export class PlansService {
       // VND override. They're inherited from `PartialType(CreatePlanDto)` on
       // the DTO side, just need to be forwarded to the repository.
       tags: updatePlanDto.tags,
-      vndPrice: updatePlanDto.vndPrice,
+      vndPrice: updatePlanDto.vndPrice ?? money?.price.vnd,
       hotSpot: updatePlanDto.hotSpot,
       hotSpotAllow: updatePlanDto.hotSpotAllow,
+      ...(money
+        ? {
+            usdPrice: money.price.usd,
+            usdCostPrice: money.costPrice.usd,
+            usdRetailPrice: money.retailPrice.usd,
+            vndCostPrice: money.costPrice.vnd,
+            vndRetailPrice: money.retailPrice.vnd,
+          }
+        : {}),
     });
+  }
+
+  /** Distinct APN values, for the CMS filter's select box (#010). */
+  getDistinctApns(): Promise<string[]> {
+    return this.plansRepository.getDistinctApns();
   }
 
   /** Recount units sold per plan, destination and region (#053). */
@@ -250,6 +376,21 @@ export class PlansService {
     await this.plansRepository.markCheapestPlans();
   }
 
+  /**
+   * Take every plan of one supplier off sale (#005), remembering which rows this
+   * did so switching the supplier back on can restore exactly them.
+   *
+   * @returns how many plans were deactivated
+   */
+  async deactivatePlansForProvider(provider: string): Promise<number> {
+    return this.plansRepository.deactivatePlansForProvider(provider);
+  }
+
+  /** Put back only the plans {@link deactivatePlansForProvider} took down. */
+  async reactivatePlansDisabledByProvider(provider: string): Promise<number> {
+    return this.plansRepository.reactivatePlansDisabledByProvider(provider);
+  }
+
   async recalculatePricesWithTiers(
     tiers: Array<{
       minVnd: number;
@@ -258,17 +399,7 @@ export class PlansService {
       fixedAmountVnd?: number;
     }>,
   ): Promise<void> {
-    // Fetch current exchange rate for tier matching
-    let rate = 25500;
-    try {
-      const res = await fetch('https://open.er-api.com/v6/latest/USD');
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.rates?.VND) rate = data.rates.VND;
-      }
-    } catch {
-      // Use default rate
-    }
+    const rate = await this.exchangeRateService.getUsdToVndRate();
 
     // Step 1: Recalculate price from costPrice using tiers
     await this.plansRepository.recalculatePricesByTiers(tiers, rate);
@@ -282,48 +413,74 @@ export class PlansService {
 
   async updateVndPrices(): Promise<void> {
     try {
-      const res = await fetch('https://open.er-api.com/v6/latest/USD');
-      if (!res.ok) {
-        this.logger.error(`Exchange rate API error: ${res.status}`);
-        return;
-      }
-
-      const data = await res.json();
-      const rate: number = data?.rates?.VND;
-      if (!rate) {
-        this.logger.error('VND rate not found in response');
-        return;
-      }
-
+      const rate = await this.exchangeRateService.getUsdToVndRate();
       await this.plansRepository.updateAllVndPrices(rate);
-      this.logger.log(`Updated vndPrice for all plans (1 USD = ${rate} VND)`);
+      this.logger.log(
+        `Converted cost/price/retail for all plans (1 USD = ${rate} VND)`,
+      );
     } catch (err) {
-      this.logger.error('Failed to update vndPrice', err);
+      this.logger.error('Failed to convert plan prices', err);
     }
   }
 
   /**
-   * Tag local-inventory plans with how many unsold eSIMs are left (#040).
+   * Tag plans with the two facts the storefront cannot work out for itself: how
+   * many unsold eSIMs a local-inventory plan has left (#040), and the date the
+   * eSIM has to be activated by (#070).
    *
    * Only local inventory can run out: every other provider mints an eSIM on
    * demand, so their plans are left without a stock figure rather than being
    * reported as "0 left" and dimmed by mistake.
+   *
+   * The deadline is counted from now because the ticket counts it from the moment
+   * the customer looks at the product, which is this request.
    */
-  private async attachLocalStock(plans: Plan[]): Promise<Plan[]> {
+  private async attachStorefrontFacts(plans: Plan[]): Promise<Plan[]> {
+    const now = new Date();
     const localPlanIds = plans
       .filter((plan) => plan.isLocalInventory)
       .map((plan) => Number(plan.id));
 
-    if (localPlanIds.length === 0) return plans;
+    const [stock, apnCapabilities] = await Promise.all([
+      localPlanIds.length
+        ? this.plansRepository.countAvailableEsimsByPlanIds(localPlanIds)
+        : Promise.resolve({}),
+      // One read of the APN table for the whole page, not one per plan (#067).
+      this.apnSupportService.capabilityMap(),
+    ]);
 
-    const stock =
-      await this.plansRepository.countAvailableEsimsByPlanIds(localPlanIds);
+    return plans.map((plan) => {
+      // Whether TikTok and ChatGPT work: the esimaccess "nonhkip" marker, or the
+      // uploaded APN table for everybody else (#065, #067).
+      const appSupport = this.apnSupportService.judgePlan(
+        plan,
+        apnCapabilities,
+      );
 
-    return plans.map((plan) =>
-      plan.isLocalInventory
-        ? { ...plan, availableStock: stock[Number(plan.id)] ?? 0 }
-        : plan,
-    );
+      if (!plan.isLocalInventory) {
+        return {
+          ...plan,
+          appSupport,
+          activationDeadline: activationDeadlineFromDays(
+            plan.activationValidityDays,
+            now,
+          ),
+        };
+      }
+
+      const summary = stock[Number(plan.id)];
+      return {
+        ...plan,
+        appSupport,
+        availableStock: summary?.count ?? 0,
+        // Local stock is already printed with its expiry, so the deadline is that
+        // date rather than a count from today.
+        activationDeadline: activationDeadlineFromExpiry(
+          summary?.earliestExpiresAt,
+          now,
+        ),
+      };
+    });
   }
 
   async findPlansByDestination(slug: string): Promise<PlanGroups> {
@@ -338,7 +495,7 @@ export class PlansService {
       paginationOptions: { page: 1, limit: 1000 },
     });
 
-    return groupPlansBySimType(await this.attachLocalStock(all));
+    return groupPlansBySimType(await this.attachStorefrontFacts(all));
   }
 
   async findPlansByRegion(slug: string): Promise<PlanGroups> {
@@ -353,7 +510,7 @@ export class PlansService {
       paginationOptions: { page: 1, limit: 1000 },
     });
 
-    return groupPlansBySimType(await this.attachLocalStock(all));
+    return groupPlansBySimType(await this.attachStorefrontFacts(all));
   }
 
   /**
@@ -390,7 +547,7 @@ export class PlansService {
       );
     }
 
-    return groupPlansBySimType(await this.attachLocalStock(all));
+    return groupPlansBySimType(await this.attachStorefrontFacts(all));
   }
 
   async batchUpdateDiscount(ids: number[], discount: number): Promise<void> {

@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -11,6 +12,14 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 export class TicketEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn()
   id: number;
+
+  /**
+   * The reference the customer sees — `HT-000123` (#059). Nullable only so the
+   * row can be inserted before its id exists; it is filled in immediately after.
+   */
+  @Index({ unique: true })
+  @Column({ type: String, nullable: true })
+  ticketNumber: string | null;
 
   @Column({ type: String })
   customerEmail: string;
@@ -38,6 +47,13 @@ export class TicketEntity extends EntityRelationalHelper {
 
   @Column({ type: String, default: 'open' })
   status: string;
+
+  /**
+   * When the ticket was marked resolved (#061) — the clock the 48-hour auto-close
+   * runs off. Deliberately not `updatedAt`, which any later edit would move.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  resolvedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

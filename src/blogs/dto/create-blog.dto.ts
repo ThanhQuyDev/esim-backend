@@ -12,6 +12,7 @@ import {
 import {
   // decorators here
   ApiProperty,
+  ApiPropertyOptional,
 } from '@nestjs/swagger';
 
 import {
@@ -130,6 +131,10 @@ export class CreateBlogDto {
   @IsString()
   miniTagId?: string | null;
 
+  /**
+   * @deprecated Use {@link planCodes}. Numeric plan ids do not survive a
+   * catalogue re-import (#047); kept so existing callers keep working.
+   */
   @ApiProperty({
     required: false,
     type: () => [Number],
@@ -137,6 +142,20 @@ export class CreateBlogDto {
   @IsOptional()
   @IsArray()
   planIds?: number[];
+
+  /**
+   * Related plans, by a provider-sourced reference: the plan slug or the
+   * supplier's own package code (#047). Takes precedence over {@link planIds},
+   * and is what survives a full catalogue re-import.
+   */
+  @ApiPropertyOptional({
+    type: () => [String],
+    example: ['ID_1_7', 'jp-5gb-30days-fixed'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  planCodes?: string[];
 
   @ApiProperty({
     required: false,

@@ -2,11 +2,16 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  Max,
+  Min,
 } from 'class-validator';
+import { DailyResetPolicyEnum } from '../plan-daily-reset';
 
 /**
  * Coerce stringified numbers (e.g. "0.4000", "12.50") into real numbers so
@@ -191,6 +196,41 @@ export class CreatePlanDto {
   @IsOptional()
   @IsString()
   apn?: string | null;
+
+  @ApiPropertyOptional({
+    example: 180,
+    type: Number,
+    description:
+      'Days the customer has to activate the eSIM, as the supplier states it (#070)',
+  })
+  @IsOptional()
+  @Transform(toNumber)
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  activationValidityDays?: number | null;
+
+  @ApiPropertyOptional({
+    enum: DailyResetPolicyEnum,
+    description:
+      'When the daily allowance starts over ("Giờ làm mới mỗi ngày", #063)',
+  })
+  @IsOptional()
+  @IsEnum(DailyResetPolicyEnum)
+  dailyResetPolicy?: DailyResetPolicyEnum | null;
+
+  @ApiPropertyOptional({
+    example: 8,
+    type: Number,
+    description:
+      'Hours east of UTC a calendar-day reset is counted in (-12 … 14)',
+  })
+  @IsOptional()
+  @Transform(toNumber)
+  @IsInt()
+  @Min(-12)
+  @Max(14)
+  dailyResetUtcOffset?: number | null;
 
   @ApiPropertyOptional({
     example: true,

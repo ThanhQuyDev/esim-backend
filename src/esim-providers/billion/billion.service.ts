@@ -777,6 +777,8 @@ export class BillionService {
             apn: plan?.apn ?? '',
             phoneNumber: esim.phoneNumber ?? null,
             planName: plan?.name ?? '',
+            callMinutes: plan?.call ?? null,
+            smsCount: plan?.sms ?? null,
             orderNumber: orderId,
           });
         }

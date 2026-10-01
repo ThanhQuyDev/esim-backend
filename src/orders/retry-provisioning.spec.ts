@@ -13,8 +13,11 @@ function makeService(opts: {
   orderStatus?: string;
   items: { id: number; orderRequestId?: string | null }[];
   esims: { orderItemId: number }[];
+  /** eSIMs mailed by the auto-resend after a successful re-order (#014). */
+  emailsSent?: number;
 }) {
   const submitted: { orderId: number; onlyItemIds?: number[] }[] = [];
+  const mailed: { orderId: number; onlyOrderItemIds?: number[] }[] = [];
 
   const orderRepository = {
     findById: jest.fn().mockResolvedValue({
@@ -27,7 +30,13 @@ function makeService(opts: {
     findByOrderId: jest.fn().mockResolvedValue(opts.items),
   };
   const esimsService = {
-    findByOrderItemIds: jest.fn().mockResolvedValue(opts.esims),
+    findByOrderItemIds: jest
+      .fn()
+      .mockImplementation((ids: number[]) =>
+        Promise.resolve(
+          opts.esims.filter((esim) => ids.includes(esim.orderItemId)),
+        ),
+      ),
   };
 
   const service = Object.create(OrdersService.prototype) as OrdersService;
@@ -42,8 +51,14 @@ function makeService(opts: {
       return Promise.resolve();
     },
   );
+  internals.resendEsimEmail = jest.fn(
+    (orderId: number, options?: { onlyOrderItemIds?: number[] }) => {
+      mailed.push({ orderId, onlyOrderItemIds: options?.onlyOrderItemIds });
+      return Promise.resolve({ sent: opts.emailsSent ?? 0 });
+    },
+  );
 
-  return { service, submitted };
+  return { service, submitted, mailed };
 }
 
 describe('Retry provisioning for an order', () => {
@@ -112,5 +127,130 @@ describe('Retry provisioning for an order', () => {
     await expect(service.retryProvisioning(5)).rejects.toThrow(
       /only a paid order/i,
     );
+  });
+
+  // #014 — the picker: an order with several eSIMs is retried line by line.
+  describe('choosing which lines to retry (#014)', () => {
+    it('should re-sends only the chosen line', async () => {
+      const { service, submitted } = makeService({
+        items: [
+          { id: 1, orderRequestId: null },
+          { id: 2, orderRequestId: null },
+          { id: 3, orderRequestId: null },
+        ],
+        esims: [],
+      });
+
+      const result = await service.retryProvisioning(5, { itemIds: [2] });
+
+      expect(result.retriedItemIds).toEqual([2]);
+      expect(submitted).toEqual([{ orderId: 5, onlyItemIds: [2] }]);
+    });
+
+    it('should still refuses a chosen line that already has an eSIM', async () => {
+      const { service, submitted } = makeService({
+        items: [
+          { id: 1, orderRequestId: null },
+          { id: 2, orderRequestId: null },
+        ],
+        // The admin ticked #1 by mistake; it already holds an eSIM, and buying a
+        // second one costs real money.
+        esims: [{ orderItemId: 1 }],
+      });
+
+      const result = await service.retryProvisioning(5, { itemIds: [1, 2] });
+
+      expect(result.retriedItemIds).toEqual([2]);
+      expect(result.skippedItemIds).toEqual([1]);
+      expect(submitted).toEqual([{ orderId: 5, onlyItemIds: [2] }]);
+    });
+
+    it('should rejects an item id that is not on this order', async () => {
+      const { service, submitted } = makeService({
+        items: [{ id: 1, orderRequestId: null }],
+        esims: [],
+      });
+
+      await expect(
+        service.retryProvisioning(5, { itemIds: [99] }),
+      ).rejects.toThrow(/no item/i);
+      expect(submitted).toHaveLength(0);
+    });
+
+    it('should with no selection behaves as before, retrying every eligible line', async () => {
+      const { service, submitted } = makeService({
+        items: [
+          { id: 1, orderRequestId: 'REF-1' },
+          { id: 2, orderRequestId: null },
+          { id: 3, orderRequestId: null },
+        ],
+        esims: [],
+      });
+
+      const result = await service.retryProvisioning(5);
+
+      expect(result.retriedItemIds).toEqual([2, 3]);
+      expect(submitted).toEqual([{ orderId: 5, onlyItemIds: [2, 3] }]);
+    });
+  });
+
+  // #014 — "gọi lại thành công thì tự động gửi lại email esim cho khách".
+  describe('auto-resending the eSIM email (#014)', () => {
+    it('should mails only the lines it just re-ordered', async () => {
+      const { service, mailed } = makeService({
+        items: [
+          { id: 1, orderRequestId: 'REF-1' }, // delivered long ago
+          { id: 2, orderRequestId: null },
+        ],
+        esims: [{ orderItemId: 1 }],
+        emailsSent: 1,
+      });
+
+      const result = await service.retryProvisioning(5);
+
+      // Mailing the whole order would send a second copy of eSIM #1.
+      expect(mailed).toEqual([{ orderId: 5, onlyOrderItemIds: [2] }]);
+      expect(result.emailsSent).toBe(1);
+      expect(result.message).toMatch(/Đã gửi lại email eSIM/);
+    });
+
+    it('should does not mail when there was nothing to re-order', async () => {
+      const { service, mailed } = makeService({
+        items: [{ id: 1, orderRequestId: 'REF-1' }],
+        esims: [{ orderItemId: 1 }],
+      });
+
+      const result = await service.retryProvisioning(5);
+
+      expect(mailed).toHaveLength(0);
+      expect(result.emailsSent).toBe(0);
+    });
+
+    it('should reports an asynchronous supplier as normal, not as a failure', async () => {
+      const { service } = makeService({
+        items: [{ id: 1, orderRequestId: null }],
+        esims: [],
+        emailsSent: 0,
+      });
+
+      const result = await service.retryProvisioning(5);
+
+      expect(result.retriedItemIds).toEqual([1]);
+      expect(result.message).toMatch(/email sẽ tự gửi khi eSIM về/);
+    });
+
+    it('should keeps the re-order a success when the email itself throws', async () => {
+      const { service } = makeService({
+        items: [{ id: 1, orderRequestId: null }],
+        esims: [],
+      });
+      (service as unknown as { resendEsimEmail: jest.Mock }).resendEsimEmail =
+        jest.fn().mockRejectedValue(new Error('SMTP down'));
+
+      const result = await service.retryProvisioning(5);
+
+      expect(result.retriedItemIds).toEqual([1]);
+      expect(result.emailsSent).toBe(0);
+    });
   });
 });

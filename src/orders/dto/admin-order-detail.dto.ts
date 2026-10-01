@@ -221,6 +221,76 @@ export class AdminOrderPartnerCommissionDto {
   tierSnapshot?: string | null;
 }
 
+/**
+ * A topup order, in full (#015).
+ *
+ * The page could not even tell a topup apart from an ordinary order: none of
+ * `orderType`, `targetIccid` or the package details reached the client. Without
+ * the eSIM being topped up there is also nothing to reconcile the result against.
+ */
+export class AdminOrderTopupDto {
+  @ApiProperty({ type: String, example: '89852245280001354019' })
+  targetIccid: string;
+
+  @ApiPropertyOptional({ type: String, example: 'AIRALO' })
+  provider: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  packageId: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '3 GB - 100 SMS - 100 Mins - 30 Days',
+  })
+  packageName: string | null;
+
+  @ApiPropertyOptional({ type: String, example: '3 GB' })
+  dataText: string | null;
+
+  @ApiPropertyOptional({ type: Number, example: 30 })
+  durationDays: number | null;
+
+  @ApiProperty({ type: Boolean })
+  isUnlimited: boolean;
+
+  /** The eSIM being topped up, so the result can be checked against it. */
+  @ApiPropertyOptional({ type: () => AdminTopupTargetEsimDto, nullable: true })
+  targetEsim: AdminTopupTargetEsimDto | null;
+}
+
+export class AdminTopupTargetEsimDto {
+  @ApiProperty({ type: Number })
+  id: number;
+
+  @ApiProperty({ type: String })
+  iccid: string;
+
+  @ApiProperty({ type: String })
+  status: string;
+
+  @ApiPropertyOptional({ type: String })
+  provider: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  planName: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  dataUsed: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  dataTotal: string | null;
+
+  @ApiPropertyOptional({ type: Date })
+  expiresAt: Date | null;
+
+  @ApiPropertyOptional({ type: Date })
+  activatedAt: Date | null;
+
+  /** The order this eSIM was originally bought on, when there was one. */
+  @ApiPropertyOptional({ type: Number })
+  originalOrderId: number | null;
+}
+
 export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   id: number;
@@ -236,6 +306,17 @@ export class AdminOrderDetailDto {
 
   @ApiProperty({ type: String })
   status: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'BUY_NEW',
+    enum: ['BUY_NEW', 'TOPUP'],
+  })
+  orderType: string;
+
+  /** Everything about the topup; null on an ordinary order (#015). */
+  @ApiPropertyOptional({ type: () => AdminOrderTopupDto, nullable: true })
+  topup?: AdminOrderTopupDto | null;
 
   @ApiProperty({ type: Number })
   totalAmount: number;

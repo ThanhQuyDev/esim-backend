@@ -16,9 +16,15 @@ const SAMPLE_CONTEXT = {
   apn: 'internet',
   phoneNumber: '+84 912 345 678',
   planName: 'Vietnam 5GB 30 Days',
-  orderNumber: 'ORD-1234567890-ABCDEF',
+  orderNumber: 'ORD-260925210805694-NZ7UEC',
   qrCodeBase64:
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  // Public usage lookup link (#003) — sample token so the CMS preview renders
+  // the button instead of hiding it behind `{{#if usageCheckUrl}}`.
+  usageCheckUrl: 'https://esim.vn/tra-cuu-esim?token=SAMPLE-LOOKUP-TOKEN',
+  // Call / SMS allowance (#023). Non-zero so the preview shows those rows.
+  callMinutes: 100,
+  smsCount: 100,
   // Partner decision emails (approved / rejected).
   contactName: 'Nguyen Van A',
   reason: 'Kenh chua dap ung tieu chi cua chuong trinh.',

@@ -1,4 +1,4 @@
-import { TopupService } from './topup.service';
+﻿import { TopupService } from './topup.service';
 import { TopupProvider } from './dto/topup-package.dto';
 import { ADMIN_MANUAL_PAYMENT_METHOD } from './topup.constants';
 
@@ -58,6 +58,9 @@ function makeService(opts: {
     {} as never,
     {} as never,
     {} as never,
+    // #028 — WalletsService and InvoicesService.
+    {} as never,
+    {} as never,
   );
 
   jest.spyOn(service, 'listPackages').mockResolvedValue({
@@ -94,7 +97,7 @@ describe('Admin manual topup (payment gateway bypassed)', () => {
         iccid: ICCID,
         packageId: 'pkg-1',
         provider: TopupProvider.AIRALO,
-        note: 'Khách chuyển khoản trực tiếp',
+        note: 'KhÃ¡ch chuyá»ƒn khoáº£n trá»±c tiáº¿p',
       },
       999,
     );
@@ -108,7 +111,7 @@ describe('Admin manual topup (payment gateway bypassed)', () => {
     // Who did it and why, in place of the missing gateway reference.
     expect(String(orderUpdates[0].payload.paymentId)).toContain('admin:999');
     expect(String(orderUpdates[0].payload.paymentId)).toContain(
-      'Khách chuyển khoản trực tiếp',
+      'KhÃ¡ch chuyá»ƒn khoáº£n trá»±c tiáº¿p',
     );
   });
 

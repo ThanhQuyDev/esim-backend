@@ -55,6 +55,25 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   topupPackageId?: string | null;
 
+  /**
+   * What the topup package gave, snapshotted at checkout (#015).
+   *
+   * The provider catalogue changes and packages disappear, so an order has to
+   * keep reporting the deal it was actually sold rather than whatever the
+   * provider lists today.
+   */
+  @Column({ type: String, length: 300, nullable: true })
+  topupPackageName?: string | null;
+
+  @Column({ type: String, length: 60, nullable: true })
+  topupDataText?: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  topupDurationDays?: number | null;
+
+  @Column({ type: Boolean, default: false })
+  topupIsUnlimited!: boolean;
+
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   totalAmount!: number;
 

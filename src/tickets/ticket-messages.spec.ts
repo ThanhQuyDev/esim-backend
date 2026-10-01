@@ -25,8 +25,19 @@ function buildService(ticket: Record<string, unknown> | null) {
     save,
   };
 
-  const service = new TicketsService(repository as never, messages as never);
-  return { service, save, update, messages };
+  // An admin's reply is emailed to the customer (#059); these tests are about the
+  // stored thread, so the mail side is stubbed and asserted separately.
+  const mailService = {
+    sendTicketAcknowledgement: jest.fn().mockResolvedValue(undefined),
+    sendTicketReply: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const service = new TicketsService(
+    repository as never,
+    messages as never,
+    mailService as never,
+  );
+  return { service, save, update, messages, mailService };
 }
 
 const OWNER = { email: 'kol@esim.vn', isAdmin: false, name: 'Nguyễn Văn A' };

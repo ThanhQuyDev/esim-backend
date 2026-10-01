@@ -130,6 +130,27 @@ export class BlogsController {
     return this.blogsService.findParentsByCategory(lang);
   }
 
+  /**
+   * Authors that have articles, for the CMS filter's select box (#046). Declared
+   * before `authors/:slug` for readability; the two paths differ in depth, so
+   * neither shadows the other.
+   */
+  @Get('authors')
+  @ApiHeader({
+    name: 'x-custom-lang',
+    required: false,
+    description:
+      'Language filter (e.g. "en", "vi"). Returns authors for that language only.',
+  })
+  @ApiOkResponse({
+    description: 'Returns [{ slug, name }] for every author that has articles',
+  })
+  findAuthorOptions(
+    @Headers('x-custom-lang') lang?: string,
+  ): Promise<{ slug: string; name: string }[]> {
+    return this.blogsService.findAuthorOptions(lang);
+  }
+
   @Get('authors/:slug')
   async findAuthor(@Param('slug') slug: string) {
     // Falls back to a byline for articles that predate author profiles (#030).

@@ -128,6 +128,10 @@ describe('PartnersService.getMyPurchases (#046)', () => {
         paidVnd: '900000',
         listVnd: '1000000',
         refundedVnd: '0',
+        // Giá niêm yết esim.vn và số tiền thật đã trừ ví — hai cột của màn
+        // hình "Doanh thu và đơn hàng" (#046, chốt phương án a 02/10/2026).
+        listPriceVnd: '1000000',
+        walletCostVnd: '900000',
         esimCount: 5,
         createdAt: '2026-09-18T03:00:00.000Z',
         items: [{ planName: 'Nhật Bản 5GB', quantity: 5, vndPrice: 900000 }],
@@ -144,10 +148,64 @@ describe('PartnersService.getMyPurchases (#046)', () => {
         paidVnd: 900_000,
         listVnd: 1_000_000,
         refundedVnd: 0,
+        listPriceVnd: 1_000_000,
+        walletCostVnd: 900_000,
+        marginVnd: 100_000,
         esimCount: 5,
         createdAt: '2026-09-18T03:00:00.000Z',
         items: [{ planName: 'Nhật Bản 5GB', quantity: 5, vndPrice: 900_000 }],
       },
+    ]);
+  });
+
+  it('should take the cost from the wallet ledger, not from the order total', async () => {
+    // Hoàn tiền eSIM lỗi ghi vào sổ ví và không đụng tới tổng đơn. Lấy theo
+    // tổng đơn thì sau một lần hoàn, màn hình báo lãi ít hơn thực tế.
+    const { service } = buildService([
+      {
+        orderNumber: 'ORD-3',
+        partnerId: '8',
+        partnerName: 'Công ty ABC',
+        status: 'completed',
+        orderType: 'ESIM',
+        paidVnd: '900000',
+        listVnd: '1000000',
+        refundedVnd: '0',
+        listPriceVnd: '1000000',
+        // 900.000đ trừ đi, 180.000đ hoàn lại cho 1 eSIM lỗi.
+        walletCostVnd: '720000',
+        esimCount: 4,
+        createdAt: '2026-09-18T03:00:00.000Z',
+        items: [],
+      },
+    ]);
+
+    await expect(service.getMyPurchases(8)).resolves.toMatchObject([
+      { walletCostVnd: 720_000, marginVnd: 280_000 },
+    ]);
+  });
+
+  it('should show a negative margin rather than clamping it to zero', async () => {
+    // Markup của hạng vượt giá niêm yết là một thoả thuận hợp lệ, nhưng đối
+    // tác phải nhìn thấy số âm chứ không phải tưởng mình hoà vốn.
+    const { service } = buildService([
+      {
+        orderNumber: 'ORD-4',
+        status: 'completed',
+        orderType: 'ESIM',
+        paidVnd: '0',
+        listVnd: '0',
+        refundedVnd: '0',
+        listPriceVnd: '300000',
+        walletCostVnd: '440000',
+        esimCount: 2,
+        createdAt: '2026-09-18T03:00:00.000Z',
+        items: [],
+      },
+    ]);
+
+    await expect(service.getMyPurchases(8)).resolves.toMatchObject([
+      { marginVnd: -140_000 },
     ]);
   });
 

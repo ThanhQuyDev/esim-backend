@@ -30,6 +30,11 @@ export class CustomPaymentLinkMapper {
 
     domainEntity.virtualOrderId = raw.virtualOrderId;
 
+    // Confirmation / auto-expiry bookkeeping (#056).
+    domainEntity.confirmedAt = raw.confirmedAt ?? null;
+    domainEntity.confirmedByAdminId = raw.confirmedByAdminId ?? null;
+    domainEntity.expiredAt = raw.expiredAt ?? null;
+
     domainEntity.id = raw.id;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
@@ -74,6 +79,16 @@ export class CustomPaymentLinkMapper {
     persistenceEntity.customerEmail = domainEntity.customerEmail;
 
     persistenceEntity.virtualOrderId = domainEntity.virtualOrderId;
+
+    if (domainEntity.confirmedAt !== undefined) {
+      persistenceEntity.confirmedAt = domainEntity.confirmedAt;
+    }
+    if (domainEntity.confirmedByAdminId !== undefined) {
+      persistenceEntity.confirmedByAdminId = domainEntity.confirmedByAdminId;
+    }
+    if (domainEntity.expiredAt !== undefined) {
+      persistenceEntity.expiredAt = domainEntity.expiredAt;
+    }
 
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;

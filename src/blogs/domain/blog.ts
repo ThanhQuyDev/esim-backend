@@ -74,6 +74,15 @@ export class Blog {
   @ApiProperty({ type: () => [Number], nullable: true })
   planIds?: number[];
 
+  /**
+   * Provider-sourced references to the related plans, in the order typed (#047) —
+   * a plan slug or the supplier's own package code. Durable across a catalogue
+   * re-import, unlike {@link planIds}, so these are what the plans are resolved
+   * from whenever they are set.
+   */
+  @ApiProperty({ type: () => [String], nullable: true })
+  planCodes?: string[];
+
   @ApiProperty({ type: () => [Faq], nullable: true })
   faqs?: Faq[];
 

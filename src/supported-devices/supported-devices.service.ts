@@ -5,6 +5,7 @@ import { SaveSupportedDeviceOrderingDto } from './dto/save-supported-device-orde
 import { SupportedDeviceRepository } from './infrastructure/persistence/supported-device.repository';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { SupportedDevice, DeviceType } from './domain/supported-device';
+import { ManufacturerNotesService } from '../manufacturer-notes/manufacturer-notes.service';
 import {
   DEVICE_TYPE_ORDER,
   compareBrands,
@@ -28,6 +29,7 @@ export interface SupportedDeviceBrandOrdering {
 export class SupportedDevicesService {
   constructor(
     private readonly supportedDeviceRepository: SupportedDeviceRepository,
+    private readonly manufacturerNotesService: ManufacturerNotesService,
   ) {}
 
   async create(createDto: CreateSupportedDeviceDto) {
@@ -80,22 +82,38 @@ export class SupportedDevicesService {
   findAllWithPagination({
     paginationOptions,
     type,
+    manufacturer,
     search,
   }: {
     paginationOptions: IPaginationOptions;
-    type?: DeviceType;
+    type?: DeviceType[];
+    manufacturer?: string;
     search?: string;
   }) {
     return this.supportedDeviceRepository.findAllWithPagination({
       paginationOptions,
       type,
+      manufacturer,
       search,
     });
   }
 
-  async findGrouped(search?: string) {
+  /**
+   * Distinct manufacturer names, for the CMS filter's select box (#052).
+   *
+   * Derived from the devices rather than from a fixed list, so the box can never
+   * offer a brand with nothing to show.
+   */
+  findManufacturers(): Promise<string[]> {
+    return this.supportedDeviceRepository.findManufacturers();
+  }
+
+  async findGrouped(search?: string, lang?: string) {
     // Already in display order, so first-seen order of each Map is that order.
     const devices = await this.supportedDeviceRepository.findGrouped(search);
+    // The extra note a brand may carry, managed in the CMS (#079). The page used
+    // to show one note from the storefront's locale file, hard-coded to iPhone.
+    const notes = await this.manufacturerNotesService.findActiveMap(lang);
 
     const groupMap = new Map<
       string,
@@ -119,6 +137,11 @@ export class SupportedDevicesService {
         ([manufacturer, devs]) => ({
           manufacturer,
           devices: devs,
+          // Only present when the brand has a note, so the storefront can simply
+          // check for it rather than knowing which brands have one.
+          ...(notes.has(manufacturer.trim().toLowerCase())
+            ? { note: notes.get(manufacturer.trim().toLowerCase()) }
+            : {}),
         }),
       ),
     }));

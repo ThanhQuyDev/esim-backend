@@ -39,4 +39,13 @@ export abstract class SeoConfigRepository {
 
   /** Soft-delete every config for these exact URLs; returns how many (#055). */
   abstract removeByUrls(urls: SeoConfig['url'][]): Promise<number>;
+
+  /** Flip `isActive` on many configs at once; returns how many (#049). */
+  abstract bulkSetActive(
+    ids: SeoConfig['id'][],
+    isActive: boolean,
+  ): Promise<number>;
+
+  /** Soft-delete many configs at once; returns how many (#049). */
+  abstract bulkRemove(ids: SeoConfig['id'][]): Promise<number>;
 }
