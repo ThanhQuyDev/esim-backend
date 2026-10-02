@@ -3,6 +3,15 @@ import { Injectable, Logger } from '@nestjs/common';
 /** Used when the rate API cannot be reached and nothing is cached yet. */
 export const FALLBACK_USD_VND_RATE = 25500;
 
+/**
+ * Fallback USD→CNY rate, for Billion's catalogue when the rate API is down.
+ *
+ * Deliberately a rate we would rather be slightly wrong about in the expensive
+ * direction: too high a divisor undersells, too low oversells. Around 7.1 is
+ * the long-run level; a stale cached rate is always preferred to this.
+ */
+export const FALLBACK_USD_CNY_RATE = 7.1;
+
 const RATE_URL = 'https://open.er-api.com/v6/latest/USD';
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -19,43 +28,73 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
  * hitting the rate API a thousand times per upload would rate-limit us into the
  * fallback.
  */
+type Rates = { vnd: number; cny: number };
+
 @Injectable()
 export class ExchangeRateService {
   private readonly logger = new Logger(ExchangeRateService.name);
-  private cached: { rate: number; at: number } | null = null;
+  private cached: { rates: Rates; at: number } | null = null;
   /** In-flight request, so a burst of callers shares one fetch. */
-  private pending: Promise<number> | null = null;
+  private pending: Promise<Rates> | null = null;
 
   /** Current USD→VND rate. Never throws: falls back to the last known value. */
   async getUsdToVndRate(): Promise<number> {
+    return (await this.getRates()).vnd;
+  }
+
+  /**
+   * Current CNY→USD rate, for suppliers who quote in yuan (#billion-currency).
+   *
+   * Returned as "how many dollars one yuan is" so callers multiply, the same
+   * shape as the old hard-coded constant they replace. One fetch serves this
+   * and the VND rate — they come from the same response.
+   */
+  async getCnyToUsdRate(): Promise<number> {
+    const { cny } = await this.getRates();
+    return 1 / cny;
+  }
+
+  private async getRates(): Promise<Rates> {
     if (this.cached && Date.now() - this.cached.at < CACHE_TTL_MS) {
-      return this.cached.rate;
+      return this.cached.rates;
     }
     if (this.pending) return this.pending;
 
-    this.pending = this.fetchRate().finally(() => {
+    this.pending = this.fetchRates().finally(() => {
       this.pending = null;
     });
     return this.pending;
   }
 
-  private async fetchRate(): Promise<number> {
+  private async fetchRates(): Promise<Rates> {
     try {
       const res = await fetch(RATE_URL);
       if (!res.ok) {
         this.logger.error(`Exchange rate API error: ${res.status}`);
         return this.staleOrFallback();
       }
-      const data = (await res.json()) as { rates?: { VND?: number } };
-      const rate = Number(data?.rates?.VND);
-      if (!Number.isFinite(rate) || rate <= 0) {
+      const data = (await res.json()) as {
+        rates?: { VND?: number; CNY?: number };
+      };
+      const vnd = Number(data?.rates?.VND);
+      const cny = Number(data?.rates?.CNY);
+      if (!Number.isFinite(vnd) || vnd <= 0) {
         this.logger.error('VND rate not found in response');
         return this.staleOrFallback();
       }
-      this.cached = { rate, at: Date.now() };
-      return rate;
+      // A missing CNY does not invalidate a good VND: keep the VND and fall
+      // back only on the yuan, rather than throwing both away.
+      const rates: Rates = {
+        vnd,
+        cny:
+          Number.isFinite(cny) && cny > 0
+            ? cny
+            : (this.cached?.rates.cny ?? FALLBACK_USD_CNY_RATE),
+      };
+      this.cached = { rates, at: Date.now() };
+      return rates;
     } catch (err) {
-      this.logger.error('Failed to fetch USD→VND rate', err);
+      this.logger.error('Failed to fetch exchange rates', err);
       return this.staleOrFallback();
     }
   }
@@ -64,8 +103,13 @@ export class ExchangeRateService {
    * A stale rate beats the hardcoded constant: it is off by a day at worst,
    * while the constant can be off by years.
    */
-  private staleOrFallback(): number {
-    return this.cached?.rate ?? FALLBACK_USD_VND_RATE;
+  private staleOrFallback(): Rates {
+    return (
+      this.cached?.rates ?? {
+        vnd: FALLBACK_USD_VND_RATE,
+        cny: FALLBACK_USD_CNY_RATE,
+      }
+    );
   }
 }
 

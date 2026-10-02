@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import * as crypto from 'crypto';
 import { AllConfigType } from '../../config/config.type';
 import { PlansService } from '../../plans/plans.service';
+import { ExchangeRateService } from '../../plans/exchange-rate.service';
 import { DestinationsService } from '../../destinations/destinations.service';
 import { RegionsService } from '../../regions/regions.service';
 import { ProviderSyncLogsService } from '../../provider-sync-logs/provider-sync-logs.service';
@@ -40,16 +41,27 @@ const PROVIDER = 'billion';
 const ESIM_TYPES = new Set(['230', '3105', '3106']);
 
 /**
- * BILLION's F003 price fields (`retailPrice` / `settlementPrice`) carry NO
- * currency in the API docs. We assume USD and use the settlement price directly
- * as the cost. If the partner confirms the prices are actually RMB, set this to
- * false — {@link BillionService.upsertPlan} will then convert via
- * {@link RMB_TO_USD}, mirroring the HKD→USD handling in MicroEsimService.
+ * BILLION quotes in CNY (nhân dân tệ), not USD.
+ *
+ * F003 carries no currency field at all — `{skuId, price:[{copies, days,
+ * settlementPrice, retailPrice}]}` and nothing else — so this was assumed to be
+ * USD until 2026-10-03, when the catalogue was checked against suppliers whose
+ * currency is known. Same destination, same duration, same allowance:
+ *
+ *   Korea 500MB/day, 1 day — Billion 3.00 · esimaccess 0.48 · gadgetkorea 0.29
+ *   Korea 1GB/day,   1 day — Billion 4.00 · esimaccess 0.83 · gadgetkorea 0.36
+ *   Korea 2GB/day,   1 day — Billion 5.00 · gadgetkorea 0.73
+ *
+ * Read as dollars those are 5–11× every competitor, which no wholesaler could
+ * sustain; divided by ~7 they land in the same band. The supplier is Chinese
+ * (亿点自营, product names in Chinese, timeZone UTC+8), and Chinese wholesale
+ * platforms quote yuan by default.
+ *
+ * Converted with the LIVE rate rather than a constant: a hard-coded figure is
+ * wrong by however much the yuan has moved since someone last edited it, and
+ * this number sets the cost of all ~16k Billion plans.
  */
-const BILLION_PRICE_IS_USD = true;
-
-/** Fallback RMB→USD rate, applied only when BILLION_PRICE_IS_USD is false. */
-const RMB_TO_USD = 0.14;
+const BILLION_PRICE_CURRENCY = 'CNY';
 
 /**
  * BILLION recharge (topup) tradeType. Per API docs §3.7 "创建充值订单 / Create
@@ -84,6 +96,8 @@ export class BillionService {
     private readonly usersService: UsersService,
     @Inject(forwardRef(() => OrdersService))
     private readonly ordersService: OrdersService,
+    /** CNY→USD for the catalogue — Billion quotes yuan. */
+    private readonly exchangeRateService: ExchangeRateService,
   ) {}
 
   // ─── Auth / transport ──────────────────────────────────────────────────────
@@ -258,8 +272,22 @@ export class BillionService {
       );
     }
 
+    // Lấy tỷ giá MỘT lần cho cả lượt đồng bộ: service có cache 1 giờ, nhưng
+    // đọc một lần ở đây làm rõ rằng mọi gói trong cùng lượt dùng chung một tỷ
+    // giá — không có chuyện nửa danh mục quy đổi theo tỷ giá khác nửa còn lại.
+    const cnyToUsd = await this.exchangeRateService.getCnyToUsdRate();
+    this.logger.debug(
+      `Billion pricing: 1 ${BILLION_PRICE_CURRENCY} = ${cnyToUsd.toFixed(5)} USD`,
+    );
+
     for (const variant of variants) {
-      await this.upsertPlan(product, variant, destinationId, regionId);
+      await this.upsertPlan(
+        product,
+        variant,
+        destinationId,
+        regionId,
+        cnyToUsd,
+      );
     }
   }
 
@@ -335,6 +363,8 @@ export class BillionService {
     variant: BillionPlanVariant,
     destinationId: number | null,
     regionId: number | null,
+    /** Bao nhiêu USD cho một CNY, lấy một lần cho cả lượt đồng bộ. */
+    cnyToUsd: number,
   ) {
     const { type, dataMb, durationDays: days } = variant;
 
@@ -360,10 +390,10 @@ export class BillionService {
 
     const existing = await this.plansService.findBySlug(slug);
 
-    // Cost currency is unknown per docs; assumed USD (see BILLION_PRICE_IS_USD).
-    const costPrice = BILLION_PRICE_IS_USD
-      ? variant.cost
-      : variant.cost * RMB_TO_USD;
+    // `variant.cost` là settlementPrice của F003, tính bằng CNY — xem
+    // BILLION_PRICE_CURRENCY. Làm tròn tới cent để không lưu một cái đuôi thập
+    // phân vô nghĩa sinh ra từ tỷ giá.
+    const costPrice = Math.round(variant.cost * cnyToUsd * 100) / 100;
 
     const apn = product.apn || product.country?.[0]?.apn || null;
     const operator = product.country
