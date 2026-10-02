@@ -54,9 +54,23 @@ function isSmsCallEsimPlan(plan: Plan): boolean {
   return hasPositivePlanValue(plan.sms) || hasPositivePlanValue(plan.call);
 }
 
+/**
+ * Chia gói thành các nhóm mà trang bán hàng hiển thị.
+ *
+ * Mốc phân chia là `isDomesticEsim`, **không phải** `isLocalInventory`. Hai cờ
+ * này từng bị dùng lẫn nhau và hậu quả là 3 gói eSIM du lịch của Viettel bị
+ * đẩy vào tab "eSIM nội địa", trong khi chúng phải nằm ở Quốc gia → Việt Nam
+ * cùng mọi gói du lịch khác.
+ *
+ * - `isLocalInventory` = hàng mình giữ, giá niêm yết VND. Cả hai loại đều có.
+ * - `isDomesticEsim`   = SIM data dùng trong nước, thuộc tab eSIM nội địa.
+ *
+ * Nên gói Viettel (`isLocalInventory = true`, `isDomesticEsim = false`) đi vào
+ * `standardPlans` và hiện ở nhóm du lịch đúng theo `type` của nó.
+ */
 function groupPlansBySimType(plans: Plan[]): PlanGroups {
   const standardPlans = plans.filter(
-    (p) => !p.isLocalInventory && !isSmsCallEsimPlan(p),
+    (p) => !p.isDomesticEsim && !isSmsCallEsimPlan(p),
   );
 
   return {
@@ -64,10 +78,8 @@ function groupPlansBySimType(plans: Plan[]): PlanGroups {
     slowUnlimited: standardPlans.filter((p) => p.type === 'daily'),
     fastUnlimited: standardPlans.filter((p) => p.type === 'unlimited-reduce'),
     dailyUnlimited: standardPlans.filter((p) => p.type === 'unlimited'),
-    localEsim: plans.filter((p) => p.isLocalInventory),
-    SmsCallEsim: plans.filter(
-      (p) => !p.isLocalInventory && isSmsCallEsimPlan(p),
-    ),
+    localEsim: plans.filter((p) => p.isDomesticEsim),
+    SmsCallEsim: plans.filter((p) => !p.isDomesticEsim && isSmsCallEsimPlan(p)),
     // Only the fixed-data group is de-duplicated by price, so only it can hide a
     // TikTok-capable plan. The unlimited groups are returned whole already.
     tiktokHiddenByPrice: standardPlans.filter(
@@ -136,6 +148,10 @@ export class PlansService {
     }
 
     const isLocalInventory = createPlanDto.isLocalInventory ?? false;
+    // Mặc định false: một gói chỉ là "eSIM nội địa" khi người nhập nói vậy.
+    // Suy ra từ `isLocalInventory` sẽ lặp lại đúng cái lỗi đã gộp eSIM du lịch
+    // của Viettel vào tab nội địa.
+    const isDomesticEsim = createPlanDto.isDomesticEsim ?? false;
     const supplierDailyReset = defaultDailyReset(
       createPlanDto.provider,
       isLocalInventory,
@@ -191,6 +207,7 @@ export class PlansService {
       isNonHkIp: createPlanDto.isNonHkIp ?? false,
       isKyc: createPlanDto.isKyc ?? false,
       isLocalInventory,
+      isDomesticEsim,
       tags: createPlanDto.tags ?? null,
       apn: createPlanDto.apn ?? null,
       activationValidityDays: createPlanDto.activationValidityDays ?? null,
@@ -337,6 +354,7 @@ export class PlansService {
       discount: updatePlanDto.discount,
       isKyc: updatePlanDto.isKyc,
       isLocalInventory: updatePlanDto.isLocalInventory,
+      isDomesticEsim: updatePlanDto.isDomesticEsim,
       apn: updatePlanDto.apn,
       lastSyncedAt: updatePlanDto.lastSyncedAt,
       isActive: updatePlanDto.isActive,
@@ -514,10 +532,15 @@ export class PlansService {
   }
 
   /**
-   * List the domestic (local-inventory) carriers for the "eSIM nội địa" tab.
-   * Grouped dynamically from active `isLocalInventory` plans by `provider`, so
-   * new carriers appear automatically without code changes. `fromVndPrice` is
-   * the cheapest plan price per carrier for the "Từ {n}đ" card label.
+   * Các nhà mạng cho tab "eSIM nội địa".
+   *
+   * Gom theo `provider` từ các gói `isDomesticEsim` đang bán, nên thêm nhà mạng
+   * mới không cần sửa code. `fromVndPrice` là giá thấp nhất của nhà mạng đó,
+   * dùng cho nhãn "Từ {n}đ".
+   *
+   * Lọc theo `isDomesticEsim` chứ không phải `isLocalInventory`: nếu lọc theo
+   * cờ sau thì Viettel — nhà mạng chỉ bán eSIM du lịch — sẽ hiện thành một thẻ
+   * nhà mạng nội địa.
    */
   async listLocalCarriers(): Promise<
     { provider: string; fromVndPrice: number; planCount: number }[]
@@ -526,15 +549,15 @@ export class PlansService {
   }
 
   /**
-   * Fetch and group all active local-inventory plans for one carrier
-   * (provider slug). Used by the /esim-noi-dia/[carrier] detail page.
-   * Throws NotFound when the carrier has no active local plans.
+   * Toàn bộ gói eSIM nội địa đang bán của một nhà mạng, cho trang
+   * /esim-noi-dia/[carrier]. Ném NotFound khi nhà mạng đó không có gói nội địa
+   * nào — kể cả khi họ có gói du lịch, vì trang này không nói về gói du lịch.
    */
   async findLocalPlansByCarrier(provider: string): Promise<PlanGroups> {
     const [all] = await this.plansRepository.findManyWithPagination({
       filterOptions: {
         provider: [provider],
-        isLocalInventory: true,
+        isDomesticEsim: true,
         isActive: true,
       },
       sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],

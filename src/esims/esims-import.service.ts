@@ -26,11 +26,22 @@ export class EsimsImportService {
     private readonly destinationsService: DestinationsService,
   ) {}
 
+  /**
+   * Nhập eSIM nội địa hoặc eSIM du lịch của nhà mạng trong nước từ file Excel.
+   *
+   * `esimKind` là thứ duy nhất phân biệt hai loại, và nó phải đến từ nút người
+   * dùng bấm chứ không suy ra từ tên nhà mạng: Viettel hôm nay chỉ bán eSIM du
+   * lịch, nhưng không có gì bảo đảm mai họ không bán cả gói nội địa.
+   *
+   * Cả hai loại đều đặt `isLocalInventory = true` — đó là hàng mình giữ và giá
+   * niêm yết bằng VND. Chỉ `isDomesticEsim` khác nhau.
+   */
   async importFromExcel(
     fileBuffer: Buffer,
     provider?: string,
     countryCode?: string,
     sheetIdentifier?: string,
+    esimKind: 'domestic' | 'travel' = 'travel',
   ): Promise<EsimImportResult> {
     const workbook = new Workbook();
     await workbook.xlsx.load(fileBuffer as any);
@@ -283,6 +294,17 @@ export class EsimsImportService {
                 planPatch.retailPrice = sellPrice;
               }
 
+              // Nhập lại bằng nút còn lại là cách sửa một gói đã bị phân loại
+              // sai. Không chép cờ ở đây thì gói đó mắc kẹt ở tab sai và người
+              // dùng không có đường nào tự sửa ngoài vào database.
+              const wantDomestic = esimKind === 'domestic';
+              // So sánh qua `=== true` để `undefined` đọc là false. Thiếu bước
+              // này thì mọi lần nhập loại 'travel' đều sinh ra một patch dù
+              // chẳng có gì đổi, và "nhập lại không thay đổi" hoá ra vẫn ghi.
+              if ((existingPlan.isDomesticEsim === true) !== wantDomestic) {
+                planPatch.isDomesticEsim = wantDomestic;
+              }
+
               if (Object.keys(planPatch).length > 0) {
                 // Through the service, not the repository: it is what converts
                 // the new đồng prices into the USD columns (#009). Straight to
@@ -329,6 +351,7 @@ export class EsimsImportService {
                 call,
                 isActive: true,
                 isLocalInventory: true,
+                isDomesticEsim: esimKind === 'domestic',
                 vndPrice: price,
               });
               planId = newPlan.id;

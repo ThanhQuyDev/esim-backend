@@ -50,6 +50,7 @@ export class PlanMapper {
     domainEntity.isNonHkIp = !!raw.isNonHkIp;
     domainEntity.isKyc = raw.isKyc;
     domainEntity.isLocalInventory = raw.isLocalInventory;
+    domainEntity.isDomesticEsim = raw.isDomesticEsim;
     domainEntity.tags = raw.tags ?? null;
     domainEntity.apn = raw.apn;
     domainEntity.activationValidityDays =
@@ -117,6 +118,7 @@ export class PlanMapper {
     persistenceEntity.isNonHkIp = domainEntity.isNonHkIp;
     persistenceEntity.isKyc = domainEntity.isKyc;
     persistenceEntity.isLocalInventory = domainEntity.isLocalInventory;
+    persistenceEntity.isDomesticEsim = domainEntity.isDomesticEsim;
     persistenceEntity.tags = domainEntity.tags ?? null;
     persistenceEntity.apn = domainEntity.apn;
     persistenceEntity.activationValidityDays =

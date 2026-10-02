@@ -353,6 +353,13 @@ export class EsimsController {
           type: 'string',
           description: 'Sheet name or 0-based index. Defaults to first sheet.',
         },
+        esimKind: {
+          type: 'string',
+          enum: ['domestic', 'travel'],
+          default: 'travel',
+          description:
+            'domestic = eSIM nội địa (own homepage tab); travel = travel eSIM from a Vietnamese carrier, listed under Quốc gia → Việt Nam.',
+        },
       },
     },
   })
@@ -404,6 +411,8 @@ export class EsimsController {
       dto.provider,
       dto.countryCode,
       dto.sheet,
+      // Mặc định 'travel' — loại đã có từ trước. Xem ImportEsimsExcelDto.
+      dto.esimKind ?? 'travel',
     );
   }
 }

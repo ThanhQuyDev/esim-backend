@@ -186,6 +186,15 @@ export class CreatePlanDto {
   @ApiPropertyOptional({
     type: Boolean,
     description:
+      'True for eSIM nội địa. A travel eSIM from a Vietnamese carrier (Viettel) stays false so it lists under Quốc gia → Việt Nam.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isDomesticEsim?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
       'Exit IP is local, not routed via Hong Kong (needed for TikTok/ChatGPT)',
   })
   @IsOptional()

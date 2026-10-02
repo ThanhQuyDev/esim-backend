@@ -33,6 +33,14 @@ export class FilterPlanDto {
   @IsBoolean()
   isLocalInventory?: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Filter by eSIM nội địa (its own homepage tab)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isDomesticEsim?: boolean;
+
   @ApiPropertyOptional({ type: Number })
   @IsOptional()
   @IsNumber()

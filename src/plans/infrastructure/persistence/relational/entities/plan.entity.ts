@@ -155,6 +155,17 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isLocalInventory: boolean;
 
+  /**
+   * eSIM nội địa — SIM data dùng trong nước, có tab riêng ở trang chủ.
+   *
+   * Khác với `isLocalInventory`: cờ đó nghĩa là "hàng mình giữ, giá bằng VND",
+   * và eSIM du lịch của Viettel cũng mang nó. Cờ này mới là thứ quyết định gói
+   * nằm ở tab eSIM nội địa hay nằm trong Quốc gia → Việt Nam.
+   */
+  @Index()
+  @Column({ type: Boolean, default: false })
+  isDomesticEsim: boolean;
+
   @Column({ type: 'jsonb', nullable: true })
   tags: string[] | null;
 

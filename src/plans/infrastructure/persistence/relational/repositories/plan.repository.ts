@@ -114,6 +114,9 @@ export class PlansRelationalRepository implements PlanRepository {
     if (filterOptions?.isLocalInventory !== undefined) {
       where.isLocalInventory = filterOptions.isLocalInventory;
     }
+    if (filterOptions?.isDomesticEsim !== undefined) {
+      where.isDomesticEsim = filterOptions.isDomesticEsim;
+    }
     if (filterOptions?.destinationId !== undefined) {
       where.destinationId = filterOptions.destinationId;
     }
@@ -577,7 +580,7 @@ export class PlansRelationalRepository implements PlanRepository {
     }[] = await this.plansRepository.query(
       `SELECT "provider" AS provider, MIN("vndPrice") AS "fromVndPrice", COUNT(*)::int AS "planCount"
        FROM "plan"
-       WHERE "isLocalInventory" = true AND "isActive" = true AND "deletedAt" IS NULL
+       WHERE "isDomesticEsim" = true AND "isActive" = true AND "deletedAt" IS NULL
        GROUP BY "provider"
        ORDER BY MIN("vndPrice") ASC`,
     );
@@ -695,6 +698,11 @@ export class PlansRelationalRepository implements PlanRepository {
     }
     if (f?.isActive !== undefined) {
       qb.andWhere('plan."isActive" = :isActive', { isActive: f.isActive });
+    }
+    if (f?.isDomesticEsim !== undefined) {
+      qb.andWhere('plan."isDomesticEsim" = :isDomesticEsim', {
+        isDomesticEsim: f.isDomesticEsim,
+      });
     }
     if (f?.isLocalInventory !== undefined) {
       qb.andWhere('plan."isLocalInventory" = :isLocalInventory', {

@@ -163,6 +163,14 @@ export class Plan {
   })
   isLocalInventory: boolean;
 
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    description:
+      'True for eSIM nội địa (domestic-use plans shown in their own tab). Travel eSIMs sold by a Vietnamese carrier stay false.',
+  })
+  isDomesticEsim: boolean;
+
   @ApiPropertyOptional({ type: String, example: 'internet' })
   apn: string | null;
 
