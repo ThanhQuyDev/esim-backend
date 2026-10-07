@@ -34,26 +34,32 @@ export class FaqRelationalRepository implements FaqRepository {
     paginationOptions: IPaginationOptions;
     filterOptions?: FilterFaqDto | null;
   }): Promise<[Faq[], number]> {
-    // An array of where clauses is OR-ed by TypeORM. Matching url as well as
-    // question/answer lets admins narrow a page's FAQs by typing its path
-    // (e.g. "/home") instead of scanning every row.
     // Everything that is a plain AND. Repeated into each OR branch below, or the
-    // status filter would apply to only one of the three searched columns (#050).
+    // status filter would apply to only one of the searched columns (#050).
     const baseWhere: FindOptionsWhere<FaqEntity> = {};
     if (filterOptions?.isActive !== undefined) {
       baseWhere.isActive = filterOptions.isActive;
+    }
+    // The page box matches the URL alone (v3 #004).
+    if (filterOptions?.pageUrl?.trim()) {
+      baseWhere.url = ILike(`%${filterOptions.pageUrl.trim()}%`);
     }
 
     let where: FindOptionsWhere<FaqEntity> | FindOptionsWhere<FaqEntity>[] =
       baseWhere;
 
-    if (filterOptions?.search) {
-      const term = ILike(`%${filterOptions.search}%`);
-      where = [
-        { ...baseWhere, question: term },
-        { ...baseWhere, answer: term },
-        { ...baseWhere, url: term },
-      ];
+    const search = filterOptions?.search?.trim();
+    if (search) {
+      const term = ILike(`%${search}%`);
+      // A path ("/home") is a page, as admins were told to type it before the
+      // page box existed. Anything else searches the text: matching the url as
+      // well made "destination" also return the home page FAQ (v3 #004).
+      where = search.startsWith('/')
+        ? [{ ...baseWhere, url: term }]
+        : [
+            { ...baseWhere, question: term },
+            { ...baseWhere, answer: term },
+          ];
     }
 
     const [entities, count] = await this.faqRepository.findAndCount({

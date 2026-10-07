@@ -44,7 +44,7 @@ describe('FAQ status filter (#050)', () => {
     const where = await whereFor({ search: 'esim', isActive: false });
 
     expect(Array.isArray(where)).toBe(true);
-    expect(where).toHaveLength(3);
+    expect(where).toHaveLength(2);
     for (const branch of where as Record<string, unknown>[]) {
       expect(branch.isActive).toBe(false);
     }
@@ -52,15 +52,41 @@ describe('FAQ status filter (#050)', () => {
     const columns = (where as Record<string, unknown>[]).map((branch) =>
       Object.keys(branch).find((key) => key !== 'isActive'),
     );
-    expect(columns).toEqual(['question', 'answer', 'url']);
+    expect(columns).toEqual(['question', 'answer']);
   });
 
   it('should leaves the search alone when no status is picked', async () => {
     const where = await whereFor({ search: 'esim' });
 
-    expect(where).toHaveLength(3);
+    expect(where).toHaveLength(2);
     for (const branch of where as Record<string, unknown>[]) {
       expect(branch.isActive).toBeUndefined();
     }
+  });
+
+  // v3 #004 — "search 'destination' thấy ra cả kết quả '/en/home'".
+  it('should not match a page by its URL when the text is a word', async () => {
+    const where = (await whereFor({ search: 'destination' })) as Record<
+      string,
+      unknown
+    >[];
+    expect(where.some((branch) => 'url' in branch)).toBe(false);
+  });
+
+  it('should search the URL only when the text is a path', async () => {
+    const where = (await whereFor({ search: '/home' })) as Record<
+      string,
+      unknown
+    >[];
+    expect(where).toHaveLength(1);
+    expect(Object.keys(where[0])).toEqual(['url']);
+  });
+
+  it('should narrow by the page box on its own', async () => {
+    const where = (await whereFor({
+      pageUrl: 'destination',
+      isActive: true,
+    })) as Record<string, unknown>;
+    expect(Object.keys(where).sort()).toEqual(['isActive', 'url']);
   });
 });

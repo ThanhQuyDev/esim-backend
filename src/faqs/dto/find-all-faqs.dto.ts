@@ -19,6 +19,16 @@ export class FilterFaqDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /**
+   * The CMS "Trang" box (v3 #004): matches the FAQ's page URL only, so typing
+   * "destination" lists the destination pages' FAQs and not the home page FAQ
+   * whose answer happens to contain the word.
+   */
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  pageUrl?: string;
 }
 
 export class FindAllFaqsDto {
