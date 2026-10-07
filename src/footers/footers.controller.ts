@@ -28,6 +28,9 @@ import {
 import { infinityPagination } from '../utils/infinity-pagination';
 import { QueryFooterDto } from './dto/find-all-footers.dto';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('Footers')
 @Controller({
   path: 'footers',
@@ -37,7 +40,8 @@ export class FootersController {
   constructor(private readonly footersService: FootersService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
     type: Footer,
@@ -91,7 +95,8 @@ export class FootersController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -106,7 +111,8 @@ export class FootersController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({
     name: 'id',

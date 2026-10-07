@@ -17,6 +17,16 @@ export class AuthorProfileRepository {
     return entity ? AuthorProfileMapper.toDomain(entity) : null;
   }
 
+  async findById(id: number): Promise<AuthorProfile | null> {
+    const entity = await this.repository.findOne({ where: { id } });
+    return entity ? AuthorProfileMapper.toDomain(entity) : null;
+  }
+
+  async findAll(): Promise<AuthorProfile[]> {
+    const entities = await this.repository.find({ order: { name: 'ASC' } });
+    return entities.map((entity) => AuthorProfileMapper.toDomain(entity));
+  }
+
   async findBySlug(slug: string): Promise<AuthorProfile | null> {
     const entity = await this.repository.findOne({ where: { slug } });
     return entity ? AuthorProfileMapper.toDomain(entity) : null;

@@ -20,6 +20,15 @@ export class AuthorsService {
     return this.repository.findBySlug(this.normalizeSlug(slug));
   }
 
+  findById(id: number): Promise<AuthorProfile | null> {
+    return this.repository.findById(id);
+  }
+
+  /** Every author profile, for the admin's "Tác giả" select box (#011). */
+  findAll(): Promise<AuthorProfile[]> {
+    return this.repository.findAll();
+  }
+
   async upsertForUser(
     userId: number,
     payload: AuthorProfileDto,

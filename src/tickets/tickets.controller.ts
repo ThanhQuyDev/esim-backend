@@ -175,7 +175,8 @@ export class TicketsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id/status')
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ type: Ticket })
@@ -187,7 +188,8 @@ export class TicketsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({ name: 'id', type: Number })
   @HttpCode(HttpStatus.NO_CONTENT)

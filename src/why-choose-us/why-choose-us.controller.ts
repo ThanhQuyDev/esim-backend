@@ -30,6 +30,9 @@ import {
 import { infinityPagination } from '../utils/infinity-pagination';
 import { QueryWhyChooseUsDto } from './dto/find-all-why-choose-us.dto';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('Whychooseus')
 @Controller({
   path: 'why-choose-us',
@@ -39,7 +42,8 @@ export class WhyChooseUsController {
   constructor(private readonly whyChooseUsService: WhyChooseUsService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
     type: WhyChooseUs,
@@ -102,7 +106,8 @@ export class WhyChooseUsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -120,7 +125,8 @@ export class WhyChooseUsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({
     name: 'id',

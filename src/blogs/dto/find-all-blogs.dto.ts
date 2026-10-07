@@ -47,6 +47,12 @@ export class FilterBlogDto {
    * whitelist strips it from any query that tries to send it.
    */
   legacyAuthorNames?: string[];
+
+  /**
+   * Set by the controller when an author lists posts in the CMS (#011), so they
+   * only ever see their own. Undecorated for the same reason as above.
+   */
+  ownerAuthorProfileId?: number;
 }
 
 export class SortBlogDto {

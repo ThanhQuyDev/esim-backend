@@ -30,6 +30,9 @@ import {
 import { infinityPagination } from '../utils/infinity-pagination';
 import { FindAllFaqsDto } from './dto/find-all-faqs.dto';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('Faqs')
 @Controller({
   path: 'faqs',
@@ -39,7 +42,8 @@ export class FaqsController {
   constructor(private readonly faqsService: FaqsService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
     type: Faq,
@@ -114,7 +118,8 @@ export class FaqsController {
    * which would otherwise capture "bulk" as an id.
    */
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch('bulk/status')
   @ApiOkResponse({ description: 'How many FAQs were updated' })
   bulkSetActive(@Body() dto: BulkFaqStatusDto): Promise<{ updated: number }> {
@@ -122,7 +127,8 @@ export class FaqsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete('bulk')
   @ApiOkResponse({ description: 'How many FAQs were deleted' })
   bulkRemove(@Body() dto: BulkFaqIdsDto): Promise<{ deleted: number }> {
@@ -130,7 +136,8 @@ export class FaqsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -145,7 +152,8 @@ export class FaqsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({
     name: 'id',

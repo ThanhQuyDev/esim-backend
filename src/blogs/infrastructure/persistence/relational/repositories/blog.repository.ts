@@ -157,6 +157,12 @@ export class BlogRelationalRepository implements BlogRepository {
       });
     }
 
+    if (filterOptions?.ownerAuthorProfileId !== undefined) {
+      qb.andWhere('blog.authorProfileId = :ownerAuthorProfileId', {
+        ownerAuthorProfileId: filterOptions.ownerAuthorProfileId,
+      });
+    }
+
     if (filterOptions?.authorSlug) {
       const legacyNames = filterOptions.legacyAuthorNames ?? [];
       qb.andWhere(

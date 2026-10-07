@@ -29,6 +29,9 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('SiteScripts')
 @Controller({
   path: 'site-scripts',
@@ -38,7 +41,8 @@ export class SiteScriptsController {
   constructor(private readonly siteScriptsService: SiteScriptsService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({ type: SiteScript })
   create(@Body() createSiteScriptDto: CreateSiteScriptDto) {
@@ -85,7 +89,8 @@ export class SiteScriptsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: SiteScript })
@@ -97,7 +102,8 @@ export class SiteScriptsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   remove(@Param('id') id: string) {

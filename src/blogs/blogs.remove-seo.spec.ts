@@ -1,6 +1,9 @@
 import { ForbiddenException } from '@nestjs/common';
 import { BlogsService } from './blogs.service';
 
+const AUTHOR = { id: 1, roleId: 3 };
+const ADMIN = { id: 2, roleId: 1 };
+
 /**
  * #055 — "Nếu xóa bài viết thì tự động xóa data trong cấu hình SEO cho đỡ rác".
  */
@@ -35,7 +38,7 @@ describe('BlogsService.remove — SEO config cleanup', () => {
   it("should delete the post and its page's SEO config", async () => {
     const { service, blogRepository, seoConfigsService } = setup();
 
-    await service.remove('blog-1', 1);
+    await service.remove('blog-1', AUTHOR);
 
     expect(blogRepository.remove).toHaveBeenCalledWith('blog-1');
     expect(seoConfigsService.removeByUrls).toHaveBeenCalledWith([
@@ -51,7 +54,7 @@ describe('BlogsService.remove — SEO config cleanup', () => {
       authorProfileId: 5,
     });
 
-    await service.remove('blog-2', 1);
+    await service.remove('blog-2', AUTHOR);
 
     expect(seoConfigsService.removeByUrls).toHaveBeenCalledWith([
       '/en/blog/how-to-use-tiktok-in-china',
@@ -62,7 +65,7 @@ describe('BlogsService.remove — SEO config cleanup', () => {
     const { service, blogRepository, seoConfigsService } = setup();
     seoConfigsService.removeByUrls.mockRejectedValue(new Error('db down'));
 
-    await expect(service.remove('blog-1', 1)).resolves.toBeUndefined();
+    await expect(service.remove('blog-1', AUTHOR)).resolves.toBeUndefined();
     expect(blogRepository.remove).toHaveBeenCalledWith('blog-1');
   });
 
@@ -71,10 +74,19 @@ describe('BlogsService.remove — SEO config cleanup', () => {
       setup();
     authorsService.findByUserId.mockResolvedValue({ id: 99 });
 
-    await expect(service.remove('blog-1', 1)).rejects.toBeInstanceOf(
+    await expect(service.remove('blog-1', AUTHOR)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
     expect(blogRepository.remove).not.toHaveBeenCalled();
     expect(seoConfigsService.removeByUrls).not.toHaveBeenCalled();
+  });
+
+  it("should let an admin delete another author's post (#011)", async () => {
+    const { service, blogRepository, authorsService } = setup();
+    authorsService.findByUserId.mockResolvedValue(null);
+
+    await service.remove('blog-1', ADMIN);
+
+    expect(blogRepository.remove).toHaveBeenCalledWith('blog-1');
   });
 });

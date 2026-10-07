@@ -32,6 +32,9 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('SupportedDevices')
 @Controller({
   path: 'supported-devices',
@@ -43,7 +46,8 @@ export class SupportedDevicesController {
   ) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({ type: SupportedDevice })
   create(@Body() createDto: CreateSupportedDeviceDto) {
@@ -51,7 +55,8 @@ export class SupportedDevicesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get()
   @ApiOkResponse({ type: InfinityPaginationResponse(SupportedDevice) })
   async findAll(@Query() query: FindAllSupportedDevicesDto): Promise<
@@ -105,7 +110,8 @@ export class SupportedDevicesController {
    * `:id`, which would otherwise capture "manufacturers".
    */
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get('manufacturers')
   @ApiOkResponse({
     description: 'Distinct manufacturer names, in display order',
@@ -116,7 +122,8 @@ export class SupportedDevicesController {
 
   /** Brands with their models, for the CMS ordering screen (#047). */
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get('ordering')
   @ApiOkResponse()
   async findOrdering() {
@@ -125,7 +132,8 @@ export class SupportedDevicesController {
 
   /** Save brand and model positions in bulk (#047). Declared before `:id`. */
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch('ordering')
   @ApiOkResponse()
   async saveOrdering(@Body() dto: SaveSupportedDeviceOrderingDto) {
@@ -133,7 +141,8 @@ export class SupportedDevicesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: SupportedDevice })
@@ -142,7 +151,8 @@ export class SupportedDevicesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: SupportedDevice })
@@ -154,7 +164,8 @@ export class SupportedDevicesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   remove(@Param('id', ParseUUIDPipe) id: string) {

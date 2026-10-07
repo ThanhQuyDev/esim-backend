@@ -30,6 +30,9 @@ import {
 import { infinityPagination } from '../utils/infinity-pagination';
 import { QueryHeroBannerDto } from './dto/find-all-hero-banners.dto';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('Herobanners')
 @Controller({
   path: 'hero-banners',
@@ -39,7 +42,8 @@ export class HeroBannersController {
   constructor(private readonly heroBannersService: HeroBannersService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
     type: HeroBanner,
@@ -99,7 +103,8 @@ export class HeroBannersController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -117,7 +122,8 @@ export class HeroBannersController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({
     name: 'id',

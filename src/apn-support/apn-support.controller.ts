@@ -40,7 +40,8 @@ export class ApnSupportController {
   constructor(private readonly apnSupportService: ApnSupportService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get()
   @ApiOkResponse({ type: InfinityPaginationResponse(ApnSupport) })
   async findAll(

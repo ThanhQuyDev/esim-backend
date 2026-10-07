@@ -1,9 +1,12 @@
 import {
   ForbiddenException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
+import { RoleEnum } from '../roles/roles.enum';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
 import { FilterBlogDto, SortBlogDto } from './dto/find-all-blogs.dto';
@@ -55,6 +58,12 @@ export function resolveBlogPublishedAt({
   return currentPublishedAt;
 }
 
+/** Who is writing (#011): an admin manages every post, an author only their own. */
+export type BlogEditor = { id: number; roleId?: number | string | null };
+
+const isAdmin = (editor: BlogEditor) =>
+  Number(editor.roleId) === RoleEnum.admin;
+
 @Injectable()
 export class BlogsService {
   private readonly logger = new Logger(BlogsService.name);
@@ -66,14 +75,14 @@ export class BlogsService {
     private readonly seoConfigsService: SeoConfigsService,
   ) {}
 
-  async create(createBlogDto: CreateBlogDto, userId: number) {
+  async create(createBlogDto: CreateBlogDto, editor: BlogEditor) {
     // Do not remove comment below.
     // <creating-property />
 
-    const authorProfile = await this.authorsService.findByUserId(userId);
-    if (!authorProfile) {
-      throw new ForbiddenException('Author profile is required');
-    }
+    const authorProfile = await this.resolveAuthorForCreate(
+      editor,
+      createBlogDto.authorProfileId,
+    );
 
     const miniTag = createBlogDto.miniTagId
       ? await this.miniTagsService.findById(createBlogDto.miniTagId)
@@ -210,12 +219,28 @@ export class BlogsService {
     return this.blogRepository.findByIds(ids);
   }
 
-  async update(id: Blog['id'], updateBlogDto: UpdateBlogDto, userId: number) {
+  async update(
+    id: Blog['id'],
+    updateBlogDto: UpdateBlogDto,
+    editor: BlogEditor,
+  ) {
     const current = await this.blogRepository.findById(id);
     if (!current) throw new NotFoundException();
-    const authorProfile = await this.authorsService.findByUserId(userId);
-    if (!authorProfile || current.authorProfileId !== authorProfile.id) {
-      throw new ForbiddenException();
+
+    // An author edits their own posts and stays credited; an admin edits any
+    // post and only changes the credit when they pick another author.
+    let authorProfile: AuthorProfile | undefined;
+    if (isAdmin(editor)) {
+      if (updateBlogDto.authorProfileId !== undefined) {
+        authorProfile = await this.findAuthorOrFail(
+          updateBlogDto.authorProfileId,
+        );
+      }
+    } else {
+      const own = await this.authorsService.findByUserId(editor.id);
+      if (!own || current.authorProfileId !== own.id) {
+        throw new ForbiddenException();
+      }
     }
 
     const miniTag =
@@ -254,10 +279,14 @@ export class BlogsService {
         currentIsPublished: current.isPublished,
       }),
       isPublished: updateBlogDto.isPublished,
-      authorProfile,
-      authorProfileId: authorProfile.id,
-      author: authorProfile.name,
-      authorAvatar: authorProfile.avatar,
+      ...(authorProfile
+        ? {
+            authorProfile,
+            authorProfileId: authorProfile.id,
+            author: authorProfile.name,
+            authorAvatar: authorProfile.avatar,
+          }
+        : {}),
       category: updateBlogDto.category,
       parent: updateBlogDto.parent,
       coverImage: updateBlogDto.coverImage,
@@ -275,8 +304,8 @@ export class BlogsService {
     });
   }
 
-  async remove(id: Blog['id'], userId: number): Promise<void> {
-    const current = await this.updateOwnership(id, userId);
+  async remove(id: Blog['id'], editor: BlogEditor): Promise<void> {
+    const current = await this.assertCanManage(id, editor);
     await this.blogRepository.remove(id);
 
     // The post's SEO config would otherwise stay behind in the CMS as clutter
@@ -296,13 +325,63 @@ export class BlogsService {
     }
   }
 
-  private async updateOwnership(id: Blog['id'], userId: number) {
+  private async assertCanManage(id: Blog['id'], editor: BlogEditor) {
     const current = await this.blogRepository.findById(id);
-    const profile = await this.authorsService.findByUserId(userId);
-    if (!current || !profile || current.authorProfileId !== profile.id) {
+    if (!current) throw new NotFoundException();
+    if (isAdmin(editor)) return current;
+
+    const profile = await this.authorsService.findByUserId(editor.id);
+    if (!profile || current.authorProfileId !== profile.id) {
       throw new ForbiddenException();
     }
     return current;
+  }
+
+  /**
+   * The author a new post is credited to (#011). An author is always credited
+   * themselves. An admin picks one; without a pick their own profile is used if
+   * they have one, otherwise the post cannot be saved without choosing.
+   */
+  private async resolveAuthorForCreate(
+    editor: BlogEditor,
+    requestedAuthorProfileId?: number,
+  ): Promise<AuthorProfile> {
+    if (isAdmin(editor)) {
+      if (requestedAuthorProfileId) {
+        return this.findAuthorOrFail(requestedAuthorProfileId);
+      }
+      const own = await this.authorsService.findByUserId(editor.id);
+      if (own) return own;
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { authorProfileId: 'authorRequired' },
+      });
+    }
+
+    const own = await this.authorsService.findByUserId(editor.id);
+    if (!own) throw new ForbiddenException('Author profile is required');
+    return own;
+  }
+
+  private async findAuthorOrFail(id: number): Promise<AuthorProfile> {
+    const profile = await this.authorsService.findById(id);
+    if (!profile) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { authorProfileId: 'authorNotFound' },
+      });
+    }
+    return profile;
+  }
+
+  /** Every author profile, for the admin's "Tác giả" select box (#011). */
+  findAuthorProfiles() {
+    return this.authorsService.findAll();
+  }
+
+  /** The author profile of a signed-in author, for scoping their CMS list. */
+  findOwnAuthorProfile(userId: number) {
+    return this.authorsService.findByUserId(userId);
   }
 
   findCategories(lang?: string) {

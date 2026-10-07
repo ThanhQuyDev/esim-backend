@@ -30,6 +30,9 @@ import {
 import { infinityPagination } from '../utils/infinity-pagination';
 import { FindAllTopBarsDto } from './dto/find-all-top-bars.dto';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('Topbars')
 @Controller({
   path: 'top-bars',
@@ -39,7 +42,8 @@ export class TopBarsController {
   constructor(private readonly topBarsService: TopBarsService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
     type: TopBar,
@@ -92,7 +96,8 @@ export class TopBarsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
     name: 'id',
@@ -107,7 +112,8 @@ export class TopBarsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({
     name: 'id',

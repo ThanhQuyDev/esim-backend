@@ -12,7 +12,7 @@ import {
   NotFoundException,
   Request,
 } from '@nestjs/common';
-import { BlogsService } from './blogs.service';
+import { BlogEditor, BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
 import {
@@ -31,7 +31,7 @@ import {
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
-import { QueryBlogDto } from './dto/find-all-blogs.dto';
+import { FilterBlogDto, QueryBlogDto } from './dto/find-all-blogs.dto';
 import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
@@ -49,7 +49,7 @@ export class BlogsController {
   ) {}
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.author)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
@@ -57,9 +57,9 @@ export class BlogsController {
   })
   create(
     @Body() createBlogDto: CreateBlogDto,
-    @Request() request: { user: { id: number } },
+    @Request() request: { user: EditorUser },
   ) {
-    return this.blogsService.create(createBlogDto, Number(request.user.id));
+    return this.blogsService.create(createBlogDto, toEditor(request.user));
   }
 
   @Get()
@@ -98,6 +98,53 @@ export class BlogsController {
     });
 
     return infinityPagination(data, { page, limit }, count);
+  }
+
+  /**
+   * The CMS blog list (#011). Same as the public list, except an author only
+   * ever gets their own posts — the scope is set here, not by the client.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin, RoleEnum.author)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('manage')
+  @ApiOkResponse({ type: InfinityPaginationResponse(BlogListItem) })
+  async findAllForCms(
+    @Query() query: QueryBlogDto,
+    @Request() request: { user: EditorUser },
+    @Headers('x-custom-lang') lang?: string,
+  ): Promise<InfinityPaginationResponseDto<BlogListItem>> {
+    const page = query?.page ?? 1;
+    const limit = Math.min(query?.limit ?? 10, 50);
+    const editor = toEditor(request.user);
+
+    const filterOptions: FilterBlogDto = {
+      ...query?.filters,
+      search: query?.search || query?.filters?.search,
+    };
+    if (Number(editor.roleId) !== RoleEnum.admin) {
+      const own = await this.blogsService.findOwnAuthorProfile(editor.id);
+      // No profile yet means no posts yet — never fall back to everything.
+      filterOptions.ownerAuthorProfileId = own?.id ?? -1;
+    }
+
+    const [data, count] = await this.blogsService.findAllWithPagination({
+      filterOptions,
+      sortOptions: query?.sort,
+      lang,
+      paginationOptions: { page, limit },
+    });
+
+    return infinityPagination(data, { page, limit }, count);
+  }
+
+  /** Every author profile, for the admin's "Tác giả" select box (#011). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('author-profiles')
+  findAuthorProfiles() {
+    return this.blogsService.findAuthorProfiles();
   }
 
   @Get('categories')
@@ -188,7 +235,7 @@ export class BlogsController {
   }
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.author)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
@@ -202,13 +249,13 @@ export class BlogsController {
   update(
     @Param('id') id: string,
     @Body() updateBlogDto: UpdateBlogDto,
-    @Request() request: { user: { id: number } },
+    @Request() request: { user: EditorUser },
   ) {
-    return this.blogsService.update(id, updateBlogDto, Number(request.user.id));
+    return this.blogsService.update(id, updateBlogDto, toEditor(request.user));
   }
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.author)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({
@@ -216,10 +263,13 @@ export class BlogsController {
     type: String,
     required: true,
   })
-  remove(
-    @Param('id') id: string,
-    @Request() request: { user: { id: number } },
-  ) {
-    return this.blogsService.remove(id, Number(request.user.id));
+  remove(@Param('id') id: string, @Request() request: { user: EditorUser }) {
+    return this.blogsService.remove(id, toEditor(request.user));
   }
+}
+
+type EditorUser = { id: number | string; role?: { id?: number | string } };
+
+function toEditor(user: EditorUser): BlogEditor {
+  return { id: Number(user.id), roleId: user.role?.id ?? null };
 }

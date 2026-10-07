@@ -28,9 +28,13 @@ import {
 import { infinityPagination } from '../utils/infinity-pagination';
 import { FindAllInvoicesDto } from './dto/find-all-invoices.dto';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('Invoices')
 @ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@Roles(RoleEnum.admin)
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 @Controller({
   path: 'invoices',
   version: '1',

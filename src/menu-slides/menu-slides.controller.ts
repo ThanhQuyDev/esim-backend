@@ -31,6 +31,9 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('MenuSlides')
 @Controller({
   path: 'menu-slides',
@@ -40,7 +43,8 @@ export class MenuSlidesController {
   constructor(private readonly menuSlidesService: MenuSlidesService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({ type: MenuSlide })
   create(@Body() createMenuSlideDto: CreateMenuSlideDto) {
@@ -101,7 +105,8 @@ export class MenuSlidesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: MenuSlide })
@@ -113,7 +118,8 @@ export class MenuSlidesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   remove(@Param('id') id: string) {

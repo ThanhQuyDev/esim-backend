@@ -29,6 +29,9 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('ManufacturerNotes')
 @Controller({
   path: 'manufacturer-notes',
@@ -38,7 +41,8 @@ export class ManufacturerNotesController {
   constructor(private readonly notesService: ManufacturerNotesService) {}
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({ type: ManufacturerNote })
   create(@Body() createDto: CreateManufacturerNoteDto) {
@@ -46,7 +50,8 @@ export class ManufacturerNotesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get()
   @ApiOkResponse({ type: InfinityPaginationResponse(ManufacturerNote) })
   async findAll(
@@ -66,7 +71,8 @@ export class ManufacturerNotesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ManufacturerNote })
@@ -79,7 +85,8 @@ export class ManufacturerNotesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ManufacturerNote })
@@ -91,7 +98,8 @@ export class ManufacturerNotesController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({ name: 'id', type: String, required: true })
   remove(@Param('id') id: string) {

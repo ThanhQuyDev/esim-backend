@@ -29,6 +29,15 @@ export class CreateBlogDto {
   @IsString()
   language: string;
 
+  /**
+   * The author the post is credited to (#011). Only an admin may choose it; an
+   * author's own posts are always credited to themselves and this is ignored.
+   */
+  @ApiPropertyOptional({ type: () => Number })
+  @IsOptional()
+  @IsNumber()
+  authorProfileId?: number;
+
   @ApiProperty({
     required: false,
     type: () => Date,
