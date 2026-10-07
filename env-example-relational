@@ -104,6 +104,8 @@ GADGET_KOREA_WEBHOOK_SECRET=
 BILLION_CHANNEL_ID=
 BILLION_APP_SECRET=
 BILLION_BASE_URL=https://api-flow-ts.billionconnect.com/Flow/saler/2.0/invoke
+# Mailbox BILLION emails the eSIM to (ours, never the customer). Default esimvietnam.api@gmail.com
+BILLION_ORDER_EMAIL=
 
 # MicroEsim (ME). Notifications carry no signature header, so there is no
 # webhook secret — see WebhooksController.microEsim.

@@ -824,10 +824,13 @@ export class MicroEsimService {
     }
 
     if (anyCreated) {
+      // Our order number, not MicroEsim's topupId: the tester got a separate
+      // email headed "2026092601485659718601" for an eSIM that belonged to
+      // ORD-1790358530971-RP0B5B and could not tell which order it was (v3 #002).
       await this.sendPurchaseEmails(
         userId,
         orderItems.map((i) => i.id),
-        topupId,
+        order?.orderNumber ?? topupId,
       );
     }
   }
@@ -836,7 +839,7 @@ export class MicroEsimService {
   private async sendPurchaseEmails(
     userId: number | null,
     orderItemIds: number[],
-    topupId: string,
+    orderNumber: string,
   ): Promise<void> {
     if (!userId || orderItemIds.length === 0) return;
     try {
@@ -862,7 +865,7 @@ export class MicroEsimService {
             planName: plan?.name ?? '',
             callMinutes: plan?.call ?? null,
             smsCount: plan?.sms ?? null,
-            orderNumber: topupId,
+            orderNumber,
           });
         }
       }

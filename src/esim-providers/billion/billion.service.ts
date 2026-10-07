@@ -114,6 +114,11 @@ export class BillionService {
     return this.configService.getOrThrow('billion.baseUrl', { infer: true });
   }
 
+  /** The address put on F040 orders — our mailbox, not the customer's. */
+  get orderEmail(): string {
+    return this.configService.getOrThrow('billion.orderEmail', { infer: true });
+  }
+
   /**
    * Communication timestamp in the format BILLION expects: `YYYY-MM-DD hh:mm:ss`
    * in UTC+8 (docs §2.1.2 — time is standardised to UTC/GMT+08:00).
@@ -546,8 +551,9 @@ export class BillionService {
   }
 
   /**
-   * Cancel an order (F008). Best-effort — logs and swallows errors so the
-   * cancellation flow is never blocked by a provider-side failure.
+   * Cancel an order (F008). Throws BILLION's reason when it refuses, so a refund
+   * can tell the admin the supplier did not cancel (v3 #002) — it used to be
+   * swallowed and the refund always looked complete on our side.
    */
   async cancelOrder(orderId: string): Promise<void> {
     try {
@@ -557,6 +563,7 @@ export class BillionService {
       this.logger.error(
         `BILLION cancel failed (orderId=${orderId}): ${(err as Error).message}`,
       );
+      throw err;
     }
   }
 
@@ -771,10 +778,12 @@ export class BillionService {
     }
 
     if (anyCreated) {
+      // The customer knows the order by our number; BILLION's orderId in the
+      // email read as an unrelated order (v3 #002).
       await this.sendPurchaseEmails(
         userId,
         orderItems.map((i) => i.id),
-        orderId,
+        order?.orderNumber ?? orderId,
       );
     }
   }
@@ -783,7 +792,7 @@ export class BillionService {
   private async sendPurchaseEmails(
     userId: number | null,
     orderItemIds: number[],
-    orderId: string,
+    orderNumber: string,
   ): Promise<void> {
     if (!userId || orderItemIds.length === 0) return;
     try {
@@ -809,7 +818,7 @@ export class BillionService {
             planName: plan?.name ?? '',
             callMinutes: plan?.call ?? null,
             smsCount: plan?.sms ?? null,
-            orderNumber: orderId,
+            orderNumber,
           });
         }
       }

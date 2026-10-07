@@ -1336,11 +1336,9 @@ export class OrdersService {
     // webhook. Unlike MicroEsim there is no query that returns the QR/LPA, so
     // there is no poll fallback — we only record the wait (see BillionService).
     if (billionItems.length > 0) {
-      let email = 'esimvietnam.api@gmail.com';
-      if (order.userId) {
-        const user = await this.usersService.findById(order.userId);
-        if (user?.email) email = user.email;
-      }
+      // Never the customer's address: BILLION emails the eSIM to it, which
+      // gave away the supplier. We email the customer ourselves (v3 #002).
+      const email = this.billionService.orderEmail;
 
       const channelOrderId = `${order.orderNumber}-bl`;
       try {
@@ -2171,8 +2169,13 @@ export class OrdersService {
       }
     }
 
-    // Cancel with suppliers before processing refund
-    await this.cancelOrderWithSuppliers(order.id, selectedItemIds);
+    // Cancel with suppliers before processing refund. A supplier refusing does
+    // not stop the refund — the customer is owed it either way — but the admin
+    // is told, so they can chase the supplier for our money (v3 #002).
+    const supplierWarnings = await this.cancelOrderWithSuppliers(
+      order.id,
+      selectedItemIds,
+    );
 
     const refund = await this.walletsService.refundOrder(order, dto, adminId);
 
@@ -2224,7 +2227,7 @@ export class OrdersService {
       }
     }
 
-    return refund;
+    return { ...refund, supplierWarnings };
   }
 
   /**
@@ -2278,10 +2281,12 @@ export class OrdersService {
     }
   }
 
+  /** @returns one line per supplier that did not cancel, for the admin. */
   private async cancelOrderWithSuppliers(
     orderId: number,
     onlyItemIds?: number[],
-  ): Promise<void> {
+  ): Promise<string[]> {
+    const warnings: string[] = [];
     const allItems = await this.orderItemsService.findByOrderId(orderId);
     const orderItems = onlyItemIds?.length
       ? allItems.filter((item) => onlyItemIds.includes(Number(item.id)))
@@ -2346,8 +2351,12 @@ export class OrdersService {
           `Failed to cancel order item ${item.id} with provider ${item.plan.provider}: ${(err as Error).message}`,
         );
         // Continue with refund even if supplier cancellation fails
+        warnings.push(
+          `${item.plan.name ?? `Sản phẩm #${item.id}`} (${item.plan.provider}): nhà cung cấp chưa hủy — ${(err as Error).message}`,
+        );
       }
     }
+    return warnings;
   }
 
   async remove(id: Order['id']): Promise<void> {
