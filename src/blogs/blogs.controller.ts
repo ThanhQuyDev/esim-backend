@@ -32,6 +32,7 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { FilterBlogDto, QueryBlogDto } from './dto/find-all-blogs.dto';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
@@ -82,9 +83,14 @@ export class BlogsController {
       limit = 50;
     }
 
+    // The public list never carries drafts (v3 #025). Every storefront block
+    // had to remember to ask for published posts, and one that forgot — the
+    // related articles — showed unpublished ones. The CMS lists through
+    // `/blogs/manage`, so nothing needs drafts from here.
     const filterOptions = {
       ...query?.filters,
       search: query?.search || query?.filters?.search,
+      isPublished: true,
     };
 
     const [data, count] = await this.blogsService.findAllWithPagination({
@@ -221,6 +227,8 @@ export class BlogsController {
     return blog;
   }
 
+  @ApiBearerAuth()
+  @UseGuards(OptionalJwtAuthGuard)
   @Get(':id')
   @ApiParam({
     name: 'id',
@@ -230,8 +238,19 @@ export class BlogsController {
   @ApiOkResponse({
     type: Blog,
   })
-  findById(@Param('id') id: string) {
-    return this.blogsService.findById(id);
+  async findById(
+    @Param('id') id: string,
+    @Request() request: { user?: EditorUser },
+  ) {
+    const blog = await this.blogsService.findById(id);
+    // A draft opens in the CMS editor (admin / author), not for the public.
+    const roleId = Number(request.user?.role?.id);
+    const canSeeDrafts =
+      roleId === RoleEnum.admin || roleId === RoleEnum.author;
+    if (!blog || (!blog.isPublished && !canSeeDrafts)) {
+      throw new NotFoundException();
+    }
+    return blog;
   }
 
   @ApiBearerAuth()
