@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OVERVIEW_PROVIDERS } from '../overview/dto/overview.dto';
 import { PlansService } from '../plans/plans.service';
+import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 import {
   ProviderSurchargeDto,
   UpsertProviderSurchargeDto,
@@ -23,6 +24,7 @@ export class ProviderSurchargesService {
     @InjectRepository(ProviderSurchargeEntity)
     private readonly repository: Repository<ProviderSurchargeEntity>,
     private readonly plansService: PlansService,
+    private readonly profitMarginsService: ProfitMarginsService,
   ) {}
 
   private normalizeProvider(provider: string): string {
@@ -77,8 +79,9 @@ export class ProviderSurchargesService {
       }),
     );
 
-    // Re-pick the cheapest plans now rather than at the next 6-hourly run, so
-    // the admin sees the effect straight away.
+    // Re-price and re-pick the cheapest plans now rather than at the next
+    // 6-hourly run, so the admin sees the higher cost straight away (v3 #018).
+    await this.profitMarginsService.recalculateAllPlanPrices();
     await this.plansService.markCheapestPlans();
 
     const row = (await this.list()).find((item) => item.provider === slug);

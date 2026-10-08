@@ -13,6 +13,15 @@ import {
   COMPLETED_ORDER_STATUSES,
 } from '../../../../../overview/dto/overview.dto';
 
+/**
+ * A plan's real cost: the supplier's price plus that supplier's surcharge —
+ * the tax/fees on top of what their API quotes (v3 #018). `costPrice` stays the
+ * raw API figure, because every 6-hourly sync overwrites it; everything derived
+ * from cost (the cost columns the CMS shows, the margin-tier selling price, the
+ * order cost snapshot) reads this instead, so a surcharge raises "giá vốn".
+ */
+export const EFFECTIVE_COST_SQL = `("costPrice" * (1 + COALESCE((SELECT s."percentage" FROM "provider_surcharge" s WHERE s."provider" = "plan"."provider"), 0) / 100))`;
+
 @Injectable()
 export class PlansRelationalRepository implements PlanRepository {
   constructor(
@@ -393,10 +402,11 @@ export class PlansRelationalRepository implements PlanRepository {
   ): Promise<void> {
     if (tiers.length === 0) {
       await this.plansRepository.query(
-        `UPDATE "plan" SET "price" = "costPrice" WHERE "deletedAt" IS NULL`,
+        `UPDATE "plan" SET "price" = ROUND(${EFFECTIVE_COST_SQL} * 100) / 100 WHERE "deletedAt" IS NULL`,
       );
       return;
     }
+    const cost = EFFECTIVE_COST_SQL;
 
     const rate = exchangeRate || 25500;
 
@@ -405,20 +415,20 @@ export class PlansRelationalRepository implements PlanRepository {
     // - others: costPrice * exchangeRate
     let caseExpr = 'CASE ';
     for (const tier of tiers) {
-      const costVndExpr = `(CASE WHEN "isLocalInventory" = true THEN "costPrice" ELSE ROUND("costPrice" * ${rate}) END)`;
+      const costVndExpr = `(CASE WHEN "isLocalInventory" = true THEN ${cost} ELSE ROUND(${cost} * ${rate}) END)`;
       const condition = `WHEN ${costVndExpr} >= ${tier.minVnd} AND ${costVndExpr} <= ${tier.maxVnd} THEN `;
 
       if (tier.fixedAmountVnd && tier.fixedAmountVnd > 0) {
         // Fixed amount: price = costPrice + fixedAmountVnd / rate (convert VND back to USD)
         // For isLocalInventory: price = costPrice + fixedAmountVnd
-        caseExpr += `${condition}(CASE WHEN "isLocalInventory" = true THEN "costPrice" + ${tier.fixedAmountVnd} ELSE ROUND(("costPrice" + ${tier.fixedAmountVnd} / ${rate}) * 100) / 100 END) `;
+        caseExpr += `${condition}(CASE WHEN "isLocalInventory" = true THEN ${cost} + ${tier.fixedAmountVnd} ELSE ROUND((${cost} + ${tier.fixedAmountVnd} / ${rate}) * 100) / 100 END) `;
       } else {
         // Percentage: price = costPrice * (1 + percentage/100)
         const multiplier = 1 + tier.percentage / 100;
-        caseExpr += `${condition}ROUND("costPrice" * ${multiplier} * 100) / 100 `;
+        caseExpr += `${condition}ROUND(${cost} * ${multiplier} * 100) / 100 `;
       }
     }
-    caseExpr += 'ELSE "costPrice" END';
+    caseExpr += `ELSE ROUND(${cost} * 100) / 100 END`;
 
     await this.plansRepository.query(
       `UPDATE "plan" SET "price" = ${caseExpr} WHERE "deletedAt" IS NULL`,
@@ -509,10 +519,10 @@ export class PlansRelationalRepository implements PlanRepository {
     await this.plansRepository.query(
       `UPDATE "plan" SET
          "vndPrice" = ROUND("price" * $1::numeric / 1000) * 1000,
-         "vndCostPrice" = ROUND("costPrice" * $1::numeric / 1000) * 1000,
+         "vndCostPrice" = ROUND(${EFFECTIVE_COST_SQL} * $1::numeric / 1000) * 1000,
          "vndRetailPrice" = ROUND("retailPrice" * $1::numeric / 1000) * 1000,
          "usdPrice" = "price",
-         "usdCostPrice" = "costPrice",
+         "usdCostPrice" = ROUND(${EFFECTIVE_COST_SQL}::numeric, 2),
          "usdRetailPrice" = "retailPrice"
        WHERE "deletedAt" IS NULL AND ${DOLLAR_QUOTED}`,
       [rate],
@@ -524,10 +534,10 @@ export class PlansRelationalRepository implements PlanRepository {
     await this.plansRepository.query(
       `UPDATE "plan" SET
          "vndPrice" = ROUND("price" / 1000) * 1000,
-         "vndCostPrice" = ROUND("costPrice"),
+         "vndCostPrice" = ROUND(${EFFECTIVE_COST_SQL}),
          "vndRetailPrice" = ROUND("retailPrice"),
          "usdPrice" = ROUND("price"::numeric / $1::numeric, 2),
-         "usdCostPrice" = ROUND("costPrice"::numeric / $1::numeric, 2),
+         "usdCostPrice" = ROUND(${EFFECTIVE_COST_SQL}::numeric / $1::numeric, 2),
          "usdRetailPrice" = ROUND("retailPrice"::numeric / $1::numeric, 2)
        WHERE "deletedAt" IS NULL AND ${DONG_QUOTED}`,
       [rate],

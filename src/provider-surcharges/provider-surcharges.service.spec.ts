@@ -18,11 +18,15 @@ describe('ProviderSurchargesService', () => {
     const plansService = {
       markCheapestPlans: jest.fn().mockResolvedValue(undefined),
     };
+    const profitMarginsService = {
+      recalculateAllPlanPrices: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new ProviderSurchargesService(
       repository as never,
       plansService as never,
+      profitMarginsService as never,
     );
-    return { service, repository, plansService };
+    return { service, repository, plansService, profitMarginsService };
   }
 
   it('should list every known supplier, at 0% unless one is set', async () => {
@@ -48,7 +52,7 @@ describe('ProviderSurchargesService', () => {
   });
 
   it('should save the surcharge and re-pick the cheapest plans', async () => {
-    const { service, repository, plansService } = setup();
+    const { service, repository, plansService, profitMarginsService } = setup();
 
     await service.upsert(' Billion ', { percentage: 8.5, note: '  VAT  ' });
 
@@ -58,6 +62,10 @@ describe('ProviderSurchargesService', () => {
       note: 'VAT',
     });
     expect(plansService.markCheapestPlans).toHaveBeenCalledTimes(1);
+    // v3 #018 — the surcharge goes into the cost and selling price at once.
+    expect(profitMarginsService.recalculateAllPlanPrices).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it('should reject a provider that is not a slug', async () => {
