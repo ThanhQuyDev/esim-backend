@@ -91,15 +91,21 @@ describe('Overview net revenue formula', () => {
   it('should spread an order-level discount across its lines, not duplicate it', () => {
     const itemSql = itemNetRevenueSql('purchase_order', 'order_item');
 
-    // line price ÷ order subtotal × net order revenue
-    expect(itemSql).toContain('order_item."vndPrice" * ');
-    expect(itemSql).toContain('/ purchase_order."subtotalVndPrice"');
+    // line price − discount × line price ÷ counted subtotal
+    expect(itemSql).toContain('order_item."vndPrice" - ');
     expect(itemSql).toContain('"couponDiscountVndAmount"');
     expect(itemSql).toContain('"referralDiscountVndAmount"');
   });
 
-  it('should be the same formula everywhere, not a second copy', () => {
-    expect(itemNetRevenueSql('purchase_order', 'order_item')).toContain(sql);
+  // v3 #026 — "giá trị đơn 1,616,000đ nhưng ở trang tổng quan ra 1,614,190đ".
+  it('should spread the discount over the delivered lines only', () => {
+    const itemSql = itemNetRevenueSql('purchase_order', 'order_item');
+    // The denominator is the subtotal of the lines that count, so a refunded
+    // or undelivered line does not carry away part of the discount.
+    expect(itemSql).toContain(
+      'counted."orderId" = purchase_order.id AND counted.status IN (\'completed\')',
+    );
+    expect(itemSql).not.toContain('/ purchase_order."subtotalVndPrice"');
   });
 });
 
@@ -222,7 +228,7 @@ describe('Partial refunds on the overview (#009)', () => {
     // Line status is part of the gate — `refunded` lines are not `completed`.
     expect(conditions.join(' ')).toContain('completedOrderItemStatuses');
     // The line's share of the order, not the whole order total.
-    expect(selects.join(' ')).toContain('order_item."vndPrice" * ');
+    expect(selects.join(' ')).toContain('order_item."vndPrice" - ');
     // The order-level sum that ignored refunded lines is gone.
     expect(ordersRepository.createQueryBuilder).not.toHaveBeenCalled();
   });

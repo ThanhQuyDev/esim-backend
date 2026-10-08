@@ -51,18 +51,28 @@ export function orderNetRevenueSql(orderAlias: string): string {
 }
 
 /**
- * One order line's share of {@link orderNetRevenueSql}, pro-rated by its price
- * against the order subtotal — an order-level discount has to be spread across
- * the lines it paid for, otherwise per-provider and per-destination revenue
- * would each claim the full discount.
+ * One order line's revenue: its price less its part of the order's discounts.
+ *
+ * The discount is spread over the lines that COUNT — the delivered ones — not
+ * over the whole order. Spread over the whole order, it left a share of the
+ * discount on a refunded or undelivered line that is then dropped, so a
+ * 1.616.000₫ order with a 156.000₫ line refunded read 1.461.907₫ instead of the
+ * 1.460.000₫ actually kept (v3 #026). Spread over the counted lines, they add
+ * up to the counted subtotal minus the discount: always a whole figure, and
+ * exactly {@link orderNetRevenueSql} when every line counts.
  */
 export function itemNetRevenueSql(
   orderAlias: string,
   itemAlias: string,
 ): string {
   const subtotal = `${orderAlias}."subtotalVndPrice"`;
+  const discounts = `(${orderAlias}."couponDiscountVndAmount" + ${orderAlias}."referralDiscountVndAmount")`;
+  const statuses = COMPLETED_ORDER_ITEM_STATUSES.map((s) => `'${s}'`).join(
+    ', ',
+  );
+  const countedSubtotal = `(SELECT COALESCE(SUM(counted."vndPrice"), 0) FROM "order_item" counted WHERE counted."orderId" = ${orderAlias}.id AND counted.status IN (${statuses}))`;
 
-  return `CASE WHEN ${subtotal} > 0 THEN ${itemAlias}."vndPrice" * ${orderNetRevenueSql(orderAlias)} / ${subtotal} ELSE ${itemAlias}."vndPrice" END`;
+  return `CASE WHEN ${subtotal} > 0 AND ${countedSubtotal} > 0 THEN GREATEST(${itemAlias}."vndPrice" - ${discounts} * ${itemAlias}."vndPrice" / ${countedSubtotal}, 0) ELSE ${itemAlias}."vndPrice" END`;
 }
 const UNKNOWN_GROUP = 'Unknown';
 
