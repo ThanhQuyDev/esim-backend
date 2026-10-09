@@ -1,4 +1,12 @@
 import { Esim } from '../esims/domain/esim';
+import {
+  allocateDiscount,
+  netLineVnd,
+  netUnitVnd,
+  orderDiscountVnd,
+  PricedLine,
+  refundedCostVnd,
+} from './order-refund-values';
 import { OrderItem } from '../order-items/domain/order-item';
 import {
   BadRequestException,
@@ -141,15 +149,6 @@ type OrderPricing = {
   eligibleSpendVnd: number;
   referral?: ReferralValidationResult;
 };
-
-/** What one eSIM of a line is worth: the line total over its quantity. */
-function esimUnitVnd(
-  item: { vndPrice?: number | null; quantity?: number | null } | undefined,
-): number {
-  if (!item) return 0;
-  const quantity = Math.max(Number(item.quantity ?? 1), 1);
-  return Math.round(Number(item.vndPrice ?? 0) / quantity);
-}
 
 @Injectable()
 export class OrdersService {
@@ -1935,8 +1934,60 @@ export class OrdersService {
 
     const topup = await this.buildTopupDetail(order);
 
+    // Money before / after refunds (#009, round 4), and each line's share of
+    // the discount, which is what refunding that line pays back.
+    const shares = allocateDiscount(
+      orderItems as PricedLine[],
+      orderDiscountVnd(order),
+    );
+    const refundTotals = await this.walletsService.getRefundTotalsByOrderId(
+      order.id,
+    );
+    const originalOrderValueVnd =
+      Number(order.vndPrice ?? 0) + Number(order.walletSpentVndAmount ?? 0);
+    const refundedVnd = Number(order.refundedAmountVnd ?? 0);
+    const orderValueVnd = Math.max(originalOrderValueVnd - refundedVnd, 0);
+    const originalVndCostPrice = Number(order.vndCostPrice ?? 0);
+    const originalTotalAmount = Number(order.totalAmount ?? 0);
+    const afterRefund = {
+      originalOrderValueVnd,
+      orderValueVnd,
+      originalVndCostPrice,
+      vndCostPrice: Math.max(
+        originalVndCostPrice -
+          refundedCostVnd(orderItems as PricedLine[], esims),
+        0,
+      ),
+      originalTotalAmount,
+      totalAmount:
+        originalOrderValueVnd > 0
+          ? Math.round(
+              (originalTotalAmount * orderValueVnd * 100) /
+                originalOrderValueVnd,
+            ) / 100
+          : originalTotalAmount,
+      refundedVnd,
+      refundedToWalletVnd: refundTotals.walletVnd,
+      refundedDirectVnd: refundTotals.directVnd,
+      originalCashbackVnd: Number(order.cashbackAmountVnd ?? 0),
+      cashbackVnd: Math.max(
+        Number(order.cashbackAmountVnd ?? 0) - refundTotals.cashbackReversedVnd,
+        0,
+      ),
+      originalCommissionVnd: partnerCommission
+        ? partnerCommission.commissionVnd +
+          (partnerCommission.reversedCommissionVnd ?? 0)
+        : null,
+      commissionVnd: partnerCommission?.commissionVnd ?? null,
+    };
+
     return {
       id: order.id,
+      subtotalVndPrice: Number(order.subtotalVndPrice ?? 0),
+      payableVndPrice: Number(order.payableVndPrice ?? 0),
+      refundedAmountVnd: refundedVnd,
+      refundStatus: order.refundStatus ?? null,
+      afterRefund,
       userId: order.userId,
       user: user
         ? {
@@ -2014,6 +2065,11 @@ export class OrdersService {
           quantity: item.quantity,
           vndPrice: item.vndPrice,
           vndCostPrice: item.vndCostPrice,
+          discountShareVnd: shares.get(Number(item.id)) ?? 0,
+          netVndPrice: netLineVnd(
+            item as PricedLine,
+            shares.get(Number(item.id)) ?? 0,
+          ),
           esims: esimsByOrderItemId.get(item.id) ?? [],
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
@@ -2198,16 +2254,29 @@ export class OrdersService {
         );
       }
 
+      // Valued AFTER the order's discount, shared over the lines by price
+      // (#009, round 4): at list price, refunding every line one by one paid
+      // the whole coupon back on top of what the customer had paid.
       const itemById = new Map(orderItems.map((i) => [Number(i.id), i]));
+      const shares = allocateDiscount(
+        orderItems as PricedLine[],
+        orderDiscountVnd(order),
+      );
+      const shareOf = (itemId: number) => shares.get(itemId) ?? 0;
       const selectedValue =
         orderItems
           .filter((item) => selectedItemIds.includes(Number(item.id)))
-          .reduce((sum, item) => sum + Number(item.vndPrice ?? 0), 0) +
-        selectedEsims.reduce(
-          (sum, esim) =>
-            sum + esimUnitVnd(itemById.get(Number(esim.orderItemId))),
-          0,
-        );
+          .reduce(
+            (sum, item) =>
+              sum + netLineVnd(item as PricedLine, shareOf(Number(item.id))),
+            0,
+          ) +
+        selectedEsims.reduce((sum, esim) => {
+          const line = itemById.get(Number(esim.orderItemId));
+          return line
+            ? sum + netUnitVnd(line as PricedLine, shareOf(Number(line.id)))
+            : sum;
+        }, 0);
 
       if (Number(dto.amountVnd) > selectedValue) {
         throw new UnprocessableEntityException(

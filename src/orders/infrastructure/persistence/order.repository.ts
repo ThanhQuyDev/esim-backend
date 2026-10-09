@@ -7,6 +7,10 @@ import { FilterOrderDto, SortOrderDto } from '../../dto/query-order.dto';
 export interface ReconciliationExportRow {
   /** Groups the lines of one order, for the order-level columns below (#018). */
   orderId: number;
+  /** The line itself, to share the order discount over the lines (#009). */
+  orderItemId: number;
+  /** eSIMs of this line refunded one by one (#008), when the line is live. */
+  refundedEsims: number;
   orderNumber: string;
   orderStatus: string;
   orderCreatedAt: Date;
@@ -35,6 +39,8 @@ export interface ReconciliationExportRow {
   referralDiscountVndAmount: number;
   cashbackAmountVnd: number;
   walletSpentVndAmount: number;
+  /** Refunded on the order so far (#009). */
+  refundedAmountVnd: number;
   /** Affiliate behind the order, when there is one. */
   partnerName: string | null;
   partnerCommissionVnd: number;

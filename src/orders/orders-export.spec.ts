@@ -186,6 +186,54 @@ describe('Order-level columns on the reconciliation export (#018)', () => {
     expect(rows[1] as unknown[]).toContain(75000);
   });
 
+  it('should only count the discount of what was kept after a refund (#009)', async () => {
+    // Two 150k lines, 20k coupon → 10k each; the airalo line was refunded.
+    const service = makeService([
+      row({
+        orderId: 7,
+        orderItemId: 1,
+        vndCostPrice: 100000,
+        vndPrice: 150000,
+        couponDiscountVndAmount: 20000,
+        refundedAmountVnd: 140000,
+      }),
+      row({
+        orderId: 7,
+        orderItemId: 2,
+        provider: 'airalo',
+        itemStatus: 'refunded',
+        vndCostPrice: 100000,
+        vndPrice: 150000,
+        couponDiscountVndAmount: 20000,
+        refundedAmountVnd: 140000,
+      }),
+    ]);
+
+    const { rows } = await readSheet(await service.exportToExcel());
+
+    // 150000 - 100000 - 10000: the refunded line's 10k share no longer counts.
+    expect(rows[1] as unknown[]).toContain(40000);
+    expect(rows[1] as unknown[]).toContain(140000);
+  });
+
+  it('should count a line refunded eSIM by eSIM for what is left of it (#008)', async () => {
+    const service = makeService([
+      row({
+        orderId: 7,
+        quantity: 3,
+        refundedEsims: 1,
+        vndCostPrice: 90000,
+        vndPrice: 300000,
+      }),
+    ]);
+
+    const { rows } = await readSheet(await service.exportToExcel());
+    const totals = rows[rows.length - 1] as unknown[];
+
+    expect(totals).toContain(200000); // revenue of the 2 eSIMs kept
+    expect(totals).toContain(60000); // their cost
+  });
+
   it('should writes the order-level money once per order, so a SUM is not multiplied by the line count', async () => {
     const service = makeService([
       row({

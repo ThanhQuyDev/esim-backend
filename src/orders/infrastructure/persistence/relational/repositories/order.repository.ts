@@ -256,6 +256,12 @@ export class OrdersRelationalRepository implements OrderRepository {
       )
       .addSelect('"order"."cashbackAmountVnd"', 'cashbackAmountVnd')
       .addSelect('"order"."walletSpentVndAmount"', 'walletSpentVndAmount')
+      .addSelect('"order"."refundedAmountVnd"', 'refundedAmountVnd')
+      .addSelect('oi.id', 'orderItemId')
+      .addSelect(
+        `(SELECT COUNT(*) FROM "esim" e WHERE e."orderItemId" = oi.id AND e.status = 'refunded')`,
+        'refundedEsims',
+      )
       // A company partner is settled under its company name; an individual has
       // only a contact name.
       .addSelect(
@@ -307,6 +313,9 @@ export class OrdersRelationalRepository implements OrderRepository {
       referralDiscountVndAmount: string | number | null;
       cashbackAmountVnd: string | number | null;
       walletSpentVndAmount: string | number | null;
+      refundedAmountVnd: string | number | null;
+      orderItemId: string | number;
+      refundedEsims: string | number | null;
       partnerName: string | null;
       partnerCommissionVnd: string | number | null;
       invoiceStatus: string | null;
@@ -324,6 +333,9 @@ export class OrdersRelationalRepository implements OrderRepository {
       referralDiscountVndAmount: Number(row.referralDiscountVndAmount ?? 0),
       cashbackAmountVnd: Number(row.cashbackAmountVnd ?? 0),
       walletSpentVndAmount: Number(row.walletSpentVndAmount ?? 0),
+      refundedAmountVnd: Number(row.refundedAmountVnd ?? 0),
+      orderItemId: Number(row.orderItemId ?? 0),
+      refundedEsims: Number(row.refundedEsims ?? 0),
       partnerCommissionVnd: Number(row.partnerCommissionVnd ?? 0),
     }));
   }

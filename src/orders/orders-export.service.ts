@@ -5,6 +5,7 @@ import {
   ReconciliationExportRow,
 } from './infrastructure/persistence/order.repository';
 import { FilterOrderDto } from './dto/query-order.dto';
+import { allocateDiscount } from './order-refund-values';
 
 const VN_TIME_ZONE = 'Asia/Ho_Chi_Minh';
 
@@ -48,17 +49,52 @@ export function exportFileTimestamp(now: Date = new Date()): string {
  * order, not to one supplier's line — so it needs the whole order's totals, not
  * the line the row happens to be.
  */
-function summarizeByOrder(
+/**
+ * Share of a line still kept after refunds: 0 for a refunded line, the
+ * remaining eSIMs over the quantity for a line refunded eSIM by eSIM (#008).
+ */
+export function keptShare(row: ReconciliationExportRow): number {
+  if (row.itemStatus === 'refunded') return 0;
+  const quantity = Math.max(row.quantity || 1, 1);
+  const refunded = Math.min(Math.max(row.refundedEsims || 0, 0), quantity);
+  return (quantity - refunded) / quantity;
+}
+
+/**
+ * Revenue, cost and discount of what is left of each order after refunds
+ * (#009, round 4). The order discount is shared over its lines by price, and
+ * only the share of what was kept still counts — the export used to subtract
+ * the whole discount even when the lines carrying it had been refunded.
+ */
+export function summarizeByOrder(
   rows: ReconciliationExportRow[],
-): Map<number, { revenue: number; cost: number }> {
-  const totals = new Map<number, { revenue: number; cost: number }>();
+): Map<number, { revenue: number; cost: number; discount: number }> {
+  const byOrder = new Map<number, ReconciliationExportRow[]>();
   for (const row of rows) {
-    // A refunded line earns nothing and cost nothing, same rule as the totals.
-    if (row.itemStatus === 'refunded') continue;
-    const current = totals.get(row.orderId) ?? { revenue: 0, cost: 0 };
-    current.revenue += row.vndPrice;
-    current.cost += row.vndCostPrice;
-    totals.set(row.orderId, current);
+    const list = byOrder.get(row.orderId) ?? [];
+    list.push(row);
+    byOrder.set(row.orderId, list);
+  }
+
+  const totals = new Map<
+    number,
+    { revenue: number; cost: number; discount: number }
+  >();
+  for (const [orderId, lines] of byOrder) {
+    const first = lines[0];
+    // Keyed by position in the order: the rows come ordered by line already.
+    const shares = allocateDiscount(
+      lines.map((l, index) => ({ id: index, vndPrice: l.vndPrice })),
+      first.couponDiscountVndAmount + first.referralDiscountVndAmount,
+    );
+    const total = { revenue: 0, cost: 0, discount: 0 };
+    lines.forEach((line, index) => {
+      const kept = keptShare(line);
+      total.revenue += Math.round(line.vndPrice * kept);
+      total.cost += Math.round(line.vndCostPrice * kept);
+      total.discount += Math.round((shares.get(index) ?? 0) * kept);
+    });
+    totals.set(orderId, total);
   }
   return totals;
 }
@@ -123,6 +159,7 @@ export class OrdersExportService {
         key: 'profitAfterDiscount',
         width: 26,
       },
+      { header: 'Đã hoàn tiền (VNĐ)', key: 'refundedAmountVnd', width: 18 },
       { header: 'Tiền hoàn eXU (VNĐ)', key: 'cashbackAmountVnd', width: 20 },
       {
         header: 'Tiền dùng từ ví eXU (VNĐ)',
@@ -151,6 +188,7 @@ export class OrdersExportService {
     let totalDiscount = 0;
     let totalCommission = 0;
     let totalCashback = 0;
+    let totalRefunded = 0;
 
     // Order-level money is written on the FIRST line of each order only, so a
     // plain SUM over those columns is right even for a multi-line order (#018).
@@ -160,11 +198,10 @@ export class OrdersExportService {
     for (const row of rows) {
       // A refunded line is kept in the sheet — it has to be visible during
       // reconciliation — but it must not inflate the totals owed.
-      const counts = row.itemStatus !== 'refunded';
-      if (counts) {
-        totalCost += row.vndCostPrice;
-        totalRevenue += row.vndPrice;
-      }
+      // Lines refunded eSIM by eSIM count for what is left of them (#008).
+      const kept = keptShare(row);
+      totalCost += Math.round(row.vndCostPrice * kept);
+      totalRevenue += Math.round(row.vndPrice * kept);
 
       const firstLineOfOrder = !seenOrders.has(row.orderId);
       seenOrders.add(row.orderId);
@@ -172,13 +209,15 @@ export class OrdersExportService {
       const discountVnd =
         row.couponDiscountVndAmount + row.referralDiscountVndAmount;
       const totalsForOrder = orderTotals.get(row.orderId);
+      // Only the discount of what was kept still costs us (#009).
       const profitAfterDiscount =
         (totalsForOrder?.revenue ?? 0) -
         (totalsForOrder?.cost ?? 0) -
-        discountVnd;
+        (totalsForOrder?.discount ?? 0);
 
       if (firstLineOfOrder) {
-        totalDiscount += discountVnd;
+        totalDiscount += totalsForOrder?.discount ?? 0;
+        totalRefunded += row.refundedAmountVnd;
         totalCommission += row.partnerCommissionVnd;
         totalCashback += row.cashbackAmountVnd;
       }
@@ -206,6 +245,7 @@ export class OrdersExportService {
               referralCode: row.referralCode ?? '',
               discountVnd,
               profitAfterDiscount,
+              refundedAmountVnd: row.refundedAmountVnd || '',
               cashbackAmountVnd: row.cashbackAmountVnd,
               walletSpentVndAmount: row.walletSpentVndAmount,
               partnerName: row.partnerName ?? '',
@@ -233,6 +273,7 @@ export class OrdersExportService {
       discountVnd: totalDiscount,
       profitAfterDiscount: totalRevenue - totalCost - totalDiscount,
       partnerCommissionVnd: totalCommission,
+      refundedAmountVnd: totalRefunded,
       cashbackAmountVnd: totalCashback,
     });
     totalRow.font = { bold: true };
@@ -243,6 +284,7 @@ export class OrdersExportService {
       'profit',
       'discountVnd',
       'profitAfterDiscount',
+      'refundedAmountVnd',
       'cashbackAmountVnd',
       'walletSpentVndAmount',
       'partnerCommissionVnd',

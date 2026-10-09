@@ -249,6 +249,8 @@ export interface OrderPartnerCommissionSummary {
   /** The link the buyer arrived through, when the order came from one. */
   linkCode: string | null;
   commissionVnd: number;
+  /** Taken back by partial refunds; earned = commissionVnd + this (#009). */
+  reversedCommissionVnd?: number;
   status: string;
   /** Why a `rejected` commission earned nothing — see #041. */
   rejectionReason: string | null;
@@ -1235,6 +1237,7 @@ export class PartnersService {
         partnerStatus: row.partner?.status ?? null,
         linkCode: row.link?.code ?? null,
         commissionVnd: Number(row.commissionVnd) || 0,
+        reversedCommissionVnd: Number(row.reversedCommissionVnd) || 0,
         status: row.status,
         rejectionReason: row.rejectionReason ?? null,
         tierSnapshot: row.tierSnapshot ?? null,

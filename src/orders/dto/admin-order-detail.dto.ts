@@ -131,6 +131,20 @@ export class AdminOrderItemDto {
   @ApiProperty({ type: Number })
   vndCostPrice: number;
 
+  @ApiPropertyOptional({
+    type: Number,
+    description:
+      "This line's share of the order discount (coupon + referral), by price (#009).",
+  })
+  discountShareVnd?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description:
+      'Line price after its discount share — what a refund of it pays.',
+  })
+  netVndPrice?: number;
+
   @ApiPropertyOptional({ type: () => [Esim] })
   esims?: Esim[];
 
@@ -291,9 +305,75 @@ export class AdminTopupTargetEsimDto {
   originalOrderId: number | null;
 }
 
+/** An order's money before and after its refunds (#009, test round 4). */
+export class AdminOrderAfterRefundDto {
+  @ApiProperty({ type: Number, description: 'Cash + eXU paid, as ordered.' })
+  originalOrderValueVnd: number;
+
+  @ApiProperty({ type: Number, description: 'Cash + eXU paid, less refunds.' })
+  orderValueVnd: number;
+
+  @ApiProperty({ type: Number })
+  originalVndCostPrice: number;
+
+  @ApiProperty({
+    type: Number,
+    description: 'Cost less the refunded lines / eSIMs.',
+  })
+  vndCostPrice: number;
+
+  @ApiProperty({ type: Number })
+  originalTotalAmount: number;
+
+  @ApiProperty({
+    type: Number,
+    description: 'USD total scaled to what is left of the order.',
+  })
+  totalAmount: number;
+
+  @ApiProperty({ type: Number })
+  refundedVnd: number;
+
+  @ApiProperty({ type: Number, description: 'Refunded into the eXU wallet.' })
+  refundedToWalletVnd: number;
+
+  @ApiProperty({ type: Number, description: 'Refunded by bank transfer.' })
+  refundedDirectVnd: number;
+
+  @ApiProperty({ type: Number, description: 'eXU cashback the order earned.' })
+  originalCashbackVnd: number;
+
+  @ApiProperty({
+    type: Number,
+    description: 'Cashback left after the refunds clawed their share back.',
+  })
+  cashbackVnd: number;
+
+  @ApiPropertyOptional({ type: Number })
+  originalCommissionVnd?: number | null;
+
+  @ApiPropertyOptional({ type: Number })
+  commissionVnd?: number | null;
+}
+
 export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   id: number;
+
+  @ApiPropertyOptional({ type: Number })
+  subtotalVndPrice?: number;
+
+  @ApiPropertyOptional({ type: Number })
+  payableVndPrice?: number;
+
+  @ApiPropertyOptional({ type: Number })
+  refundedAmountVnd?: number;
+
+  @ApiPropertyOptional({ type: String })
+  refundStatus?: string | null;
+
+  @ApiPropertyOptional({ type: () => AdminOrderAfterRefundDto })
+  afterRefund?: AdminOrderAfterRefundDto;
 
   @ApiProperty({ type: Number })
   userId: number;

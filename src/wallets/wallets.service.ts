@@ -901,6 +901,40 @@ export class WalletsService {
     return this.walletRepository.save(wallet);
   }
 
+  /** What an order has refunded so far, into eXU and by bank transfer (#009). */
+  async getRefundTotalsByOrderId(orderId: number): Promise<{
+    walletVnd: number;
+    directVnd: number;
+    cashbackReversedVnd: number;
+  }> {
+    const refunds = await this.orderRefundRepository.find({
+      where: { orderId },
+    });
+    const reversal = await this.transactionRepository
+      .createQueryBuilder('transaction')
+      .select('COALESCE(SUM(ABS(transaction.amountVnd)), 0)', 'sum')
+      .where('transaction.orderId = :orderId', { orderId })
+      .andWhere('transaction.type = :type', {
+        type: WalletTransactionTypeEnum.ORDER_CASHBACK_REVERSAL,
+      })
+      .getRawOne<{ sum: string }>();
+    let walletVnd = 0;
+    let directVnd = 0;
+    for (const refund of refunds) {
+      if (refund.status !== OrderRefundStatusEnum.COMPLETED) continue;
+      if (refund.mode === OrderRefundModeEnum.WALLET) {
+        walletVnd += Number(refund.amountVnd) || 0;
+      } else {
+        directVnd += Number(refund.amountVnd) || 0;
+      }
+    }
+    return {
+      walletVnd,
+      directVnd,
+      cashbackReversedVnd: Number(reversal?.sum ?? 0),
+    };
+  }
+
   async refundOrder(
     order: Order,
     dto: RefundOrderDto,
