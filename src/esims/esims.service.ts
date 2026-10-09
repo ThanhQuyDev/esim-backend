@@ -24,7 +24,35 @@ import {
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
 
+/** Airalo's voice / text counters, when its usage reply carries them (#015). */
+function minutesAndTexts(usage: {
+  total_voice?: number | null;
+  remaining_voice?: number | null;
+  total_text?: number | null;
+  remaining_text?: number | null;
+}): Partial<DataUsageResult> {
+  const num = (v: unknown) =>
+    v === null || v === undefined || !Number.isFinite(Number(v))
+      ? null
+      : Number(v);
+  return {
+    voiceTotal: num(usage.total_voice),
+    voiceRemaining: num(usage.remaining_voice),
+    smsTotal: num(usage.total_text),
+    smsRemaining: num(usage.remaining_text),
+  };
+}
+
 export interface DataUsageResult {
+  /**
+   * Call minutes / SMS the provider reports for the eSIM (#015, test round 4),
+   * where it does — Airalo is the only supplier selling voice + SMS plans and
+   * its usage API gives total and remaining for both. Absent elsewhere.
+   */
+  voiceTotal?: number | null;
+  voiceRemaining?: number | null;
+  smsTotal?: number | null;
+  smsRemaining?: number | null;
   remaining: number | null;
   total: number;
   dataUsed: number;
@@ -296,6 +324,7 @@ export class EsimsService {
           isUnlimited: usage.is_unlimited,
           status: usage.status,
           lastUpdateTime: null,
+          ...minutesAndTexts(usage),
         };
         await this.persistUsageSnapshot(esim, result);
         return result;

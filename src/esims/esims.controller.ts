@@ -158,8 +158,11 @@ export class EsimsPublicController {
       expiredAt: usage.expiredAt,
       lastUpdateTime: usage.lastUpdateTime,
       usageAvailable: usage.usageAvailable !== false,
-      callMinutes: esim.plan?.call ?? null,
-      smsCount: esim.plan?.sms ?? null,
+      // The provider's own totals when it reports them, else the plan's.
+      callMinutes: usage.voiceTotal ?? esim.plan?.call ?? null,
+      smsCount: usage.smsTotal ?? esim.plan?.sms ?? null,
+      callMinutesRemaining: usage.voiceRemaining ?? null,
+      smsRemaining: usage.smsRemaining ?? null,
     };
   }
 }

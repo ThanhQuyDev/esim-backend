@@ -75,4 +75,12 @@ export class EsimLookupResponseDto {
 
   @ApiPropertyOptional({ type: Number })
   smsCount: number | null;
+
+  /** Minutes left, as the provider reports them (#015, test round 4). */
+  @ApiPropertyOptional({ type: Number })
+  callMinutesRemaining: number | null;
+
+  /** SMS left, as the provider reports them (#015, test round 4). */
+  @ApiPropertyOptional({ type: Number })
+  smsRemaining: number | null;
 }
