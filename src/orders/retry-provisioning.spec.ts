@@ -17,6 +17,7 @@ function makeService(opts: {
   emailsSent?: number;
 }) {
   const submitted: { orderId: number; onlyItemIds?: number[] }[] = [];
+  const mutedFlags: (boolean | undefined)[] = [];
   const mailed: { orderId: number; onlyOrderItemIds?: number[] }[] = [];
 
   const orderRepository = {
@@ -46,8 +47,12 @@ function makeService(opts: {
   internals.esimsService = esimsService;
   internals.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
   internals.submitProviders = jest.fn(
-    (orderId: number, options?: { onlyItemIds?: number[] }) => {
+    (
+      orderId: number,
+      options?: { onlyItemIds?: number[]; mutedEmail?: boolean },
+    ) => {
       submitted.push({ orderId, onlyItemIds: options?.onlyItemIds });
+      mutedFlags.push(options?.mutedEmail);
       return Promise.resolve();
     },
   );
@@ -58,7 +63,7 @@ function makeService(opts: {
     },
   );
 
-  return { service, submitted, mailed };
+  return { service, submitted, mailed, mutedFlags };
 }
 
 describe('Retry provisioning for an order', () => {
@@ -196,6 +201,22 @@ describe('Retry provisioning for an order', () => {
 
   // #014 — "gọi lại thành công thì tự động gửi lại email esim cho khách".
   describe('auto-resending the eSIM email (#014)', () => {
+    it('should mail each eSIM once: the re-order itself is muted (#020)', async () => {
+      // Local stock (Viettel) is mailed by submitProviders on assignment; the
+      // retry mails again below, so the re-order must not.
+      const { service, submitted, mailed, mutedFlags } = makeService({
+        items: [{ id: 2, orderRequestId: null }],
+        esims: [],
+        emailsSent: 2,
+      });
+
+      await service.retryProvisioning(5);
+
+      expect(submitted).toHaveLength(1);
+      expect(mutedFlags).toEqual([true]);
+      expect(mailed).toHaveLength(1);
+    });
+
     it('should mails only the lines it just re-ordered', async () => {
       const { service, mailed } = makeService({
         items: [

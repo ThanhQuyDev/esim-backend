@@ -1158,7 +1158,13 @@ export class OrdersService {
       `retryProvisioning: re-submitting items ${retriedItemIds.join(', ')} of order ${order.orderNumber}`,
     );
 
-    await this.submitProviders(orderId, { onlyItemIds: retriedItemIds });
+    // Muted: the mail goes out ONCE, just below. `submitProviders` mails the
+    // local-stock eSIMs it assigns on its own, so the retry used to send every
+    // Viettel eSIM twice — "2 eSIMs re-sent, 4 in the email" (#020, round 4).
+    await this.submitProviders(orderId, {
+      onlyItemIds: retriedItemIds,
+      mutedEmail: true,
+    });
 
     // Mail whatever came back on this run (#014). Suppliers that deliver over a
     // webhook (Airalo, Billion, MicroEsim) have nothing yet, and their webhook
