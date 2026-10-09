@@ -22,6 +22,7 @@ describe('Topup marker on an eSIM (#025)', () => {
   function makeService(topups: Record<string, TopupSummary> = {}) {
     const esimsRepository = {
       findManyWithPagination: jest.fn(),
+      findOrderNumbersByOrderItemIds: jest.fn().mockResolvedValue(new Map()),
       countTopupsByIccids: jest.fn((iccids: string[]) => {
         const map = new Map<string, TopupSummary>();
         for (const iccid of iccids) {

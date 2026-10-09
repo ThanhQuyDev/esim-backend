@@ -240,6 +240,23 @@ export class EsimsRelationalRepository implements EsimRepository {
    *
    * Only paid orders count — a pending or failed topup added nothing.
    */
+  async findOrderNumbersByOrderItemIds(
+    orderItemIds: number[],
+  ): Promise<Map<number, string>> {
+    const result = new Map<number, string>();
+    if (!orderItemIds.length) return result;
+    const rows: { id: number; orderNumber: string }[] =
+      await this.esimsRepository.query(
+        `SELECT oi.id, o."orderNumber"
+           FROM "order_item" oi
+           JOIN "order" o ON o.id = oi."orderId"
+          WHERE oi.id = ANY($1::int[])`,
+        [orderItemIds],
+      );
+    for (const row of rows) result.set(Number(row.id), row.orderNumber);
+    return result;
+  }
+
   async countTopupsByIccids(
     iccids: string[],
   ): Promise<Map<string, EsimTopupSummary>> {

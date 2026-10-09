@@ -29,6 +29,7 @@ describe('Topup packages on the eSIM detail (#026)', () => {
   ) {
     const esimsRepository = {
       findByIdWithRelations: jest.fn().mockResolvedValue(esim),
+      findOrderNumbersByOrderItemIds: jest.fn().mockResolvedValue(new Map()),
       countTopupsByIccids: jest
         .fn()
         .mockResolvedValue(

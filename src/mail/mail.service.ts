@@ -36,6 +36,43 @@ export interface EsimPurchaseMailData {
    */
   callMinutes?: number | null;
   smsCount?: number | null;
+  /**
+   * The plan's data and length, for the "Dữ liệu / Data" line (#025, test
+   * round 4): "2GB / ngày", "1GB - 7 ngày", "Không giới hạn".
+   */
+  planData?: {
+    dataMb?: number | null;
+    durationDays?: number | null;
+    type?: string | null;
+  } | null;
+}
+
+/** Plan name as the CMS shows it: "United States 2GB / 15day - 20Mins - 20SMS". */
+export function emailPlanName(
+  name: string,
+  call?: number | null,
+  sms?: number | null,
+): string {
+  const base = (name ?? '').trim();
+  if (!base) return '';
+  const parts = [base];
+  if (Number(call) > 0 && !/\bmins?\b|phút/i.test(base))
+    parts.push(`${Number(call)}Mins`);
+  if (Number(sms) > 0 && !/\bsms\b/i.test(base))
+    parts.push(`${Number(sms)}SMS`);
+  return parts.join(' - ');
+}
+
+/** "2GB / ngày" for a per-day plan, "1GB - 7 ngày" for a fixed one, "Không giới hạn". */
+export function emailDataText(plan: EsimPurchaseMailData['planData']): string {
+  if (!plan) return '';
+  const mb = Number(plan.dataMb) || 0;
+  if (mb <= 0) return 'Không giới hạn';
+  const size =
+    mb >= 1024 ? `${parseFloat((mb / 1024).toFixed(1))}GB` : `${mb}MB`;
+  if (plan.type && plan.type !== 'fixed') return `${size} / ngày`;
+  const days = Number(plan.durationDays) || 0;
+  return days > 0 ? `${size} - ${days} ngày` : size;
 }
 
 export interface InvoiceIssuedMailData {
@@ -350,7 +387,9 @@ export class MailService {
       smdpAddress: data.smdpAddress ?? '',
       apn: data.apn ?? '',
       phoneNumber: data.phoneNumber ?? '',
-      planName: data.planName,
+      // Named like the CMS names it, minutes / SMS spelled out (#025).
+      planName: emailPlanName(data.planName, data.callMinutes, data.smsCount),
+      dataText: emailDataText(data.planData),
       orderNumber: data.orderNumber,
       // Empty string rather than 0, so `{{#if}}` in the template treats a
       // data-only plan as "no allowance" instead of printing "0 phút".

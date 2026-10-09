@@ -67,6 +67,11 @@ export abstract class EsimRepository {
    * Paid topups per ICCID, with the latest date (#025). Derived from the orders,
    * so it also covers eSIMs topped up before the column existed.
    */
+  /** Order number of each order item, keyed by order item id (#025). */
+  abstract findOrderNumbersByOrderItemIds(
+    orderItemIds: number[],
+  ): Promise<Map<number, string>>;
+
   abstract countTopupsByIccids(
     iccids: string[],
   ): Promise<Map<string, EsimTopupSummary>>;

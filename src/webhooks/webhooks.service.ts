@@ -543,6 +543,7 @@ export class WebhooksService {
           planName: orderItem?.plan?.name ?? '',
           callMinutes: orderItem?.plan?.call ?? null,
           smsCount: orderItem?.plan?.sms ?? null,
+          planData: orderItem?.plan ?? null,
           orderNumber: order?.orderNumber ?? orderRef ?? '',
         });
       }
@@ -585,6 +586,7 @@ export class WebhooksService {
           planName: orderItem.plan?.name ?? '',
           callMinutes: orderItem.plan?.call ?? null,
           smsCount: orderItem.plan?.sms ?? null,
+          planData: orderItem.plan ?? null,
           orderNumber: order?.orderNumber ?? orderRef ?? '',
         });
       }

@@ -127,6 +127,10 @@ export class Esim {
    * not stored — so it is right for eSIMs topped up before this existed.
    */
   @ApiPropertyOptional({ type: Number, example: 2 })
+  /** Number of the order the eSIM was bought in (#025, test round 4). */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  orderNumber?: string | null;
+
   topupCount?: number;
 
   @ApiPropertyOptional()

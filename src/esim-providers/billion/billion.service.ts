@@ -836,6 +836,7 @@ export class BillionService {
             planName: plan?.name ?? '',
             callMinutes: plan?.call ?? null,
             smsCount: plan?.sms ?? null,
+            planData: plan ?? null,
             orderNumber,
           });
         }

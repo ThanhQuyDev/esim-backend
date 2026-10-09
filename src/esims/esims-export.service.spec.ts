@@ -48,6 +48,7 @@ async function exportRows(esims: unknown[]) {
   const service = new EsimsExportService({
     findAllForExport: jest.fn().mockResolvedValue(esims),
     // #025 — the export now also asks which of these were topped up.
+    findOrderNumbersByOrderItemIds: jest.fn().mockResolvedValue(new Map()),
     countTopupsByIccids: jest.fn().mockResolvedValue(new Map()),
   } as never);
 

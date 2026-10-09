@@ -1801,6 +1801,7 @@ export class OrdersService {
           planName: plan?.name ?? '',
           callMinutes: plan?.call ?? null,
           smsCount: plan?.sms ?? null,
+          planData: plan ?? null,
           orderNumber: order.orderNumber,
         });
         sent += 1;
@@ -1821,7 +1822,14 @@ export class OrdersService {
     // `call` / `sms` so the email can state the allowance (#023).
     localItems: Array<{
       planId: number;
-      plan: { name: string; call?: number | null; sms?: number | null };
+      plan: {
+        name: string;
+        call?: number | null;
+        sms?: number | null;
+        dataMb?: number | null;
+        durationDays?: number | null;
+        type?: string | null;
+      };
     }>,
   ): Promise<void> {
     if (orderItemIds.length === 0) return;
@@ -1847,6 +1855,7 @@ export class OrdersService {
           planName: plan?.plan.name ?? '',
           callMinutes: plan?.plan.call ?? null,
           smsCount: plan?.plan.sms ?? null,
+          planData: plan?.plan ?? null,
           orderNumber,
         });
       }

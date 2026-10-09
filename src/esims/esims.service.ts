@@ -185,11 +185,23 @@ export class EsimsService {
     if (iccids.length === 0) return esims;
 
     const topups = await this.esimsRepository.countTopupsByIccids(iccids);
+    // The purchase order, shown above the ICCID so the customer can quote it
+    // for support or warranty (#025, test round 4).
+    const orderNumbers =
+      await this.esimsRepository.findOrderNumbersByOrderItemIds(
+        esims
+          .map((esim) => Number(esim.orderItemId))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      );
 
     return esims.map((esim) => {
       const info = topups.get(esim.iccid);
       return {
         ...esim,
+        orderNumber:
+          esim.orderItemId != null
+            ? (orderNumbers.get(Number(esim.orderItemId)) ?? null)
+            : null,
         topupCount: info?.count ?? 0,
         lastTopupAt: info?.lastAt ?? null,
         // The package names come from the same rolled-up query, so the customer's
