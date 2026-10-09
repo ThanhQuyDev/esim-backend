@@ -65,3 +65,50 @@ describe('discount shared over the lines (#009)', () => {
     ).toBe(80000);
   });
 });
+
+/**
+ * Affiliate orders (#010, test round 4): 7% commission on the order value after
+ * the partner's coupon. A partial refund takes back
+ * commission × refunded ÷ order value (adjustCommissionForPartialRefund), so
+ * with refunds valued after the discount that is exactly 7% of each refunded
+ * line's net value — and refunding every line takes it all back.
+ */
+describe('affiliate commission after a partial refund (#010)', () => {
+  const reversal = (earned: number, refunded: number, orderValue: number) =>
+    Math.min(earned, Math.round((earned * refunded) / orderValue));
+
+  it('should take back 7% of the refunded line net value (10 000đ coupon)', () => {
+    const shares = allocateDiscount(LINES, 10000);
+    const orderValue = 632000;
+    const commission = Math.round(orderValue * 0.07); // 44 240
+    const line1 = netLineVnd(LINES[0], shares.get(1)!); // 246 106
+
+    expect(commission).toBe(44240);
+    expect(reversal(commission, line1, orderValue)).toBe(
+      Math.round(line1 * 0.07),
+    );
+  });
+
+  it('should take back 7% of the refunded line net value (2% coupon)', () => {
+    const discount = 12840; // 2% of 642 000
+    const shares = allocateDiscount(LINES, discount);
+    const orderValue = 629160;
+    const commission = Math.round(orderValue * 0.07);
+    const line2 = netLineVnd(LINES[1], shares.get(2)!); // 215 600
+
+    expect(line2).toBe(215600);
+    expect(reversal(commission, line2, orderValue)).toBe(
+      Math.round(line2 * 0.07),
+    );
+  });
+
+  it('should take the whole commission back once every line is refunded', () => {
+    const shares = allocateDiscount(LINES, 10000);
+    const refunded = LINES.reduce(
+      (sum, line) => sum + netLineVnd(line, shares.get(line.id)!),
+      0,
+    );
+
+    expect(reversal(44240, refunded, 632000)).toBe(44240);
+  });
+});
