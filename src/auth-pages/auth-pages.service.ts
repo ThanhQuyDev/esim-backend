@@ -76,6 +76,9 @@ export class AuthPagesService {
       ...(dto.subheading !== undefined
         ? { subheading: this.clean(dto.subheading, 300) }
         : {}),
+      ...(dto.signUpUrl !== undefined
+        ? { signUpUrl: this.clean(dto.signUpUrl, 500) }
+        : {}),
     });
 
     await this.repository.save(merged);
@@ -101,6 +104,7 @@ export class AuthPagesService {
       quoteAuthor: row?.quoteAuthor ?? null,
       heading: row?.heading ?? null,
       subheading: row?.subheading ?? null,
+      signUpUrl: row?.signUpUrl ?? null,
       updatedAt: row?.updatedAt ? new Date(row.updatedAt).toISOString() : null,
     };
   }

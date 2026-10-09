@@ -39,6 +39,13 @@ export class AuthPageSettingEntity extends EntityRelationalHelper {
   @Column({ type: String, length: 300, nullable: true })
   subheading: string | null;
 
+  /**
+   * Where "Đăng ký" on the sign-in page leads (#016, test round 4) — on the
+   * partner portal, the partner application form. Empty uses the built-in one.
+   */
+  @Column({ type: String, length: 500, nullable: true })
+  signUpUrl: string | null;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }

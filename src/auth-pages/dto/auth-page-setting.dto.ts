@@ -48,6 +48,17 @@ export class UpdateAuthPageSettingDto {
   @IsString()
   @MaxLength(300)
   subheading?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'Link of the "Đăng ký" button (#016) — the partner application form on the partner portal.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  signUpUrl?: string | null;
 }
 
 export class AuthPageSettingDto {
@@ -74,6 +85,9 @@ export class AuthPageSettingDto {
 
   @ApiPropertyOptional({ type: String, nullable: true })
   subheading: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  signUpUrl: string | null;
 
   @ApiPropertyOptional({ type: String, nullable: true })
   updatedAt: string | null;
