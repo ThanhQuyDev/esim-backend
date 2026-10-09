@@ -531,21 +531,17 @@ export class OrdersService {
 
     // 6. Call EsimAccess API — one call for all esimaccess items
     if (esimAccessItems.length > 0) {
-      const totalEsimAccessAmount = esimAccessItems.reduce(
-        (sum, i) => sum + i.plan.costPrice * i.quantity,
-        0,
-      );
       const txnId = `${orderNumber}-esimaccess`;
 
       let esimAccessOrderNo: string | null = null;
       try {
-        const result = await this.esimAccessService.submitOrder({
+        const result = await this.esimAccessService.submitPlanOrder({
           transactionId: txnId,
-          amount: Math.round(totalEsimAccessAmount * 10000),
-          packageInfoList: esimAccessItems.map((i) => ({
+          // Day passes are charged for every day bought (#013, round 4).
+          lines: esimAccessItems.map((i) => ({
             packageCode: i.plan.providerPlanId,
             count: i.quantity,
-            price: Math.round(i.plan.costPrice * 10000),
+            unitPriceUsd: Number(i.plan.costPrice),
             periodNum: i.periodNum,
           })),
         });
@@ -1239,19 +1235,15 @@ export class OrdersService {
     }
 
     if (esimAccessItems.length > 0) {
-      const totalEsimAccessAmount = esimAccessItems.reduce(
-        (sum, i) => sum + i.plan.costPrice * i.quantity,
-        0,
-      );
       const txnId = `${order.orderNumber}-esimaccess`;
       try {
-        const result = await this.esimAccessService.submitOrder({
+        const result = await this.esimAccessService.submitPlanOrder({
           transactionId: txnId,
-          amount: Math.round(totalEsimAccessAmount * 10000),
-          packageInfoList: esimAccessItems.map((i) => ({
+          // Day passes are charged for every day bought (#013, round 4).
+          lines: esimAccessItems.map((i) => ({
             packageCode: i.plan.providerPlanId,
             count: i.quantity,
-            price: Math.round(i.plan.costPrice * 10000),
+            unitPriceUsd: Number(i.plan.costPrice),
             periodNum: i.periodNum,
           })),
         });

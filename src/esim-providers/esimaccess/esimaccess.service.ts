@@ -21,6 +21,11 @@ import {
   EsimAccessTopupRequest,
   EsimAccessTopupResponse,
 } from './esimaccess-api.types';
+import {
+  buildEsimAccessOrder,
+  EsimAccessOrderLine,
+  isAmountMismatch,
+} from './esimaccess-order';
 
 @Injectable()
 export class EsimAccessService {
@@ -472,6 +477,70 @@ export class EsimAccessService {
     this.logger.log(`EsimAccess order submitted: orderNo=${data.obj.orderNo}`);
 
     return data.obj;
+  }
+
+  /** Current unit price of one package (1/10 000 USD), or null if unknown. */
+  async getLivePackagePrice(packageCode: string): Promise<number | null> {
+    const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
+      infer: true,
+    });
+    const accessCode = this.configService.getOrThrow('esimAccess.accessCode', {
+      infer: true,
+    });
+    const { data } = await firstValueFrom(
+      this.httpService.post<EsimAccessApiResponse>(
+        `${baseUrl}/api/v1/open/package/list`,
+        { locationCode: '', type: '', packageCode, iccid: '' },
+        {
+          headers: {
+            'RT-AccessCode': accessCode,
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    if (!data.success) return null;
+    const pkg = (data.obj?.packageList ?? []).find(
+      (p) => p.packageCode === packageCode,
+    );
+    return pkg && Number.isFinite(Number(pkg.price)) ? Number(pkg.price) : null;
+  }
+
+  /**
+   * Order plans from eSIM Access with an amount it accepts (#013, round 4):
+   * day passes are charged for every day (see `buildEsimAccessOrder`), and
+   * when eSIM Access still says the amount is wrong — its price moved since
+   * the last catalogue sync — the live prices are read and the order is sent
+   * once more, rather than leaving a paid order with nothing ordered.
+   */
+  async submitPlanOrder(params: {
+    transactionId: string;
+    lines: EsimAccessOrderLine[];
+  }): Promise<EsimAccessOrderResponse['obj']> {
+    const first = buildEsimAccessOrder(params.lines);
+    try {
+      return await this.submitOrder({
+        transactionId: params.transactionId,
+        ...first,
+      });
+    } catch (err) {
+      if (!isAmountMismatch(err)) throw err;
+      this.logger.warn(
+        `EsimAccess refused the amount for ${params.transactionId}; retrying with live prices`,
+      );
+      const live = await Promise.all(
+        params.lines.map(async (line) => {
+          const price = await this.getLivePackagePrice(line.packageCode);
+          return price == null
+            ? line
+            : { ...line, unitPriceUsd: price / 10000 };
+        }),
+      );
+      return this.submitOrder({
+        transactionId: params.transactionId,
+        ...buildEsimAccessOrder(live),
+      });
+    }
   }
 
   async queryEsims(orderNo: string): Promise<EsimAccessQueryEsimItem[]> {
