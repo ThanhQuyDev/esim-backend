@@ -1,3 +1,5 @@
+import { Esim } from '../esims/domain/esim';
+import { OrderItem } from '../order-items/domain/order-item';
 import {
   BadRequestException,
   Inject,
@@ -139,6 +141,15 @@ type OrderPricing = {
   eligibleSpendVnd: number;
   referral?: ReferralValidationResult;
 };
+
+/** What one eSIM of a line is worth: the line total over its quantity. */
+function esimUnitVnd(
+  item: { vndPrice?: number | null; quantity?: number | null } | undefined,
+): number {
+  if (!item) return 0;
+  const quantity = Math.max(Number(item.quantity ?? 1), 1);
+  return Math.round(Number(item.vndPrice ?? 0) / quantity);
+}
 
 @Injectable()
 export class OrdersService {
@@ -2142,25 +2153,61 @@ export class OrdersService {
     const order = await this.orderRepository.findById(id);
     if (!order) throw new NotFoundException(`Order ${id} not found`);
 
-    // Per-item refund (#027): validate the selection belongs to this order
-    // before touching any supplier, and cap the amount at what those items are
-    // actually worth so a slip cannot refund more than was paid for them.
-    let selectedItemIds: number[] | undefined;
-    if (dto.orderItemIds?.length) {
-      const orderItems = await this.orderItemsService.findByOrderId(order.id);
+    // Per-item refund (#027) and per-eSIM refund (#008, round 4): validate the
+    // selection belongs to this order before touching any supplier, and cap the
+    // amount at what it is actually worth so a slip cannot refund more than was
+    // paid for it.
+    const isPartial = !!(dto.orderItemIds?.length || dto.esimIds?.length);
+    let selectedItemIds: number[] = [];
+    let selectedEsims: Esim[] = [];
+    let orderItems: OrderItem[] = [];
+    if (isPartial) {
+      orderItems = await this.orderItemsService.findByOrderId(order.id);
       const validIds = new Set(orderItems.map((item) => Number(item.id)));
-      const unknown = dto.orderItemIds.filter((id) => !validIds.has(id));
+      const unknown = (dto.orderItemIds ?? []).filter(
+        (id) => !validIds.has(id),
+      );
       if (unknown.length) {
         throw new NotFoundException(
           `Order items ${unknown.join(', ')} do not belong to order ${order.id}`,
         );
       }
+      selectedItemIds = dto.orderItemIds ?? [];
 
-      selectedItemIds = dto.orderItemIds;
+      if (dto.esimIds?.length) {
+        const orderEsims = await this.esimsService.findByOrderItemIds([
+          ...validIds,
+        ]);
+        const byId = new Map(orderEsims.map((esim) => [Number(esim.id), esim]));
+        const unknownEsims = dto.esimIds.filter((id) => !byId.has(id));
+        if (unknownEsims.length) {
+          throw new NotFoundException(
+            `eSIMs ${unknownEsims.join(', ')} do not belong to order ${order.id}`,
+          );
+        }
+        const picked = dto.esimIds.map((id) => byId.get(id)!);
+        const done = picked.filter((esim) => esim.status === 'refunded');
+        if (done.length) {
+          throw new UnprocessableEntityException(
+            `eSIMs ${done.map((e) => e.iccid).join(', ')} were already refunded`,
+          );
+        }
+        // An eSIM of a line refunded whole is already covered by that line.
+        selectedEsims = picked.filter(
+          (esim) => !selectedItemIds.includes(Number(esim.orderItemId)),
+        );
+      }
 
-      const selectedValue = orderItems
-        .filter((item) => selectedItemIds!.includes(Number(item.id)))
-        .reduce((sum, item) => sum + Number(item.vndPrice ?? 0), 0);
+      const itemById = new Map(orderItems.map((i) => [Number(i.id), i]));
+      const selectedValue =
+        orderItems
+          .filter((item) => selectedItemIds.includes(Number(item.id)))
+          .reduce((sum, item) => sum + Number(item.vndPrice ?? 0), 0) +
+        selectedEsims.reduce(
+          (sum, esim) =>
+            sum + esimUnitVnd(itemById.get(Number(esim.orderItemId))),
+          0,
+        );
 
       if (Number(dto.amountVnd) > selectedValue) {
         throw new UnprocessableEntityException(
@@ -2172,31 +2219,63 @@ export class OrdersService {
     // Cancel with suppliers before processing refund. A supplier refusing does
     // not stop the refund — the customer is owed it either way — but the admin
     // is told, so they can chase the supplier for our money (v3 #002).
-    const supplierWarnings = await this.cancelOrderWithSuppliers(
-      order.id,
-      selectedItemIds,
-    );
+    // Only ICCIDs picked = no whole line to cancel; an empty list must NOT fall
+    // through to "the whole order".
+    const supplierWarnings: string[] =
+      !isPartial || selectedItemIds.length
+        ? ((await this.cancelOrderWithSuppliers(
+            order.id,
+            isPartial ? selectedItemIds : undefined,
+          )) ?? [])
+        : [];
+    if (selectedEsims.length) {
+      supplierWarnings.push(
+        ...(await this.cancelEsimsWithSuppliers(selectedEsims, orderItems)),
+      );
+    }
 
     const refund = await this.walletsService.refundOrder(order, dto, adminId);
 
     // Mark the refunded lines so they drop out of revenue/cost reporting and
     // the CMS can show which part of the order was given back. The overview
     // only counts items with status `completed`.
-    if (selectedItemIds?.length) {
-      for (const itemId of selectedItemIds) {
+    for (const itemId of selectedItemIds) {
+      await this.markItemRefunded(itemId);
+    }
+
+    if (!isPartial || selectedItemIds.length) {
+      await this.markRefundedEsims(
+        order.id,
+        isPartial ? selectedItemIds : undefined,
+      );
+    }
+
+    // Single eSIMs: refunded one by one; their line follows once every eSIM
+    // of it has been given back.
+    if (selectedEsims.length) {
+      for (const esim of selectedEsims) {
         try {
-          await this.orderItemsService.update(itemId, {
-            status: 'refunded',
-          } as never);
+          await this.esimsService.update(esim.id, { status: 'refunded' });
         } catch (err) {
           this.logger.error(
-            `refundOrder: failed to mark order item ${itemId} refunded: ${(err as Error).message}`,
+            `refundOrder: failed to mark esim ${esim.id} refunded: ${(err as Error).message}`,
           );
         }
       }
+      const touchedItems = [
+        ...new Set(selectedEsims.map((e) => Number(e.orderItemId))),
+      ];
+      const after = await this.esimsService.findByOrderItemIds(touchedItems);
+      for (const itemId of touchedItems) {
+        const lineEsims = after.filter((e) => Number(e.orderItemId) === itemId);
+        if (
+          lineEsims.length &&
+          lineEsims.every((e) => e.status === 'refunded')
+        ) {
+          await this.markItemRefunded(itemId);
+        }
+      }
     }
-
-    await this.markRefundedEsims(order.id, selectedItemIds);
 
     if (order.attributedPartnerId) {
       const totalOrderValue =
@@ -2279,6 +2358,73 @@ export class OrdersService {
         );
       }
     }
+  }
+
+  private async markItemRefunded(itemId: number): Promise<void> {
+    try {
+      await this.orderItemsService.update(itemId, {
+        status: 'refunded',
+      } as never);
+    } catch (err) {
+      this.logger.error(
+        `refundOrder: failed to mark order item ${itemId} refunded: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Cancel single eSIMs of a line with their supplier (#008, round 4).
+   * esimaccess and MicroEsim cancel per eSIM and local stock is released;
+   * Billion and Gadget Korea only cancel a whole supplier order and Airalo
+   * cannot cancel at all, so for those the admin is told to settle the spare
+   * ICCID with the supplier by hand.
+   *
+   * @returns one line per eSIM the supplier did not cancel, for the admin.
+   */
+  private async cancelEsimsWithSuppliers(
+    esims: Esim[],
+    orderItems: OrderItem[],
+  ): Promise<string[]> {
+    const warnings: string[] = [];
+    const itemById = new Map(orderItems.map((i) => [Number(i.id), i]));
+    for (const esim of esims) {
+      const item = itemById.get(Number(esim.orderItemId));
+      const plan = item ? await this.plansService.findById(item.planId) : null;
+      if (!plan) continue;
+      const label = `ICCID ${esim.iccid} (${plan.provider})`;
+      try {
+        if (plan.provider === 'esimaccess') {
+          if (esim.esimTranNo) {
+            await this.esimAccessService.cancelEsim(esim.esimTranNo);
+          }
+        } else if (plan.provider === 'microesim') {
+          if (item?.orderRequestId && esim.esimTranNo) {
+            await this.microEsimService.terminate(
+              item.orderRequestId,
+              esim.esimTranNo,
+            );
+          }
+        } else if (plan.isLocalInventory) {
+          await this.esimsService.update(esim.id, {
+            userId: null,
+            orderItemId: null,
+            status: 'refunded',
+          });
+        } else {
+          warnings.push(
+            `${label}: nhà cung cấp không hủy được riêng 1 eSIM — cần liên hệ nhà cung cấp để hoàn eSIM này`,
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          `Failed to cancel esim ${esim.id} with provider ${plan.provider}: ${(err as Error).message}`,
+        );
+        warnings.push(
+          `${label}: nhà cung cấp chưa hủy — ${(err as Error).message}`,
+        );
+      }
+    }
+    return warnings;
   }
 
   /** @returns one line per supplier that did not cancel, for the admin. */

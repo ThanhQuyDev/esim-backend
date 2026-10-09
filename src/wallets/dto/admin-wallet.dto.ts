@@ -97,4 +97,19 @@ export class RefundOrderDto {
   @IsInt({ each: true })
   @Type(() => Number)
   orderItemIds?: number[];
+
+  /**
+   * Refund single eSIMs (ICCIDs) out of a line bought in several copies (#008,
+   * test round 4) — the customer who ordered 3 for 2 people gets the spare one
+   * back without cancelling the other two. Each counts at its line's unit
+   * price. Can be combined with `orderItemIds`; an eSIM of a line that is
+   * refunded whole is simply part of that line.
+   */
+  @ApiPropertyOptional({ type: [Number], example: [101] })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsInt({ each: true })
+  @Type(() => Number)
+  esimIds?: number[];
 }
