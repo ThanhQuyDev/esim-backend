@@ -3679,12 +3679,14 @@ export class PartnersService {
               ) AS "esimCount",
               -- The partner buying through their own link (#095).
               (o."userId" IS NOT NULL AND o."userId" = pa."userId") AS "isSelfReferral",
-              -- First paid order this account ever placed on esim.vn, or a
-              -- returning buyer (#021) — same rule as the dashboard tile so the
-              -- two screens cannot disagree.
+              -- New to THIS partner: their first paid order through this
+              -- partner, whatever they bought from esim.vn before ("cũ ta, mới
+              -- người ấy", #014 test round 4). Same rule as the dashboard tile
+              -- so the two screens cannot disagree.
               NOT EXISTS (
                 SELECT 1 FROM "order" prev
                 WHERE prev."userId" = o."userId"
+                  AND prev."attributedPartnerId" = o."attributedPartnerId"
                   AND prev.id <> o.id
                   AND prev."deletedAt" IS NULL
                   AND prev.status IN ('paid', 'completed')
@@ -5477,9 +5479,9 @@ export class PartnersService {
     );
 
     // New vs returning buyers behind this partner's orders (#011). "Mới" is
-    // read from the buyer's own account history: their first paid order on
-    // esim.vn ever, not merely their first through this partner — otherwise
-    // every partner would report the same customer as new.
+    // read per partner (#014, test round 4): a customer is new to this partner
+    // until their first paid order through this partner, whatever they bought
+    // from esim.vn before — "cũ ta, mới người ấy".
     const [customers] = await this.dataSource.query(
       `WITH buyers AS (
          SELECT o."userId" AS user_id, MIN(o."createdAt") AS first_in_range
@@ -5499,6 +5501,7 @@ export class PartnersService {
          SELECT e.id
          FROM "order" e
          WHERE e."userId" = b.user_id
+           AND e."attributedPartnerId" = $1
            AND e."deletedAt" IS NULL
            AND e.status IN ('paid', 'completed')
            AND e."createdAt" < b.first_in_range

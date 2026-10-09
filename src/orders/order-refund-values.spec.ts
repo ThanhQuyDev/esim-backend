@@ -112,3 +112,23 @@ describe('affiliate commission after a partial refund (#010)', () => {
     expect(reversal(44240, refunded, 632000)).toBe(44240);
   });
 });
+
+describe('affiliate commission rate shown on an order (#014)', () => {
+  // Imported here to keep the money helpers' spec in one place.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { commissionShareOfOrder } = require('./orders.service');
+
+  it('should read 7%, not 6.9%, on a discounted 7% order', () => {
+    expect(
+      commissionShareOfOrder(44240, {
+        vndPrice: 0,
+        walletSpentVndAmount: 632000,
+        subtotalVndPrice: 642000,
+      }),
+    ).toBe(7);
+  });
+
+  it('should prefer the rate recorded with the commission', () => {
+    expect(commissionShareOfOrder(1, { vndPrice: 999 }, 7)).toBe(7);
+  });
+});

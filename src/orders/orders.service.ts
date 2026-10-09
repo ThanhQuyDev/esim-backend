@@ -73,13 +73,32 @@ const VND_ROUNDING_UNIT = 1000;
  * the money the order actually took, which is the number they are checking it
  * against anyway.
  */
-function commissionShareOfOrder(
-  commissionVnd: number,
-  order: { subtotalVndPrice?: number | null; vndPrice?: number | null },
+/**
+ * "Tỷ lệ trên giá trị đơn" of an affiliate commission (#014, test round 4).
+ *
+ * The rate the commission was set at wins when it was recorded. Otherwise it
+ * is worked out against what the customer PAID (cash + eXU) — the value the
+ * commission is calculated on. It used to divide by the list total before
+ * the partner's coupon, so a 7% partner read "6.9%" on every discounted
+ * order (44 240 ÷ 642 000 instead of ÷ 632 000).
+ */
+export function commissionShareOfOrder(
+  earnedCommissionVnd: number,
+  order: {
+    vndPrice?: number | string | null;
+    walletSpentVndAmount?: number | string | null;
+    subtotalVndPrice?: number | string | null;
+  },
+  percentSnapshot?: number | null,
 ): number {
-  const base = Number(order.subtotalVndPrice ?? order.vndPrice ?? 0);
-  if (!(base > 0) || !(commissionVnd > 0)) return 0;
-  return Math.round((commissionVnd / base) * 1000) / 10;
+  if (percentSnapshot != null && Number(percentSnapshot) > 0) {
+    return Math.round(Number(percentSnapshot) * 10) / 10;
+  }
+  const paid =
+    Number(order.vndPrice ?? 0) + Number(order.walletSpentVndAmount ?? 0);
+  const base = paid > 0 ? paid : Number(order.subtotalVndPrice ?? 0);
+  if (!(base > 0) || !(earnedCommissionVnd > 0)) return 0;
+  return Math.round((earnedCommissionVnd / base) * 1000) / 10;
 }
 function roundVndToThousands(amount: number): number {
   return Math.round(amount / VND_ROUNDING_UNIT) * VND_ROUNDING_UNIT;
@@ -1826,8 +1845,10 @@ export class OrdersService {
               partnerName: commission.partnerName,
               commissionVnd: commission.commissionVnd,
               commissionPercent: commissionShareOfOrder(
-                commission.commissionVnd,
+                commission.commissionVnd +
+                  (commission.reversedCommissionVnd ?? 0),
                 order,
+                commission.commissionPercentSnapshot,
               ),
               status: commission.status,
             }
@@ -2008,9 +2029,13 @@ export class OrdersService {
             partnerStatus: partnerCommission.partnerStatus,
             linkCode: partnerCommission.linkCode,
             commissionVnd: partnerCommission.commissionVnd,
+            // Against what was earned, so a partial refund does not make the
+            // rate look lower than the partner's tier (#014).
             commissionPercent: commissionShareOfOrder(
-              partnerCommission.commissionVnd,
+              partnerCommission.commissionVnd +
+                (partnerCommission.reversedCommissionVnd ?? 0),
               order,
+              partnerCommission.commissionPercentSnapshot,
             ),
             status: partnerCommission.status,
             rejectionReason: partnerCommission.rejectionReason,
