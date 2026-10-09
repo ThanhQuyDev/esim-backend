@@ -455,7 +455,9 @@ export class OrdersService {
       orderNumber,
       status: 'pending',
       totalAmount: pricing.finalAmount,
-      currency: dto.currency,
+      // `totalAmount` is always dollars (#017): a VND plan's currency here
+      // labelled a dollar figure as đồng on manual / partner orders.
+      currency: 'USD',
       paymentMethod: dto.paymentMethod ?? null,
       paymentId: dto.paymentId ?? null,
       couponCode: pricing.couponCode,
@@ -775,7 +777,9 @@ export class OrdersService {
       orderNumber,
       status: 'pending',
       totalAmount: pricing.finalAmount,
-      currency: dto.currency,
+      // `totalAmount` is always dollars (#017): a VND plan's currency here
+      // labelled a dollar figure as đồng on manual / partner orders.
+      currency: 'USD',
       paymentMethod: null,
       paymentId: null,
       couponCode: pricing.couponCode,
@@ -844,7 +848,7 @@ export class OrdersService {
             orderRequestId: null,
             status: 'pending',
             price: getPlanUsdPrice(item.plan, item.periodNum),
-            currency: dto.currency,
+            currency: 'USD',
             quantity: 1,
             vndPrice: getDiscountedVndPrice(item.plan, item.periodNum),
             vndCostPrice: vndRate ? Math.round(unitCostPrice * vndRate) : 0,
@@ -860,7 +864,8 @@ export class OrdersService {
         orderRequestId: null,
         status: 'pending',
         price: getPlanUsdPrice(item.plan, item.periodNum),
-        currency: item.plan.isLocalInventory ? 'VND' : dto.currency,
+        // `price` is dollars for every plan, local ones included (#017).
+        currency: 'USD',
         quantity: item.quantity,
         vndPrice:
           getDiscountedVndPrice(item.plan, item.periodNum) * item.quantity,
@@ -880,11 +885,15 @@ export class OrdersService {
     dto: SubmitOrderDto,
     planDetails: OrderPlanDetail[],
   ): Promise<OrderPricing> {
-    // totalAmount in USD — exclude local inventory (their price is already VND)
-    const totalAmount = planDetails.reduce((sum, item) => {
-      if (item.plan.isLocalInventory) return sum;
-      return sum + getPlanUsdPrice(item.plan, item.periodNum) * item.quantity;
-    }, 0);
+    // totalAmount in USD, local inventory included (#017, test round 4): its
+    // dollar price comes from `usdPrice`, which the exchange-rate job keeps up
+    // for every plan. Leaving those lines out put a Viettel-only order at $0
+    // and short-changed the total of every mixed order.
+    const totalAmount = planDetails.reduce(
+      (sum, item) =>
+        sum + getPlanUsdPrice(item.plan, item.periodNum) * item.quantity,
+      0,
+    );
     const subtotalVndPrice = planDetails.reduce(
       (sum, item) =>
         sum + getDiscountedVndPrice(item.plan, item.periodNum) * item.quantity,
@@ -1598,6 +1607,10 @@ export class OrdersService {
     // trừ khỏi ví, nên mọi cột doanh thu của đơn phải mang đúng số đó.
     const totalVnd = input.unitPriceVnd * input.quantity;
     await this.orderRepository.update(order.id, {
+      // The dollar total follows the repriced đồng figure (#017).
+      totalAmount:
+        vndRate > 0 ? Math.round((totalVnd / vndRate) * 100) / 100 : 0,
+      currency: 'USD',
       vndPrice: totalVnd,
       subtotalVndPrice: totalVnd,
       payableVndPrice: totalVnd,
