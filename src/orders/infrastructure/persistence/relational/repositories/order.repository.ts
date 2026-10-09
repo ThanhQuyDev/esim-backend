@@ -298,7 +298,7 @@ export class OrdersRelationalRepository implements OrderRepository {
         'vndCostPrice',
       )
       .addSelect(
-        `COALESCE(oi."vndPrice", "order"."vndPrice" + "order"."walletSpentVndAmount")`,
+        `COALESCE(oi."vndPrice", "order"."payableVndPrice" + "order"."walletSpentVndAmount")`,
         'vndPrice',
       )
       .addSelect(

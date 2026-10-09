@@ -86,6 +86,7 @@ export function commissionShareOfOrder(
   earnedCommissionVnd: number,
   order: {
     vndPrice?: number | string | null;
+    payableVndPrice?: number | string | null;
     walletSpentVndAmount?: number | string | null;
     subtotalVndPrice?: number | string | null;
   },
@@ -95,7 +96,8 @@ export function commissionShareOfOrder(
     return Math.round(Number(percentSnapshot) * 10) / 10;
   }
   const paid =
-    Number(order.vndPrice ?? 0) + Number(order.walletSpentVndAmount ?? 0);
+    Number(order.payableVndPrice ?? order.vndPrice ?? 0) +
+    Number(order.walletSpentVndAmount ?? 0);
   const base = paid > 0 ? paid : Number(order.subtotalVndPrice ?? 0);
   if (!(base > 0) || !(earnedCommissionVnd > 0)) return 0;
   return Math.round((earnedCommissionVnd / base) * 1000) / 10;
@@ -2071,7 +2073,8 @@ export class OrdersService {
       order.id,
     );
     const originalOrderValueVnd =
-      Number(order.vndPrice ?? 0) + Number(order.walletSpentVndAmount ?? 0);
+      Number(order.payableVndPrice ?? order.vndPrice ?? 0) +
+      Number(order.walletSpentVndAmount ?? 0);
     const refundedVnd = Number(order.refundedAmountVnd ?? 0);
     const orderValueVnd = Math.max(originalOrderValueVnd - refundedVnd, 0);
     const originalVndCostPrice = Number(order.vndCostPrice ?? 0);
