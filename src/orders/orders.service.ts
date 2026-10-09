@@ -169,6 +169,22 @@ type OrderPricing = {
   referral?: ReferralValidationResult;
 };
 
+/**
+ * Data and duration spelled out in a topup package code, e.g.
+ * "change-plus-7days-3gb-topup" → { "3 GB", 7 } (#021).
+ */
+export function topupFromPackageCode(code: string): {
+  dataText: string | null;
+  durationDays: number | null;
+} {
+  const days = code.match(/(\d+)\s*days?\b/i);
+  const data = code.match(/(\d+(?:\.\d+)?)\s*(gb|mb)\b/i);
+  return {
+    dataText: data ? `${data[1]} ${data[2].toUpperCase()}` : null,
+    durationDays: days ? Number(days[1]) : null,
+  };
+}
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -1890,6 +1906,76 @@ export class OrdersService {
    * fresh provider lookup — a catalogue that has moved on must not rewrite
    * history on a past order.
    */
+  /**
+   * Topups placed before the package snapshot existed (22/09/2026) have no
+   * package name, data, duration, and a cost of 0đ (#021, test round 4).
+   * Airalo still lists the package for the eSIM, so the snapshot is read back
+   * from it once and stored on the order; failing that, what the package code
+   * itself says ("change-plus-7days-3gb-topup" → 3 GB, 7 days) is used.
+   * Mutates `order` so the page shows the figures on this very request.
+   */
+  private async healTopupSnapshot(order: Order): Promise<void> {
+    const missingSnapshot = !order.topupPackageName;
+    const missingCost = !(Number(order.vndCostPrice) > 0);
+    if (!missingSnapshot && !missingCost) return;
+
+    const patch: Partial<Order> = {};
+    if (
+      order.topupProvider?.toUpperCase() === 'AIRALO' &&
+      order.targetIccid &&
+      order.topupPackageId
+    ) {
+      try {
+        const packages = await this.airaloService.listTopupPackages(
+          order.targetIccid,
+        );
+        const pkg = packages.find((p) => p.id === order.topupPackageId);
+        if (pkg) {
+          if (missingSnapshot) {
+            patch.topupPackageName = pkg.title ?? null;
+            patch.topupDataText = pkg.data ?? null;
+            patch.topupDurationDays = pkg.day ?? null;
+            patch.topupIsUnlimited = !!pkg.is_unlimited;
+          }
+          if (missingCost && Number(pkg.net_price) > 0) {
+            const rate = await this.exchangeRateService.getUsdToVndRate();
+            patch.vndCostPrice = roundVndToThousands(
+              Number(pkg.net_price) * rate,
+            );
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `healTopupSnapshot: Airalo lookup failed for ${order.orderNumber}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    if (missingSnapshot && !patch.topupPackageName && order.topupPackageId) {
+      const parsed = topupFromPackageCode(order.topupPackageId);
+      if (parsed.dataText || parsed.durationDays) {
+        patch.topupDataText = parsed.dataText;
+        patch.topupDurationDays = parsed.durationDays;
+        patch.topupPackageName = [
+          parsed.dataText,
+          parsed.durationDays ? `${parsed.durationDays} days` : null,
+        ]
+          .filter(Boolean)
+          .join(' - ');
+      }
+    }
+
+    if (Object.keys(patch).length === 0) return;
+    Object.assign(order, patch);
+    try {
+      await this.orderRepository.update(order.id, patch);
+    } catch (err) {
+      this.logger.warn(
+        `healTopupSnapshot: could not store the snapshot of ${order.orderNumber}: ${(err as Error).message}`,
+      );
+    }
+  }
+
   private async buildTopupDetail(
     order: Order,
   ): Promise<AdminOrderTopupDto | null> {
@@ -1902,13 +1988,21 @@ export class OrdersService {
       planName = plan?.name ?? null;
     }
 
-    // The order the eSIM came from, so an admin can jump back to the purchase.
+    // The order the eSIM came from, so an admin can jump back to the purchase
+    // — shown by its order number, not its id (#021, test round 4).
     let originalOrderId: number | null = null;
+    let originalOrderNumber: string | null = null;
     if (esim?.orderItemId != null) {
       const orderItem = await this.orderItemsService.findById(esim.orderItemId);
       originalOrderId =
         orderItem?.orderId != null ? Number(orderItem.orderId) : null;
+      if (originalOrderId != null) {
+        const original = await this.orderRepository.findById(originalOrderId);
+        originalOrderNumber = original?.orderNumber ?? null;
+      }
     }
+
+    await this.healTopupSnapshot(order);
 
     return {
       targetIccid: order.targetIccid,
@@ -1930,6 +2024,7 @@ export class OrdersService {
             expiresAt: esim.expiresAt ?? null,
             activatedAt: esim.activatedAt ?? null,
             originalOrderId,
+            originalOrderNumber,
           }
         : null,
     };

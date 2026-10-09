@@ -22,6 +22,19 @@ describe('Topup detail on an order (#015)', () => {
     internals.orderItemsService = {
       findById: jest.fn().mockResolvedValue(opts.orderItem ?? null),
     };
+    internals.orderRepository = {
+      findById: jest.fn((id: number) =>
+        Promise.resolve({ id, orderNumber: `ORD-${id}` }),
+      ),
+      update: jest.fn().mockResolvedValue({}),
+    };
+    internals.airaloService = {
+      listTopupPackages: jest.fn().mockResolvedValue([]),
+    };
+    internals.exchangeRateService = {
+      getUsdToVndRate: jest.fn().mockResolvedValue(26000),
+    };
+    internals.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
     return {
       service,
       build: () =>
@@ -42,6 +55,7 @@ describe('Topup detail on an order (#015)', () => {
     topupDataText: '3 GB',
     topupDurationDays: 30,
     topupIsUnlimited: false,
+    vndCostPrice: 171000,
   };
 
   it('should returns null for an ordinary purchase', async () => {
@@ -130,6 +144,22 @@ describe('Topup detail on an order (#015)', () => {
 
     await expect(build()).resolves.toMatchObject({
       targetEsim: { planName: null, originalOrderId: null },
+    });
+  });
+});
+
+describe('topup package code fallback (#021, test round 4)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { topupFromPackageCode } = require('./orders.service');
+
+  it('should read data and duration out of an Airalo package code', () => {
+    expect(topupFromPackageCode('change-plus-7days-3gb-topup')).toEqual({
+      dataText: '3 GB',
+      durationDays: 7,
+    });
+    expect(topupFromPackageCode('chinacom-30days-500mb-topup')).toEqual({
+      dataText: '500 MB',
+      durationDays: 30,
     });
   });
 });

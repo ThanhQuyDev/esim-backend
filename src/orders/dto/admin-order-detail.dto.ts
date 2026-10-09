@@ -314,6 +314,10 @@ export class AdminTopupTargetEsimDto {
   /** The order this eSIM was originally bought on, when there was one. */
   @ApiPropertyOptional({ type: Number })
   originalOrderId: number | null;
+
+  /** Its order number, which is what the page shows and links (#021). */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  originalOrderNumber?: string | null;
 }
 
 /** An order's money before and after its refunds (#009, test round 4). */
