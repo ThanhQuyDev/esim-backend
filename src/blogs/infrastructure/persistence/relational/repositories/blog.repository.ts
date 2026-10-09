@@ -72,6 +72,11 @@ export class BlogRelationalRepository implements BlogRepository {
 
     const plans = await this.planRepository
       .createQueryBuilder('plan')
+      // A query builder skips the entity's eager relations, so without these the
+      // article got plans with no destination: no flag, no country name and no
+      // "Xem tất cả gói cước" link (#034, test round 4).
+      .leftJoinAndSelect('plan.destination', 'destination')
+      .leftJoinAndSelect('plan.region', 'region')
       .where('plan.slug IN (:...wanted)', { wanted })
       .orWhere('plan."providerPlanId" IN (:...wanted)', { wanted })
       .getMany();
@@ -327,6 +332,11 @@ export class BlogRelationalRepository implements BlogRepository {
 
     const plans = await this.planRepository
       .createQueryBuilder('plan')
+      // A query builder skips the entity's eager relations, so without these the
+      // article got plans with no destination: no flag, no country name and no
+      // "Xem tất cả gói cước" link (#034, test round 4).
+      .leftJoinAndSelect('plan.destination', 'destination')
+      .leftJoinAndSelect('plan.region', 'region')
       .where('plan.slug IN (:...codes)', { codes })
       .orWhere('plan."providerPlanId" IN (:...codes)', { codes })
       .getMany();

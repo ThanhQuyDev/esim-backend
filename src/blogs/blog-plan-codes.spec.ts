@@ -58,6 +58,7 @@ describe('Blog related plans by code (#047)', () => {
         }),
       ),
     );
+    planQb.leftJoinAndSelect = jest.fn(chain());
     planQb.getMany = jest.fn().mockResolvedValue(planRows);
 
     const repo = new BlogRelationalRepository(
@@ -189,5 +190,20 @@ describe('Blog related plans by code (#047)', () => {
 
     expect(first.planIds).toEqual([1]);
     expect(second.planIds).toEqual([2]);
+  });
+
+  it('should load each plan with its destination and region (#034, round 4)', async () => {
+    // A query builder ignores eager relations: without the joins the article
+    // lost its flags, country name and "Xem tất cả gói cước" link.
+    const { repo, planQb } = makeRepo([plan()]);
+    await resolve(repo, [{ id: 'b1', planCodes: ['JC056'] }]);
+    expect(planQb.leftJoinAndSelect).toHaveBeenCalledWith(
+      'plan.destination',
+      'destination',
+    );
+    expect(planQb.leftJoinAndSelect).toHaveBeenCalledWith(
+      'plan.region',
+      'region',
+    );
   });
 });
