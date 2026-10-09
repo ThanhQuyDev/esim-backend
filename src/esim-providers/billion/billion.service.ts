@@ -29,8 +29,8 @@ import {
   billionPlanVariants,
   billionRegionName,
   isRawBillionRegionName,
-  parseBillionPlanId,
 } from './billion-catalogue';
+import { networkSpeed, slugify, uniqueOperators } from '../catalogue-naming';
 
 const PROVIDER = 'billion';
 
@@ -265,10 +265,10 @@ export class BillionService {
       .map((c) => (c.mcc ?? '').trim())
       .filter(Boolean);
     let destinationId: number | null = null;
-    let regionId: number | null = null;
+    let region: { id: number; slug: string } | null = null;
 
     if (codes.length > 1) {
-      regionId = (await this.resolveRegion(product, codes)).id;
+      region = await this.resolveRegion(product, codes);
     } else if (codes[0]) {
       destinationId = (await this.resolveDestinationByCode(codes[0])).id;
     } else {
@@ -289,13 +289,7 @@ export class BillionService {
     );
 
     for (const variant of variants) {
-      await this.upsertPlan(
-        product,
-        variant,
-        destinationId,
-        regionId,
-        hkdToUsd,
-      );
+      await this.upsertPlan(product, variant, destinationId, region, hkdToUsd);
     }
   }
 
@@ -330,20 +324,30 @@ export class BillionService {
     const existing = await this.regionsService.findByExternalCode(externalCode);
 
     const name = billionRegionName(product);
-    let region: { id: number };
+    let region: { id: number; slug: string };
     if (existing) {
       region = existing;
       // Regions the first syncs created were named after whichever product
-      // came first ("Global 67-3GB/day,128kbps-eSIM Carrier of 90 days").
-      // Rename those; a name the CMS set is left alone.
-      if (name && isRawBillionRegionName(existing.name)) {
-        await this.regionsService.update(existing.id, { name });
+      // came first ("Global 67-3GB/day,128kbps-eSIM Carrier of 90 days") and
+      // slugged after every country code (#003). Fix those; a name or slug the
+      // CMS set is left alone.
+      const patch: { name?: string; slug?: string } = {};
+      if (name && isRawBillionRegionName(existing.name)) patch.name = name;
+      if (existing.slug === externalCode) {
+        patch.slug = await this.uniqueRegionSlug(
+          slugify(patch.name ?? existing.name),
+          existing.id,
+        );
+      }
+      if (patch.name || patch.slug) {
+        await this.regionsService.update(existing.id, patch);
+        region = { id: existing.id, slug: patch.slug ?? existing.slug };
       }
     } else {
       try {
         region = await this.regionsService.create({
           name,
-          slug: externalCode,
+          slug: await this.uniqueRegionSlug(slugify(name), null),
           externalCode,
           isActive: true,
         });
@@ -366,11 +370,25 @@ export class BillionService {
     return region;
   }
 
+  /** A region slug no other region holds: `base`, `base-bl`, `base-bl-2`… */
+  private async uniqueRegionSlug(
+    base: string,
+    regionId: number | null,
+  ): Promise<string> {
+    const root = base || 'region';
+    for (let i = 0; i < 50; i++) {
+      const slug = i === 0 ? root : i === 1 ? `${root}-bl` : `${root}-bl-${i}`;
+      const owner = await this.regionsService.findBySlug(slug);
+      if (!owner || owner.id === regionId) return slug;
+    }
+    return `${root}-bl-${Date.now().toString(36)}`;
+  }
+
   private async upsertPlan(
     product: BillionProduct,
     variant: BillionPlanVariant,
     destinationId: number | null,
-    regionId: number | null,
+    region: { id: number; slug: string } | null,
     /** Bao nhiêu USD cho một HKD, lấy một lần cho cả lượt đồng bộ. */
     hkdToUsd: number,
   ) {
@@ -384,19 +402,29 @@ export class BillionService {
     // 16-char skuId there aborted the whole catalogue sync partway through.
     const locationCode = codes[0] || product.skuId;
     const mccCode = codes[0] && codes[0].length <= 10 ? codes[0] : null;
+    const regionId = region?.id ?? null;
     const throttleKbps = parseFloat(product.limitFlowSpeed ?? '') || 0;
-    const slug = await this.uniquePlanSlug(
-      this.buildPlanSlug(
-        regionId ? codes.join('-') : locationCode,
-        dataMb,
-        days,
-        type,
-        throttleKbps,
-      ),
+    // A regional plan is slugged after its region, not after every country
+    // code it covers (#003).
+    const baseSlug = this.buildPlanSlug(
+      region ? region.slug : locationCode,
+      dataMb,
+      days,
+      type,
+      throttleKbps,
+    );
+    // Matched by the supplier's plan id, so a slug format change renames the
+    // row instead of creating a duplicate next to it.
+    const existing =
+      (await this.plansService.findByProviderPlanId(
+        PROVIDER,
+        variant.providerPlanId,
+      )) ?? (await this.plansService.findBySlug(baseSlug));
+    const slug = await this.plansService.uniqueSyncedPlanSlug(
+      baseSlug,
+      PROVIDER,
       variant.providerPlanId,
     );
-
-    const existing = await this.plansService.findBySlug(slug);
 
     // `variant.cost` là settlementPrice của F003, tính bằng HKD — xem
     // BILLION_PRICE_CURRENCY. Làm tròn tới cent để không lưu một cái đuôi thập
@@ -404,10 +432,15 @@ export class BillionService {
     const costPrice = Math.round(variant.cost * hkdToUsd * 100) / 100;
 
     const apn = product.apn || product.country?.[0]?.apn || null;
-    const operator = product.country
-      ?.map((c) => c.operator)
-      .filter(Boolean)
-      .join(',');
+    // Carriers sit in each country's `operatorInfo`, not in `operator` —
+    // reading the latter left every Billion plan without carriers (#003).
+    const carriers = (product.country ?? []).flatMap((c) => [
+      c.operator,
+      ...(c.operatorInfo ?? []).map((o) => o.operator),
+    ]);
+    const generations = (product.country ?? []).flatMap((c) =>
+      (c.operatorInfo ?? []).map((o) => o.network),
+    );
 
     const planData = {
       provider: PROVIDER,
@@ -426,8 +459,9 @@ export class BillionService {
       call: null,
       type,
       topUp: false,
-      speed: null,
-      operatorName: operator || null,
+      slug,
+      speed: networkSpeed(generations),
+      operatorName: uniqueOperators(carriers),
       fupSpeed: variant.fupSpeed,
       isAbleMultidate: false,
       isKyc: false,
@@ -441,7 +475,7 @@ export class BillionService {
     if (existing) {
       return this.plansService.update(existing.id, planData);
     }
-    return this.plansService.create({ ...planData, slug });
+    return this.plansService.create(planData);
   }
 
   private formatHotSpotAllow(type: string, dataMb: number): string | null {
@@ -470,26 +504,6 @@ export class BillionService {
     return `${code}${dataLabel}${throttleLabel}-${days}days-${type}-bl`;
   }
 
-  /**
-   * BILLION reuses (country, days, type) across dozens of SKUs that differ only
-   * in daily allowance, throttle or carrier validity, so one descriptive slug
-   * was shared by many products and every sync overwrote the same row —
-   * 1866 products collapsed into 211. Keep the readable slug where it is free,
-   * and fall back to a SKU-derived suffix so no product is lost.
-   */
-  private async uniquePlanSlug(
-    baseSlug: string,
-    providerPlanId: string,
-  ): Promise<string> {
-    const { skuId } = parseBillionPlanId(providerPlanId);
-    for (const suffix of ['', `-${skuId.slice(-6)}`, `-${skuId}`]) {
-      const slug = `${baseSlug}${suffix}`;
-      const existing = await this.plansService.findBySlug(slug);
-      if (!existing || existing.providerPlanId === providerPlanId) return slug;
-    }
-    return `${baseSlug}-${skuId}`;
-  }
-
   private toSlug(name: string): string {
     return name
       .toLowerCase()
@@ -506,6 +520,7 @@ export class BillionService {
    * caller stores as the order-item `orderRequestId` for later lookup /
    * cancellation and to match incoming N009 webhooks.
    */
+
   async submitOrder(params: {
     channelOrderId: string;
     email: string;

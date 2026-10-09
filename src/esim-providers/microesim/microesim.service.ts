@@ -23,6 +23,13 @@ import {
   MicroEsimSubscribeResult,
   MicroEsimTopupDetailResult,
 } from './microesim-api.types';
+import {
+  isCountryCodeList,
+  networkSpeed,
+  shortRegionName,
+  slugify,
+  uniqueOperators,
+} from '../catalogue-naming';
 
 const PROVIDER = 'microesim';
 /** Fallback HKD→USD rate if the live exchange lookup fails. */
@@ -211,6 +218,11 @@ export class MicroEsimService {
         PROVIDER,
         syncStartedAt,
       );
+      // Rows an older mapping left behind under the same supplier plan id.
+      await this.plansService.softDeleteSupersededProviderPlans(
+        PROVIDER,
+        syncStartedAt,
+      );
 
       this.logger.log(
         `MicroEsim plan sync completed. ${itemsSynced}/${plans.length} plans synced.`,
@@ -255,7 +267,7 @@ export class MicroEsimService {
 
     if (isRegion) {
       const region = await this.resolveRegion(item, codes);
-      await this.upsertPlan(item, null, region.id, hkdToUsd);
+      await this.upsertPlan(item, null, region, hkdToUsd);
     } else {
       const destination = await this.resolveDestinationByCode(codes[0] || '');
       await this.upsertPlan(item, destination.id, null, hkdToUsd);
@@ -291,15 +303,30 @@ export class MicroEsimService {
       .map((c) => c.toLowerCase())
       .join('-')}`;
     const existing = await this.regionsService.findByExternalCode(externalCode);
+    // The pack's own name ("Global 126"), not its country codes (#003).
+    const name = shortRegionName(item.channel_dataplan_name) || item.code;
 
-    let region: { id: number };
+    let region: { id: number; slug: string };
     if (existing) {
       region = existing;
+      // Rename what the first syncs generated; a name or slug set in the CMS
+      // is left alone.
+      const patch: { name?: string; slug?: string } = {};
+      if (isCountryCodeList(existing.name) && name !== existing.name) {
+        patch.name = name;
+      }
+      if (existing.slug === externalCode) {
+        patch.slug = await this.uniqueRegionSlug(slugify(name), existing.id);
+      }
+      if (patch.name || patch.slug) {
+        await this.regionsService.update(existing.id, patch);
+        region = { id: existing.id, slug: patch.slug ?? existing.slug };
+      }
     } else {
       try {
         region = await this.regionsService.create({
-          name: item.code,
-          slug: externalCode,
+          name,
+          slug: await this.uniqueRegionSlug(slugify(name), null),
           externalCode,
           isActive: true,
         });
@@ -322,24 +349,52 @@ export class MicroEsimService {
     return region;
   }
 
+  /** A region slug no other region holds: `base`, `base-mi`, `base-mi-2`… */
+  private async uniqueRegionSlug(
+    base: string,
+    regionId: number | null,
+  ): Promise<string> {
+    const root = base || 'region';
+    for (let i = 0; i < 50; i++) {
+      const slug = i === 0 ? root : i === 1 ? `${root}-mi` : `${root}-mi-${i}`;
+      const owner = await this.regionsService.findBySlug(slug);
+      if (!owner || owner.id === regionId) return slug;
+    }
+    return `${root}-mi-${Date.now().toString(36)}`;
+  }
+
   private async upsertPlan(
     item: MicroEsimDataplan,
     destinationId: number | null,
-    regionId: number | null,
+    region: { id: number; slug: string } | null,
     hkdToUsd: number,
   ) {
+    const regionId = region?.id ?? null;
     const { type, dataMb } = this.parseDataAndType(item);
     const days = item.day;
 
     const locationCode = (item.code ?? '').split(',')[0]?.trim() || item.code;
-    const slug = this.buildPlanSlug(
-      regionId ? item.code.replace(/,/g, '-') : locationCode,
+    // A regional plan is slugged after its region ("global-126-50gb-30days-
+    // fixed-mi"), not after every country code it covers (#003).
+    const baseSlug = this.buildPlanSlug(
+      region ? region.slug : locationCode,
       dataMb,
       days,
       type,
     );
 
-    const existing = await this.plansService.findBySlug(slug);
+    // Matched by the supplier's plan id, so a slug format change renames the
+    // row instead of creating a duplicate next to it.
+    const existing =
+      (await this.plansService.findByProviderPlanId(
+        PROVIDER,
+        item.channel_dataplan_id,
+      )) ?? (await this.plansService.findBySlug(baseSlug));
+    const slug = await this.plansService.uniqueSyncedPlanSlug(
+      baseSlug,
+      PROVIDER,
+      item.channel_dataplan_id,
+    );
 
     const rawPrice = parseFloat(item.price) || 0;
     const currency = (item.currency || 'USD').toUpperCase();
@@ -365,8 +420,9 @@ export class MicroEsimService {
       call: null,
       type,
       topUp: false,
-      speed: null,
-      operatorName: this.parseOperators(item.networks) || null,
+      slug,
+      speed: networkSpeed(this.networkSegments(item.networks)),
+      operatorName: uniqueOperators(this.parseOperators(item.networks)),
       fupSpeed: item.rule_desc || null,
       isAbleMultidate: false,
       isKyc,
@@ -384,7 +440,7 @@ export class MicroEsimService {
       return this.plansService.update(existing.id, planData);
     }
 
-    return this.plansService.create({ ...planData, slug });
+    return this.plansService.create(planData);
   }
 
   /**
@@ -426,20 +482,23 @@ export class MicroEsimService {
       : Math.round(value);
   }
 
-  /** Extract operator names from a networks string like 'JP:Docomo(IIJ)[4G]|'. */
-  private parseOperators(networks: string | undefined): string {
-    if (!networks) return '';
-    return networks
+  /** The `CC:Carrier[4G;LTE]` segments of a networks string. */
+  private networkSegments(networks: string | undefined): string[] {
+    return (networks ?? '')
       .split('|')
       .map((seg) => seg.trim())
-      .filter(Boolean)
+      .filter(Boolean);
+  }
+
+  /** Operator names from a networks string like 'JP:Docomo(IIJ)[4G]|'. */
+  private parseOperators(networks: string | undefined): string[] {
+    return this.networkSegments(networks)
       .map((seg) => {
         const colon = seg.indexOf(':');
         const namePart = colon >= 0 ? seg.slice(colon + 1) : seg;
         return namePart.replace(/\[.*?\]/g, '').trim();
       })
-      .filter(Boolean)
-      .join(',');
+      .filter(Boolean);
   }
 
   private formatHotSpotAllow(type: string, dataMb: number): string | null {

@@ -42,6 +42,14 @@ export abstract class PlanRepository {
 
   abstract findBySlug(slug: Plan['slug']): Promise<NullableType<Plan>>;
 
+  abstract findByProviderPlanId(
+    provider: string,
+    providerPlanId: string,
+  ): Promise<NullableType<Plan>>;
+
+  /** Whether any row holds the slug, soft-deleted ones included. */
+  abstract slugOwner(slug: string): Promise<NullableType<Plan>>;
+
   abstract update(
     id: Plan['id'],
     payload: DeepPartial<Plan>,

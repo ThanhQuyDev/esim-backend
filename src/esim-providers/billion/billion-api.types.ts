@@ -28,6 +28,12 @@ export interface BillionCountry {
   authenticationType?: string;
   apnTypeDesc?: string;
   operator?: string;
+  /** Carriers of this country and their generation ("5G", "4G"). */
+  operatorInfo?: Array<{
+    operator?: string;
+    network?: string;
+    priority?: string;
+  }>;
 }
 
 /**

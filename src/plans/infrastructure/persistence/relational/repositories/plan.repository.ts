@@ -243,6 +243,25 @@ export class PlansRelationalRepository implements PlanRepository {
     return entity ? PlanMapper.toDomain(entity) : null;
   }
 
+  async findByProviderPlanId(
+    provider: string,
+    providerPlanId: string,
+  ): Promise<NullableType<Plan>> {
+    const entity = await this.plansRepository.findOne({
+      where: { provider, providerPlanId },
+      order: { lastSyncedAt: { direction: 'DESC', nulls: 'LAST' }, id: 'DESC' },
+    });
+    return entity ? PlanMapper.toDomain(entity) : null;
+  }
+
+  async slugOwner(slug: string): Promise<NullableType<Plan>> {
+    const entity = await this.plansRepository.findOne({
+      where: { slug },
+      withDeleted: true,
+    });
+    return entity ? PlanMapper.toDomain(entity) : null;
+  }
+
   async update(id: Plan['id'], payload: Partial<Plan>): Promise<Plan> {
     const entity = await this.plansRepository.findOne({
       where: { id: Number(id) },
@@ -624,7 +643,10 @@ export class PlansRelationalRepository implements PlanRepository {
           AND (p."lastSyncedAt" IS NULL OR p."lastSyncedAt" < $2)
           AND EXISTS (SELECT 1 FROM "plan" q
                        WHERE q."provider" = p."provider"
-                         AND q."providerPlanId" = p."providerPlanId"
+                         AND (q."providerPlanId" = p."providerPlanId"
+                              -- Billion: an old single row for a sku whose
+                              -- durations now live on "<sku>:<copies>" rows.
+                              OR q."providerPlanId" LIKE p."providerPlanId" || ':%')
                          AND q."id" <> p."id" AND q."deletedAt" IS NULL
                          AND q."lastSyncedAt" >= $2)
           AND NOT EXISTS (SELECT 1 FROM "order_item" oi WHERE oi."planId" = p."id")`,

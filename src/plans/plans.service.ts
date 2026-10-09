@@ -292,6 +292,40 @@ export class PlansService {
     return this.plansRepository.findBySlug(slug);
   }
 
+  /** The live row a supplier sync last wrote for this provider plan id. */
+  findByProviderPlanId(
+    provider: string,
+    providerPlanId: string,
+  ): Promise<NullableType<Plan>> {
+    return this.plansRepository.findByProviderPlanId(provider, providerPlanId);
+  }
+
+  /**
+   * A slug for a synced plan that no OTHER provider plan holds — soft-deleted
+   * rows included, since the unique index covers them too. Tries `base`, then
+   * `base-<last 6 of the id>`, then `base-<id>`.
+   */
+  async uniqueSyncedPlanSlug(
+    base: string,
+    provider: string,
+    providerPlanId: string,
+  ): Promise<string> {
+    const tail = providerPlanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    for (const suffix of ['', `-${tail.slice(-6)}`, `-${tail}`]) {
+      const slug = `${base}${suffix}`;
+      const owner = await this.plansRepository.slugOwner(slug);
+      if (
+        !owner ||
+        (owner.provider === provider &&
+          owner.providerPlanId === providerPlanId &&
+          !owner.deletedAt)
+      ) {
+        return slug;
+      }
+    }
+    return `${base}-${tail}-${Date.now().toString(36)}`;
+  }
+
   async update(
     id: Plan['id'],
     updatePlanDto: UpdatePlanDto,
