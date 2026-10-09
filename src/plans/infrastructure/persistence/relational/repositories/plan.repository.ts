@@ -136,7 +136,10 @@ export class PlansRelationalRepository implements PlanRepository {
       where.provider = In(filterOptions.provider);
     }
     if (filterOptions?.apn) {
-      where.apn = filterOptions.apn;
+      // One APN or several, any of them matching (#018, test round 4).
+      where.apn = Array.isArray(filterOptions.apn)
+        ? In(filterOptions.apn)
+        : filterOptions.apn;
     }
     if (filterOptions?.isNonHkIp !== undefined) {
       where.isNonHkIp = filterOptions.isNonHkIp;
@@ -810,7 +813,10 @@ export class PlansRelationalRepository implements PlanRepository {
     // #010 — APN is matched exactly: it is picked from a select box of the
     // distinct values, not typed.
     if (f?.apn) {
-      qb.andWhere('plan."apn" = :apn', { apn: f.apn });
+      // One APN or several, any of them matching (#018, test round 4).
+      qb.andWhere('plan."apn" IN (:...apns)', {
+        apns: Array.isArray(f.apn) ? f.apn : [f.apn],
+      });
     }
     if (f?.isNonHkIp !== undefined) {
       qb.andWhere('COALESCE(plan."isNonHkIp", false) = :isNonHkIp', {

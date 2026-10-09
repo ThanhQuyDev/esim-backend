@@ -75,13 +75,13 @@ export class FilterPlanDto {
   provider?: string[];
 
   @ApiPropertyOptional({
-    type: String,
+    oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
     description:
-      'Exact APN, chosen from the distinct values in /plans/apn-options (#010)',
+      'Exact APN(s), chosen from /plans/apn-options (#010). Several = any of them (#018, test round 4).',
   })
   @IsOptional()
-  @IsString()
-  apn?: string;
+  @IsString({ each: true })
+  apn?: string | string[];
 
   @ApiPropertyOptional({
     type: Boolean,
