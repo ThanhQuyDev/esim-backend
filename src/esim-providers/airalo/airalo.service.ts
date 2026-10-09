@@ -448,11 +448,14 @@ export class AiraloService {
       ),
     );
 
+    // Read defensively: Airalo has already accepted the topup by now, and a
+    // reply shaped differently must not turn a done topup into a "failed" one
+    // that sits in MANUAL_INTERVENTION (#026, test round 4).
     this.logger.log(
-      `Airalo topup submitted: id=${data.data.id}, code=${data.data.code}`,
+      `Airalo topup submitted: id=${data?.data?.id ?? '?'}, code=${data?.data?.code ?? '?'}`,
     );
 
-    return data.data;
+    return data?.data;
   }
 
   async getDataUsage(iccid: string): Promise<AiraloUsageResponse['data']> {

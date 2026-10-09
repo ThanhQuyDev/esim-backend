@@ -285,7 +285,10 @@ export class EsimsRelationalRepository implements EsimRepository {
          FROM "order"
         WHERE "targetIccid" = ANY($1)
           AND "orderType" = 'TOPUP'
-          AND "status" = 'paid'
+          -- A topup that went through ends as "completed" — "paid" only means
+          -- the money is in and the provider call is still to come. Counting
+          -- "paid" alone left every successful topup unmarked (#026, round 4).
+          AND "status" IN ('paid', 'completed')
           AND "deletedAt" IS NULL
         GROUP BY "targetIccid"`,
       [iccids],
@@ -336,7 +339,10 @@ export class EsimsRelationalRepository implements EsimRepository {
          FROM "order"
         WHERE "targetIccid" = $1
           AND "orderType" = 'TOPUP'
-          AND "status" = 'paid'
+          -- A topup that went through ends as "completed" — "paid" only means
+          -- the money is in and the provider call is still to come. Counting
+          -- "paid" alone left every successful topup unmarked (#026, round 4).
+          AND "status" IN ('paid', 'completed')
           AND "deletedAt" IS NULL
         ORDER BY "createdAt" DESC`,
       [iccid],
