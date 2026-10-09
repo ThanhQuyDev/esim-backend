@@ -98,6 +98,15 @@ export class Esim {
   @ApiPropertyOptional()
   activatedAt: Date | null;
 
+  /**
+   * What the admin list shows and filters by: sold / active / expired… worked
+   * out from the stored status and the activation / expiry dates (#024).
+   */
+  @ApiPropertyOptional({
+    enum: ['available', 'sold', 'active', 'expired', 'deactivated', 'refunded'],
+  })
+  lifecycleStatus?: string;
+
   @ApiPropertyOptional({ type: String })
   esimTranNo: string | null;
 

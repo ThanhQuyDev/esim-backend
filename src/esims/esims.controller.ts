@@ -65,6 +65,7 @@ import {
   maskIccid,
   parseEsimLookupToken,
 } from './esim-lookup-token';
+import { esimLifecycleStatus } from './esim-lifecycle';
 
 @ApiTags('Esims')
 @Controller({ path: 'esims', version: '1' })
@@ -260,6 +261,11 @@ export class EsimsController {
       paginationOptions: { page, limit },
     });
 
+    // The lifecycle status the admin reads and filters by (#024).
+    for (const esim of data) {
+      esim.lifecycleStatus = esimLifecycleStatus(esim, esim.plan);
+    }
+
     return infinityPagination(data, { page, limit }, count);
   }
 
@@ -294,8 +300,11 @@ export class EsimsController {
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: String, required: true })
-  findOne(@Param('id') id: Esim['id']): Promise<NullableType<Esim>> {
-    return this.esimsService.findByIdWithRelations(id);
+  async findOne(@Param('id') id: Esim['id']): Promise<NullableType<Esim>> {
+    const esim = await this.esimsService.findByIdWithRelations(id);
+    // Same lifecycle status as the list (#024).
+    if (esim) esim.lifecycleStatus = esimLifecycleStatus(esim, esim.plan);
+    return esim;
   }
 
   @ApiOkResponse({ type: Esim })

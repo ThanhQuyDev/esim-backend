@@ -187,6 +187,22 @@ export function topupFromPackageCode(code: string): {
   };
 }
 
+/**
+ * Expiry of a local eSIM from the day it is sold (#024, test round 4): a
+ * Viettel travel eSIM of 15 days runs 15 days from the purchase — no
+ * Vietnamese carrier reports activation, so buying it is starting it. A
+ * domestic eSIM has no end ("Vô thời hạn"), so its expiry is cleared.
+ */
+export function localEsimExpiry(
+  plan: { isDomesticEsim?: boolean | null; durationDays?: number | null },
+  soldAt: Date = new Date(),
+): { expiresAt: Date | null } | Record<string, never> {
+  if (plan.isDomesticEsim) return { expiresAt: null };
+  const days = Number(plan.durationDays ?? 0);
+  if (!(days > 0)) return {};
+  return { expiresAt: new Date(soldAt.getTime() + days * 24 * 60 * 60 * 1000) };
+}
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -683,6 +699,7 @@ export class OrdersService {
             orderItemId: orderItem.id,
             userId,
             status: 'sold',
+            ...localEsimExpiry(item.plan),
           });
         }
 
@@ -1449,6 +1466,7 @@ export class OrdersService {
             orderItemId: item.id,
             userId: order.userId,
             status: 'sold',
+            ...localEsimExpiry(item.plan),
           });
         }
 

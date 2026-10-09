@@ -8,6 +8,7 @@ import { Esim } from '../../../../domain/esim';
 import { EsimRepository, EsimTopupSummary } from '../../esim.repository';
 import { EsimMapper } from '../mappers/esim.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { ESIM_LIFECYCLE_SQL } from '../../../../esim-lifecycle';
 
 @Injectable()
 export class EsimsRelationalRepository implements EsimRepository {
@@ -68,8 +69,20 @@ export class EsimsRelationalRepository implements EsimRepository {
     qb: SelectQueryBuilder<EsimEntity>,
     filterOptions?: FilterEsimDto | null,
   ): void {
-    if (filterOptions?.status) {
-      qb.andWhere('esim.status = :status', { status: filterOptions.status });
+    if (filterOptions?.status && filterOptions.includeAll) {
+      // The admin list filters on the lifecycle status it shows, and takes
+      // several at once — picking two used to drop the filter (#024).
+      const statuses = Array.isArray(filterOptions.status)
+        ? filterOptions.status
+        : [filterOptions.status];
+      qb.andWhere(`${ESIM_LIFECYCLE_SQL} IN (:...lifecycleStatuses)`, {
+        lifecycleStatuses: statuses,
+      });
+    } else if (filterOptions?.status) {
+      const statuses = Array.isArray(filterOptions.status)
+        ? filterOptions.status
+        : [filterOptions.status];
+      qb.andWhere('esim.status IN (:...statuses)', { statuses });
     } else if (!filterOptions?.includeAll) {
       qb.andWhere('esim.status != :refundedStatus', {
         refundedStatus: 'refunded',

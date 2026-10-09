@@ -16,10 +16,14 @@ export class FilterEsimDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ type: String })
+  @ApiPropertyOptional({
+    oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+    description:
+      'One status or several (any of them). With includeAll (the admin list) it is the eSIM lifecycle status — sold / active / expired… worked out from activation and expiry (#024).',
+  })
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsString({ each: true })
+  status?: string | string[];
 
   @ApiPropertyOptional({ type: Number })
   @IsOptional()
