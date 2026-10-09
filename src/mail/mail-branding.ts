@@ -24,3 +24,13 @@ export const BRAND_LOGO_URL =
  * different domain — which was unread; see the file comment above.)
  */
 export const SUPPORT_EMAIL = 'support@esim.com.vn';
+
+/**
+ * The brand every email shows (#012, test round 4). It used to be the API's
+ * `APP_NAME`, which on the servers reads "ESIM.VN API" — so customers saw
+ * "© ESIM.VN API" under their order email.
+ */
+export const BRAND_NAME = 'ESIM.VN';
+
+/** Where the brand links to — always https (#012). */
+export const SITE_URL = 'https://esim.vn';

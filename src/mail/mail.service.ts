@@ -2,7 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { I18nContext } from 'nestjs-i18n';
 import { MailData } from './interfaces/mail-data.interface';
-import { BRAND_LOGO_URL, SUPPORT_EMAIL } from './mail-branding';
+import {
+  BRAND_LOGO_URL,
+  BRAND_NAME,
+  SITE_URL,
+  SUPPORT_EMAIL,
+} from './mail-branding';
 
 import { MaybeType } from '../utils/types/maybe.type';
 import { MailerService } from '../mailer/mailer.service';
@@ -132,33 +137,48 @@ export class MailService {
     private readonly emailTemplatesService: EmailTemplatesService,
   ) {}
 
-  async userSignUp(mailData: MailData<{ hash: string }>): Promise<void> {
-    const i18n = I18nContext.current();
-    let emailConfirmTitle: MaybeType<string>;
-    let text1: MaybeType<string>;
-    let text2: MaybeType<string>;
-    let text3: MaybeType<string>;
+  /**
+   * A link into the storefront. `FRONTEND_DOMAIN` may end in "/", which used
+   * to give "…app//password-change" (#012).
+   */
+  private frontendUrl(pathname: string): URL {
+    const base = this.configService
+      .getOrThrow('app.frontendDomain', { infer: true })
+      .replace(/\/+$/, '');
+    return new URL(base + pathname);
+  }
 
-    if (i18n) {
-      [emailConfirmTitle, text1, text2, text3] = await Promise.all([
-        i18n.t('common.confirmEmail'),
-        i18n.t('confirm-email.text1'),
-        i18n.t('confirm-email.text2'),
-        i18n.t('confirm-email.text3'),
-      ]);
-    }
-
-    const url = new URL(
-      this.configService.getOrThrow('app.frontendDomain', {
-        infer: true,
-      }) + '/confirm-email',
-    );
-    url.searchParams.set('hash', mailData.data.hash);
-
+  /**
+   * Account emails (confirm sign-up, reset password, confirm a new address)
+   * in Vietnamese AND English (#012, test round 4) — an English-only reset
+   * email read as spam to Vietnamese customers. Sent from no-reply@, the
+   * system address; order@ is for eSIM deliveries only.
+   */
+  private async sendAuthActionMail(params: {
+    to: string;
+    url: string;
+    subject: string;
+    titleVi: string;
+    titleEn: string;
+    linesVi: string[];
+    linesEn: string[];
+    actionTitle: string;
+    noteVi: string;
+    noteEn: string;
+  }): Promise<void> {
     await this.mailerService.sendMail({
-      to: mailData.to,
-      subject: emailConfirmTitle,
-      text: `${url.toString()} ${emailConfirmTitle}`,
+      transportName: 'otp',
+      to: params.to,
+      subject: params.subject,
+      text: [
+        params.titleVi,
+        ...params.linesVi,
+        params.url,
+        '',
+        params.titleEn,
+        ...params.linesEn,
+        params.url,
+      ].join('\n'),
       templatePath: path.join(
         this.configService.getOrThrow('app.workingDirectory', {
           infer: true,
@@ -166,73 +186,75 @@ export class MailService {
         'dist',
         'mail',
         'mail-templates',
-        'activation.hbs',
+        'auth-action.hbs',
       ),
       context: {
-        title: emailConfirmTitle,
-        url: url.toString(),
-        actionTitle: emailConfirmTitle,
-        app_name: this.configService.get('app.name', { infer: true }),
-        text1,
-        text2,
-        text3,
+        title: params.subject,
+        url: params.url,
+        actionTitle: params.actionTitle,
+        titleVi: params.titleVi,
+        titleEn: params.titleEn,
+        linesVi: params.linesVi,
+        linesEn: params.linesEn,
+        noteVi: params.noteVi,
+        noteEn: params.noteEn,
+        app_name: BRAND_NAME,
+        logoUrl: BRAND_LOGO_URL,
+        siteUrl: SITE_URL,
       },
+    });
+  }
+
+  async userSignUp(mailData: MailData<{ hash: string }>): Promise<void> {
+    const url = this.frontendUrl('/confirm-email');
+    url.searchParams.set('hash', mailData.data.hash);
+
+    await this.sendAuthActionMail({
+      to: mailData.to,
+      url: url.toString(),
+      subject: `Xác nhận email / Confirm your email — ${BRAND_NAME}`,
+      titleVi: 'Xác nhận địa chỉ email',
+      titleEn: 'Confirm your email address',
+      linesVi: [
+        'Chào bạn,',
+        `Bạn sắp hoàn tất đăng ký tài khoản ${BRAND_NAME}. Bấm nút bên dưới để xác nhận địa chỉ email này.`,
+      ],
+      linesEn: [
+        'Hi there,',
+        `You are almost ready to start using ${BRAND_NAME}. Press the button above to verify your email address.`,
+      ],
+      actionTitle: 'Xác nhận email / Confirm email',
+      noteVi: 'Nếu bạn không đăng ký tài khoản, vui lòng bỏ qua email này.',
+      noteEn: 'If you did not sign up, please ignore this email.',
     });
   }
 
   async forgotPassword(
     mailData: MailData<{ hash: string; tokenExpires: number }>,
   ): Promise<void> {
-    const i18n = I18nContext.current();
-    let resetPasswordTitle: MaybeType<string>;
-    let text1: MaybeType<string>;
-    let text2: MaybeType<string>;
-    let text3: MaybeType<string>;
-    let text4: MaybeType<string>;
-
-    if (i18n) {
-      [resetPasswordTitle, text1, text2, text3, text4] = await Promise.all([
-        i18n.t('common.resetPassword'),
-        i18n.t('reset-password.text1'),
-        i18n.t('reset-password.text2'),
-        i18n.t('reset-password.text3'),
-        i18n.t('reset-password.text4'),
-      ]);
-    }
-
-    const url = new URL(
-      this.configService.getOrThrow('app.frontendDomain', {
-        infer: true,
-      }) + '/password-change',
-    );
+    const url = this.frontendUrl('/password-change');
     url.searchParams.set('hash', mailData.data.hash);
     url.searchParams.set('expires', mailData.data.tokenExpires.toString());
 
-    await this.mailerService.sendMail({
+    await this.sendAuthActionMail({
       to: mailData.to,
-      subject: resetPasswordTitle,
-      text: `${url.toString()} ${resetPasswordTitle}`,
-      templatePath: path.join(
-        this.configService.getOrThrow('app.workingDirectory', {
-          infer: true,
-        }),
-        'dist',
-        'mail',
-        'mail-templates',
-        'reset-password.hbs',
-      ),
-      context: {
-        title: resetPasswordTitle,
-        url: url.toString(),
-        actionTitle: resetPasswordTitle,
-        app_name: this.configService.get('app.name', {
-          infer: true,
-        }),
-        text1,
-        text2,
-        text3,
-        text4,
-      },
+      url: url.toString(),
+      subject: `Đặt lại mật khẩu / Reset your password — ${BRAND_NAME}`,
+      titleVi: 'Đặt lại mật khẩu',
+      titleEn: 'Reset your password',
+      linesVi: [
+        'Bạn gặp khó khăn khi đăng nhập?',
+        'Đặt lại mật khẩu rất đơn giản: bấm nút bên dưới và làm theo hướng dẫn.',
+      ],
+      linesEn: [
+        'Trouble signing in?',
+        'Resetting your password is easy: press the button above and follow the instructions.',
+      ],
+      actionTitle: 'Đặt lại mật khẩu / Reset password',
+      noteVi:
+        'Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này — mật khẩu hiện tại vẫn giữ nguyên.',
+      noteEn:
+        'If you did not ask to reset your password, please ignore this email — your password stays as it is.',
     });
   }
 
@@ -272,7 +294,7 @@ export class MailService {
       context: {
         title: otpTitle,
         otp: mailData.data.otp,
-        app_name: this.configService.get('app.name', { infer: true }),
+        app_name: BRAND_NAME,
         logoUrl: BRAND_LOGO_URL,
         text1,
         text2,
@@ -291,7 +313,7 @@ export class MailService {
       return;
     }
 
-    const appName = this.configService.get('app.name', { infer: true });
+    const appName = BRAND_NAME;
     const backendDomain = this.configService.get('app.backendDomain', {
       infer: true,
     });
@@ -372,7 +394,7 @@ export class MailService {
       return;
     }
 
-    const appName = this.configService.get('app.name', { infer: true });
+    const appName = BRAND_NAME;
     const totalAmountFormatted = new Intl.NumberFormat('vi-VN').format(
       Math.round(data.totalAmountVnd),
     );
@@ -448,7 +470,7 @@ export class MailService {
       return;
     }
 
-    const appName = this.configService.get('app.name', { infer: true });
+    const appName = BRAND_NAME;
     const context = {
       contactName: data.contactName,
       reason: data.reason ?? null,
@@ -506,7 +528,7 @@ export class MailService {
       otp: data.otp,
       bankSummary: data.bankSummary,
       expiresInMinutes: data.expiresInMinutes,
-      app_name: this.configService.get('app.name', { infer: true }),
+      app_name: BRAND_NAME,
       logoUrl: BRAND_LOGO_URL,
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
@@ -556,7 +578,7 @@ export class MailService {
       return;
     }
 
-    const appName = this.configService.get('app.name', { infer: true });
+    const appName = BRAND_NAME;
     const context = {
       contactName: data.contactName,
       email: data.email,
@@ -604,7 +626,7 @@ export class MailService {
       return;
     }
 
-    const appName = this.configService.get('app.name', { infer: true });
+    const appName = BRAND_NAME;
     const context = {
       contactName: data.contactName,
       title: data.title,
@@ -658,7 +680,7 @@ ${data.body}`,
       return;
     }
 
-    const appName = this.configService.get('app.name', { infer: true });
+    const appName = BRAND_NAME;
 
     // The mailbox the poller actually reads, so Reply can never land somewhere
     // nobody looks (#062). Falls back to the brand constant when inbound mail is
@@ -744,7 +766,7 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
     }
 
     const vnd = (value: number) => value.toLocaleString('vi-VN');
-    const appName = this.configService.get('app.name', { infer: true });
+    const appName = BRAND_NAME;
     const context = {
       contactName: data.contactName,
       periodLabel: data.periodLabel,
@@ -789,50 +811,27 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
   }
 
   async confirmNewEmail(mailData: MailData<{ hash: string }>): Promise<void> {
-    const i18n = I18nContext.current();
-    let emailConfirmTitle: MaybeType<string>;
-    let text1: MaybeType<string>;
-    let text2: MaybeType<string>;
-    let text3: MaybeType<string>;
-
-    if (i18n) {
-      [emailConfirmTitle, text1, text2, text3] = await Promise.all([
-        i18n.t('common.confirmEmail'),
-        i18n.t('confirm-new-email.text1'),
-        i18n.t('confirm-new-email.text2'),
-        i18n.t('confirm-new-email.text3'),
-      ]);
-    }
-
-    const url = new URL(
-      this.configService.getOrThrow('app.frontendDomain', {
-        infer: true,
-      }) + '/confirm-new-email',
-    );
+    const url = this.frontendUrl('/confirm-new-email');
     url.searchParams.set('hash', mailData.data.hash);
 
-    await this.mailerService.sendMail({
+    await this.sendAuthActionMail({
       to: mailData.to,
-      subject: emailConfirmTitle,
-      text: `${url.toString()} ${emailConfirmTitle}`,
-      templatePath: path.join(
-        this.configService.getOrThrow('app.workingDirectory', {
-          infer: true,
-        }),
-        'dist',
-        'mail',
-        'mail-templates',
-        'confirm-new-email.hbs',
-      ),
-      context: {
-        title: emailConfirmTitle,
-        url: url.toString(),
-        actionTitle: emailConfirmTitle,
-        app_name: this.configService.get('app.name', { infer: true }),
-        text1,
-        text2,
-        text3,
-      },
+      url: url.toString(),
+      subject: `Xác nhận email mới / Confirm your new email — ${BRAND_NAME}`,
+      titleVi: 'Xác nhận địa chỉ email mới',
+      titleEn: 'Confirm your new email address',
+      linesVi: [
+        'Chào bạn,',
+        `Bấm nút bên dưới để xác nhận đây là địa chỉ email mới của tài khoản ${BRAND_NAME}.`,
+      ],
+      linesEn: [
+        'Hi there,',
+        `Press the button above to confirm this as the new email of your ${BRAND_NAME} account.`,
+      ],
+      actionTitle: 'Xác nhận email / Confirm email',
+      noteVi: 'Nếu bạn không yêu cầu đổi email, vui lòng bỏ qua email này.',
+      noteEn:
+        'If you did not ask to change your email, please ignore this email.',
     });
   }
 }

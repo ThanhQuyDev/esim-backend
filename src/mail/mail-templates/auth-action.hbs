@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{title}}</title>
+</head>
+
+<body style="margin:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif">
+    <table role="presentation" style="border:0;width:100%;max-width:600px;margin:0 auto;background:#ffffff;border-collapse:collapse">
+        <tr>
+            <td style="padding:24px;text-align:center;border-bottom:1px solid #e5e7eb">
+                <a href="{{siteUrl}}" style="text-decoration:none">
+                    <img src="{{logoUrl}}" alt="{{app_name}}" height="48" style="max-height:48px;display:inline-block;border:0;outline:none" />
+                </a>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:24px 24px 8px;color:#374151;font-size:15px;line-height:1.6">
+                <p style="margin:0 0 4px;font-weight:700;color:#111827">{{titleVi}}</p>
+                {{#each linesVi}}<p style="margin:0 0 8px">{{this}}</p>{{/each}}
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:8px 24px 16px;text-align:center">
+                <a href="{{url}}"
+                    style="display:inline-block;padding:14px 28px;background:#00838f;border-radius:8px;text-decoration:none;color:#ffffff;font-weight:700">{{actionTitle}}</a>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:0 24px 16px;color:#6b7280;font-size:13px;line-height:1.6">
+                {{noteVi}}
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:16px 24px 8px;color:#374151;font-size:15px;line-height:1.6;border-top:1px dashed #e5e7eb">
+                <p style="margin:0 0 4px;font-weight:700;color:#111827">{{titleEn}}</p>
+                {{#each linesEn}}<p style="margin:0 0 8px">{{this}}</p>{{/each}}
+                <p style="margin:0 0 8px;color:#6b7280;font-size:13px">{{noteEn}}</p>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:16px 24px;text-align:center;font-size:12px;color:#9ca3af;border-top:1px solid #e5e7eb">
+                &copy; <a href="{{siteUrl}}" style="color:#9ca3af;text-decoration:none">{{app_name}}</a>
+                — Email tự động, vui lòng không trả lời. / Automated email, please do not reply.
+            </td>
+        </tr>
+    </table>
+</body>
+
+</html>
