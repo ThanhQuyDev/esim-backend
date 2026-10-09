@@ -376,8 +376,12 @@ export class MicroEsimService {
     const locationCode = (item.code ?? '').split(',')[0]?.trim() || item.code;
     // A regional plan is slugged after its region ("global-126-50gb-30days-
     // fixed-mi"), not after every country code it covers (#003).
+    // A region is keyed by its country list, so packs sold under different
+    // names ("US,CA", "USA & Canada") share one; the plan's own pack name is
+    // what the customer reads ("Global 126" → "global-126-50gb-30days-…").
+    const packSlug = slugify(shortRegionName(item.channel_dataplan_name));
     const baseSlug = this.buildPlanSlug(
-      region ? region.slug : locationCode,
+      region ? packSlug || region.slug : locationCode,
       dataMb,
       days,
       type,
