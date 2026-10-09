@@ -211,6 +211,33 @@ export class EsimsService {
     });
   }
 
+  /**
+   * The topups applied to each of a customer's eSIMs, for the "Thông tin nạp
+   * thêm" block of their profile (#030, test round 4). Only what the customer
+   * bought — package, data, days, date — never our cost.
+   */
+  async attachCustomerTopups(esims: Esim[]): Promise<Esim[]> {
+    return Promise.all(
+      esims.map(async (esim) => {
+        if (!esim.topupCount || !esim.iccid) return esim;
+        const rows = await this.esimsRepository.findTopupsByIccid(esim.iccid);
+        return {
+          ...esim,
+          topups: rows.map((row) => ({
+            orderId: row.orderId,
+            orderNumber: row.orderNumber,
+            packageId: row.packageId,
+            packageName: row.packageName,
+            dataText: row.dataText,
+            durationDays: row.durationDays,
+            isUnlimited: row.isUnlimited,
+            createdAt: row.createdAt,
+          })) as Esim['topups'],
+        };
+      }),
+    );
+  }
+
   findById(id: Esim['id']): Promise<NullableType<Esim>> {
     return this.esimsRepository.findById(id);
   }

@@ -198,7 +198,12 @@ export class EsimsController {
       paginationOptions: { page, limit },
     });
 
-    return infinityPagination(data, { page, limit }, count);
+    // What was topped up onto each eSIM, for the profile (#030, round 4).
+    return infinityPagination(
+      await this.esimsService.attachCustomerTopups(data),
+      { page, limit },
+      count,
+    );
   }
 
   @Roles(RoleEnum.user, RoleEnum.admin)
