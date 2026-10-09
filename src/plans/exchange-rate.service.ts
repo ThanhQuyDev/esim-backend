@@ -12,6 +12,12 @@ export const FALLBACK_USD_VND_RATE = 25500;
  */
 export const FALLBACK_USD_CNY_RATE = 7.1;
 
+/**
+ * Fallback USD→HKD rate, for Billion's catalogue when the rate API is down.
+ * The Hong Kong dollar is pegged to 7.75–7.85 per USD, so this barely moves.
+ */
+export const FALLBACK_USD_HKD_RATE = 7.8;
+
 const RATE_URL = 'https://open.er-api.com/v6/latest/USD';
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -28,7 +34,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
  * hitting the rate API a thousand times per upload would rate-limit us into the
  * fallback.
  */
-type Rates = { vnd: number; cny: number };
+type Rates = { vnd: number; cny: number; hkd: number };
 
 @Injectable()
 export class ExchangeRateService {
@@ -54,6 +60,16 @@ export class ExchangeRateService {
     return 1 / cny;
   }
 
+  /**
+   * Current HKD→USD rate, for suppliers who quote in Hong Kong dollars
+   * (Billion, #002 test round 4). "How many dollars one HKD is", so callers
+   * multiply.
+   */
+  async getHkdToUsdRate(): Promise<number> {
+    const { hkd } = await this.getRates();
+    return 1 / hkd;
+  }
+
   private async getRates(): Promise<Rates> {
     if (this.cached && Date.now() - this.cached.at < CACHE_TTL_MS) {
       return this.cached.rates;
@@ -74,10 +90,11 @@ export class ExchangeRateService {
         return this.staleOrFallback();
       }
       const data = (await res.json()) as {
-        rates?: { VND?: number; CNY?: number };
+        rates?: { VND?: number; CNY?: number; HKD?: number };
       };
       const vnd = Number(data?.rates?.VND);
       const cny = Number(data?.rates?.CNY);
+      const hkd = Number(data?.rates?.HKD);
       if (!Number.isFinite(vnd) || vnd <= 0) {
         this.logger.error('VND rate not found in response');
         return this.staleOrFallback();
@@ -90,6 +107,10 @@ export class ExchangeRateService {
           Number.isFinite(cny) && cny > 0
             ? cny
             : (this.cached?.rates.cny ?? FALLBACK_USD_CNY_RATE),
+        hkd:
+          Number.isFinite(hkd) && hkd > 0
+            ? hkd
+            : (this.cached?.rates.hkd ?? FALLBACK_USD_HKD_RATE),
       };
       this.cached = { rates, at: Date.now() };
       return rates;
@@ -108,6 +129,7 @@ export class ExchangeRateService {
       this.cached?.rates ?? {
         vnd: FALLBACK_USD_VND_RATE,
         cny: FALLBACK_USD_CNY_RATE,
+        hkd: FALLBACK_USD_HKD_RATE,
       }
     );
   }

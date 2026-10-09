@@ -611,6 +611,28 @@ export class PlansRelationalRepository implements PlanRepository {
     );
   }
 
+  async softDeleteSupersededProviderPlans(
+    provider: string,
+    syncStartedAt: Date,
+  ): Promise<number> {
+    // Rows this sync did not touch whose provider plan id now lives on a row it
+    // did: leftovers of an older mapping, never sold (no order_item points at
+    // them — those are kept so order history still resolves its plan).
+    const [, affected] = await this.plansRepository.query(
+      `UPDATE "plan" p SET "deletedAt" = now()
+        WHERE p."provider" = $1 AND p."deletedAt" IS NULL
+          AND (p."lastSyncedAt" IS NULL OR p."lastSyncedAt" < $2)
+          AND EXISTS (SELECT 1 FROM "plan" q
+                       WHERE q."provider" = p."provider"
+                         AND q."providerPlanId" = p."providerPlanId"
+                         AND q."id" <> p."id" AND q."deletedAt" IS NULL
+                         AND q."lastSyncedAt" >= $2)
+          AND NOT EXISTS (SELECT 1 FROM "order_item" oi WHERE oi."planId" = p."id")`,
+      [provider, syncStartedAt],
+    );
+    return Number(affected) || 0;
+  }
+
   async deactivateAllProviderPlans(provider: string): Promise<void> {
     await this.plansRepository.query(
       `UPDATE "plan" SET "isActive" = false WHERE "provider" = $1 AND "deletedAt" IS NULL`,

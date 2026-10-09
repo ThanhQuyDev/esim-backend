@@ -96,6 +96,11 @@ export abstract class PlanRepository {
     syncStartedAt: Date,
   ): Promise<void>;
 
+  abstract softDeleteSupersededProviderPlans(
+    provider: string,
+    syncStartedAt: Date,
+  ): Promise<number>;
+
   abstract deactivateAllProviderPlans(provider: string): Promise<void>;
 
   abstract findAllForExport(

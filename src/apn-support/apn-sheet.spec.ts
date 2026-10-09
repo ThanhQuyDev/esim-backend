@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import * as path from 'path';
 import { Workbook } from 'exceljs';
 import {
@@ -258,8 +259,11 @@ describe('APN sheet', () => {
       'Downloads',
       'UPDATE - PHASE 2_ESIM.VN 2026 (2).xlsx',
     );
+    // The team's spreadsheet lives on one laptop and gets renamed as new
+    // copies arrive; without it there is nothing to read, not a failure.
+    const itWithFile = existsSync(FILE) ? it : it.skip;
 
-    it('should read "APN Tiktok-GPT" end to end', async () => {
+    itWithFile('should read "APN Tiktok-GPT" end to end', async () => {
       const wb = new Workbook();
       await wb.xlsx.readFile(FILE);
       const sheet = wb.getWorksheet('APN Tiktok-GPT')!;

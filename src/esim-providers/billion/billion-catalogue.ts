@@ -62,42 +62,91 @@ function formatSpeed(kbps: number): string {
   return `${Math.round((kbps / 1024) * 10) / 10}Mbps`;
 }
 
+/**
+ * Type of an unlimited plan from its usable speed, per the customer's rule
+ * (#002, test round 4): above 1 Mbps it is "unlimited"; exactly 1 Mbps is
+ * "unlimited-reduce" (unlimited at low speed); below that the speed is a crawl,
+ * so a daily quota plan reads as "daily".
+ */
+export function unlimitedTypeForSpeed(kbps: number): string {
+  if (kbps > 1024) return 'unlimited';
+  if (kbps === 1024) return 'unlimited-reduce';
+  return 'daily';
+}
+
+/**
+ * Daily quota and after-quota speed spelled out in a product name, for the
+ * products whose F002 fields say -1 ("unlimited") although the plan has a
+ * daily high-speed quota: "Global21-1GB/day,throttled 5mbps",
+ * "China Mainland-China Mobile-1GB/Natural day-throttle to 5Mbps",
+ * "USA-throttled 10mbps/day" (speed only, no quota).
+ */
+export function billionNameAllowance(name: string): {
+  quotaMb: number | null;
+  throttleKbps: number | null;
+} {
+  const quota = name.match(
+    /(\d+(?:\.\d+)?)\s*(GB|MB)\s*\/\s*(?:natural\s*)?day/i,
+  );
+  const speed = name.match(
+    /throttle(?:d)?(?:\s+to)?\s*(\d+(?:\.\d+)?)\s*(mbps|kbps)/i,
+  );
+  const quotaMb = quota
+    ? Math.round(parseFloat(quota[1]) * (/gb/i.test(quota[2]) ? 1024 : 1))
+    : null;
+  const throttleKbps = speed
+    ? Math.round(parseFloat(speed[1]) * (/mbps/i.test(speed[2]) ? 1024 : 1))
+    : null;
+  return { quotaMb, throttleKbps };
+}
+
 /** Plan `type`, data allowance and after-quota speed of a product. */
 export function billionDataAndType(product: BillionProduct): {
   type: string;
   dataMb: number;
   fupSpeed: string | null;
 } {
-  const quotaKb = num(product.highFlowSize);
+  let quotaKb = num(product.highFlowSize);
   const capacityKb = num(product.capacity);
-  const throttleKbps = num(product.limitFlowSpeed);
-  const fupSpeed = throttleKbps > 0 ? formatSpeed(throttleKbps) : null;
-
-  if (quotaKb < 0 || throttleKbps < 0) {
-    return { type: 'unlimited', dataMb: 0, fupSpeed: null };
-  }
+  let throttleKbps = num(product.limitFlowSpeed);
 
   if (product.planType === '1') {
-    // No daily high-speed quota, only a speed cap: unlimited at that speed.
-    if (quotaKb === 0) return { type: 'unlimited', dataMb: 0, fupSpeed };
-    // Same split as eSIM Access: usable speed after the daily quota reads as
-    // "unlimited", a crawl or cut-off reads as a daily plan.
+    // F002 says -1 for both on dozens of "1GB/day, throttled 5Mbps" products;
+    // the name is then the only place the real quota and speed are written.
+    const fromName = billionNameAllowance(product.name);
+    if (quotaKb < 0 && fromName.quotaMb) quotaKb = fromName.quotaMb * 1024;
+    if (throttleKbps < 0 && fromName.throttleKbps) {
+      throttleKbps = fromName.throttleKbps;
+    }
+
+    // Unlimited at every speed ("Mexico-Unlimited/day").
+    if (quotaKb < 0 && throttleKbps < 0) {
+      return { type: 'unlimited', dataMb: 0, fupSpeed: null };
+    }
+    // No daily quota, only a speed cap ("USA-throttled 10mbps/day"): unlimited
+    // at that speed, shown as "Không giới hạn 10Mbps".
+    if (quotaKb <= 0) {
+      return {
+        type: throttleKbps > 1024 ? 'unlimited' : 'unlimited-reduce',
+        dataMb: 0,
+        fupSpeed: throttleKbps > 0 ? formatSpeed(throttleKbps) : null,
+      };
+    }
+    // A daily high-speed quota, then the after-quota speed decides the type.
+    // The quota stays the plan's data ("1GB"), whatever the type.
     return {
-      type: throttleKbps >= 1024 ? 'unlimited-reduce' : 'daily',
+      type: throttleKbps > 0 ? unlimitedTypeForSpeed(throttleKbps) : 'daily',
       dataMb: Math.round(quotaKb / 1024),
-      fupSpeed,
+      fupSpeed: throttleKbps > 0 ? formatSpeed(throttleKbps) : null,
     };
   }
 
+  const fupSpeed = throttleKbps > 0 ? formatSpeed(throttleKbps) : null;
   const totalKb = capacityKb > 0 ? capacityKb : quotaKb;
   if (totalKb > 0) {
     return { type: 'fixed', dataMb: Math.round(totalKb / 1024), fupSpeed };
   }
-  return {
-    type: throttleKbps > 0 ? 'unlimited-reduce' : 'unlimited',
-    dataMb: 0,
-    fupSpeed,
-  };
+  return { type: 'unlimited', dataMb: 0, fupSpeed: null };
 }
 
 /** Product name without the "eSIM Carrier of N days" activation-window noise. */

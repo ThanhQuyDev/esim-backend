@@ -165,6 +165,66 @@ describe('billionPlanVariants', () => {
     });
   });
 
+  // The customer's own examples (#002, test round 4).
+  describe('unlimited labelling rule', () => {
+    const rows = price('x', [[1, 1, 1]]);
+    const variant = (over: Parameters<typeof product>[0]) =>
+      billionPlanVariants(
+        product({ type: '3105', planType: '1', ...over }),
+        rows,
+      )[0];
+
+    it('should treat 1GB/day then 5Mbps is unlimited, and its data is the 1GB', () => {
+      expect(
+        variant({
+          name: 'Europe 33-daily 1GB-throttle to 5Mbps-eSIM Carrier of 90 days ',
+          highFlowSize: '1048576',
+          limitFlowSpeed: '5120',
+        }),
+      ).toMatchObject({ type: 'unlimited', dataMb: 1024, fupSpeed: '5Mbps' });
+    });
+
+    it('should read quota and speed from the name when F002 says -1', () => {
+      for (const name of [
+        'Global21-1GB/day,throttled 5mbps-eSIM Carrier of 90 days ',
+        'China Mainland-China Mobile-1GB/Natural day-throttle to 5Mbps-eSIM Carrier of 90 days',
+      ]) {
+        expect(
+          variant({ name, highFlowSize: '-1', limitFlowSpeed: '-1' }),
+        ).toMatchObject({ type: 'unlimited', dataMb: 1024, fupSpeed: '5Mbps' });
+      }
+    });
+
+    it('should treat a speed cap without quota as unlimited at that speed', () => {
+      expect(
+        variant({
+          name: 'USA-throttled 10mbps/day+eSIM Carrier of 90 days',
+          highFlowSize: '0',
+          limitFlowSpeed: '10240',
+        }),
+      ).toMatchObject({ type: 'unlimited', dataMb: 0, fupSpeed: '10Mbps' });
+    });
+
+    it('should give unlimited at every speed no speed', () => {
+      expect(
+        variant({
+          name: 'Mexico-Unlimited/day+eSIM Carrier of 90 days ',
+          highFlowSize: '-1',
+          limitFlowSpeed: '-1',
+        }),
+      ).toMatchObject({ type: 'unlimited', dataMb: 0, fupSpeed: null });
+    });
+
+    it('should make exactly 1Mbps unlimited-reduce and a crawl daily', () => {
+      expect(
+        variant({ highFlowSize: '1048576', limitFlowSpeed: '1024' }),
+      ).toMatchObject({ type: 'unlimited-reduce', dataMb: 1024 });
+      expect(
+        variant({ highFlowSize: '3145728', limitFlowSpeed: '384' }),
+      ).toMatchObject({ type: 'daily', dataMb: 3072, fupSpeed: '384kbps' });
+    });
+  });
+
   it('should yield nothing for a sku without a price', () => {
     expect(billionPlanVariants(product({ type: '3105' }), undefined)).toEqual(
       [],

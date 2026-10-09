@@ -41,27 +41,19 @@ const PROVIDER = 'billion';
 const ESIM_TYPES = new Set(['230', '3105', '3106']);
 
 /**
- * BILLION quotes in CNY (nhân dân tệ), not USD.
+ * BILLION quotes in Hong Kong dollars (HKD).
  *
  * F003 carries no currency field at all — `{skuId, price:[{copies, days,
- * settlementPrice, retailPrice}]}` and nothing else — so this was assumed to be
- * USD until 2026-10-03, when the catalogue was checked against suppliers whose
- * currency is known. Same destination, same duration, same allowance:
+ * settlementPrice, retailPrice}]}` — so the currency cannot be read from the
+ * API. It was assumed to be USD, then (2026-10-03) guessed to be yuan from a
+ * price comparison with other suppliers. The account owner, who sees the
+ * prices in the Billion portal, confirmed HKD in test round 4 (#002), and HKD
+ * fits that comparison just as well (Korea 1GB/day, 1 day: 4.00 HKD ≈ 0.51 USD,
+ * esimaccess 0.83 USD).
  *
- *   Korea 500MB/day, 1 day — Billion 3.00 · esimaccess 0.48 · gadgetkorea 0.29
- *   Korea 1GB/day,   1 day — Billion 4.00 · esimaccess 0.83 · gadgetkorea 0.36
- *   Korea 2GB/day,   1 day — Billion 5.00 · gadgetkorea 0.73
- *
- * Read as dollars those are 5–11× every competitor, which no wholesaler could
- * sustain; divided by ~7 they land in the same band. The supplier is Chinese
- * (亿点自营, product names in Chinese, timeZone UTC+8), and Chinese wholesale
- * platforms quote yuan by default.
- *
- * Converted with the LIVE rate rather than a constant: a hard-coded figure is
- * wrong by however much the yuan has moved since someone last edited it, and
- * this number sets the cost of all ~16k Billion plans.
+ * Converted with the live rate; HKD is pegged, so the fallback barely matters.
  */
-const BILLION_PRICE_CURRENCY = 'CNY';
+const BILLION_PRICE_CURRENCY = 'HKD';
 
 /**
  * BILLION recharge (topup) tradeType. Per API docs §3.7 "创建充值订单 / Create
@@ -96,7 +88,7 @@ export class BillionService {
     private readonly usersService: UsersService,
     @Inject(forwardRef(() => OrdersService))
     private readonly ordersService: OrdersService,
-    /** CNY→USD for the catalogue — Billion quotes yuan. */
+    /** HKD→USD for the catalogue — Billion quotes Hong Kong dollars. */
     private readonly exchangeRateService: ExchangeRateService,
   ) {}
 
@@ -240,6 +232,17 @@ export class BillionService {
         PROVIDER,
         syncStartedAt,
       );
+      // The first syncs stored each "+eSIM Carrier" sku as ONE 1-day row with
+      // the raw name, the wrong type and the raw price. The per-duration rows
+      // replaced them, but the old ones lingered (inactive) in the CMS list
+      // and read as a second, broken kind of product (#002, test round 4).
+      const removed = await this.plansService.softDeleteSupersededProviderPlans(
+        PROVIDER,
+        syncStartedAt,
+      );
+      if (removed > 0) {
+        this.logger.log(`Removed ${removed} superseded billion plan rows`);
+      }
 
       this.logger.log(
         `Billion plan sync completed. ${itemsSynced} plans synced from ${esimProducts.length} eSIM products.`,
@@ -280,9 +283,9 @@ export class BillionService {
     // Lấy tỷ giá MỘT lần cho cả lượt đồng bộ: service có cache 1 giờ, nhưng
     // đọc một lần ở đây làm rõ rằng mọi gói trong cùng lượt dùng chung một tỷ
     // giá — không có chuyện nửa danh mục quy đổi theo tỷ giá khác nửa còn lại.
-    const cnyToUsd = await this.exchangeRateService.getCnyToUsdRate();
+    const hkdToUsd = await this.exchangeRateService.getHkdToUsdRate();
     this.logger.debug(
-      `Billion pricing: 1 ${BILLION_PRICE_CURRENCY} = ${cnyToUsd.toFixed(5)} USD`,
+      `Billion pricing: 1 ${BILLION_PRICE_CURRENCY} = ${hkdToUsd.toFixed(5)} USD`,
     );
 
     for (const variant of variants) {
@@ -291,7 +294,7 @@ export class BillionService {
         variant,
         destinationId,
         regionId,
-        cnyToUsd,
+        hkdToUsd,
       );
     }
   }
@@ -368,8 +371,8 @@ export class BillionService {
     variant: BillionPlanVariant,
     destinationId: number | null,
     regionId: number | null,
-    /** Bao nhiêu USD cho một CNY, lấy một lần cho cả lượt đồng bộ. */
-    cnyToUsd: number,
+    /** Bao nhiêu USD cho một HKD, lấy một lần cho cả lượt đồng bộ. */
+    hkdToUsd: number,
   ) {
     const { type, dataMb, durationDays: days } = variant;
 
@@ -395,10 +398,10 @@ export class BillionService {
 
     const existing = await this.plansService.findBySlug(slug);
 
-    // `variant.cost` là settlementPrice của F003, tính bằng CNY — xem
+    // `variant.cost` là settlementPrice của F003, tính bằng HKD — xem
     // BILLION_PRICE_CURRENCY. Làm tròn tới cent để không lưu một cái đuôi thập
     // phân vô nghĩa sinh ra từ tỷ giá.
-    const costPrice = Math.round(variant.cost * cnyToUsd * 100) / 100;
+    const costPrice = Math.round(variant.cost * hkdToUsd * 100) / 100;
 
     const apn = product.apn || product.country?.[0]?.apn || null;
     const operator = product.country

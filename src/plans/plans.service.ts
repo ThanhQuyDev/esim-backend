@@ -591,6 +591,21 @@ export class PlansService {
     );
   }
 
+  /**
+   * Soft-delete the rows an older catalogue mapping left behind, once this
+   * sync has written their provider plan id onto a fresh row. Returns how
+   * many went.
+   */
+  async softDeleteSupersededProviderPlans(
+    provider: string,
+    syncStartedAt: Date,
+  ): Promise<number> {
+    return this.plansRepository.softDeleteSupersededProviderPlans(
+      provider,
+      syncStartedAt,
+    );
+  }
+
   async deactivateAllProviderPlans(provider: string): Promise<void> {
     await this.plansRepository.deactivateAllProviderPlans(provider);
   }
