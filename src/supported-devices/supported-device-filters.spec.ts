@@ -90,6 +90,12 @@ describe('Supported device filters (#052)', () => {
       expect(where.manufacturer).toBe('Apple');
     });
 
+    it('should use IN for several comma-separated brands (#037, round 4)', async () => {
+      const where = await whereFor({ manufacturer: 'Samsung, Google' });
+
+      expect(where.manufacturer).toEqual(In(['Samsung', 'Google']));
+    });
+
     it('should combine type, manufacturer and search', async () => {
       const where = await whereFor({
         type: [DeviceType.TABLETS],

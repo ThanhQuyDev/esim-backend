@@ -51,7 +51,9 @@ export class FindAllSupportedDevicesDto {
   type?: DeviceType[];
 
   /** Nhà sản xuất, from the CMS filter's select box (#052). */
-  @ApiPropertyOptional({ description: 'Exact manufacturer name' })
+  @ApiPropertyOptional({
+    description: 'Exact manufacturer name, or several comma-separated',
+  })
   @IsOptional()
   @IsString()
   manufacturer?: string;

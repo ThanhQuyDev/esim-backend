@@ -59,7 +59,14 @@ export class SupportedDeviceRelationalRepository implements SupportedDeviceRepos
     if (type?.length) {
       where.type = type.length === 1 ? type[0] : In(type);
     }
-    if (manufacturer) where.manufacturer = manufacturer;
+    // "Apple,Samsung" — the CMS lets several brands be picked (#037, round 4).
+    const brands = (manufacturer ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (brands.length) {
+      where.manufacturer = brands.length === 1 ? brands[0] : In(brands);
+    }
     if (search) where.device = ILike(`%${search}%`);
 
     const sorted = await this.findSorted(where);
