@@ -69,9 +69,13 @@ describe('OrdersRelationalRepository invoice filter', () => {
       { invoiceStatus: 'PENDING' },
     );
     // Combined with the other filters, not instead of them.
-    expect(qb.andWhere).toHaveBeenCalledWith('"order"."status" = :status', {
-      status: 'paid',
-    });
+    // "paid" also takes topups that went through (#022, test round 4).
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      '"order"."status" IN (:...statuses)',
+      {
+        statuses: ['paid', 'completed'],
+      },
+    );
   });
 
   it('should keep the simple query when no invoice filter is set', async () => {

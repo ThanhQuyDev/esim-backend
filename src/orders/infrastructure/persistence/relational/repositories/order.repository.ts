@@ -12,6 +12,20 @@ import {
 import { OrderMapper } from '../mappers/order.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 
+/**
+ * A topup that went through ends as "completed", an eSIM order as "paid" —
+ * so the order list, which opens on "paid", left every successful topup out
+ * (#022, test round 4). "Paid" now means paid AND delivered for both kinds.
+ * The stored status is untouched: the topup flow tells "paid, not applied
+ * yet" from "applied" by it.
+ */
+export function withSuccessfulTopups(status: string | string[]): string[] {
+  const statuses = Array.isArray(status) ? status : [status];
+  return statuses.includes('paid') && !statuses.includes('completed')
+    ? [...statuses, 'completed']
+    : statuses;
+}
+
 @Injectable()
 export class OrdersRelationalRepository implements OrderRepository {
   constructor(
@@ -59,11 +73,7 @@ export class OrdersRelationalRepository implements OrderRepository {
     const where: FindOptionsWhere<OrderEntity> = {};
 
     if (filterOptions?.status) {
-      if (Array.isArray(filterOptions.status)) {
-        where.status = In(filterOptions.status);
-      } else {
-        where.status = filterOptions.status;
-      }
+      where.status = In(withSuccessfulTopups(filterOptions.status));
     }
 
     if (filterOptions?.userId) {
@@ -101,15 +111,9 @@ export class OrdersRelationalRepository implements OrderRepository {
     filterOptions: FilterOrderDto,
   ): void {
     if (filterOptions.status) {
-      if (Array.isArray(filterOptions.status)) {
-        qb.andWhere('"order"."status" IN (:...statuses)', {
-          statuses: filterOptions.status,
-        });
-      } else {
-        qb.andWhere('"order"."status" = :status', {
-          status: filterOptions.status,
-        });
-      }
+      qb.andWhere('"order"."status" IN (:...statuses)', {
+        statuses: withSuccessfulTopups(filterOptions.status),
+      });
     }
 
     if (filterOptions.userId) {
@@ -133,20 +137,21 @@ export class OrdersRelationalRepository implements OrderRepository {
       qb.andWhere(`NOT (${EARNED_COMMISSION})`);
     }
 
-    // #017 — created-date range. `createdTo` is given as a bare date and must
-    // cover that whole day, so it compares against the start of the NEXT day
-    // rather than midnight, which would drop everything ordered that day.
+    // #017 — created-date range, in VIETNAM days (#022, test round 4).
+    // `createdAt` is stored in UTC; comparing it to bare dates in UTC made
+    // "up to 25/9" run until 07:00 on 26/9 Vietnam time — so orders placed
+    // early on the 26th showed up — and cut the first 7 hours off the 21st.
+    // The bounds are now midnight Vietnam time, converted to UTC.
     if (filterOptions.createdFrom) {
-      qb.andWhere('"order"."createdAt" >= :createdFrom', {
-        createdFrom: filterOptions.createdFrom,
-      });
+      qb.andWhere(
+        `"order"."createdAt" >= ((:createdFrom::date)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh' AT TIME ZONE 'UTC')`,
+        { createdFrom: filterOptions.createdFrom },
+      );
     }
     if (filterOptions.createdTo) {
       qb.andWhere(
-        `"order"."createdAt" < (:createdTo::date + INTERVAL '1 day')`,
-        {
-          createdTo: filterOptions.createdTo,
-        },
+        `"order"."createdAt" < ((:createdTo::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh' AT TIME ZONE 'UTC')`,
+        { createdTo: filterOptions.createdTo },
       );
     }
 
