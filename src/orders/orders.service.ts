@@ -1089,6 +1089,11 @@ export class OrdersService {
                 fupSpeed: plan.fupSpeed,
                 operatorName: plan.operatorName,
                 countryCode: plan.countryCode,
+                // Minutes / SMS and the plan type for the payment-success card
+                // (#033, test round 4).
+                type: plan.type,
+                call: plan.call ?? null,
+                sms: plan.sms ?? null,
                 locationInfo: this.buildLocationInfo(plan),
               }
             : null,
