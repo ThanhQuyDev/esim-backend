@@ -238,7 +238,10 @@ export class OrdersRelationalRepository implements OrderRepository {
   ): Promise<ReconciliationExportRow[]> {
     const qb = this.ordersRepository
       .createQueryBuilder('order')
-      .innerJoin('order_item', 'oi', 'oi."orderId" = "order".id')
+      // LEFT: a topup has no order lines, and an inner join dropped every
+      // topup from the reconciliation file (#023, test round 4). Its row is
+      // filled from the order's own topup snapshot below.
+      .leftJoin('order_item', 'oi', 'oi."orderId" = "order".id')
       .leftJoin('plan', 'p', 'p.id = oi."planId"')
       .leftJoin('user', 'u', 'u.id = "order"."userId"')
       // Order-level columns for the reconciliation sheet (#018).
@@ -262,7 +265,7 @@ export class OrdersRelationalRepository implements OrderRepository {
       .addSelect('"order"."cashbackAmountVnd"', 'cashbackAmountVnd')
       .addSelect('"order"."walletSpentVndAmount"', 'walletSpentVndAmount')
       .addSelect('"order"."refundedAmountVnd"', 'refundedAmountVnd')
-      .addSelect('oi.id', 'orderItemId')
+      .addSelect('COALESCE(oi.id, 0)', 'orderItemId')
       .addSelect(
         `(SELECT COUNT(*) FROM "esim" e WHERE e."orderItemId" = oi.id AND e.status = 'refunded')`,
         'refundedEsims',
@@ -278,16 +281,29 @@ export class OrdersRelationalRepository implements OrderRepository {
       .addSelect('inv."companyName"', 'invoiceCompanyName')
       .addSelect('inv."taxCode"', 'invoiceTaxCode')
       .addSelect('u.email', 'customerEmail')
-      .addSelect('p.provider', 'provider')
-      .addSelect('p.name', 'planName')
-      .addSelect('p."providerPlanId"', 'providerPlanId')
-      .addSelect('oi."orderRequestId"', 'providerOrderRef')
-      .addSelect('oi.status', 'itemStatus')
-      .addSelect('oi.quantity', 'quantity')
-      .addSelect('oi."vndCostPrice"', 'vndCostPrice')
-      .addSelect('oi."vndPrice"', 'vndPrice')
       .addSelect(
-        `(SELECT STRING_AGG(e.iccid, ', ') FROM "esim" e WHERE e."orderItemId" = oi.id)`,
+        'COALESCE(p.provider, lower("order"."topupProvider"))',
+        'provider',
+      )
+      .addSelect('COALESCE(p.name, "order"."topupPackageName")', 'planName')
+      .addSelect(
+        'COALESCE(p."providerPlanId", "order"."topupPackageId")',
+        'providerPlanId',
+      )
+      .addSelect('oi."orderRequestId"', 'providerOrderRef')
+      .addSelect('COALESCE(oi.status, "order".status)', 'itemStatus')
+      .addSelect('COALESCE(oi.quantity, 1)', 'quantity')
+      .addSelect(
+        'COALESCE(oi."vndCostPrice", "order"."vndCostPrice")',
+        'vndCostPrice',
+      )
+      .addSelect(
+        `COALESCE(oi."vndPrice", "order"."vndPrice" + "order"."walletSpentVndAmount")`,
+        'vndPrice',
+      )
+      .addSelect(
+        // A topup's eSIM is the one it topped up.
+        `COALESCE((SELECT STRING_AGG(e.iccid, ', ') FROM "esim" e WHERE e."orderItemId" = oi.id), "order"."targetIccid")`,
         'iccids',
       )
       .orderBy('"order"."createdAt"', 'DESC')
