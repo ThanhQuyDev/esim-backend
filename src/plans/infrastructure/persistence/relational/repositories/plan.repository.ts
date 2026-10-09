@@ -312,43 +312,74 @@ export class PlansRelationalRepository implements PlanRepository {
     return Array.isArray(result) ? ((result[1] as number) ?? 0) : 0;
   }
 
+  /**
+   * Which plan of each duplicate group the storefront shows (#004, test
+   * round 4). The customer's rule, applied left to right:
+   *
+   *   country → days → high-speed data → cost (in đồng, incl. the supplier's
+   *   tax/fee) → speed after the quota (higher wins)
+   *
+   * - A regional plan's "country" is the exact set of countries its region
+   *   covers: one country more or less makes it a different pack, shown on its
+   *   own; regions with the same set compete like a country's plans do.
+   * - The rule runs inside each storefront tab (plan type): ranked across
+   *   tabs, the cheap 128kbps daily plan would hide every "1GB/day then 5Mbps"
+   *   plan and empty the unlimited tab. Within a tab the after-quota speed
+   *   still breaks ties (128kbps vs 384kbps daily plans).
+   * - Domestic eSIMs and voice/SMS plans never compete with data plans.
+   * - Ties on everything (same cost, same speed — the case the tester hit,
+   *   "trùng cả ưu đãi, trùng cả giá tiền") are settled by the lowest id, so
+   *   exactly one plan per group is marked, every time.
+   */
   async markCheapestPlans(): Promise<void> {
-    // Reset all isCheapest to false
     await this.plansRepository.query(
       `UPDATE "plan" SET "isCheapest" = false WHERE "deletedAt" IS NULL`,
     );
 
-    // Mark cheapest plan per group (destinationId, type, dataMb, durationDays)
-    // Only for plans with a destinationId (single-country plans)
     await this.plansRepository.query(`
-      UPDATE "plan" SET "isCheapest" = true
-      WHERE id IN (
-        SELECT DISTINCT ON (p."destinationId", p."type", p."dataMb", p."durationDays") p.id
+      WITH ranked AS (
+        SELECT p.id,
+          CASE
+            WHEN p."destinationId" IS NOT NULL THEN 'd:' || p."destinationId"
+            ELSE 'r:' || COALESCE(
+              (SELECT string_agg(dr."destinationId"::text, ','
+                                 ORDER BY dr."destinationId")
+                 FROM "destination_region" dr
+                WHERE dr."regionId" = p."regionId"),
+              'region-' || p."regionId")
+          END AS loc,
+          p."type" AS tab,
+          p."durationDays",
+          p."dataMb",
+          p."isDomesticEsim",
+          (COALESCE(p."sms", 0) > 0 OR COALESCE(p."call", 0) > 0) AS voice,
+          -- Cost in đồng incl. the supplier's tax/fee (v3 #018): the one figure
+          -- comparable across USD and VND suppliers. Plans not converted yet
+          -- fall back to the dollar cost with the fee.
+          CASE WHEN p."vndCostPrice" > 0 THEN p."vndCostPrice"::numeric
+               ELSE p."costPrice" * (1 + COALESCE(s."percentage", 0) / 100) * 26000
+          END AS cost,
+          COALESCE(
+            substring(p."fupSpeed" from '([0-9]+(?:\.[0-9]+)?)\s*[Mm][Bb][Pp][Ss]')::numeric * 1024,
+            substring(p."fupSpeed" from '([0-9]+(?:\.[0-9]+)?)\s*[Kk][Bb][Pp][Ss]')::numeric,
+            -- Unlimited with no stated cap is the fastest there is.
+            CASE WHEN p."type" = 'unlimited' AND p."dataMb" = 0
+                 THEN 1000000000 ELSE 0 END
+          ) AS speed_kbps
         FROM "plan" p
         LEFT JOIN "provider_surcharge" s ON s."provider" = p."provider"
         WHERE p."deletedAt" IS NULL
           AND p."isActive" = true
-          AND p."destinationId" IS NOT NULL
-        -- Compare cost WITH the supplier's tax / fee (#049); none = listed cost.
-        ORDER BY p."destinationId", p."type", p."dataMb", p."durationDays",
-          p."costPrice" * (1 + COALESCE(s."percentage", 0) / 100) ASC
+          AND (p."destinationId" IS NOT NULL OR p."regionId" IS NOT NULL)
       )
-    `);
-
-    // Mark cheapest plan per group (regionId, type, dataMb, durationDays)
-    // For region plans
-    await this.plansRepository.query(`
       UPDATE "plan" SET "isCheapest" = true
       WHERE id IN (
-        SELECT DISTINCT ON (p."regionId", p."type", p."dataMb", p."durationDays") p.id
-        FROM "plan" p
-        LEFT JOIN "provider_surcharge" s ON s."provider" = p."provider"
-        WHERE p."deletedAt" IS NULL
-          AND p."isActive" = true
-          AND p."regionId" IS NOT NULL
-        -- Compare cost WITH the supplier's tax / fee (#049); none = listed cost.
-        ORDER BY p."regionId", p."type", p."dataMb", p."durationDays",
-          p."costPrice" * (1 + COALESCE(s."percentage", 0) / 100) ASC
+        SELECT DISTINCT ON (loc, tab, "durationDays", "dataMb",
+                            "isDomesticEsim", voice) id
+        FROM ranked
+        ORDER BY loc, tab, "durationDays", "dataMb",
+                 "isDomesticEsim", voice,
+                 cost ASC, speed_kbps DESC, id ASC
       )
     `);
   }

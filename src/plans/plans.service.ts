@@ -74,19 +74,24 @@ function groupPlansBySimType(plans: Plan[]): PlanGroups {
   );
 
   return {
+    // Every travel tab shows one plan per duplicate group (#004, test round
+    // 4) — the unlimited tabs used to list every supplier's copy of a plan.
     dataPlans: standardPlans.filter((p) => p.type === 'fixed' && p.isCheapest),
-    slowUnlimited: standardPlans.filter((p) => p.type === 'daily'),
-    fastUnlimited: standardPlans.filter((p) => p.type === 'unlimited-reduce'),
-    dailyUnlimited: standardPlans.filter((p) => p.type === 'unlimited'),
+    slowUnlimited: standardPlans.filter(
+      (p) => p.type === 'daily' && p.isCheapest,
+    ),
+    fastUnlimited: standardPlans.filter(
+      (p) => p.type === 'unlimited-reduce' && p.isCheapest,
+    ),
+    dailyUnlimited: standardPlans.filter(
+      (p) => p.type === 'unlimited' && p.isCheapest,
+    ),
     localEsim: plans.filter((p) => p.isDomesticEsim),
     SmsCallEsim: plans.filter((p) => !p.isDomesticEsim && isSmsCallEsimPlan(p)),
-    // Only the fixed-data group is de-duplicated by price, so only it can hide a
-    // TikTok-capable plan. The unlimited groups are returned whole already.
+    // Any de-duplicated group can hide a TikTok-capable plan behind a cheaper
+    // one; those are handed back separately for the TikTok filter.
     tiktokHiddenByPrice: standardPlans.filter(
-      (p) =>
-        p.type === 'fixed' &&
-        !p.isCheapest &&
-        p.appSupport?.tiktokAllDevices === true,
+      (p) => !p.isCheapest && p.appSupport?.tiktokAllDevices === true,
     ),
   };
 }

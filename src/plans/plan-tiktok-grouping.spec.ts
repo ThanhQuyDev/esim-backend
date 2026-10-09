@@ -140,14 +140,15 @@ describe('TikTok support on the storefront payload', () => {
     expect(groups.dataPlans[0].appSupport?.tiktokIos).toBe(false);
   });
 
-  it('should not look in the unlimited groups, which are never de-duplicated', async () => {
-    // Only `dataPlans` is filtered by isCheapest, so only it can hide a plan.
+  it('should hand back a TikTok plan the unlimited de-duplication hid', async () => {
+    // Every travel tab is de-duplicated since #004 (test round 4), so an
+    // unlimited plan can be hidden behind a cheaper one too.
     const groups = await groupsFor([
       plan({ id: 1, type: 'unlimited', apn: 'works', isCheapest: false }),
     ]);
 
-    expect(groups.dailyUnlimited.map((p) => p.id)).toEqual([1]);
-    expect(groups.tiktokHiddenByPrice).toEqual([]);
+    expect(groups.dailyUnlimited).toEqual([]);
+    expect(groups.tiktokHiddenByPrice.map((p) => p.id)).toEqual([1]);
   });
 
   it('should find nothing capable before a sheet is uploaded', async () => {

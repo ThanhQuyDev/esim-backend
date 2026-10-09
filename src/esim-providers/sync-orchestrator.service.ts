@@ -57,11 +57,12 @@ export class SyncOrchestratorService implements OnModuleInit {
     this.logger.log('Recalculating prices by tiers...');
     await this.profitMarginsService.recalculateAllPlanPrices();
 
-    this.logger.log('Marking cheapest plans...');
-    await this.plansService.markCheapestPlans();
-
     this.logger.log('Updating VND prices...');
     await this.plansService.updateVndPrices();
+
+    // After the VND prices: the de-duplication compares costs in đồng (#004).
+    this.logger.log('Marking cheapest plans...');
+    await this.plansService.markCheapestPlans();
 
     this.logger.log('Refreshing providers on destinations and regions...');
     await this.plansService.refreshProviders();

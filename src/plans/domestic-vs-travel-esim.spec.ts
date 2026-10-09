@@ -14,7 +14,9 @@ describe('eSIM nội địa vs eSIM du lịch nhà mạng trong nước', () => 
       id: 1,
       name: 'Goi',
       type: 'daily',
-      isCheapest: false,
+      // The plan the de-duplication kept — this spec is about the domestic /
+      // travel split, not about which duplicate wins.
+      isCheapest: true,
       isLocalInventory: false,
       isDomesticEsim: false,
       sms: null,
