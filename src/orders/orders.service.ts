@@ -2083,6 +2083,8 @@ export class OrdersService {
                 operatorName: plan.operatorName,
                 countryCode: plan.countryCode,
                 provider: plan.provider,
+                call: plan.call ?? null,
+                sms: plan.sms ?? null,
                 locationInfo: this.buildLocationInfo(plan),
               }
             : null,

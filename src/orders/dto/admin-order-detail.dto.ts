@@ -92,6 +92,17 @@ export class AdminOrderItemPlanDto {
 
   @ApiPropertyOptional({ type: () => AdminPlanLocationInfoDto })
   locationInfo?: AdminPlanLocationInfoDto | null;
+
+  /**
+   * Call minutes / SMS of the plan (#019, test round 4). Without them the
+   * order page could neither name a call/SMS plan as such nor show the
+   * "Phút gọi / SMS" row the eSIM pages have.
+   */
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  call?: number | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  sms?: number | null;
 }
 
 export class AdminOrderItemDto {
