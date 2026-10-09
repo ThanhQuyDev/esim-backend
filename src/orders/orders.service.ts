@@ -1507,26 +1507,47 @@ export class OrdersService {
     adminUserId: number,
     dto: {
       email: string;
-      packageCode: string;
-      slug: string;
-      quantity: number;
+      packageCode?: string;
+      slug?: string;
+      quantity?: number;
       customerName?: string | null;
+      /** Several plans at once (#031, test round 4). */
+      items?: { packageCode: string; slug: string; quantity: number }[];
     },
   ): Promise<Order> {
-    // 1. Resolve plan by slug (primary) and verify packageCode.
+    // 1. Resolve every plan by slug (primary) and verify its packageCode.
     //
     // Before the buyer, because resolving the buyer now has a side effect: it
     // creates the account (#041). A bad plan must not leave a stray account
     // behind for an order that never happened.
-    const plan = await this.plansService.findBySlug(dto.slug);
-    if (!plan) {
-      throw new NotFoundException(`Plan slug ${dto.slug} not found`);
+    const lines = dto.items?.length
+      ? dto.items
+      : dto.slug && dto.packageCode && dto.quantity
+        ? [
+            {
+              slug: dto.slug,
+              packageCode: dto.packageCode,
+              quantity: dto.quantity,
+            },
+          ]
+        : [];
+    if (lines.length === 0) {
+      throw new BadRequestException('Chưa chọn gói eSIM nào cho đơn.');
     }
-    if (plan.providerPlanId !== dto.packageCode) {
-      throw new BadRequestException(
-        `Plan slug ${dto.slug} does not match packageCode ${dto.packageCode} (expected ${plan.providerPlanId})`,
-      );
+    const resolved: { plan: Plan; quantity: number }[] = [];
+    for (const line of lines) {
+      const plan = await this.plansService.findBySlug(line.slug);
+      if (!plan) {
+        throw new NotFoundException(`Plan slug ${line.slug} not found`);
+      }
+      if (plan.providerPlanId !== line.packageCode) {
+        throw new BadRequestException(
+          `Plan slug ${line.slug} does not match packageCode ${line.packageCode} (expected ${plan.providerPlanId})`,
+        );
+      }
+      resolved.push({ plan, quantity: line.quantity });
     }
+    const plan = resolved[0].plan;
 
     // 2. Resolve the buyer, creating the account when there is none (#041).
     //
@@ -1544,7 +1565,13 @@ export class OrdersService {
     // 3. Build a SubmitOrderDto-compatible payload (no coupon/wallet/referral for manual orders)
     const submitDto: SubmitOrderDto = {
       currency: plan.currency,
-      items: [{ planId: plan.id, quantity: dto.quantity }],
+      // One line per plan picked (#031); repeating a plan adds up its quantity.
+      items: [
+        ...resolved.reduce((acc, line) => {
+          acc.set(line.plan.id, (acc.get(line.plan.id) ?? 0) + line.quantity);
+          return acc;
+        }, new Map<number, number>()),
+      ].map(([planId, quantity]) => ({ planId, quantity })),
       paymentMethod: 'admin_manual',
     };
 
@@ -1570,7 +1597,7 @@ export class OrdersService {
     );
 
     this.logger.log(
-      `Admin ${adminUserId} created manual order ${orderNumber} for buyer ${buyer.id} (${dto.email}) — plan ${plan.slug} x${dto.quantity}`,
+      `Admin ${adminUserId} created manual order ${orderNumber} for buyer ${buyer.id} (${dto.email}) — ${resolved.map((l) => `${l.plan.slug} x${l.quantity}`).join(', ')}`,
     );
 
     // 5. Mark as PAID via internal admin approval (no OnePay).

@@ -91,4 +91,43 @@ describe('Cost price on a manual order (#042)', () => {
     // blocking đặt đơn hộ entirely, so this records the dependency.
     expect(FALLBACK_USD_VND_RATE).toBeGreaterThan(1000);
   });
+
+  it('should put several plans in one order, each with its quantity (#031)', async () => {
+    const { service, internals } = makeService();
+    const plans: Record<string, unknown> = {
+      ID_1_7: PLAN,
+      VN_5GB: { ...PLAN, id: 4, slug: 'VN_5GB', providerPlanId: 'VN5' },
+    };
+    internals.plansService = {
+      findBySlug: jest.fn((slug: string) =>
+        Promise.resolve(plans[slug] ?? null),
+      ),
+    };
+
+    await service.submitManualOrder(5, {
+      email: 'khach@example.com',
+      items: [
+        { slug: 'ID_1_7', packageCode: 'JC056', quantity: 2 },
+        { slug: 'VN_5GB', packageCode: 'VN5', quantity: 3 },
+      ],
+    });
+
+    const [, submitDto] = (internals.createPendingOrder as jest.Mock).mock
+      .calls[0];
+    expect(submitDto.items).toEqual([
+      { planId: 3, quantity: 2 },
+      { planId: 4, quantity: 3 },
+    ]);
+  });
+
+  it('should refuse a line whose code does not match its plan (#031)', async () => {
+    const { service } = makeService();
+
+    await expect(
+      service.submitManualOrder(5, {
+        email: 'khach@example.com',
+        items: [{ slug: 'ID_1_7', packageCode: 'WRONG', quantity: 1 }],
+      }),
+    ).rejects.toThrow(/does not match/);
+  });
 });

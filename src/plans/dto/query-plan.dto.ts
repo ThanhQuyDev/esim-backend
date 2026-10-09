@@ -15,6 +15,15 @@ export class FilterPlanDto {
   @IsString()
   search?: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      "Part of the plan's provider code or slug — the admin's order-on-behalf picker (#031).",
+  })
+  @IsOptional()
+  @IsString()
+  planCode?: string;
+
   @ApiPropertyOptional({ type: Boolean })
   @IsOptional()
   @IsBoolean()

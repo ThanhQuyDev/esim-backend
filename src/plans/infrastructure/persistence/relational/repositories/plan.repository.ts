@@ -155,6 +155,7 @@ export class PlansRelationalRepository implements PlanRepository {
       filterOptions?.data ||
       filterOptions?.tags?.length ||
       filterOptions?.country ||
+      filterOptions?.planCode ||
       filterOptions?.hasCallSms !== undefined
     ) {
       const qb = this.plansRepository.createQueryBuilder('plan');
@@ -189,6 +190,12 @@ export class PlansRelationalRepository implements PlanRepository {
         if (dataMb > 0) {
           qb.andWhere('plan."dataMb" = :dataMb', { dataMb });
         }
+      }
+      if (filterOptions.planCode) {
+        qb.andWhere(
+          '(plan."providerPlanId" ILIKE :planCode OR plan.slug ILIKE :planCode)',
+          { planCode: `%${filterOptions.planCode.trim()}%` },
+        );
       }
       if (filterOptions.tags?.length) {
         qb.andWhere('plan."tags" @> :tags', {
