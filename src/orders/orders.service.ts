@@ -1590,10 +1590,9 @@ export class OrdersService {
     // profit (#042). The rate is cached for an hour and never throws, so there
     // is no FX call to avoid.
     const vndRate = await this.exchangeRateService.getUsdToVndRate();
-    const orderNumber = `MAN-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase()}`;
+    // Same readable date-time code as every other order (#051, test round 4):
+    // MAN-yyMMddHHmmssSSS-XXXXXX.
+    const orderNumber = generateOrderNumber('MAN-');
     const order = await this.createPendingOrder(
       Number(buyer.id),
       submitDto,
@@ -1660,10 +1659,9 @@ export class OrdersService {
     }
 
     const vndRate = await this.exchangeRateService.getUsdToVndRate();
-    const orderNumber = `PTN-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase()}`;
+    // Same readable date-time code as every other order (#051, test round 4):
+    // PTN-yyMMddHHmmssSSS-XXXXXX.
+    const orderNumber = generateOrderNumber('PTN-');
 
     const order = await this.createPendingOrder(
       input.buyerUserId,

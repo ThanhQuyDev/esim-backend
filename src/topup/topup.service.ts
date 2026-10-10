@@ -1,3 +1,4 @@
+import { generateOrderNumber } from '../utils/order-number';
 import {
   BadGatewayException,
   BadRequestException,
@@ -311,10 +312,9 @@ export class TopupService {
               pkg.retailPrice,
           );
 
-    const orderNumber = `${TOPUP_ORDER_NUMBER_PREFIX}-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase()}`;
+    // Readable date-time code like a purchase (#051, test round 4):
+    // TOPUP-yyMMddHHmmssSSS-XXXXXX. The prefix is what payment routing reads.
+    const orderNumber = generateOrderNumber(`${TOPUP_ORDER_NUMBER_PREFIX}-`);
 
     // Cost in đồng, so the order detail and the reports can state the margin on a
     // topup (#015). It used to be stored as 0, which made every topup look like
