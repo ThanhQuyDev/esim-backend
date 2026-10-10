@@ -631,6 +631,12 @@ export class PartnersController {
     await this.partnersService.deleteLink(partner.id, Number(id));
   }
 
+  // The guards were missing here, so `req.user` was undefined and the portal's
+  // Tắt / Mở button always failed with "Internal server error" (#054, test
+  // round 4).
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch('me/links/:id')
   @HttpCode(HttpStatus.OK)
   async updateLink(

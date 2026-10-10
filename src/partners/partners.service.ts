@@ -1054,8 +1054,12 @@ export class PartnersService {
   }
 
   async getMyLinks(partnerId: number) {
+    // Deleted links stay in the list, marked by `deletedAt`, so the portal can
+    // show them as "Đã xóa" next to "Hoạt động" / "Đã tắt" (#054, test round
+    // 4). They are excluded everywhere a link is resolved, so they earn nothing.
     return this.linkRepository.find({
       where: { partnerId },
+      withDeleted: true,
       order: { createdAt: 'DESC' },
     });
   }
