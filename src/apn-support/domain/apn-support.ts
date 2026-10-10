@@ -38,6 +38,14 @@ export class ApnSupport {
   @ApiPropertyOptional({ type: () => String })
   note?: string | null;
 
+  /**
+   * Added automatically from a supplier's plans and not filled in yet (#044,
+   * test round 4): its app columns mean "chưa có thông tin", not "không hỗ
+   * trợ", and it is left out when judging plans.
+   */
+  @ApiPropertyOptional({ type: () => Boolean })
+  needsReview?: boolean;
+
   @ApiProperty({ type: String })
   id: string;
 

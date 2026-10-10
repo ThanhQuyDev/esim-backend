@@ -257,7 +257,7 @@ describe('APN sheet', () => {
       'Users',
       'ttquy',
       'Downloads',
-      'UPDATE - PHASE 2_ESIM.VN 2026 (2).xlsx',
+      'UPDATE - PHASE 2_ESIM.VN 2026 (3).xlsx',
     );
     // The team's spreadsheet lives on one laptop and gets renamed as new
     // copies arrive; without it there is nothing to read, not a failure.
@@ -284,7 +284,9 @@ describe('APN sheet', () => {
         (row, col) => sheet.getRow(row).getCell(col).value,
       );
 
-      // 92 dòng dữ liệu = 46 APN × 2 thiết bị.
+      // 46 APNs, one row each (round 4 wide layout: TikTok iPhone/Android,
+      // ChatGPT, Gemini, Claude). Round 4 reported ChatGPT importing as "Không"
+      // — the sheet read fine; the CMS table read a field that no longer exists.
       expect(result.rows).toHaveLength(46);
       expect(result.errors).toEqual([]);
       expect(result.duplicates).toEqual([]);
@@ -295,9 +297,15 @@ describe('APN sheet', () => {
         tiktokAndroid: false,
         chatGptIos: true,
         chatGptAndroid: true,
+        geminiIos: true,
+        geminiAndroid: true,
         claudeIos: false,
         claudeAndroid: false,
       });
+      const withGpt = result.rows.filter(
+        (r) => r.chatGptIos && r.chatGptAndroid,
+      );
+      expect(withGpt.length).toBeGreaterThan(30);
 
       // cmhk chạy TikTok trên iPhone nhưng không trên Android, nên không được
       // tính là "dùng được" khi web chưa biết khách cầm máy gì.

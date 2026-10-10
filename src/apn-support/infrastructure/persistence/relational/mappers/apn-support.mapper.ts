@@ -15,6 +15,7 @@ export class ApnSupportMapper {
     domainEntity.claudeIos = !!raw.claudeIos;
     domainEntity.claudeAndroid = !!raw.claudeAndroid;
     domainEntity.note = raw.note ?? null;
+    domainEntity.needsReview = !!raw.needsReview;
     domainEntity.id = raw.id;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;

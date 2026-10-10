@@ -54,6 +54,10 @@ export class ApnSupportEntity extends EntityRelationalHelper {
   @Column({ nullable: true, type: String })
   note?: string | null;
 
+  /** Auto-added from plans, app columns not filled in yet (#044). */
+  @Column({ nullable: false, type: Boolean, default: false })
+  needsReview: boolean;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
