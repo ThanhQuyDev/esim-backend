@@ -46,7 +46,14 @@ export class PlansRelationalRepository implements PlanRepository {
     sortOptions?: SortPlanDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Plan[], number]> {
-    if (filterOptions?.search) {
+    // The query builder handles what a plain `where` cannot: the text search,
+    // and the "TikTok & ChatGPT" filter, which is "exit-IP flag OR a capable
+    // APN" (#045, test round 4).
+    if (
+      filterOptions?.search ||
+      (filterOptions?.isNonHkIp !== undefined &&
+        filterOptions?.tiktokApns?.length)
+    ) {
       const qb = this.plansRepository
         .createQueryBuilder('plan')
         .leftJoinAndSelect('plan.destination', 'dest')
@@ -54,10 +61,12 @@ export class PlansRelationalRepository implements PlanRepository {
         .leftJoin('region.destinations', 'regionDest')
         .leftJoin('destination', 'child', 'child."parentId" = dest.id');
 
-      qb.where(
-        '(plan.name ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
-        { search: `%${filterOptions.search}%` },
-      );
+      if (filterOptions?.search) {
+        qb.where(
+          '(plan.name ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
+          { search: `%${filterOptions.search}%` },
+        );
+      }
 
       this.applyColumnFilters(qb, filterOptions);
       this.applyLocationAndCallSmsFilters(qb, filterOptions);
