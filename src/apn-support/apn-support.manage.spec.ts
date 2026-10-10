@@ -1,4 +1,8 @@
-import { apnRowsFromPlanValues, exportRows } from './apn-support.service';
+import {
+  apnNamesIn,
+  apnRowsFromPlanValues,
+  exportRows,
+} from './apn-support.service';
 import { ApnSupport } from './domain/apn-support';
 
 /**
@@ -36,6 +40,38 @@ describe('APN table management (#044)', () => {
         tiktokIos: false,
         chatGptIos: false,
       });
+    });
+  });
+
+  describe('reading a supplier APN field', () => {
+    it.each([
+      ['cmhk', ['cmhk']],
+      ['cmhk / mobile.three.com.hk', ['cmhk', 'mobile.three.com.hk']],
+      ['cmlink or internet.proximus.be', ['cmlink', 'internet.proximus.be']],
+      [
+        'AE:cmhk|AT:cmlink or orange|UAE:cmhk',
+        ['cmhk', 'cmlink', 'orange', 'cmhk'],
+      ],
+      [
+        'APN：plus.4g | Username：plus | Password：4g | Authentication Type：CHAP',
+        ['plus.4g'],
+      ],
+      ['APN：au.5g.au-net.ne.jp', ['au.5g.au-net.ne.jp']],
+      ['Asia 13 Countries', []],
+      ['[object Object]', []],
+    ])('should read %s', (value, expected) => {
+      expect(apnNamesIn(value)).toEqual(expected);
+    });
+
+    it('should collect one row per APN across country maps', () => {
+      const rows = apnRowsFromPlanValues([
+        'AE:cmhk|AG:cmhk|GU:mobile.three.com.hk / share.three.com.hk',
+      ]);
+      expect(rows.map((row) => row.apn)).toEqual([
+        'cmhk',
+        'mobile.three.com.hk',
+        'share.three.com.hk',
+      ]);
     });
   });
 

@@ -383,14 +383,39 @@ function pickAppFields(input: Partial<ApnSupportRow>): Partial<ApnSupportRow> {
 }
 
 /**
- * Plan APN values → one "awaiting review" row per distinct APN (#044). A plan
- * can list several APNs, comma- or semicolon-separated (#018).
+ * The APN names inside one supplier `apn` value (#044, test round 4).
+ *
+ * Suppliers write this field freely: "cmhk", "cmhk / mobile.three.com.hk",
+ * "cmlink or internet.proximus.be", a per-country map "AE:cmhk|AT:cmlink or
+ * orange|…", or "APN：plus.4g | Username：plus | Password：4g". Only tokens that
+ * look like an APN are kept — no spaces, letters/digits/.-_ — so a country map
+ * yields its APNs and labels like "Username" or "Asia 13 Countries" are dropped.
  */
+export function apnNamesIn(value: string | null | undefined): string[] {
+  if (!value || typeof value !== 'string') return [];
+  const names: string[] = [];
+  for (const segment of value.split(/[|,;\n/]+|\s+or\s+/i)) {
+    let token = segment.trim();
+    // "APN：plus.4g" / "APN: plus.4g" — keep what follows the label.
+    const labelled = token.match(/^apn\s*[:：]\s*(.+)$/i);
+    if (labelled) token = labelled[1].trim();
+    // "AE:cmhk", "UAE:cmhk", "MBLT:cmlink" — a country/region code prefix.
+    else if (/^[A-Z]{2,5}\s*[:：]/.test(token)) {
+      token = token.replace(/^[A-Z]{2,5}\s*[:：]\s*/, '');
+    }
+    if (/[:：]/.test(token)) continue; // "Username：plus", "Password：4g"
+    if (!/^[a-z0-9][a-z0-9._-]{1,62}$/i.test(token)) continue;
+    if (!/[a-z]/i.test(token)) continue;
+    names.push(token);
+  }
+  return names;
+}
+
+/** Plan APN values → one "awaiting review" row per distinct APN (#044). */
 export function apnRowsFromPlanValues(values: string[]): ApnSupportRow[] {
   const seen = new Map<string, string>();
   for (const raw of values) {
-    for (const piece of raw.split(/[,;\n]+/)) {
-      const label = piece.trim();
+    for (const label of apnNamesIn(raw)) {
       const apn = normalizeApn(label);
       if (apn && !seen.has(apn)) seen.set(apn, label);
     }
