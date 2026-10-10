@@ -3647,7 +3647,8 @@ export class PartnersService {
   ): Promise<PartnerOrderRowDto[]> {
     // A null partner is the admin's view of every marketing partner at once
     // (#071); the screen is the same, only the scope is wider.
-    const search = filters.search?.trim() || null;
+    // A pasted "#ORD-…" still finds the order (#057, test round 4).
+    const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
     const status = filters.status?.trim() || null;
     const rows = await this.dataSource.query(
       `SELECT o."orderNumber",
@@ -4606,7 +4607,8 @@ export class PartnersService {
   > {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const limit = Math.min(Math.max(filters.limit ?? 100, 1), 500);
-    const search = filters.search?.trim() || null;
+    // A pasted "#ORD-…" still finds the order (#057, test round 4).
+    const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
     const status = filters.status?.trim() || null;
 
     const rows = await this.dataSource.query(
@@ -4696,7 +4698,8 @@ export class PartnersService {
       ? await this.getPartnerOrThrowById(partnerId)
       : null;
     const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
-    const search = filters.search?.trim() || null;
+    // A pasted "#ORD-…" still finds the order (#057, test round 4).
+    const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
     const status = filters.status?.trim() || null;
 
     const rows = await this.dataSource.query(
@@ -4841,7 +4844,8 @@ export class PartnersService {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const markupPercent = await this.purchaseMarkupPercentFor(partner);
     const limit = Math.min(Math.max(filters.limit ?? 100, 1), 500);
-    const search = filters.search?.trim() || null;
+    // A pasted "#ORD-…" still finds the order (#057, test round 4).
+    const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
 
     const rows = await this.dataSource.query(
       `SELECT p.id,
