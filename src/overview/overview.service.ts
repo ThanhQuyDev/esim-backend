@@ -821,7 +821,8 @@ export class OverviewService {
     try {
       const rows: { provider: string }[] =
         await this.orderItemsRepository.manager.query(
-          `SELECT DISTINCT provider FROM "plan" WHERE provider IS NOT NULL AND provider <> ''`,
+          `SELECT DISTINCT provider FROM "plan"
+            WHERE provider IS NOT NULL AND provider <> '' AND "deletedAt" IS NULL`,
         );
       const known = OVERVIEW_PROVIDERS as readonly string[];
       const extra = rows
