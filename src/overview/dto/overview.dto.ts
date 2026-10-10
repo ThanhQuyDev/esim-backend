@@ -137,8 +137,8 @@ export class OverviewProviderFilterQueryDto extends OverviewDateRangeQueryDto {
   })
   @IsOptional()
   @IsString()
-  @IsIn(OVERVIEW_PROVIDERS)
-  provider?: OverviewProvider;
+  // Any supplier with plans, not only the known six (#063).
+  provider?: string;
 }
 
 export class ProviderComparisonQueryDto extends OverviewDateRangeQueryDto {

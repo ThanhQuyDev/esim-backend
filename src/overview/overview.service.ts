@@ -19,7 +19,6 @@ import {
   OVERVIEW_PROVIDERS,
   OverviewDatePreset,
   OverviewDateRangeQueryDto,
-  OverviewProvider,
   OverviewProviderFilterQueryDto,
   OverviewResponseDto,
   OverviewSummaryResponseDto,
@@ -265,9 +264,12 @@ export class OverviewService {
     const groupBy = query.groupBy ?? 'provider';
 
     if (groupBy === 'provider') {
-      const aggregates = await this.getProviderAggregates(query);
+      const [aggregates, providers] = await Promise.all([
+        this.getProviderAggregates(query),
+        this.overviewProviders(),
+      ]);
       return {
-        data: OVERVIEW_PROVIDERS.map((provider) => {
+        data: providers.map((provider) => {
           const aggregate =
             aggregates.get(provider) ??
             this.createEmptyProviderAggregate(provider);
@@ -308,10 +310,12 @@ export class OverviewService {
         totalItems: RawValue;
       }>();
 
+    const providers = await this.overviewProviders();
     const rowsByBucket = new Map<string, ProviderSeriesRow>();
     for (const row of rawRows) {
       const date = this.formatBucket(row.bucket);
-      const item = rowsByBucket.get(date) ?? this.createProviderSeriesRow(date);
+      const item =
+        rowsByBucket.get(date) ?? this.createProviderSeriesRow(date, providers);
       item[row.provider] = this.getMetricValue(metric, {
         provider: row.provider,
         orders: this.toNumber(row.orders),
@@ -324,7 +328,7 @@ export class OverviewService {
     }
 
     return {
-      providers: [...OVERVIEW_PROVIDERS],
+      providers,
       series: [...rowsByBucket.values()],
     };
   }
@@ -485,7 +489,7 @@ export class OverviewService {
 
   private async getProviderAggregates(
     query: OverviewDateRangeQueryDto,
-  ): Promise<Map<OverviewProvider, ProviderAggregate>> {
+  ): Promise<Map<string, ProviderAggregate>> {
     const rawRows = await this.createProviderBaseQuery(query)
       .select(`${PLAN_ALIAS}.provider`, 'provider')
       .addSelect(this.completedOrdersCountExpression(), 'orders')
@@ -495,7 +499,7 @@ export class OverviewService {
       .addSelect(`COUNT(${ORDER_ITEM_ALIAS}.id)`, 'totalItems')
       .groupBy(`${PLAN_ALIAS}.provider`)
       .getRawMany<{
-        provider: OverviewProvider;
+        provider: string;
         orders: RawValue;
         revenue: RawValue;
         plansSold: RawValue;
@@ -503,7 +507,7 @@ export class OverviewService {
         totalItems: RawValue;
       }>();
 
-    return new Map<OverviewProvider, ProviderAggregate>(
+    return new Map<string, ProviderAggregate>(
       rawRows.map((row) => [
         row.provider,
         {
@@ -579,7 +583,7 @@ export class OverviewService {
         .groupBy(`${PLAN_ALIAS}.provider`)
         .orderBy('"totalRevenue"', 'DESC')
         .getRawMany<{
-          group: OverviewProvider;
+          group: string;
           costPrice: RawValue;
           totalRevenue: RawValue;
           plansSold: RawValue;
@@ -599,7 +603,8 @@ export class OverviewService {
         ]),
       );
 
-      return OVERVIEW_PROVIDERS.map(
+      const providers = await this.overviewProviders();
+      return providers.map(
         (provider) =>
           byProvider.get(provider) ?? {
             group: provider,
@@ -654,9 +659,10 @@ export class OverviewService {
       .createQueryBuilder(ORDER_ITEM_ALIAS)
       .innerJoin(`${ORDER_ITEM_ALIAS}.order`, ORDER_ALIAS)
       .innerJoin(`${ORDER_ITEM_ALIAS}.plan`, PLAN_ALIAS)
-      .where(`${PLAN_ALIAS}.provider IN (:...providers)`, {
-        providers: [...OVERVIEW_PROVIDERS],
-      })
+      // Every supplier, not a fixed list: an order on a supplier added later —
+      // e.g. a domestic itel eSIM ordered on a customer's behalf — dropped out
+      // of the overview entirely (#063, test round 4).
+      .where(`${PLAN_ALIAS}.provider IS NOT NULL`)
       .setParameters({
         completedOrderStatuses: [...COMPLETED_ORDER_STATUSES],
         completedOrderItemStatuses: [...COMPLETED_ORDER_ITEM_STATUSES],
@@ -806,8 +812,34 @@ export class OverviewService {
     return String(value ?? '');
   }
 
-  private createProviderSeriesRow(date: string): ProviderSeriesRow {
-    return OVERVIEW_PROVIDERS.reduce<ProviderSeriesRow>(
+  /**
+   * The suppliers the overview reports on: the known ones (always shown, even
+   * with no sales) plus any other supplier that has plans — domestic stock such
+   * as itel, or one added later (#063, test round 4).
+   */
+  private async overviewProviders(): Promise<string[]> {
+    try {
+      const rows: { provider: string }[] =
+        await this.orderItemsRepository.manager.query(
+          `SELECT DISTINCT provider FROM "plan" WHERE provider IS NOT NULL AND provider <> ''`,
+        );
+      const known = OVERVIEW_PROVIDERS as readonly string[];
+      const extra = rows
+        .map((row) => row.provider)
+        .filter((provider) => !known.includes(provider))
+        .sort();
+      return [...known, ...extra];
+    } catch {
+      // The known suppliers are still a useful answer if the lookup fails.
+      return [...OVERVIEW_PROVIDERS];
+    }
+  }
+
+  private createProviderSeriesRow(
+    date: string,
+    providers: readonly string[],
+  ): ProviderSeriesRow {
+    return providers.reduce<ProviderSeriesRow>(
       (row, provider) => {
         row[provider] = 0;
         return row;
@@ -816,9 +848,7 @@ export class OverviewService {
     );
   }
 
-  private createEmptyProviderAggregate(
-    provider: OverviewProvider,
-  ): ProviderAggregate {
+  private createEmptyProviderAggregate(provider: string): ProviderAggregate {
     return {
       provider,
       orders: 0,
