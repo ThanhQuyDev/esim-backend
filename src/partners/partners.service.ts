@@ -570,7 +570,10 @@ export class PartnersService {
       const partner = await partnerRepo.save(
         partnerRepo.create({
           userId: user.id,
-          partnerType: dto.partnerType,
+          // An API applicant runs as a distribution partner; what they picked
+          // is kept for the admin (#053, test round 4).
+          partnerType: partnerTypeFor(dto),
+          requestedType: dto.requestedType ?? dto.partnerType,
           legalType: dto.legalType,
           companyName: dto.companyName ?? null,
           taxCode: dto.taxCode ?? null,
@@ -623,7 +626,10 @@ export class PartnersService {
       const partnerRepo = manager.getRepository(PartnerEntity);
       await partnerRepo.save(
         partnerRepo.merge(partner, {
-          partnerType: dto.partnerType,
+          // An API applicant runs as a distribution partner; what they picked
+          // is kept for the admin (#053, test round 4).
+          partnerType: partnerTypeFor(dto),
+          requestedType: dto.requestedType ?? dto.partnerType,
           legalType: dto.legalType,
           companyName: dto.companyName ?? null,
           taxCode: dto.taxCode ?? null,
@@ -2792,6 +2798,7 @@ export class PartnersService {
         partnerRepo.create({
           userId: user.id,
           partnerType: dto.partnerType,
+          requestedType: dto.partnerType,
           legalType: dto.legalType,
           companyName: dto.companyName ?? null,
           taxCode: dto.taxCode ?? null,
@@ -7414,4 +7421,13 @@ export class PartnersService {
   private generateLinkCode(): string {
     return Math.random().toString(36).slice(2, 10).toUpperCase();
   }
+}
+
+/** The partner type an application runs as (#053, test round 4). */
+export function partnerTypeFor(dto: PartnerApplyDto): PartnerTypeEnum {
+  if (dto.requestedType === 'kol') return PartnerTypeEnum.KOL;
+  if (dto.requestedType === 'distribution' || dto.requestedType === 'api') {
+    return PartnerTypeEnum.DISTRIBUTION;
+  }
+  return dto.partnerType;
 }

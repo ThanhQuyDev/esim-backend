@@ -48,6 +48,15 @@ export class PartnerEntity extends EntityRelationalHelper {
   @Column({ type: String })
   partnerType!: PartnerTypeEnum;
 
+  /**
+   * What the applicant picked on the sign-up form (#053, test round 4):
+   * 'kol' (tiếp thị), 'distribution' (phân phối) or 'api' (tích hợp API). An
+   * API partner runs as a distribution partner until its terms are set, so this
+   * keeps the choice the admin has to see when approving.
+   */
+  @Column({ type: String, nullable: true })
+  requestedType!: string | null;
+
   @Column({ type: String })
   legalType!: PartnerLegalTypeEnum;
 

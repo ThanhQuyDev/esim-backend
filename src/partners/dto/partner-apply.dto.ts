@@ -2,18 +2,33 @@ import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import {
   IsEmail,
   IsEnum,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { PartnerLegalTypeEnum, PartnerTypeEnum } from '../partners.enum';
+import {
+  PARTNER_REQUESTED_TYPES,
+  PartnerLegalTypeEnum,
+  PartnerRequestedType,
+  PartnerTypeEnum,
+} from '../partners.enum';
 
 export class PartnerApplyDto {
   @ApiProperty({ enum: PartnerTypeEnum })
   @IsEnum(PartnerTypeEnum)
   partnerType!: PartnerTypeEnum;
+
+  /**
+   * The partnership the applicant chose (#053, test round 4). 'api' is filed as
+   * a distribution partner; the choice itself is kept for the admin.
+   */
+  @ApiPropertyOptional({ enum: PARTNER_REQUESTED_TYPES })
+  @IsOptional()
+  @IsIn(PARTNER_REQUESTED_TYPES as unknown as string[])
+  requestedType?: PartnerRequestedType;
 
   @ApiProperty({ enum: PartnerLegalTypeEnum })
   @IsEnum(PartnerLegalTypeEnum)

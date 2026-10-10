@@ -129,3 +129,7 @@ export enum PartnerTopupMethodEnum {
   BANK_TRANSFER = 'bank_transfer',
   CARD = 'card',
 }
+
+/** What an applicant can pick on the sign-up form (#053, test round 4). */
+export const PARTNER_REQUESTED_TYPES = ['kol', 'distribution', 'api'] as const;
+export type PartnerRequestedType = (typeof PARTNER_REQUESTED_TYPES)[number];

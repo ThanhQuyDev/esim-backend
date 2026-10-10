@@ -20,6 +20,10 @@ export class PartnerProfileDto {
   @ApiProperty({ enum: PartnerTypeEnum })
   partnerType!: PartnerTypeEnum;
 
+  /** What the applicant picked: kol, distribution or api (#053). */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  requestedType?: string | null;
+
   @ApiProperty({ enum: PartnerLegalTypeEnum })
   legalType!: PartnerLegalTypeEnum;
 
