@@ -351,6 +351,9 @@ export class OrdersService {
           order.payableVndPrice ??
           order.vndPrice ??
           0,
+        // A partner's own code is paid out of their commission (#060).
+        couponCode: order.couponCode ?? null,
+        couponDiscountVnd: Number(order.couponDiscountVndAmount ?? 0),
       });
     } catch (err) {
       this.logger.error(

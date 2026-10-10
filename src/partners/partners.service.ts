@@ -1,3 +1,4 @@
+import { partnerCommissionAmount } from './partner-commission-amount';
 import {
   BadRequestException,
   ForbiddenException,
@@ -7036,6 +7037,32 @@ export class PartnersService {
     return null;
   }
 
+  /**
+   * The discount an order took through the given partner's OWN code (#060), or
+   * 0 when the code is the site's or another partner's.
+   */
+  private async ownCouponDiscount(
+    partnerId: number,
+    couponCode: string | null | undefined,
+    discountVnd: number | null | undefined,
+  ): Promise<number> {
+    const code = couponCode?.trim();
+    if (!code || !discountVnd || discountVnd <= 0) return 0;
+    const coupon = await this.couponRepository.findOne({
+      where: { code: code.toUpperCase() },
+      withDeleted: true,
+    });
+    const sameCode =
+      coupon ??
+      (await this.couponRepository.findOne({
+        where: { code },
+        withDeleted: true,
+      }));
+    return sameCode && Number(sameCode.partnerId) === Number(partnerId)
+      ? Number(discountVnd)
+      : 0;
+  }
+
   async createPendingCommissionForOrder(params: {
     orderId: number;
     partnerId: number;
@@ -7045,6 +7072,9 @@ export class PartnersService {
     buyerUserId?: number | null;
     /** `TOPUP` orders earn no commission (#025). */
     orderType?: string | null;
+    /** The discount code used on the order and what it took off (#060). */
+    couponCode?: string | null;
+    couponDiscountVnd?: number | null;
   }): Promise<OrderPartnerCommissionEntity | null> {
     const partner = await this.partnerRepository.findOne({
       where: { id: params.partnerId },
@@ -7100,9 +7130,18 @@ export class PartnersService {
       return null;
     }
 
-    const commissionVnd = Math.round(
-      (params.orderValueVnd * commissionPercent) / 100,
+    // The partner's OWN code is paid out of their commission (#060, test round
+    // 4): only then does the discount come out of the budget.
+    const ownCouponDiscountVnd = await this.ownCouponDiscount(
+      params.partnerId,
+      params.couponCode,
+      params.couponDiscountVnd,
     );
+    const { commissionVnd, effectivePercent } = partnerCommissionAmount({
+      orderValueVnd: params.orderValueVnd,
+      commissionPercent,
+      ownCouponDiscountVnd,
+    });
     if (commissionVnd <= 0) return null;
 
     return this.commissionRepository.save(
@@ -7114,8 +7153,9 @@ export class PartnersService {
         tierSnapshot: partner.tierCode ?? null,
         // The rate as it stood when the order was placed (#042). Worked out
         // here and stored, so a later tier change — or an edit to the tier's
-        // own percentage — cannot reach back and alter this order.
-        commissionPercentSnapshot: commissionPercent,
+        // own percentage — cannot reach back and alter this order. With the
+        // partner's own code it is the share they kept (#060).
+        commissionPercentSnapshot: effectivePercent,
         status: OrderPartnerCommissionStatusEnum.PENDING,
       }),
     );
