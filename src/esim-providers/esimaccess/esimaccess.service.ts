@@ -408,12 +408,11 @@ export class EsimAccessService {
       activationValidityDays: parseValidityDays(pkg.unusedValidTime),
       hotSpot: true,
       hotSpotAllow: this.formatHotSpotAllow(planType, dataMb),
-      // The provider states this in the package name — "… (nonhkip)" — and
-      // our own name/slug are rebuilt from location+data+duration, so without
-      // capturing it here the distinction is lost for good (#041).
-      isNonHkIp:
-        pkg.name.toLowerCase().includes('nonhkip') ||
-        (pkg.slug ?? '').toLowerCase().includes('nonhkip'),
+      // TikTok / ChatGPT work unless traffic exits via Hong Kong (#043, test
+      // round 4): judged from the package's exit IP, with the "(nonhkip)" name
+      // marker as a fallback when the IP is missing.
+      ipExport: pkg.ipExport?.trim() || null,
+      isNonHkIp: isNonHkExit(pkg),
       lastSyncedAt: new Date(),
       isActive: true,
     };
@@ -854,4 +853,22 @@ export class EsimAccessService {
       .replace(/-+/g, '-')
       .trim();
   }
+}
+
+/**
+ * Whether an esimaccess package's traffic leaves outside Hong Kong (#043, test
+ * round 4). `ipExport` is "SG", "FR/NL/UK", "HK"…; HK anywhere in it means
+ * TikTok and ChatGPT are blocked. With no IP reported, the "(nonhkip)" marker in
+ * the name or slug is the only signal.
+ */
+export function isNonHkExit(pkg: {
+  ipExport?: string | null;
+  name?: string | null;
+  slug?: string | null;
+}): boolean {
+  const ip = (pkg.ipExport ?? '').trim();
+  if (ip) {
+    return !ip.split(/[\/,\s]+/).some((part) => part.toUpperCase() === 'HK');
+  }
+  return /nonhkip/i.test(`${pkg.name ?? ''} ${pkg.slug ?? ''}`);
 }

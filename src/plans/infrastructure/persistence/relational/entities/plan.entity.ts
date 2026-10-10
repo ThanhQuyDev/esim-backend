@@ -149,6 +149,10 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isNonHkIp: boolean;
 
+  /** Exit IP location reported by the supplier — "SG", "FR/NL/UK", "HK" (#043). */
+  @Column({ type: String, nullable: true })
+  ipExport: string | null;
+
   @Column({ type: Boolean, default: false })
   isKyc: boolean;
 

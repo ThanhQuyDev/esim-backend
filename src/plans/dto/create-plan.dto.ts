@@ -201,6 +201,16 @@ export class CreatePlanDto {
   @IsBoolean()
   isNonHkIp?: boolean;
 
+  /**
+   * Where the eSIM's traffic exits, as the supplier reports it — "SG",
+   * "FR/NL/UK", "HK" (#043, test round 4). Shown in the plan detail; anything
+   * but HK means TikTok / ChatGPT work.
+   */
+  @ApiPropertyOptional({ example: 'SG', type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  ipExport?: string | null;
+
   @ApiPropertyOptional({ example: 'internet', type: String })
   @IsOptional()
   @IsString()

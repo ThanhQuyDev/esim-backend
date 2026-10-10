@@ -152,6 +152,10 @@ export class Plan {
   })
   isNonHkIp: boolean;
 
+  /** Exit IP location reported by the supplier, e.g. "SG", "HK" (#043). */
+  @ApiPropertyOptional({ type: String, example: 'SG', nullable: true })
+  ipExport?: string | null;
+
   @ApiProperty({ type: Boolean, example: false })
   isKyc: boolean;
 

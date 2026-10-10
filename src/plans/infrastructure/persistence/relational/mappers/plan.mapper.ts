@@ -48,6 +48,7 @@ export class PlanMapper {
     domainEntity.vndCostPrice = Number(raw.vndCostPrice ?? 0);
     domainEntity.vndRetailPrice = Number(raw.vndRetailPrice ?? 0);
     domainEntity.isNonHkIp = !!raw.isNonHkIp;
+    domainEntity.ipExport = raw.ipExport ?? null;
     domainEntity.isKyc = raw.isKyc;
     domainEntity.isLocalInventory = raw.isLocalInventory;
     domainEntity.isDomesticEsim = raw.isDomesticEsim;
@@ -116,6 +117,9 @@ export class PlanMapper {
     persistenceEntity.vndCostPrice = domainEntity.vndCostPrice;
     persistenceEntity.vndRetailPrice = domainEntity.vndRetailPrice;
     persistenceEntity.isNonHkIp = domainEntity.isNonHkIp;
+    if (domainEntity.ipExport !== undefined) {
+      persistenceEntity.ipExport = domainEntity.ipExport;
+    }
     persistenceEntity.isKyc = domainEntity.isKyc;
     persistenceEntity.isLocalInventory = domainEntity.isLocalInventory;
     persistenceEntity.isDomesticEsim = domainEntity.isDomesticEsim;

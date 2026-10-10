@@ -210,6 +210,7 @@ export class PlansService {
       vndCostPrice: money.costPrice.vnd,
       vndRetailPrice: money.retailPrice.vnd,
       isNonHkIp: createPlanDto.isNonHkIp ?? false,
+      ipExport: createPlanDto.ipExport ?? null,
       isKyc: createPlanDto.isKyc ?? false,
       isLocalInventory,
       isDomesticEsim,
@@ -407,6 +408,15 @@ export class PlansService {
       vndPrice: updatePlanDto.vndPrice ?? money?.price.vnd,
       hotSpot: updatePlanDto.hotSpot,
       hotSpotAllow: updatePlanDto.hotSpotAllow,
+      // Missing from this list, so a supplier re-sync or an admin edit never
+      // saved them: no esimaccess "(nonhkip)" plan ever got its TikTok/ChatGPT
+      // flag, and "Giờ làm mới" was lost (#043, test round 4). A spec now checks
+      // every create field is forwarded here.
+      isNonHkIp: updatePlanDto.isNonHkIp,
+      ipExport: updatePlanDto.ipExport,
+      activationValidityDays: updatePlanDto.activationValidityDays,
+      dailyResetPolicy: updatePlanDto.dailyResetPolicy,
+      dailyResetUtcOffset: updatePlanDto.dailyResetUtcOffset,
       ...(money
         ? {
             usdPrice: money.price.usd,
