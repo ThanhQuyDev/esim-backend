@@ -30,6 +30,9 @@ export abstract class TicketRepository {
   /** Tickets resolved before `cutoff` and still awaiting auto-close (#061). */
   abstract findResolvedBefore(cutoff: Date): Promise<Ticket[]>;
 
+  /** Whether this email signs in to a partner account (#042, test round 4). */
+  abstract isPartnerEmail(email: string): Promise<boolean>;
+
   /** Tickets opened with this email since `since` — the per-email spam limit (#033). */
   abstract countByEmailSince(email: string, since: Date): Promise<number>;
 

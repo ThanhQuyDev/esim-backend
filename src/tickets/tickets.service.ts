@@ -128,6 +128,8 @@ export class TicketsService {
           to: ticket.customerEmail,
           ticketNumber,
           ticketSubject: ticket.subject,
+          // A partner opens a new request from the portal's Hỗ trợ page (#042).
+          isPartner: !!ticket.fromPartner,
         });
       } catch (err) {
         this.logger.error(
@@ -232,6 +234,18 @@ export class TicketsService {
     return ticketNumber;
   }
 
+  /** Best-effort: a lookup failure must not stop a support request. */
+  private async isPartnerEmail(email: string): Promise<boolean> {
+    try {
+      return await this.ticketRepository.isPartnerEmail(email);
+    } catch (err) {
+      this.logger.warn(
+        `Could not tell whether ${email} is a partner — ${(err as Error).message}`,
+      );
+      return false;
+    }
+  }
+
   private async assertCanSeeTicket(
     ticketId: number,
     requester: { email?: string | null; isAdmin: boolean },
@@ -269,6 +283,7 @@ export class TicketsService {
       status: TicketStatus.NEW,
       // Nothing has been resolved yet; the auto-close clock starts when it is.
       resolvedAt: null,
+      fromPartner: await this.isPartnerEmail(createTicketDto.customerEmail),
       // The form itself is the customer's opening message (#041).
       lastReplyAt: new Date(),
       lastReplyRole: 'customer',

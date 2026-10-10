@@ -93,6 +93,8 @@ export interface InvoiceIssuedMailData {
  * not be followed from the button next to it.
  */
 export const PARTNER_SIGN_IN_PATH = '/auth/sign-in';
+/** The partner portal's "Hỗ trợ" page, where a partner opens a new request (#042). */
+export const PARTNER_SUPPORT_PATH = '/dashboard/portal/support';
 
 /**
  * Public eSIM lookup page on the storefront (#003), Vietnamese slug because `vi`
@@ -136,6 +138,8 @@ export interface TicketMailData {
   ticketSubject: string;
   ticketDescription?: string | null;
   replyBody?: string | null;
+  /** The ticket belongs to a partner — links go to the portal (#042). */
+  isPartner?: boolean;
 }
 
 /** The Message-ID of a ticket's first email, which every later one points to. */
@@ -757,7 +761,9 @@ ${data.body}`,
       supportEmail,
       subject: template.subject,
       // Where a new request is opened — linked from the "ticket is closed" reply.
-      supportFormUrl: `${SITE_URL}/help-center/support`,
+      supportFormUrl: data.isPartner
+        ? this.partnerPortalUrl(PARTNER_SUPPORT_PATH)
+        : `${SITE_URL}/help-center/support`,
     };
 
     const ownSubject = Handlebars.compile(template.subject)(context);

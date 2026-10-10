@@ -17,6 +17,7 @@ export class TicketMapper {
     domainEntity.status = raw.status;
     domainEntity.resolvedAt = raw.resolvedAt ?? null;
     domainEntity.lastReplyAt = raw.lastReplyAt ?? null;
+    domainEntity.fromPartner = raw.fromPartner ?? false;
     domainEntity.lastReplyRole =
       (raw.lastReplyRole as 'customer' | 'admin' | null) ?? null;
     domainEntity.lastReplyName = raw.lastReplyName ?? null;
@@ -44,6 +45,9 @@ export class TicketMapper {
     persistenceEntity.status = domainEntity.status;
     if (domainEntity.resolvedAt !== undefined) {
       persistenceEntity.resolvedAt = domainEntity.resolvedAt;
+    }
+    if (domainEntity.fromPartner !== undefined) {
+      persistenceEntity.fromPartner = domainEntity.fromPartner;
     }
     if (domainEntity.lastReplyAt !== undefined) {
       persistenceEntity.lastReplyAt = domainEntity.lastReplyAt;

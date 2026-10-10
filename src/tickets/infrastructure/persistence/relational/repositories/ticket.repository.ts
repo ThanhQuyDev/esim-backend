@@ -76,6 +76,17 @@ export class TicketsRelationalRepository implements TicketRepository {
     return [entities.map((entity) => TicketMapper.toDomain(entity)), count];
   }
 
+  async isPartnerEmail(email: string): Promise<boolean> {
+    const rows: unknown[] = await this.ticketsRepository.query(
+      `SELECT 1 FROM "partner" p
+         JOIN "user" u ON u.id = p."userId"
+        WHERE LOWER(u.email) = LOWER($1)
+        LIMIT 1`,
+      [email.trim()],
+    );
+    return rows.length > 0;
+  }
+
   async findById(id: Ticket['id']): Promise<NullableType<Ticket>> {
     const entity = await this.ticketsRepository.findOne({ where: { id } });
     return entity ? TicketMapper.toDomain(entity) : null;

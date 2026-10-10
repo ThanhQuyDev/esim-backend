@@ -55,6 +55,14 @@ export class TicketEntity extends EntityRelationalHelper {
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date | null;
 
+  /**
+   * Opened by a partner — the email belongs to a partner account (#042, test
+   * round 4). Their messages read "Đối tác" in the CMS, and a closed ticket
+   * points them back to the portal rather than the public form.
+   */
+  @Column({ type: Boolean, default: false })
+  fromPartner: boolean;
+
   /** Latest message and its author (#041, test round 4). */
   @Column({ type: 'timestamp', nullable: true })
   lastReplyAt: Date | null;

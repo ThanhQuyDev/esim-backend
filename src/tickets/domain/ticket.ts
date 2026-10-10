@@ -54,6 +54,10 @@ export class Ticket {
   @ApiPropertyOptional({ type: Date, nullable: true })
   lastReplyAt?: Date | null;
 
+  /** Opened by a partner (#042, test round 4). */
+  @ApiPropertyOptional({ type: Boolean })
+  fromPartner?: boolean;
+
   @ApiPropertyOptional({
     type: String,
     enum: ['customer', 'admin'],
