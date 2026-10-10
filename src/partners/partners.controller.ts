@@ -576,7 +576,13 @@ export class PartnersController {
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-don-hang')}"`,
+      'Content-Disposition': `attachment; filename="${downloadFilename(
+        // Named as the tester asked (#059, test round 4):
+        // Don-hang-doi-tac-tiep-thi_06-10-2026_00-41-52.xlsx.
+        partner.partnerType === PartnerTypeEnum.DISTRIBUTION
+          ? 'Don-hang-doi-tac-phan-phoi'
+          : 'Don-hang-doi-tac-tiep-thi',
+      )}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);
