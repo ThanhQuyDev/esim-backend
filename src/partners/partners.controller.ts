@@ -1,3 +1,4 @@
+import { downloadFilename } from '../utils/download-filename';
 import {
   Body,
   Controller,
@@ -575,7 +576,7 @@ export class PartnersController {
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="don-hang-doi-tac-${Date.now()}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-don-hang')}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);
@@ -611,7 +612,7 @@ export class PartnersController {
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="link-tiep-thi-${Date.now()}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-link-tiep-thi')}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);

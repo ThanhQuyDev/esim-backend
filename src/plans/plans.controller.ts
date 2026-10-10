@@ -1,3 +1,4 @@
+import { downloadFilename } from '../utils/download-filename';
 import {
   Controller,
   Get,
@@ -117,7 +118,7 @@ export class PlansController {
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="plans-export-${Date.now()}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-goi-esim')}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);

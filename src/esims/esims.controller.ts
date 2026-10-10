@@ -1,3 +1,4 @@
+import { downloadFilename } from '../utils/download-filename';
 import {
   Controller,
   Get,
@@ -291,7 +292,7 @@ export class EsimsController {
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="esims-export-${Date.now()}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-esim')}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);
