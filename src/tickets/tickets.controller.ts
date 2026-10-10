@@ -80,6 +80,7 @@ export class TicketsController {
       filterOptions: {
         status: query?.status,
         search: query?.search,
+        awaitingSupport: query?.awaitingSupport,
       },
       paginationOptions: { page, limit },
     });

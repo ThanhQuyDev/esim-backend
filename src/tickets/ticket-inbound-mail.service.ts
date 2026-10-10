@@ -5,6 +5,11 @@ import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { AllConfigType } from '../config/config.type';
 import { TicketsService } from './tickets.service';
+import {
+  EmailAttachment,
+  pickEmailAttachments,
+  uploadEmailAttachment,
+} from './ticket-email-attachments';
 
 /**
  * Reads replies out of the support mailbox and files them onto their ticket
@@ -84,16 +89,21 @@ export class TicketInboundMailService implements OnModuleDestroy {
       try {
         // Unseen only: a message is marked read once it has been filed, which is
         // what stops it being processed twice across restarts.
-        const unseen = await client.search({ seen: false });
+        // By UID throughout. This searched by sequence number but marked read by
+        // UID, so the \Seen flag could land on a different message than the one
+        // just filed (#041, test round 4).
+        const unseen = await client.search({ seen: false }, { uid: true });
         const uids = Array.isArray(unseen) ? unseen : [];
 
         for (const uid of uids) {
           if (this.destroyed) break;
 
           try {
-            const message = await client.fetchOne(String(uid), {
-              source: true,
-            });
+            const message = await client.fetchOne(
+              String(uid),
+              { source: true },
+              { uid: true },
+            );
             if (!message || typeof message === 'boolean' || !message.source) {
               skipped += 1;
               continue;
@@ -102,10 +112,33 @@ export class TicketInboundMailService implements OnModuleDestroy {
             const parsed = await simpleParser(message.source);
             const fromEmail = parsed.from?.value?.[0]?.address ?? null;
 
+            // Files the customer attached, uploaded so they show in the CMS
+            // thread (#041, test round 4). One that cannot be uploaded is named
+            // in the message instead.
+            const files = pickEmailAttachments(
+              parsed.attachments as unknown as EmailAttachment[],
+            );
+            const attachmentUrls: string[] = [];
+            const notUploaded: string[] = [];
+            for (const file of files) {
+              const url = await uploadEmailAttachment(
+                file,
+                {
+                  cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+                  uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET,
+                },
+                this.logger,
+              );
+              if (url) attachmentUrls.push(url);
+              else notUploaded.push(file.filename ?? 'tệp đính kèm');
+            }
+
             const filedUnder = await this.ticketsService.ingestEmailReply({
               subject: parsed.subject ?? null,
               fromEmail,
               body: parsed.text ?? parsed.html?.toString() ?? null,
+              attachments: attachmentUrls,
+              unsavedAttachmentNames: notUploaded,
             });
 
             if (filedUnder) {

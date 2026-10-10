@@ -55,6 +55,16 @@ export class TicketEntity extends EntityRelationalHelper {
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date | null;
 
+  /** Latest message and its author (#041, test round 4). */
+  @Column({ type: 'timestamp', nullable: true })
+  lastReplyAt: Date | null;
+
+  @Column({ type: String, nullable: true })
+  lastReplyRole: string | null;
+
+  @Column({ type: String, nullable: true })
+  lastReplyName: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

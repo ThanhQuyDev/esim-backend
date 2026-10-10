@@ -30,6 +30,8 @@ function buildService(ticket: Record<string, unknown> | null) {
   const mailService = {
     sendTicketAcknowledgement: jest.fn().mockResolvedValue(undefined),
     sendTicketReply: jest.fn().mockResolvedValue(undefined),
+    sendTicketClosedReply: jest.fn().mockResolvedValue(undefined),
+    sendTicketResolved: jest.fn().mockResolvedValue(undefined),
   };
 
   const service = new TicketsService(
@@ -98,16 +100,86 @@ describe('TicketsService — the conversation on a ticket (#032)', () => {
     );
   });
 
-  it('should reopen a closed ticket when somebody writes again', async () => {
+  it('should keep a closed ticket closed when the customer writes, and tell them to open a new one (#041)', async () => {
+    const { service, update, mailService } = buildService({
+      id: 3,
+      ticketNumber: 'HT-000003',
+      customerEmail: 'kol@esim.vn',
+      subject: 'Không vào được mạng',
+      status: 'closed',
+    });
+
+    await service.addMessage(3, OWNER, { body: 'Vẫn chưa được ạ' });
+
+    expect(update).toHaveBeenCalledWith(
+      3,
+      expect.not.objectContaining({ status: expect.anything() }),
+    );
+    expect(update).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ lastReplyRole: 'customer' }),
+    );
+    expect(mailService.sendTicketClosedReply).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'kol@esim.vn', ticketNumber: 'HT-000003' }),
+    );
+  });
+
+  it('should move a resolved ticket back to in progress when the customer writes (#041)', async () => {
+    const { service, update, mailService } = buildService({
+      id: 3,
+      customerEmail: 'kol@esim.vn',
+      status: 'resolved',
+    });
+
+    await service.addMessage(3, OWNER, { body: 'Lại mất mạng rồi' });
+
+    expect(update).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({
+        status: 'in_progress',
+        resolvedAt: null,
+        lastReplyRole: 'customer',
+      }),
+    );
+    expect(mailService.sendTicketClosedReply).not.toHaveBeenCalled();
+  });
+
+  it('should move a need-info ticket back to in progress once the customer answers (#041)', async () => {
+    const { service, update } = buildService({
+      id: 3,
+      customerEmail: 'kol@esim.vn',
+      status: 'need_info',
+    });
+
+    await service.addMessage(3, OWNER, { body: 'ICCID là 8985...' });
+
+    expect(update).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ status: 'in_progress' }),
+    );
+  });
+
+  it('should pick a closed ticket back up when support writes in it', async () => {
     const { service, update } = buildService({
       id: 3,
       customerEmail: 'kol@esim.vn',
       status: 'closed',
     });
 
-    await service.addMessage(3, OWNER, { body: 'Vẫn chưa được ạ' });
+    await service.addMessage(
+      3,
+      { email: 'admin@esim.vn', isAdmin: true, name: 'Thọ' },
+      { body: 'Mình kiểm tra lại nhé' },
+    );
 
-    expect(update).toHaveBeenCalledWith(3, { status: 'open' });
+    expect(update).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({
+        status: 'in_progress',
+        lastReplyRole: 'admin',
+        lastReplyName: 'Thọ',
+      }),
+    );
   });
 
   it('should refuse an empty reply', async () => {

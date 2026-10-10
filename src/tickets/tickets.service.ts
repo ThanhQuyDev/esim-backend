@@ -26,7 +26,11 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { parseTicketNumber, ticketNumberFor } from './ticket-number';
 import { extractReplyText } from './email-reply-text';
-import { TicketStatus, TICKET_AUTO_CLOSE_HOURS } from './ticket-status';
+import {
+  nextStatusAfterReply,
+  TicketStatus,
+  TICKET_AUTO_CLOSE_HOURS,
+} from './ticket-status';
 import { MailService } from '../mail/mail.service';
 
 @Injectable()
@@ -90,11 +94,46 @@ export class TicketsService {
       }),
     );
 
-    // A reply from support reopens a ticket that was closed prematurely, and a
-    // reply from the customer means it is not resolved after all.
     const ticket = await this.ticketRepository.findById(ticketId);
-    if (ticket && ticket.status === 'closed') {
-      await this.ticketRepository.update(ticketId, { status: 'open' } as never);
+    const isClosed = ticket?.status === TicketStatus.CLOSED;
+
+    // Status follows the conversation (#041, test round 4):
+    // - the customer writing back means it is not done: RESOLVED / NEED_INFO go
+    //   back to IN_PROGRESS — but a CLOSED ticket stays closed, and they are told
+    //   to open a new request instead (below)
+    // - support replying to a closed ticket picks it back up
+    // The last author is recorded either way, which is what the list's "phản hồi
+    // cuối" column and the sidebar badge read.
+    const nextStatus = nextStatusAfterReply(
+      ticket?.status ?? TicketStatus.NEW,
+      requester.isAdmin ? 'admin' : 'customer',
+    );
+    if (ticket) {
+      await this.ticketRepository.update(ticketId, {
+        ...(nextStatus !== ticket.status && {
+          status: nextStatus,
+          resolvedAt: null,
+        }),
+        lastReplyAt: message.createdAt ?? new Date(),
+        lastReplyRole: requester.isAdmin ? 'admin' : 'customer',
+        lastReplyName: requester.name ?? null,
+      } as never);
+    }
+
+    if (!requester.isAdmin && isClosed && ticket?.customerEmail) {
+      const ticketNumber =
+        ticket.ticketNumber ?? ticketNumberFor(Number(ticket.id));
+      try {
+        await this.mailService.sendTicketClosedReply({
+          to: ticket.customerEmail,
+          ticketNumber,
+          ticketSubject: ticket.subject,
+        });
+      } catch (err) {
+        this.logger.error(
+          `Ticket ${ticketNumber}: closed-ticket notice failed — ${(err as Error).message}`,
+        );
+      }
     }
 
     // An admin's reply is emailed to the customer, so support no longer has to
@@ -140,6 +179,10 @@ export class TicketsService {
     subject?: string | null;
     fromEmail?: string | null;
     body?: string | null;
+    /** Uploaded attachment URLs (#041, test round 4). */
+    attachments?: string[];
+    /** Attachments that could not be uploaded — named in the message instead. */
+    unsavedAttachmentNames?: string[];
   }): Promise<string | null> {
     const ticketNumber = parseTicketNumber(input.subject);
     if (!ticketNumber) return null;
@@ -160,7 +203,18 @@ export class TicketsService {
       return null;
     }
 
-    const body = extractReplyText(input.body);
+    const text = extractReplyText(input.body);
+    const unsaved = input.unsavedAttachmentNames ?? [];
+    const hasFiles = (input.attachments?.length ?? 0) > 0 || unsaved.length > 0;
+    // A reply that is only a photo is still a reply.
+    const body = [
+      text || (hasFiles ? '(Khách gửi tệp đính kèm qua email)' : ''),
+      unsaved.length
+        ? `Tệp đính kèm chưa lưu được, xem trong hộp thư hỗ trợ: ${unsaved.join(', ')}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
     if (!body) {
       this.logger.warn(
         `Inbound mail for ${ticketNumber} had no text — skipped`,
@@ -171,7 +225,7 @@ export class TicketsService {
     await this.addMessage(
       Number(ticket.id),
       { email: ticket.customerEmail, isAdmin: false, name: null },
-      { body },
+      { body, attachments: input.attachments },
     );
 
     this.logger.log(`Inbound reply filed under ${ticketNumber}`);
@@ -215,7 +269,11 @@ export class TicketsService {
       status: TicketStatus.NEW,
       // Nothing has been resolved yet; the auto-close clock starts when it is.
       resolvedAt: null,
-    });
+      // The form itself is the customer's opening message (#041).
+      lastReplyAt: new Date(),
+      lastReplyRole: 'customer',
+      lastReplyName: null,
+    } as never);
 
     // The number is derived from the id, so it can only be assigned once the row
     // exists (#059).
@@ -334,6 +392,7 @@ export class TicketsService {
       status?: string;
       search?: string;
       customerEmail?: string;
+      awaitingSupport?: boolean;
     } | null;
     paginationOptions: IPaginationOptions;
   }) {
@@ -355,9 +414,28 @@ export class TicketsService {
    * reopened and resolved again would be closed against its first timestamp.
    */
   async updateStatus(id: Ticket['id'], status: string) {
+    if (!(Object.values(TicketStatus) as string[]).includes(status)) {
+      throw new BadRequestException(`Trạng thái không hợp lệ: ${status}`);
+    }
+    const before = await this.ticketRepository.findById(id);
     const resolvedAt = status === TicketStatus.RESOLVED ? new Date() : null;
 
-    return this.ticketRepository.update(id, { status, resolvedAt } as never);
+    const updated = await this.ticketRepository.update(id, {
+      status,
+      resolvedAt,
+    } as never);
+
+    // Closing by hand tells the customer too, exactly as the 48h auto-close does
+    // (#041, test round 4) — before, only the automatic close emailed them.
+    if (
+      updated &&
+      status === TicketStatus.CLOSED &&
+      before?.status !== TicketStatus.CLOSED
+    ) {
+      await this.notifyResolved(updated);
+    }
+
+    return updated;
   }
 
   /**

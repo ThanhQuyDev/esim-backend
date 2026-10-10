@@ -38,13 +38,31 @@ export class Ticket {
   @ApiProperty({
     type: String,
     example: 'open',
-    enum: ['open', 'in_progress', 'resolved', 'closed'],
+    enum: ['open', 'in_progress', 'need_info', 'resolved', 'closed'],
   })
   status: string;
 
   /** When it was marked resolved — the 48-hour auto-close clock (#061). */
   @ApiPropertyOptional({ type: Date, nullable: true })
   resolvedAt: Date | null;
+
+  /**
+   * The latest message in the conversation and who wrote it (#041, test round
+   * 4) — the opening form counts as the customer's. A ticket whose last word is
+   * the customer's is waiting on support.
+   */
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  lastReplyAt?: Date | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['customer', 'admin'],
+    nullable: true,
+  })
+  lastReplyRole?: 'customer' | 'admin' | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  lastReplyName?: string | null;
 
   @ApiProperty()
   createdAt: Date;

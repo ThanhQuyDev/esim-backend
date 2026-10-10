@@ -138,6 +138,23 @@ export interface TicketMailData {
   replyBody?: string | null;
 }
 
+/** The Message-ID of a ticket's first email, which every later one points to. */
+export function ticketThreadId(ticketNumber: string): string {
+  const domain = SUPPORT_EMAIL.split('@')[1] ?? 'esim.com.vn';
+  return `<ticket-${ticketNumber.toLowerCase()}@${domain}>`;
+}
+
+/**
+ * Subject of a follow-up in a ticket's email thread: "Re: " + the
+ * acknowledgement's subject. Mail clients group by subject as well as by
+ * References, so a follow-up with its own subject opened a new conversation
+ * ("[HT-000005] Phản hồi yêu cầu hỗ trợ: …" each time) — #041, test round 4.
+ */
+export function ticketThreadSubject(ackSubject: string): string {
+  const base = ackSubject.trim().replace(/^(re:\s*)+/i, '');
+  return `Re: ${base}`;
+}
+
 /** An announcement going out by email (#079). */
 export interface PartnerNotificationMailData {
   to: string;
@@ -708,7 +725,8 @@ ${data.body}`,
     templateName:
       | 'ticket_acknowledgement'
       | 'ticket_admin_reply'
-      | 'ticket_resolved_closed',
+      | 'ticket_resolved_closed'
+      | 'ticket_closed_reply',
     data: TicketMailData,
   ): Promise<void> {
     const template = await this.emailTemplatesService.findByName(templateName);
@@ -738,14 +756,40 @@ ${data.body}`,
       logoUrl: BRAND_LOGO_URL,
       supportEmail,
       subject: template.subject,
+      // Where a new request is opened — linked from the "ticket is closed" reply.
+      supportFormUrl: `${SITE_URL}/help-center/support`,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const ownSubject = Handlebars.compile(template.subject)(context);
+
+    // One email thread per ticket (#041, test round 4): the acknowledgement
+    // carries the ticket's thread id, and every later email replies to it under
+    // the same subject, so the customer sees the whole exchange together.
+    const isFirst = templateName === 'ticket_acknowledgement';
+    const threadId = ticketThreadId(data.ticketNumber);
+    let subjectCompiled = ownSubject;
+    if (!isFirst) {
+      const ack = await this.emailTemplatesService.findByName(
+        'ticket_acknowledgement',
+      );
+      subjectCompiled = ticketThreadSubject(
+        ack ? Handlebars.compile(ack.subject)(context) : ownSubject,
+      );
+    }
+    const threading = isFirst
+      ? { messageId: threadId }
+      : {
+          messageId: `<ticket-${data.ticketNumber.toLowerCase()}-${Date.now()}@${threadId.split('@')[1]}`,
+          inReplyTo: threadId,
+          references: [threadId],
+        };
+
     const htmlCompiled = Handlebars.compile(template.htmlBody, {
       strict: false,
-    })(context);
+    })({ ...context, subject: subjectCompiled });
 
     await this.mailerService.sendMail({
+      ...threading,
       // Sent AS the support mailbox (#062), so the From a customer sees is the
       // one their reply reaches. Falls back to the primary transport when the
       // support SMTP credentials are not configured.
@@ -782,6 +826,14 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
    */
   async sendTicketResolved(data: TicketMailData): Promise<void> {
     await this.sendTicketEmail('ticket_resolved_closed', data);
+  }
+
+  /**
+   * The automatic answer to a customer writing into a CLOSED ticket (#041,
+   * test round 4): "this ticket is closed — open a new request here".
+   */
+  async sendTicketClosedReply(data: TicketMailData): Promise<void> {
+    await this.sendTicketEmail('ticket_closed_reply', data);
   }
 
   /**

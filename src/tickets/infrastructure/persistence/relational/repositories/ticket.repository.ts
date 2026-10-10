@@ -32,6 +32,8 @@ export class TicketsRelationalRepository implements TicketRepository {
       status?: string;
       search?: string;
       customerEmail?: string;
+      /** Waiting on support: new, or the customer wrote last and it is not closed. */
+      awaitingSupport?: boolean;
     } | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Ticket[], number]> {
@@ -54,6 +56,15 @@ export class TicketsRelationalRepository implements TicketRepository {
       qb.andWhere(
         '(ticket."customerEmail" ILIKE :search OR ticket.subject ILIKE :search)',
         { search: `%${filterOptions.search}%` },
+      );
+    }
+
+    // The sidebar badge (#041, test round 4): a ticket whose last message is the
+    // customer's still needs an answer, whatever status it is in — short of
+    // closed, which a customer's mail can no longer reopen.
+    if (filterOptions?.awaitingSupport) {
+      qb.andWhere(
+        `(ticket.status = 'open' OR (ticket."lastReplyRole" = 'customer' AND ticket.status <> 'closed'))`,
       );
     }
 

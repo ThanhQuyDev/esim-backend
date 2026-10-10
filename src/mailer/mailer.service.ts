@@ -104,6 +104,14 @@ export class MailerService {
      * the primary transport.
      */
     transportName?: 'default' | 'otp' | 'support';
+    /**
+     * Threading headers, passed straight to nodemailer: a support ticket's
+     * emails reference its first one so mail clients keep them in one
+     * conversation (#041, test round 4).
+     */
+    messageId?: string;
+    inReplyTo?: string;
+    references?: string | string[];
   }): Promise<void> {
     let html: string | undefined = mailOptions.html;
     if (templatePath) {

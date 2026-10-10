@@ -27,4 +27,10 @@ export class QueryTicketDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  /** Only tickets waiting on support — the CMS sidebar badge (#041). */
+  @ApiPropertyOptional({ type: Boolean })
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsOptional()
+  awaitingSupport?: boolean;
 }

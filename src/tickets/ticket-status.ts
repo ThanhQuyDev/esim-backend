@@ -19,7 +19,15 @@ export const TicketStatus = {
   IN_PROGRESS: 'in_progress',
   RESOLVED: 'resolved',
   CLOSED: 'closed',
+  /**
+   * "Cần bổ sung thông tin" — waiting on the customer, set by hand (#041, test
+   * round 4). The customer's answer moves it back to IN_PROGRESS.
+   */
+  NEED_INFO: 'need_info',
 } as const;
+
+/** Who wrote the latest message on a ticket (#041, test round 4). */
+export type TicketReplyRole = 'customer' | 'admin';
 
 export type TicketStatusValue =
   (typeof TicketStatus)[keyof typeof TicketStatus];
@@ -31,3 +39,25 @@ export type TicketStatusValue =
  * reply reopens it, so this is a grace period rather than a deadline.
  */
 export const TICKET_AUTO_CLOSE_HOURS = 48;
+
+/**
+ * A ticket's status once someone has written in it (#041, test round 4).
+ *
+ * The customer writing back: RESOLVED and NEED_INFO go back to IN_PROGRESS (it
+ * is not done, or the missing information has arrived); NEW and IN_PROGRESS
+ * stay; CLOSED stays closed — they are asked to open a new request instead.
+ * Support writing in a closed ticket picks it back up as IN_PROGRESS.
+ */
+export function nextStatusAfterReply(
+  current: string,
+  author: TicketReplyRole,
+): TicketStatusValue {
+  const status = current as TicketStatusValue;
+  if (author === 'customer') {
+    if (status === TicketStatus.RESOLVED || status === TicketStatus.NEED_INFO) {
+      return TicketStatus.IN_PROGRESS;
+    }
+    return status;
+  }
+  return status === TicketStatus.CLOSED ? TicketStatus.IN_PROGRESS : status;
+}

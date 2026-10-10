@@ -15,6 +15,7 @@ export abstract class TicketRepository {
       status?: string;
       search?: string;
       customerEmail?: string;
+      awaitingSupport?: boolean;
     } | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Ticket[], number]>;
