@@ -24,6 +24,7 @@ describe('ManufacturerNotesService', () => {
       create: jest.fn(),
       findAllWithPagination: jest.fn(),
       findActiveByLanguage: jest.fn().mockResolvedValue(notes),
+      findByBrandAndLanguage: jest.fn().mockResolvedValue(null),
       findById: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),

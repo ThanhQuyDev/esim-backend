@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  HttpStatus,
+  Injectable,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { CreateManufacturerNoteDto } from './dto/create-manufacturer-note.dto';
 import { UpdateManufacturerNoteDto } from './dto/update-manufacturer-note.dto';
 import { ManufacturerNoteRepository } from './infrastructure/persistence/manufacturer-note.repository';
@@ -13,6 +17,7 @@ export class ManufacturerNotesService {
   constructor(private readonly noteRepository: ManufacturerNoteRepository) {}
 
   async create(createDto: CreateManufacturerNoteDto) {
+    await this.assertNoOtherNote(createDto.manufacturer, createDto.language);
     return this.noteRepository.create({
       manufacturer: createDto.manufacturer.trim(),
       language: createDto.language,
@@ -60,12 +65,49 @@ export class ManufacturerNotesService {
     id: ManufacturerNote['id'],
     updateDto: UpdateManufacturerNoteDto,
   ) {
+    if (
+      updateDto.manufacturer !== undefined ||
+      updateDto.language !== undefined
+    ) {
+      const current = await this.noteRepository.findById(id);
+      if (current) {
+        await this.assertNoOtherNote(
+          updateDto.manufacturer ?? current.manufacturer,
+          updateDto.language ?? current.language,
+          id,
+        );
+      }
+    }
     return this.noteRepository.update(id, {
       manufacturer: updateDto.manufacturer?.trim(),
       language: updateDto.language,
       note: updateDto.note,
       isActive: updateDto.isActive,
     });
+  }
+
+  /**
+   * One note per brand and language (#052, test round 4). The database enforces
+   * it, but its error surfaced as a bare "Internal server error" — the tester
+   * could not tell that the brand already had a note to edit instead.
+   */
+  private async assertNoOtherNote(
+    manufacturer: string,
+    language: string,
+    exceptId?: ManufacturerNote['id'],
+  ): Promise<void> {
+    const existing = await this.noteRepository.findByBrandAndLanguage(
+      manufacturer.trim(),
+      language,
+    );
+    if (existing && existing.id !== exceptId) {
+      const languageName = language === 'en' ? 'tiếng Anh' : 'tiếng Việt';
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        message: `Hãng "${existing.manufacturer}" đã có ghi chú ${languageName} — hãy sửa ghi chú đó thay vì tạo mới.`,
+        errors: { manufacturer: 'noteAlreadyExists' },
+      });
+    }
   }
 
   remove(id: ManufacturerNote['id']) {

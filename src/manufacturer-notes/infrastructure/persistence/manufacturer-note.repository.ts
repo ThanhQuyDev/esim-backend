@@ -17,6 +17,12 @@ export abstract class ManufacturerNoteRepository {
   /** Active notes for one language, for the supported-devices page. */
   abstract findActiveByLanguage(language: string): Promise<ManufacturerNote[]>;
 
+  /** The note for a brand in a language, brand compared case-insensitively. */
+  abstract findByBrandAndLanguage(
+    manufacturer: string,
+    language: string,
+  ): Promise<NullableType<ManufacturerNote>>;
+
   abstract findById(
     id: ManufacturerNote['id'],
   ): Promise<NullableType<ManufacturerNote>>;

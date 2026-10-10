@@ -49,6 +49,20 @@ export class ManufacturerNoteRelationalRepository implements ManufacturerNoteRep
     return entities.map((entity) => ManufacturerNoteMapper.toDomain(entity));
   }
 
+  async findByBrandAndLanguage(
+    manufacturer: string,
+    language: string,
+  ): Promise<NullableType<ManufacturerNote>> {
+    const entity = await this.noteRepository
+      .createQueryBuilder('note')
+      .where('LOWER(TRIM(note.manufacturer)) = LOWER(TRIM(:manufacturer))', {
+        manufacturer,
+      })
+      .andWhere('note.language = :language', { language })
+      .getOne();
+    return entity ? ManufacturerNoteMapper.toDomain(entity) : null;
+  }
+
   async findById(
     id: ManufacturerNote['id'],
   ): Promise<NullableType<ManufacturerNote>> {
