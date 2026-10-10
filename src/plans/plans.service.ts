@@ -68,6 +68,59 @@ function isSmsCallEsimPlan(plan: Plan): boolean {
  * Nên gói Viettel (`isLocalInventory = true`, `isDomesticEsim = false`) đi vào
  * `standardPlans` và hiện ở nhóm du lịch đúng theo `type` của nó.
  */
+/** Works with TikTok on every device and with ChatGPT — what the filter shows. */
+function worksWithTiktokAndChatGpt(plan: Plan): boolean {
+  return (
+    plan.appSupport?.tiktokAllDevices === true &&
+    plan.appSupport.chatGpt === true
+  );
+}
+
+/** Cost in đồng, the figure `markCheapestPlans` compares on. */
+function planCostVnd(plan: Plan): number {
+  const vnd = Number(plan.vndCostPrice ?? 0);
+  return vnd > 0 ? vnd : Number(plan.costPrice ?? 0) * 26000;
+}
+
+/**
+ * For the "works with TikTok & ChatGPT" filter: per duplicate group (same place,
+ * tab, days and data — the grouping `markCheapestPlans` uses), the CHEAPEST plan
+ * that works, when the plan shown by default does not (#045, test round 4).
+ *
+ * This used to hand back every capable plan of every group, and the storefront
+ * sorted them by selling price — so China 1GB/7 days showed Billion and Airalo
+ * next to the esimaccess "nonhkip" plan that costs us less.
+ */
+export function tiktokReplacements(plans: Plan[]): Plan[] {
+  const groups = new Map<string, Plan[]>();
+  for (const plan of plans) {
+    if (!plan.destinationId && !plan.regionId) continue;
+    const key = [
+      plan.destinationId ? `d${plan.destinationId}` : `r${plan.regionId}`,
+      plan.type,
+      plan.durationDays,
+      plan.dataMb,
+    ].join('|');
+    const list = groups.get(key) ?? [];
+    list.push(plan);
+    groups.set(key, list);
+  }
+
+  const picked: Plan[] = [];
+  for (const group of groups.values()) {
+    const shown = group.find((p) => p.isCheapest);
+    if (shown && worksWithTiktokAndChatGpt(shown)) continue;
+    const best = group
+      .filter((p) => !p.isCheapest && worksWithTiktokAndChatGpt(p))
+      .sort(
+        (a, b) =>
+          planCostVnd(a) - planCostVnd(b) || Number(a.id) - Number(b.id),
+      )[0];
+    if (best) picked.push(best);
+  }
+  return picked;
+}
+
 function groupPlansBySimType(plans: Plan[]): PlanGroups {
   const standardPlans = plans.filter(
     (p) => !p.isDomesticEsim && !isSmsCallEsimPlan(p),
@@ -89,10 +142,9 @@ function groupPlansBySimType(plans: Plan[]): PlanGroups {
     localEsim: plans.filter((p) => p.isDomesticEsim),
     SmsCallEsim: plans.filter((p) => !p.isDomesticEsim && isSmsCallEsimPlan(p)),
     // Any de-duplicated group can hide a TikTok-capable plan behind a cheaper
-    // one; those are handed back separately for the TikTok filter.
-    tiktokHiddenByPrice: standardPlans.filter(
-      (p) => !p.isCheapest && p.appSupport?.tiktokAllDevices === true,
-    ),
+    // one; the cheapest capable plan of such a group is handed back for the
+    // TikTok filter (#045, test round 4).
+    tiktokHiddenByPrice: tiktokReplacements(standardPlans),
   };
 }
 
@@ -255,6 +307,14 @@ export class PlansService {
     sortOptions?: SortPlanDto[] | null;
     paginationOptions: IPaginationOptions;
   }): Promise<[Plan[], number]> {
+    // The "TikTok & ChatGPT" filter counts APN-capable plans too (#045).
+    if (filterOptions?.isNonHkIp !== undefined) {
+      filterOptions = {
+        ...filterOptions,
+        tiktokApns: await this.tiktokCapableApns(),
+      };
+    }
+
     const [plans, count] = await this.plansRepository.findManyWithPagination({
       filterOptions,
       sortOptions,
@@ -262,7 +322,48 @@ export class PlansService {
     });
 
     await this.enrichPlansWithRegionDestinations(plans);
-    return [plans, count];
+    return [await this.withAppSupport(plans), count];
+  }
+
+  /** APNs that run TikTok on every device and ChatGPT, from the APN table. */
+  private async tiktokCapableApns(): Promise<string[]> {
+    if (!this.apnSupportService?.capabilityMap) return [];
+    try {
+      const capabilities = await this.apnSupportService.capabilityMap();
+      return [...capabilities]
+        .filter(
+          ([, caps]) =>
+            caps.tiktok.ios &&
+            caps.tiktok.android &&
+            caps.chatGpt.ios &&
+            caps.chatGpt.android,
+        )
+        .map(([apn]) => apn);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * TikTok / ChatGPT support for the CMS list too (#045, test round 4) — judged
+   * the same way as on the storefront: the esimaccess exit IP, else the APN
+   * table. Before, the CMS only showed the esimaccess switch, so a plan whose APN
+   * works with TikTok still read "Không" there.
+   */
+  private async withAppSupport(plans: Plan[]): Promise<Plan[]> {
+    if (!plans.length || !this.apnSupportService?.capabilityMap) return plans;
+    try {
+      const capabilities = await this.apnSupportService.capabilityMap();
+      return plans.map((plan) => ({
+        ...plan,
+        appSupport: this.apnSupportService.judgePlan(plan, capabilities),
+      }));
+    } catch (err) {
+      this.logger.warn(
+        `Could not judge TikTok/ChatGPT support — ${(err as Error).message}`,
+      );
+      return plans;
+    }
   }
 
   private async enrichPlansWithRegionDestinations(

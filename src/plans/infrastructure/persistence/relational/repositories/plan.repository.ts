@@ -826,8 +826,13 @@ export class PlansRelationalRepository implements PlanRepository {
       });
     }
     if (f?.isNonHkIp !== undefined) {
-      qb.andWhere('COALESCE(plan."isNonHkIp", false) = :isNonHkIp', {
-        isNonHkIp: f.isNonHkIp,
+      // Same rule as the storefront (#045, test round 4): the exit-IP flag, or
+      // an APN the APN table lists as working.
+      const capable = f.tiktokApns?.length
+        ? `(COALESCE(plan."isNonHkIp", false) = true OR LOWER(TRIM(plan."apn")) IN (:...tiktokApns))`
+        : `COALESCE(plan."isNonHkIp", false) = true`;
+      qb.andWhere(f.isNonHkIp ? capable : `NOT ${capable}`, {
+        tiktokApns: f.tiktokApns ?? [],
       });
     }
     if (f?.topUp !== undefined) {

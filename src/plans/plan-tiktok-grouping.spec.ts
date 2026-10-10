@@ -63,6 +63,9 @@ describe('TikTok support on the storefront payload', () => {
 
   const plan = (over: Record<string, unknown>) => ({
     id: 1,
+    destinationId: 3,
+    durationDays: 7,
+    dataMb: 1024,
     type: 'fixed',
     isCheapest: true,
     isLocalInventory: false,
@@ -125,7 +128,41 @@ describe('TikTok support on the storefront payload', () => {
     ]);
 
     expect(groups.dataPlans.map((p) => p.id)).toEqual([1]);
-    expect(groups.tiktokHiddenByPrice.map((p) => p.id)).toEqual([2]);
+    // The plan already shown works, so nothing is added (#045, test round 4).
+    expect(groups.tiktokHiddenByPrice).toEqual([]);
+  });
+
+  it('should offer only the cheapest capable plan of a group, by cost (#045)', async () => {
+    // The tester's case: China 1GB / 7 days. The default plan does not run
+    // TikTok on Android; esimaccess "nonhkip" ($1.01) does, and so do a Billion
+    // ($1.19) and an Airalo ($1.70) plan — only esimaccess may be shown.
+    const groups = await groupsFor([
+      plan({ id: 10, apn: 'cmhk', isCheapest: true, vndCostPrice: 13000 }),
+      plan({ id: 11, apn: 'works', isCheapest: false, vndCostPrice: 31000 }),
+      plan({ id: 12, apn: 'works', isCheapest: false, vndCostPrice: 44000 }),
+      plan({
+        id: 13,
+        apn: null,
+        isNonHkIp: true,
+        isCheapest: false,
+        vndCostPrice: 26000,
+      }),
+    ]);
+
+    expect(groups.tiktokHiddenByPrice.map((p) => p.id)).toEqual([13]);
+  });
+
+  it('should judge each data / duration group on its own (#045)', async () => {
+    const groups = await groupsFor([
+      plan({ id: 20, apn: 'cmhk', isCheapest: true }),
+      plan({ id: 21, apn: 'works', isCheapest: false }),
+      plan({ id: 22, apn: 'cmhk', isCheapest: true, dataMb: 3072 }),
+      plan({ id: 23, apn: 'works', isCheapest: false, dataMb: 3072 }),
+    ]);
+
+    expect(groups.tiktokHiddenByPrice.map((p) => p.id).sort()).toEqual([
+      21, 23,
+    ]);
   });
 
   it('should not offer a plan that only works on one platform', async () => {

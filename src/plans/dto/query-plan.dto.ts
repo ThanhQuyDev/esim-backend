@@ -101,6 +101,13 @@ export class FilterPlanDto {
   @IsBoolean()
   isNonHkIp?: boolean;
 
+  /**
+   * Set by the service, not the client: APNs the APN table says run TikTok on
+   * every device and ChatGPT, so the "TikTok & ChatGPT" filter matches those
+   * plans too, not only the esimaccess exit-IP flag (#045, test round 4).
+   */
+  tiktokApns?: string[];
+
   @ApiPropertyOptional({
     type: Boolean,
     description: 'Whether the plan can be topped up (#010)',
