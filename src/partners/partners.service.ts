@@ -3660,12 +3660,20 @@ export class PartnersService {
               c."commissionVnd",
               c.status AS "commissionStatus",
               l.code   AS "linkCode",
-              -- Rate this order actually paid, read back from the money so a
-              -- later tier change does not rewrite it (#026).
-              CASE
-                WHEN c."commissionVnd" IS NOT NULL AND ${ORDER_REVENUE_SQL} > 0
-                THEN ROUND(c."commissionVnd" * 100.0 / (${ORDER_REVENUE_SQL}), 1)
-              END AS "commissionPercent",
+              -- The rate the order earns at (#026). Taken from the rate
+              -- recorded with the commission; else read back from the money
+              -- against the value LEFT after refunds — dividing by the
+              -- original value turned 7% into 5.8% after a partial refund
+              -- (#056, test round 4).
+              COALESCE(
+                c."commissionPercentSnapshot",
+                CASE
+                  WHEN c."commissionVnd" IS NOT NULL
+                   AND ${ORDER_REVENUE_SQL} - COALESCE(o."refundedAmountVnd", 0) > 0
+                  THEN ROUND(c."commissionVnd" * 100.0
+                             / (${ORDER_REVENUE_SQL} - COALESCE(o."refundedAmountVnd", 0)), 1)
+                END
+              ) AS "commissionPercent",
               -- Which of the partner's discount codes brought the order, when
               -- it came in through a code rather than a link (#024).
               o."couponCode" AS "couponCode",
@@ -3678,15 +3686,23 @@ export class PartnersService {
                     -- back (#023): an order can be half refunded, and the
                     -- partner needs to see which half.
                     'vndPrice', oi."vndPrice",
-                    'refunded', oi.status = 'refunded'
+                    'refunded', oi.status = 'refunded',
+                    -- eSIMs of this line refunded one by one (#056, test
+                    -- round 4) — the line itself stays as it was.
+                    'refundedQuantity', (
+                      SELECT count(*)::int FROM esim re
+                      WHERE re."orderItemId" = oi.id AND re.status = 'refunded'
+                    )
                   ) ORDER BY oi.id
                 ) FILTER (WHERE oi.id IS NOT NULL),
                 '[]'
               ) AS items,
+              -- eSIMs the customer kept: refunded ones no longer count (#056).
               (
                 SELECT count(*)::int FROM esim e
                 JOIN order_item oi2 ON oi2.id = e."orderItemId"
                 WHERE oi2."orderId" = o.id
+                  AND COALESCE(e.status, '') <> 'refunded'
               ) AS "esimCount",
               -- The partner buying through their own link (#095).
               (o."userId" IS NOT NULL AND o."userId" = pa."userId") AS "isSelfReferral",
@@ -3720,7 +3736,7 @@ export class PartnersService {
               OR o."couponCode" ILIKE '%' || $4 || '%')
          AND ($5::timestamptz IS NULL OR o."createdAt" >= $5)
          AND ($6::timestamptz IS NULL OR o."createdAt" < $6)
-       GROUP BY o.id, c."commissionVnd", c.status, l.code, pa.id, pa."userId"
+       GROUP BY o.id, c."commissionVnd", c."commissionPercentSnapshot", c.status, l.code, pa.id, pa."userId"
        ORDER BY o."createdAt" DESC
        LIMIT $2`,
       [
