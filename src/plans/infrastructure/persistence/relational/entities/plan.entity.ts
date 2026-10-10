@@ -149,6 +149,13 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isNonHkIp: boolean;
 
+  /**
+   * A fixed "activate before" moment the supplier states (Billion's
+   * validityPeriod) — used when it comes before the rolling window (#047).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  activationValidUntil: Date | null;
+
   /** Exit IP location reported by the supplier — "SG", "FR/NL/UK", "HK" (#043). */
   @Column({ type: String, nullable: true })
   ipExport: string | null;

@@ -22,6 +22,7 @@ import { defaultDailyReset } from './plan-daily-reset';
 import { ApnSupportService } from '../apn-support/apn-support.service';
 import {
   activationDeadlineFromDays,
+  earliestActivationDeadline,
   activationDeadlineFromExpiry,
 } from './plan-activation';
 
@@ -276,6 +277,7 @@ export class PlansService {
       vndRetailPrice: money.retailPrice.vnd,
       isNonHkIp: createPlanDto.isNonHkIp ?? false,
       ipExport: createPlanDto.ipExport ?? null,
+      activationValidUntil: createPlanDto.activationValidUntil ?? null,
       isKyc: createPlanDto.isKyc ?? false,
       isLocalInventory,
       isDomesticEsim,
@@ -528,6 +530,7 @@ export class PlansService {
       // every create field is forwarded here.
       isNonHkIp: updatePlanDto.isNonHkIp,
       ipExport: updatePlanDto.ipExport,
+      activationValidUntil: updatePlanDto.activationValidUntil,
       activationValidityDays: updatePlanDto.activationValidityDays,
       dailyResetPolicy: updatePlanDto.dailyResetPolicy,
       dailyResetUtcOffset: updatePlanDto.dailyResetUtcOffset,
@@ -642,8 +645,11 @@ export class PlansService {
         return {
           ...plan,
           appSupport,
-          activationDeadline: activationDeadlineFromDays(
-            plan.activationValidityDays,
+          // The rolling window from today, or the supplier's fixed date when it
+          // comes first (#047, test round 4).
+          activationDeadline: earliestActivationDeadline(
+            activationDeadlineFromDays(plan.activationValidityDays, now),
+            plan.activationValidUntil,
             now,
           ),
         };

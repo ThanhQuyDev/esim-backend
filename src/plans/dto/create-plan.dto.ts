@@ -201,6 +201,11 @@ export class CreatePlanDto {
   @IsBoolean()
   isNonHkIp?: boolean;
 
+  /** A fixed "activate before" moment from the supplier (#047). */
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  @IsOptional()
+  activationValidUntil?: Date | null;
+
   /**
    * Where the eSIM's traffic exits, as the supplier reports it — "SG",
    * "FR/NL/UK", "HK" (#043, test round 4). Shown in the plan detail; anything

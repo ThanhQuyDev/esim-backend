@@ -29,6 +29,7 @@ import {
   billionPlanVariants,
   billionRegionName,
   isRawBillionRegionName,
+  billionActivationUntil,
 } from './billion-catalogue';
 import { networkSpeed, slugify, uniqueOperators } from '../catalogue-naming';
 
@@ -466,6 +467,11 @@ export class BillionService {
       isAbleMultidate: false,
       isKyc: false,
       apn,
+      // The product's own "activate before" date, when it states one (#047).
+      activationValidUntil: billionActivationUntil(
+        product.validityPeriod,
+        product.timeZone,
+      ),
       hotSpot: product.hotspotSupport === '1',
       hotSpotAllow: this.formatHotSpotAllow(type, dataMb),
       lastSyncedAt: new Date(),

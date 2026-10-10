@@ -250,3 +250,29 @@ export function billionPlanVariants(
     },
   ];
 }
+
+/**
+ * The "activate before" moment Billion states in `validityPeriod`
+ * ("2028-07-22 23:59:59", in the product's `timeZone`, "UTC+8"), as a Date
+ * (#047, test round 4). Null when the product states none — most do not.
+ */
+export function billionActivationUntil(
+  validityPeriod: string | null | undefined,
+  timeZone: string | null | undefined,
+): Date | null {
+  const match = (validityPeriod ?? '').match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/,
+  );
+  if (!match) return null;
+  const offset = (timeZone ?? '').match(
+    /UTC\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?/i,
+  );
+  const offsetMinutes = offset
+    ? (offset[1] === '-' ? -1 : 1) *
+      (Number(offset[2]) * 60 + Number(offset[3] ?? 0))
+    : 8 * 60; // Billion's dates are China time when unstated.
+  const [, y, mo, d, h = '23', mi = '59', sec = '59'] = match;
+  const utc = Date.UTC(+y, +mo - 1, +d, +h, +mi, +sec) - offsetMinutes * 60000;
+  const date = new Date(utc);
+  return Number.isNaN(date.getTime()) ? null : date;
+}

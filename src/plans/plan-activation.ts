@@ -84,3 +84,21 @@ export function parseValidityDays(
   const days = Math.round(Number(match[1]));
   return days > 0 ? days : null;
 }
+
+/**
+ * The earlier of a rolling deadline ("today + N days") and a fixed date the
+ * supplier states (#047, test round 4). A fixed date already past is ignored.
+ */
+export function earliestActivationDeadline(
+  fromDays: IsoDate | null,
+  validUntil: Date | string | null | undefined,
+  now: Date,
+): IsoDate | null {
+  const until = validUntil ? new Date(validUntil) : null;
+  const fixed =
+    until && !Number.isNaN(until.getTime()) && until.getTime() > now.getTime()
+      ? vietnamDate(until)
+      : null;
+  if (fromDays && fixed) return fromDays < fixed ? fromDays : fixed;
+  return fromDays ?? fixed;
+}

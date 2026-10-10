@@ -38,6 +38,8 @@ export interface AiraloOperator {
   type: string;
   plan_type: string;
   activation_policy: string;
+  /** Days the customer has to install the eSIM after buying (#047). */
+  install_window_days?: number | null;
   rechargeability: boolean;
   is_kyc_verify?: boolean;
   apn_value?: string;

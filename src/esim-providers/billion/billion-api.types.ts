@@ -61,6 +61,13 @@ export interface BillionProduct {
   /** '0' total-type / '1' single-day-type. */
   planType?: string;
   desc?: string;
+  /**
+   * "Activate before" date, "2028-07-22 23:59:59" in `timeZone`; empty for most
+   * products (#047, test round 4).
+   */
+  validityPeriod?: string | null;
+  /** Timezone of the product's dates, "UTC+8". */
+  timeZone?: string | null;
 }
 
 /** Price row within a F003 price array (one per number-of-copies). */

@@ -152,6 +152,10 @@ export class Plan {
   })
   isNonHkIp: boolean;
 
+  /** A fixed "activate before" moment from the supplier (#047). */
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  activationValidUntil?: Date | null;
+
   /** Exit IP location reported by the supplier, e.g. "SG", "HK" (#043). */
   @ApiPropertyOptional({ type: String, example: 'SG', nullable: true })
   ipExport?: string | null;
