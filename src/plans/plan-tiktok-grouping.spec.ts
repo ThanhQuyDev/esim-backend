@@ -152,6 +152,30 @@ describe('TikTok support on the storefront payload', () => {
     expect(groups.tiktokHiddenByPrice.map((p) => p.id)).toEqual([13]);
   });
 
+  it('should prefer the faster throttle speed at the same cost (#046)', async () => {
+    // The tester's example: China 1GB / 3 days, ids 29466 (384kbps) and 23460
+    // (128kbps), same cost — only 29466 may show.
+    const groups = await groupsFor([
+      plan({ id: 10, apn: 'cmhk', isCheapest: true, vndCostPrice: 16000 }),
+      plan({
+        id: 23460,
+        apn: 'works',
+        isCheapest: false,
+        vndCostPrice: 26000,
+        fupSpeed: '128kbps',
+      }),
+      plan({
+        id: 29466,
+        apn: 'works',
+        isCheapest: false,
+        vndCostPrice: 26000,
+        fupSpeed: '384kbps',
+      }),
+    ]);
+
+    expect(groups.tiktokHiddenByPrice.map((p) => p.id)).toEqual([29466]);
+  });
+
   it('should judge each data / duration group on its own (#045)', async () => {
     const groups = await groupsFor([
       plan({ id: 20, apn: 'cmhk', isCheapest: true }),

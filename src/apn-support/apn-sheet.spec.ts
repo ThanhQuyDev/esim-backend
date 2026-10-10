@@ -263,59 +263,65 @@ describe('APN sheet', () => {
     // copies arrive; without it there is nothing to read, not a failure.
     const itWithFile = existsSync(FILE) ? it : it.skip;
 
-    itWithFile('should read "APN Tiktok-GPT" end to end', async () => {
-      const wb = new Workbook();
-      await wb.xlsx.readFile(FILE);
-      const sheet = wb.getWorksheet('APN Tiktok-GPT')!;
+    itWithFile(
+      'should read "APN Tiktok-GPT" end to end',
+      async () => {
+        const wb = new Workbook();
+        await wb.xlsx.readFile(FILE);
+        const sheet = wb.getWorksheet('APN Tiktok-GPT')!;
 
-      const headerCells: unknown[] = [];
-      sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, col) => {
-        headerCells[col - 1] = cell.value;
-      });
-      const columns = findApnSheetColumns(headerCells);
-      expect(columns).not.toBeNull();
+        const headerCells: unknown[] = [];
+        sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, col) => {
+          headerCells[col - 1] = cell.value;
+        });
+        const columns = findApnSheetColumns(headerCells);
+        expect(columns).not.toBeNull();
 
-      const rowNumbers: number[] = [];
-      for (let r = 2; r <= sheet.rowCount; r++) rowNumbers.push(r);
+        const rowNumbers: number[] = [];
+        for (let r = 2; r <= sheet.rowCount; r++) rowNumbers.push(r);
 
-      const result = readApnSheetRows(
-        columns!,
-        rowNumbers,
-        (row, col) => sheet.getRow(row).getCell(col).value,
-      );
+        const result = readApnSheetRows(
+          columns!,
+          rowNumbers,
+          (row, col) => sheet.getRow(row).getCell(col).value,
+        );
 
-      // 46 APNs, one row each (round 4 wide layout: TikTok iPhone/Android,
-      // ChatGPT, Gemini, Claude). Round 4 reported ChatGPT importing as "Không"
-      // — the sheet read fine; the CMS table read a field that no longer exists.
-      expect(result.rows).toHaveLength(46);
-      expect(result.errors).toEqual([]);
-      expect(result.duplicates).toEqual([]);
+        // 46 APNs, one row each (round 4 wide layout: TikTok iPhone/Android,
+        // ChatGPT, Gemini, Claude). Round 4 reported ChatGPT importing as "Không"
+        // — the sheet read fine; the CMS table read a field that no longer exists.
+        expect(result.rows).toHaveLength(46);
+        expect(result.errors).toEqual([]);
+        expect(result.duplicates).toEqual([]);
 
-      const cmhk = result.rows.find((r) => r.apn === 'cmhk')!;
-      expect(cmhk).toMatchObject({
-        tiktokIos: true,
-        tiktokAndroid: false,
-        chatGptIos: true,
-        chatGptAndroid: true,
-        geminiIos: true,
-        geminiAndroid: true,
-        claudeIos: false,
-        claudeAndroid: false,
-      });
-      const withGpt = result.rows.filter(
-        (r) => r.chatGptIos && r.chatGptAndroid,
-      );
-      expect(withGpt.length).toBeGreaterThan(30);
+        const cmhk = result.rows.find((r) => r.apn === 'cmhk')!;
+        expect(cmhk).toMatchObject({
+          tiktokIos: true,
+          tiktokAndroid: false,
+          chatGptIos: true,
+          chatGptAndroid: true,
+          geminiIos: true,
+          geminiAndroid: true,
+          claudeIos: false,
+          claudeAndroid: false,
+        });
+        const withGpt = result.rows.filter(
+          (r) => r.chatGptIos && r.chatGptAndroid,
+        );
+        expect(withGpt.length).toBeGreaterThan(30);
 
-      // cmhk chạy TikTok trên iPhone nhưng không trên Android, nên không được
-      // tính là "dùng được" khi web chưa biết khách cầm máy gì.
-      expect(
-        worksOnEveryDevice({
-          ios: cmhk.tiktokIos,
-          android: cmhk.tiktokAndroid,
-        }),
-      ).toBe(false);
-    });
+        // cmhk chạy TikTok trên iPhone nhưng không trên Android, nên không được
+        // tính là "dùng được" khi web chưa biết khách cầm máy gì.
+        expect(
+          worksOnEveryDevice({
+            ios: cmhk.tiktokIos,
+            android: cmhk.tiktokAndroid,
+          }),
+        ).toBe(false);
+      },
+      // The team's workbook is large; reading it overran the 5s default when the
+      // whole suite runs in parallel on commit.
+      60_000,
+    );
   });
 
   describe('normalizeApn', () => {

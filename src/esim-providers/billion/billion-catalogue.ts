@@ -100,6 +100,19 @@ export function billionNameAllowance(name: string): {
   return { quotaMb, throttleKbps };
 }
 
+/**
+ * After-quota speed written right after the data in a fixed plan's name:
+ * "China-SGIP-1GB,384kbps", "China Mainland(Multi)-1GB,128kbps". Null when the
+ * name states none.
+ */
+export function billionFixedNameSpeed(name: string): number | null {
+  const match = name.match(
+    /\d+(?:\.\d+)?\s*(?:GB|MB)\s*,\s*(\d+(?:\.\d+)?)\s*(kbps|mbps)/i,
+  );
+  if (!match) return null;
+  return Math.round(parseFloat(match[1]) * (/mbps/i.test(match[2]) ? 1024 : 1));
+}
+
 /** Plan `type`, data allowance and after-quota speed of a product. */
 export function billionDataAndType(product: BillionProduct): {
   type: string;
@@ -141,6 +154,11 @@ export function billionDataAndType(product: BillionProduct): {
     };
   }
 
+  // The name states the after-quota speed of a fixed plan ("China Mainland
+  // (Multi)-1GB,128kbps") and F002 can contradict it — 384 for that product. The
+  // name is what the customer reads, so it wins (#046, test round 4).
+  const named = billionFixedNameSpeed(product.name);
+  if (named) throttleKbps = named;
   const fupSpeed = throttleKbps > 0 ? formatSpeed(throttleKbps) : null;
   const totalKb = capacityKb > 0 ? capacityKb : quotaKb;
   if (totalKb > 0) {

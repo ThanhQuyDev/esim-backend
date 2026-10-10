@@ -224,7 +224,10 @@ export class ApnSupportService {
     const apn = normalizeApn(plan.apn);
     if (!apn) return NO_SUPPORT;
 
-    const caps = capabilities.get(apn);
+    // An exact match first; else the APN(s) the plan uses in China — a region
+    // pack lists one per country, "CN:cmhk|JP:…" (#046, test round 4).
+    const caps =
+      capabilities.get(apn) ?? combineCapabilities(plan.apn, capabilities);
     if (!caps) return NO_SUPPORT;
 
     return {
@@ -446,4 +449,49 @@ export function exportRows(rows: ApnSupport[]): Record<string, string>[] {
       note: row.note ?? '',
     };
   });
+}
+
+/**
+ * The APNs a plan's traffic can use in mainland China (#046, test round 4).
+ *
+ * Region packs list one APN per country — "AE:cmhk|CN:cmhk|JP:cmhk" — and then
+ * only China's entry matters; a map without a CN entry says nothing about
+ * China. Otherwise the whole value is read: "cmhk / cmlink", or Billion's single
+ * APN for the region.
+ */
+export function chinaApnCandidates(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const entries = raw.split('|').map((part) => part.trim());
+  const isCountryMap = entries.some((part) => /^[A-Z]{2,5}\s*[:：]/.test(part));
+  if (isCountryMap) {
+    const china = entries.find((part) => /^CN\s*[:：]/i.test(part));
+    return china ? apnNamesIn(china.replace(/^CN\s*[:：]\s*/i, '')) : [];
+  }
+  return apnNamesIn(raw);
+}
+
+/**
+ * What a plan supports when it may use any of several APNs: an app counts only
+ * if EVERY candidate APN runs it, since we cannot tell which one the eSIM picks.
+ * An APN missing from the table counts as "no". Null when none is in the table.
+ */
+export function combineCapabilities(
+  raw: string | null | undefined,
+  capabilities: Map<string, ApnCapabilities>,
+): ApnCapabilities | null {
+  const candidates = chinaApnCandidates(raw)
+    .map((name) => normalizeApn(name))
+    .filter((name): name is string => !!name);
+  if (!candidates.length) return null;
+  const found = candidates.map((name) => capabilities.get(name));
+  if (found.every((caps) => !caps)) return null;
+
+  const combined = emptyCapabilities();
+  for (const app of Object.keys(combined) as (keyof ApnCapabilities)[]) {
+    combined[app] = {
+      ios: found.every((caps) => !!caps?.[app].ios),
+      android: found.every((caps) => !!caps?.[app].android),
+    };
+  }
+  return combined;
 }

@@ -76,6 +76,15 @@ function worksWithTiktokAndChatGpt(plan: Plan): boolean {
   );
 }
 
+/** After-quota speed in kbps ("384kbps", "5Mbps"), 0 when not stated. */
+export function fupSpeedKbps(plan: Pick<Plan, 'fupSpeed'>): number {
+  const text = plan.fupSpeed ?? '';
+  const mbps = text.match(/(\d+(?:\.\d+)?)\s*mbps/i);
+  if (mbps) return parseFloat(mbps[1]) * 1024;
+  const kbps = text.match(/(\d+(?:\.\d+)?)\s*kbps/i);
+  return kbps ? parseFloat(kbps[1]) : 0;
+}
+
 /** Cost in đồng, the figure `markCheapestPlans` compares on. */
 function planCostVnd(plan: Plan): number {
   const vnd = Number(plan.vndCostPrice ?? 0);
@@ -112,9 +121,13 @@ export function tiktokReplacements(plans: Plan[]): Plan[] {
     if (shown && worksWithTiktokAndChatGpt(shown)) continue;
     const best = group
       .filter((p) => !p.isCheapest && worksWithTiktokAndChatGpt(p))
+      // Cheapest first; at the same cost the faster after-quota speed, as
+      // `markCheapestPlans` does (#046, test round 4: 384kbps over 128kbps).
       .sort(
         (a, b) =>
-          planCostVnd(a) - planCostVnd(b) || Number(a.id) - Number(b.id),
+          planCostVnd(a) - planCostVnd(b) ||
+          fupSpeedKbps(b) - fupSpeedKbps(a) ||
+          Number(a.id) - Number(b.id),
       )[0];
     if (best) picked.push(best);
   }

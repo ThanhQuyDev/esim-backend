@@ -1,6 +1,11 @@
 import bcrypt from 'bcryptjs';
 import { EmailChangeService } from './email-change.service';
 
+// Several bcrypt hashes per test: under the full parallel suite (husky runs it
+// on every commit, often beside a Next build) they overran Jest's 5s default
+// and failed at random. The logic is unchanged; only the time allowed.
+jest.setTimeout(20_000);
+
 /**
  * Self-service email change (#057, #023).
  *

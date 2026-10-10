@@ -1,8 +1,11 @@
 import {
   apnNamesIn,
   apnRowsFromPlanValues,
+  chinaApnCandidates,
+  combineCapabilities,
   exportRows,
 } from './apn-support.service';
+import { ApnCapabilities } from './apn-support.types';
 import { ApnSupport } from './domain/apn-support';
 
 /**
@@ -126,6 +129,42 @@ describe('APN table management (#044)', () => {
         claude: '',
       });
       expect(rows[1].apn).toBe('cmhk');
+    });
+  });
+
+  describe('region packs and several APNs (#046)', () => {
+    const caps = (tiktok: boolean, gpt: boolean): ApnCapabilities => ({
+      tiktok: { ios: tiktok, android: tiktok },
+      chatGpt: { ios: gpt, android: gpt },
+      gemini: { ios: true, android: true },
+      claude: { ios: false, android: false },
+    });
+    const TABLE = new Map<string, ApnCapabilities>([
+      ['e-ideas', caps(true, true)],
+      ['cmhk', caps(false, true)],
+    ]);
+
+    it("should read only China's entry of a per-country map", () => {
+      expect(chinaApnCandidates('AE:cmhk|CN:e-ideas|JP:cmhk')).toEqual([
+        'e-ideas',
+      ]);
+      expect(chinaApnCandidates('AE:cmhk|JP:cmhk')).toEqual([]);
+    });
+
+    it('should judge a region pack by its China APN', () => {
+      expect(
+        combineCapabilities('AE:cmhk|CN:e-ideas|JP:cmhk', TABLE)?.tiktok,
+      ).toEqual({ ios: true, android: true });
+    });
+
+    it('should need every alternative APN to work', () => {
+      const combined = combineCapabilities('e-ideas / cmhk', TABLE);
+      expect(combined?.tiktok).toEqual({ ios: false, android: false });
+      expect(combined?.chatGpt).toEqual({ ios: true, android: true });
+    });
+
+    it('should know nothing when no candidate is in the table', () => {
+      expect(combineCapabilities('foo / bar', TABLE)).toBeNull();
     });
   });
 });
