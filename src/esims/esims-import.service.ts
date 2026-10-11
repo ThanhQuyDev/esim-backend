@@ -371,6 +371,17 @@ export class EsimsImportService {
               if (ipExport && existingPlan.ipExport !== ipExport) {
                 planPatch.ipExport = ipExport;
               }
+              // The domestic template also defines the plan's shape: a plan
+              // first imported with the old template stayed "daily / 30 days"
+              // even when the file said Month or 12 cycles.
+              if (domesticOffer) {
+                if (existingPlan.type !== type.toLowerCase())
+                  planPatch.type = type.toLowerCase();
+                if (durationDays && existingPlan.durationDays !== durationDays)
+                  planPatch.durationDays = durationDays;
+                if (dataMb && existingPlan.dataMb !== dataMb)
+                  planPatch.dataMb = dataMb;
+              }
 
               if (Object.keys(planPatch).length > 0) {
                 // Through the service, not the repository: it is what converts

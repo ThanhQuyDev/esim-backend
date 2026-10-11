@@ -66,7 +66,7 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: 'int', default: 0 })
   dataMb: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 4, default: 0 })
+  @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
   costPrice: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })

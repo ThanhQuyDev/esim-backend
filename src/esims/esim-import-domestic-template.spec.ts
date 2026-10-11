@@ -429,4 +429,43 @@ describe('Nhập eSIM nội địa theo file mẫu mới (#066)', () => {
     expect(planUpdates[0].domesticOffer).toBeTruthy();
     expect(result.planUpdated).toBe(1);
   });
+
+  it('should reshape a plan first imported with the old template', async () => {
+    const { service, planUpdates } = makeService({
+      id: 8,
+      type: 'daily',
+      durationDays: 30,
+      dataMb: 2048,
+      costPrice: 129000,
+      retailPrice: 0,
+      isLocalInventory: true,
+      isDomesticEsim: true,
+      domesticOffer: null,
+    });
+    await service.importFromExcel(
+      await buildWorkbook([
+        {
+          ...base,
+          'Plan ID': 'MAY35S',
+          '1st Cycle Data': '10 GB',
+          'Data Period': 'Month',
+          'Bundle Type': 'Month',
+          'No. of Cycles': 12,
+          Carrier: 'iTel',
+          ICCID: '8984000000000000011',
+          'Cost Price': 10036000,
+        },
+      ]),
+      undefined,
+      undefined,
+      undefined,
+      'domestic',
+    );
+    expect(planUpdates[0]).toMatchObject({
+      type: 'month',
+      durationDays: 360,
+      dataMb: 10240,
+      costPrice: 10036000,
+    });
+  });
 });
