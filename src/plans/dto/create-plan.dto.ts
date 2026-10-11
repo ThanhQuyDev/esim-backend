@@ -1,3 +1,4 @@
+import type { DomesticOffer } from '../domestic-offer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
@@ -6,6 +7,7 @@ import {
   IsInt,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -273,6 +275,14 @@ export class CreatePlanDto {
   @IsOptional()
   @IsString()
   hotSpotAllow?: string | null;
+
+  @ApiPropertyOptional({
+    type: Object,
+    description: 'Perks of a domestic eSIM plan (#066).',
+  })
+  @IsOptional()
+  @IsObject()
+  domesticOffer?: DomesticOffer | null;
 
   @ApiPropertyOptional({
     example: 45000,

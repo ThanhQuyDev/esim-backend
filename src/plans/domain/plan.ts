@@ -1,3 +1,4 @@
+import type { DomesticOffer } from '../domestic-offer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Destination } from '../../destinations/domain/destination';
 import { Region } from '../../regions/domain/region';
@@ -250,6 +251,13 @@ export class Plan {
     description: 'Hotspot data allowance (e.g. "5GB", "2GB")',
   })
   hotSpotAllow: string | null;
+
+  @ApiPropertyOptional({
+    type: Object,
+    description:
+      'Perks of a domestic eSIM plan: minutes by network, first-cycle data, renewal fee… (#066)',
+  })
+  domesticOffer?: DomesticOffer | null;
 
   @ApiPropertyOptional()
   lastSyncedAt: Date | null;

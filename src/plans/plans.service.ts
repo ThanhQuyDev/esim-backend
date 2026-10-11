@@ -297,6 +297,7 @@ export class PlansService {
         null,
       hotSpot: createPlanDto.hotSpot ?? false,
       hotSpotAllow: createPlanDto.hotSpotAllow ?? null,
+      domesticOffer: createPlanDto.domesticOffer ?? null,
       lastSyncedAt: createPlanDto.lastSyncedAt ?? null,
       isActive: createPlanDto.isActive ?? true,
       sms: createPlanDto.sms ?? null,
@@ -524,6 +525,7 @@ export class PlansService {
       vndPrice: updatePlanDto.vndPrice ?? money?.price.vnd,
       hotSpot: updatePlanDto.hotSpot,
       hotSpotAllow: updatePlanDto.hotSpotAllow,
+      domesticOffer: updatePlanDto.domesticOffer,
       // Missing from this list, so a supplier re-sync or an admin edit never
       // saved them: no esimaccess "(nonhkip)" plan ever got its TikTok/ChatGPT
       // flag, and "Giờ làm mới" was lost (#043, test round 4). A spec now checks

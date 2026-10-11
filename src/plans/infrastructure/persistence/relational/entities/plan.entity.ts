@@ -1,3 +1,4 @@
+import type { DomesticOffer } from '../../../../domestic-offer';
 import {
   Column,
   CreateDateColumn,
@@ -213,6 +214,10 @@ export class PlanEntity extends EntityRelationalHelper {
 
   @Column({ type: String, nullable: true })
   hotSpotAllow: string | null;
+
+  /** Perks of a domestic eSIM plan, from the domestic import template (#066). */
+  @Column({ type: 'jsonb', nullable: true })
+  domesticOffer: DomesticOffer | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   lastSyncedAt: Date | null;

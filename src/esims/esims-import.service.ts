@@ -1,5 +1,12 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
-import { Workbook } from 'exceljs';
+import { Row, Workbook } from 'exceljs';
+import {
+  DomesticOffer,
+  offerCount,
+  parseBundleType,
+  parseDataPeriod,
+  parseOfferDataMb,
+} from '../plans/domestic-offer';
 import { EsimRepository } from './infrastructure/persistence/esim.repository';
 import { PlansService } from '../plans/plans.service';
 import { PlanRepository } from '../plans/infrastructure/persistence/plan.repository';
@@ -56,15 +63,43 @@ export class EsimsImportService {
       throw new BadRequestException('Worksheet not found');
     }
 
-    // Build header map from row 1
-    const headerRow = worksheet.getRow(1);
+    // The header is the row that names the ICCID column. The domestic
+    // template (#066) has a Vietnamese title row above the English one, so the
+    // header is row 2 there — reading row 1 imported the English titles as an
+    // eSIM ("ICCID" as an ICCID). Titles in any row above count as aliases.
+    let headerRowNum = 1;
+    for (let r = 1; r <= Math.min(3, worksheet.rowCount); r++) {
+      let hasIccid = false;
+      worksheet.getRow(r).eachCell({ includeEmpty: false }, (cell) => {
+        if (this.cellStr(cell.value)?.trim().toLowerCase() === 'iccid')
+          hasIccid = true;
+      });
+      // The LAST titled row wins: the Vietnamese row names "ICCID" too.
+      if (hasIccid) headerRowNum = r;
+    }
     const headerMap = new Map<string, number>();
-    headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      const val = this.cellStr(cell.value);
-      if (val) headerMap.set(val.trim().toLowerCase(), colNumber);
-    });
+    for (let r = headerRowNum; r >= 1; r--) {
+      worksheet
+        .getRow(r)
+        .eachCell({ includeEmpty: false }, (cell, colNumber) => {
+          const val = this.cellStr(cell.value)?.trim().toLowerCase();
+          if (val && !headerMap.has(val)) headerMap.set(val, colNumber);
+        });
+    }
 
-    const col = (name: string) => headerMap.get(name.toLowerCase());
+    // The domestic template (#066): no "Days"/"Type" columns — a plan runs for
+    // a number of monthly cycles and carries minutes, first-cycle data, etc.
+    const isDomesticTemplate =
+      headerMap.has('bundle type') || headerMap.has('1st cycle data');
+    const col = (name: string, legacyIndex?: number) =>
+      headerMap.get(name.toLowerCase()) ??
+      // Positions of the old travel template only; on the domestic template a
+      // fixed position points at a different column.
+      (isDomesticTemplate ? undefined : legacyIndex);
+    const cellAt = (row: Row, name: string, legacyIndex?: number) => {
+      const c = col(name, legacyIndex);
+      return c ? row.getCell(c).value : null;
+    };
 
     const result: EsimImportResult = {
       total: 0,
@@ -80,7 +115,11 @@ export class EsimsImportService {
     // Cache destinationId lookups by country code to avoid repeated DB calls
     const destinationCache = new Map<string, number | null>();
 
-    for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+    for (
+      let rowNum = headerRowNum + 1;
+      rowNum <= worksheet.rowCount;
+      rowNum++
+    ) {
       const row = worksheet.getRow(rowNum);
 
       let isEmpty = true;
@@ -91,7 +130,7 @@ export class EsimsImportService {
 
       result.total++;
 
-      const iccid = this.cellStr(row.getCell(col('iccid') ?? 20).value) ?? '';
+      const iccid = this.cellStr(cellAt(row, 'iccid', 20)) ?? '';
       if (!iccid) {
         result.skipped++;
         result.errors.push({ row: rowNum, iccid: '', error: 'ICCID is empty' });
@@ -125,9 +164,7 @@ export class EsimsImportService {
 
         // Resolve country code (Country Code column overrides DTO override)
         const rowCountryCode =
-          this.cellStr(row.getCell(col('country code') ?? 2).value) ??
-          countryCode ??
-          '';
+          this.cellStr(cellAt(row, 'country code', 2)) ?? countryCode ?? '';
         if (!rowCountryCode) {
           result.skipped++;
           result.errors.push({
@@ -142,8 +179,14 @@ export class EsimsImportService {
         // column. Admins reuse the Viettel template for other local carriers,
         // and that column still reads "Viettel", so the column used to win and
         // every row landed on the wrong provider. The column is only a fallback.
-        const chosenCarrier = provider?.trim() || null;
-        const carrier = this.cellStr(row.getCell(col('carrier') ?? 9).value);
+        //
+        // The domestic template (#066) is the exception: one file lists iTel,
+        // Wintel and VNSKY plans together, so each row's Carrier is the truth
+        // and the dialog's choice only fills a blank cell.
+        const dialogCarrier = provider?.trim() || null;
+        const carrier = this.cellStr(cellAt(row, 'carrier', 9));
+        const chosenCarrier =
+          isDomesticTemplate && carrier ? carrier : dialogCarrier;
         const rowProvider = this.normalizeProvider(
           chosenCarrier ?? carrier ?? '',
         );
@@ -159,8 +202,7 @@ export class EsimsImportService {
 
         // Resolve destinationId from per-row country code (with cache)
         // Also try Country name (column 1) as fallback for destination lookup
-        const rowCountryName =
-          this.cellStr(row.getCell(col('country') ?? 1).value) ?? '';
+        const rowCountryName = this.cellStr(cellAt(row, 'country', 1)) ?? '';
         const cacheKey = rowCountryCode || rowCountryName;
 
         let destinationId: number | null;
@@ -190,51 +232,68 @@ export class EsimsImportService {
           }
         }
 
-        const providerPlanId =
-          this.cellStr(row.getCell(col('plan id') ?? 3).value) ?? '';
-        const planName =
-          this.cellStr(row.getCell(col('name') ?? 4).value) ?? '';
-        const dataRaw = this.cellStr(row.getCell(col('data') ?? 5).value) ?? '';
+        const providerPlanId = this.cellStr(cellAt(row, 'plan id', 3)) ?? '';
+        const planName = this.cellStr(cellAt(row, 'name', 4)) ?? '';
+        const dataRaw =
+          this.cellStr(cellAt(row, 'data', 5)) ??
+          this.cellStr(cellAt(row, '1st cycle data')) ??
+          '';
         const dataMb = this.parseDataToMb(dataRaw);
+        const domesticOffer = isDomesticTemplate
+          ? this.readDomesticOffer(row, cellAt)
+          : undefined;
+        // A domestic plan runs for whole monthly cycles (1, 3, 6, 12 months).
         const durationDays =
-          this.cellNum(row.getCell(col('days') ?? 6).value) ?? 0;
+          this.cellNum(cellAt(row, 'days', 6)) ??
+          (domesticOffer ? domesticOffer.cycleMonths * 30 : 0);
         const type =
-          this.cellStr(row.getCell(col('type') ?? 7).value) ?? 'daily';
+          this.cellStr(cellAt(row, 'type', 7)) ??
+          domesticOffer?.bundleType ??
+          'daily';
 
         // Expired time
-        const expiredTimeRaw = row.getCell(col('expried time') ?? 8).value;
+        const expiredTimeRaw = cellAt(row, 'expried time', 8);
         const expiresAt = this.parseDate(expiredTimeRaw);
 
         // Keep the carrier's display name as typed ("Wintel"), not its slug.
         const operatorName = chosenCarrier ?? carrier;
-        const speed = this.cellStr(row.getCell(col('network') ?? 10).value);
-        const fupSpeed = this.cellStr(
-          row.getCell(col('throttled speed') ?? 11).value,
-        );
-        const apnValue = this.cellStr(row.getCell(col('apn') ?? 12).value);
-        const topUpRaw = this.cellStr(row.getCell(col('topup') ?? 13).value);
+        const speed = this.cellStr(cellAt(row, 'network', 10));
+        const fupSpeed = this.cellStr(cellAt(row, 'throttled speed', 11));
+        const apnValue = this.cellStr(cellAt(row, 'apn', 12));
+        const ipExport = this.cellStr(cellAt(row, 'ip'));
+        const topUpRaw = this.cellStr(cellAt(row, 'topup', 13));
         const topUp = this.parseVietnameseBoolean(topUpRaw);
-        const isKycRaw = this.cellStr(row.getCell(col('ekyc') ?? 14).value);
+        const isKycRaw = this.cellStr(cellAt(row, 'ekyc', 14));
         const isKyc = this.parseVietnameseBoolean(isKycRaw);
 
         // Hot-Spot fields
-        const hotSpotRaw = this.cellStr(
-          row.getCell(col('hot-spot') ?? 15).value,
-        );
+        const hotSpotRaw = this.cellStr(cellAt(row, 'hot-spot', 15));
         const hotSpot = this.parseVietnameseBoolean(hotSpotRaw);
         const hotSpotAllow =
-          this.cellStr(row.getCell(col('hot-spot allow') ?? 16).value) ?? null;
+          this.cellStr(cellAt(row, 'hot-spot allow', 16)) ?? null;
 
-        // Support Phone Number, Call, SMS
-        const callRaw = this.cellStr(row.getCell(col('call') ?? 18).value);
-        const call = this.parseVietnameseBoolean(callRaw) ? 1 : null;
-        const smsRaw = this.cellStr(row.getCell(col('sms') ?? 19).value);
-        const sms = this.parseVietnameseBoolean(smsRaw) ? 1 : null;
+        // Support Phone Number, Call, SMS. The domestic template has no
+        // yes/no Call/SMS columns: any minutes or SMS in the offer mean yes.
+        const callRaw = this.cellStr(cellAt(row, 'call', 18));
+        const call =
+          this.parseVietnameseBoolean(callRaw) ||
+          (domesticOffer &&
+            domesticOffer.offNetMinutes +
+              domesticOffer.onNetMinutes +
+              domesticOffer.domesticMinutes >
+              0)
+            ? 1
+            : null;
+        const smsRaw = this.cellStr(cellAt(row, 'sms', 19));
+        const sms =
+          this.parseVietnameseBoolean(smsRaw) ||
+          (domesticOffer &&
+            domesticOffer.offNetSms + domesticOffer.onNetSms > 0)
+            ? 1
+            : null;
 
-        const costPrice =
-          this.cellNum(row.getCell(col('cost price') ?? 25).value) ?? 0;
-        const sellPrice =
-          this.cellNum(row.getCell(col('sell price') ?? 26).value) ?? 0;
+        const costPrice = this.cellNum(cellAt(row, 'cost price', 25)) ?? 0;
+        const sellPrice = this.cellNum(cellAt(row, 'sell price', 26)) ?? 0;
         // Base price is the cost. The margin tier is applied on top for local
         // plans: by PlansService.create for a new plan, and below when a
         // re-upload changes the cost of an existing one.
@@ -305,6 +364,19 @@ export class EsimsImportService {
                 planPatch.isDomesticEsim = wantDomestic;
               }
 
+              // A re-upload of the domestic template refreshes the plan's
+              // perks (#066) — minutes, cycle data, renewal fee.
+              if (
+                domesticOffer &&
+                JSON.stringify(existingPlan.domesticOffer ?? null) !==
+                  JSON.stringify(domesticOffer)
+              ) {
+                planPatch.domesticOffer = domesticOffer;
+              }
+              if (ipExport && existingPlan.ipExport !== ipExport) {
+                planPatch.ipExport = ipExport;
+              }
+
               if (Object.keys(planPatch).length > 0) {
                 // Through the service, not the repository: it is what converts
                 // the new đồng prices into the USD columns (#009). Straight to
@@ -349,6 +421,8 @@ export class EsimsImportService {
                 hotSpotAllow,
                 sms,
                 call,
+                ipExport: ipExport ?? undefined,
+                domesticOffer: domesticOffer ?? null,
                 isActive: true,
                 isLocalInventory: true,
                 isDomesticEsim: esimKind === 'domestic',
@@ -362,10 +436,8 @@ export class EsimsImportService {
         }
 
         // Extract esim fields
-        const phoneNumber = this.cellStr(
-          row.getCell(col('phone number') ?? 21).value,
-        );
-        const lpa = this.cellStr(row.getCell(col('lpa') ?? 22).value);
+        const phoneNumber = this.cellStr(cellAt(row, 'phone number', 21));
+        const lpa = this.cellStr(cellAt(row, 'lpa', 22));
 
         // Auto-extract SMDP Address and Activation Code from LPA
         // LPA format: LPA:1$<smdpAddress>$<activationCode>
@@ -496,8 +568,46 @@ export class EsimsImportService {
 
   private cellNum(value: any): number | null {
     if (value === null || value === undefined) return null;
+    // A formula cell ("=O3+100000" in the domestic template's prices, #066)
+    // arrives as { formula, result }: Number() of that object is NaN, so the
+    // price read as missing.
+    if (typeof value === 'object' && 'result' in value)
+      return this.cellNum(value.result);
+    if (typeof value === 'string' && !value.trim()) return null;
     const n = Number(value);
     return isNaN(n) ? null : n;
+  }
+
+  /** The perk columns of the domestic template (#066), as one offer. */
+  private readDomesticOffer(
+    row: Row,
+    cellAt: (row: Row, name: string) => unknown,
+  ): DomesticOffer {
+    const text = (name: string) => this.cellStr(cellAt(row, name));
+    const count = (name: string) => offerCount(this.cellNum(cellAt(row, name)));
+    const dataPeriod = parseDataPeriod(text('data period'));
+    const firstCycleDataMb = parseOfferDataMb(text('1st cycle data'));
+    const recurringRaw = text('recurring data');
+    return {
+      firstCycleDataMb,
+      // Blank means "same as the first cycle", not unlimited.
+      recurringDataMb: recurringRaw
+        ? parseOfferDataMb(recurringRaw)
+        : firstCycleDataMb,
+      dataPeriod,
+      bundleType: parseBundleType(text('bundle type'), dataPeriod),
+      offNetMinutes: count('off-net minutes'),
+      onNetMinutes: count('on-net minutes'),
+      domesticMinutes: count('domestic minutes'),
+      offNetSms: count('off-net sms'),
+      onNetSms: count('on-net sms'),
+      zeroRatedSocial: this.parseVietnameseBoolean(
+        text('zero-rated social data'),
+      ),
+      cycleFeeVnd: this.cellNum(cellAt(row, 'cycle fee')),
+      cycleMonths: Math.max(1, count('no. of cycles')),
+      supportPhone: text('support phone number'),
+    };
   }
 
   private parseDataToMb(raw: string): number {

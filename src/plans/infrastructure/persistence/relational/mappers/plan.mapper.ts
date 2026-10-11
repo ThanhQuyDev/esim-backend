@@ -71,6 +71,7 @@ export class PlanMapper {
       raw.dailyResetUtcOffset != null ? Number(raw.dailyResetUtcOffset) : null;
     domainEntity.hotSpot = raw.hotSpot;
     domainEntity.hotSpotAllow = raw.hotSpotAllow;
+    domainEntity.domesticOffer = raw.domesticOffer ?? null;
     domainEntity.lastSyncedAt = raw.lastSyncedAt;
     domainEntity.isActive = raw.isActive;
     domainEntity.createdAt = raw.createdAt;
@@ -137,6 +138,8 @@ export class PlanMapper {
       domainEntity.dailyResetUtcOffset ?? null;
     persistenceEntity.hotSpot = domainEntity.hotSpot;
     persistenceEntity.hotSpotAllow = domainEntity.hotSpotAllow;
+    if (domainEntity.domesticOffer !== undefined)
+      persistenceEntity.domesticOffer = domainEntity.domesticOffer;
     persistenceEntity.lastSyncedAt = domainEntity.lastSyncedAt;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.createdAt = domainEntity.createdAt;
