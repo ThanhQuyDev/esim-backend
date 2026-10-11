@@ -141,19 +141,14 @@ export class EsimsImportService {
         // Check duplicate iccid (including soft-deleted records)
         const existing =
           await this.esimRepository.findByIccidWithDeleted(iccid);
-        if (existing && !existing.deletedAt) {
-          // Active record exists — skip
-          result.skipped++;
-          result.errors.push({
-            row: rowNum,
-            iccid,
-            error: 'ICCID already exists',
-          });
-          continue;
-        }
+        // An eSIM already in stock is not added again — but its row still
+        // updates the plan below. Re-uploading a file to change a plan's price
+        // or perks (#066) skipped every such row before reaching the plan, so
+        // plans whose eSIMs were imported earlier never changed.
+        const alreadyInStock = !!existing && !existing.deletedAt;
 
         // If a soft-deleted record exists, restore it and update with new data
-        const shouldRestore = existing && existing.deletedAt;
+        const shouldRestore = !!existing && !!existing.deletedAt;
 
         // Extract plan fields from new column structure
         // 1:Country, 2:Country Code, 3:Plan ID, 4:Name, 5:Data, 6:Days, 7:Type,
@@ -433,6 +428,16 @@ export class EsimsImportService {
               result.planCreated++;
             }
           }
+        }
+
+        if (alreadyInStock) {
+          result.skipped++;
+          result.errors.push({
+            row: rowNum,
+            iccid,
+            error: 'ICCID already exists',
+          });
+          continue;
         }
 
         // Extract esim fields

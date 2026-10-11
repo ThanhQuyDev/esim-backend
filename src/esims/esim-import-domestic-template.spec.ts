@@ -104,13 +104,16 @@ const base: Line = {
   'Hot-Spot': 'Có',
 };
 
-function makeService(existingPlan: Record<string, unknown> | null = null) {
+function makeService(
+  existingPlan: Record<string, unknown> | null = null,
+  existingEsim: Record<string, unknown> | null = null,
+) {
   const planCreates: Record<string, unknown>[] = [];
   const planUpdates: Record<string, unknown>[] = [];
   const esimCreates: Record<string, unknown>[] = [];
   const service = new EsimsImportService(
     {
-      findByIccidWithDeleted: jest.fn().mockResolvedValue(null),
+      findByIccidWithDeleted: jest.fn().mockResolvedValue(existingEsim),
       create: jest.fn((payload: Record<string, unknown>) => {
         esimCreates.push(payload);
         return Promise.resolve({ id: 1 });
@@ -381,5 +384,49 @@ describe('Nhập eSIM nội địa theo file mẫu mới (#066)', () => {
     );
     expect(planUpdates).toHaveLength(1);
     expect((planUpdates[0].domesticOffer as any).onNetMinutes).toBe(500);
+  });
+
+  it('should still update the plan from a row whose eSIM is already in stock', async () => {
+    // The tester's file re-lists eSIMs imported earlier with the old template:
+    // their rows were skipped before the plan, so the plan kept its old price
+    // and never got its perks.
+    const { service, planUpdates, esimCreates } = makeService(
+      {
+        id: 7,
+        costPrice: 198000,
+        retailPrice: 297000,
+        isLocalInventory: true,
+        isDomesticEsim: true,
+        domesticOffer: null,
+        ipExport: null,
+      },
+      { id: 3, deletedAt: null },
+    );
+    const result = await service.importFromExcel(
+      await buildWorkbook([
+        {
+          ...base,
+          'Plan ID': 'MAY79',
+          '1st Cycle Data': '3 GB',
+          'Data Period': 'Daily',
+          'Bundle Type': 'Daily',
+          'No. of Cycles': 1,
+          Carrier: 'iTel',
+          ICCID: '8984000000000000010',
+          'Cost Price': 179000,
+          'Sell Price': 479000,
+        },
+      ]),
+      undefined,
+      undefined,
+      undefined,
+      'domestic',
+    );
+    expect(esimCreates).toHaveLength(0);
+    expect(result.errors[0].error).toBe('ICCID already exists');
+    expect(planUpdates).toHaveLength(1);
+    expect(planUpdates[0].costPrice).toBe(179000);
+    expect(planUpdates[0].domesticOffer).toBeTruthy();
+    expect(result.planUpdated).toBe(1);
   });
 });
