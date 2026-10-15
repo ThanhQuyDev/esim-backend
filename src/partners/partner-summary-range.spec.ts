@@ -42,12 +42,34 @@ describe('PartnersService — dashboard period filter (#010)', () => {
     });
 
     const [, from, to] = calls[0] as [number, Date, Date];
-    expect(from.getDate()).toBe(20);
-    expect(from.getHours()).toBe(0);
+    // Midnight to midnight in Vietnam (UTC+7), whatever clock the server
+    // runs on (doitac-1410 #017).
+    expect(from.toISOString()).toBe('2026-09-19T17:00:00.000Z');
     // Start of the next day, so 16:00 on the 20th still counts.
-    expect(to.getDate()).toBe(21);
-    expect(to.getHours()).toBe(0);
+    expect(to.toISOString()).toBe('2026-09-20T17:00:00.000Z');
     expect(summary.range.from).toBe(from.toISOString());
+  });
+
+  it('should count an order at 02:35 on the 14th under the 14th, not the 13th (doitac-1410 #017)', async () => {
+    // The days were cut on the server's UTC clock, so "Hôm nay" began at
+    // 07:00 Hanoi time and an early-morning order showed under "Hôm qua".
+    const placedAt = new Date('2026-10-14T02:35:00+07:00');
+
+    const today = buildService();
+    await today.service.getMySummary(5, {
+      from: '2026-10-14',
+      to: '2026-10-14',
+    });
+    const [, tFrom, tTo] = today.calls[0] as [number, Date, Date];
+    expect(placedAt >= tFrom && placedAt < tTo).toBe(true);
+
+    const yesterday = buildService();
+    await yesterday.service.getMySummary(5, {
+      from: '2026-10-13',
+      to: '2026-10-13',
+    });
+    const [, yFrom, yTo] = yesterday.calls[0] as [number, Date, Date];
+    expect(placedAt >= yFrom && placedAt < yTo).toBe(false);
   });
 
   it('should apply the same window to orders, commissions and clicks', async () => {

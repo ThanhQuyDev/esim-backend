@@ -61,8 +61,9 @@ describe('PartnersService — top destinations (#012)', () => {
       number,
     ];
     expect(partnerId).toBe(5);
-    expect(from.getDate()).toBe(1);
-    expect(to.getDate()).toBe(2);
+    // 1 September in Vietnam (doitac-1410 #017).
+    expect(from.toISOString()).toBe('2026-08-31T17:00:00.000Z');
+    expect(to.toISOString()).toBe('2026-09-01T17:00:00.000Z');
     expect(limit).toBe(20);
   });
 });

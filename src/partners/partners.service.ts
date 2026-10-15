@@ -356,39 +356,55 @@ const PAYOUT_RESERVED_STATUSES = [
   PartnerPayoutStatusEnum.APPROVED,
 ];
 
+/** Vietnam's offset from UTC; the country keeps no daylight saving. */
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+
 /**
- * Day bounds for the dashboard window (#010).
+ * The Vietnamese calendar day a filter value names, as [year, month, day].
+ *
+ * A bare "2026-10-14" is that day in Vietnam. A full timestamp is turned into
+ * the Vietnamese day it falls on.
+ */
+function vnCalendarDay(value: string): [number, number, number] | null {
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (plain) return [Number(plain[1]), Number(plain[2]), Number(plain[3])];
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const vn = new Date(d.getTime() + VN_OFFSET_MS);
+  return [vn.getUTCFullYear(), vn.getUTCMonth() + 1, vn.getUTCDate()];
+}
+
+/** The instant a Vietnamese calendar day starts. */
+function vnDayStart([y, m, d]: [number, number, number]): Date {
+  return new Date(Date.UTC(y, m - 1, d) - VN_OFFSET_MS);
+}
+
+/**
+ * Day bounds for the dashboard window (#010), in Vietnamese days
+ * (doitac-1410 #017).
  *
  * `to` is pushed to the start of the next day so the last day counts in full —
- * an order placed at 16:00 today belongs to "Hôm nay".
+ * an order placed at 16:00 today belongs to "Hôm nay". The days used to be cut
+ * on the server's clock, which runs on UTC: "Hôm nay" began at 07:00 in
+ * Hanoi, so an order at 02:35 on the 14th landed under "Hôm qua".
  */
 function resolveSummaryRange(range: { from?: string; to?: string }): {
   from: Date;
   to: Date;
 } {
-  const startOfDay = (d: Date) =>
-    new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const fromDay = range.from ? vnCalendarDay(range.from) : null;
 
-  const parsed = (value?: string) => {
-    if (!value) return null;
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
-
-  const fromInput = parsed(range.from);
-  const toInput = parsed(range.to);
-
-  if (!fromInput) {
+  if (!fromDay) {
     const now = new Date();
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(now.getDate() - 30);
     return { from: thirtyDaysAgo, to: new Date(now.getTime() + 1000) };
   }
 
-  const from = startOfDay(fromInput);
-  const end = startOfDay(toInput ?? fromInput);
-  end.setDate(end.getDate() + 1);
-  return { from, to: end };
+  const toDay = (range.to ? vnCalendarDay(range.to) : null) ?? fromDay;
+  const from = vnDayStart(fromDay);
+  const to = new Date(vnDayStart(toDay).getTime() + 24 * 60 * 60 * 1000);
+  return { from, to };
 }
 
 /**
@@ -5842,7 +5858,7 @@ export class PartnersService {
       : 'day';
 
     const orderRows = await this.dataSource.query(
-      `SELECT date_trunc('${unit}', o."createdAt") AS bucket,
+      `SELECT date_trunc('${unit}', o."createdAt" + INTERVAL '7 hours') - INTERVAL '7 hours' AS bucket,
               COUNT(*) AS orders
        FROM "order" o
        WHERE o."userId" = $1
@@ -5854,7 +5870,7 @@ export class PartnersService {
     );
 
     const esimRows = await this.dataSource.query(
-      `SELECT date_trunc('${unit}', e."activatedAt") AS bucket,
+      `SELECT date_trunc('${unit}', e."activatedAt" + INTERVAL '7 hours') - INTERVAL '7 hours' AS bucket,
               COUNT(*) AS "activatedEsims"
        FROM esim e
        JOIN order_item oi ON oi.id = e."orderItemId"
@@ -6581,7 +6597,7 @@ export class PartnersService {
     // in one pass. An order reaches a partner from one side or the other; the
     // union keys off which, so nothing is counted twice.
     const rows = await this.dataSource.query(
-      `SELECT date_trunc('${unit}', t."createdAt") AS bucket,
+      `SELECT date_trunc('${unit}', t."createdAt" + INTERVAL '7 hours') - INTERVAL '7 hours' AS bucket,
               t."partnerType",
               COALESCE(SUM(t."revenueVnd"), 0) AS "revenueVnd",
               COUNT(DISTINCT t."orderId") AS orders

@@ -123,7 +123,8 @@ describe('PartnersService.adminPartnerActivity (#051)', () => {
       to: '2026-09-30',
     });
 
-    expect(new Date(result.range.from).getDate()).toBe(1);
-    expect(new Date(result.range.to).getMonth()).toBe(9);
+    // Vietnamese days, whatever clock the server runs on (doitac-1410 #017).
+    expect(result.range.from).toBe('2026-08-31T17:00:00.000Z');
+    expect(result.range.to).toBe('2026-09-30T17:00:00.000Z');
   });
 });
