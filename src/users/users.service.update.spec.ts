@@ -82,3 +82,28 @@ describe('UsersService.update (#025)', () => {
     expect(usersRepository.update).not.toHaveBeenCalled();
   });
 });
+
+describe('UsersService.update — the first-login password flag (doitac-1410 #011)', () => {
+  it('should clear "must change password" when asked to', async () => {
+    // It was not passed on to the repository, so a partner who had set their
+    // own password was told to change it again at every sign-in.
+    const { service, usersRepository } = makeService();
+
+    await service.update(5, { mustChangePassword: false });
+
+    expect(usersRepository.update).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({ mustChangePassword: false }),
+    );
+  });
+
+  it('should leave the flag alone when an update does not mention it', async () => {
+    const { service, usersRepository } = makeService();
+
+    await service.update(5, { firstName: 'An' });
+
+    expect(usersRepository.update.mock.calls[0][1]).not.toHaveProperty(
+      'mustChangePassword',
+    );
+  });
+});

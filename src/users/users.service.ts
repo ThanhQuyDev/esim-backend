@@ -319,6 +319,11 @@ export class UsersService {
       ...(updateUserDto.tierOverrideReason !== undefined && {
         tierOverrideReason: updateUserDto.tierOverrideReason,
       }),
+      // Dropped here before, so a new password never cleared the "change your
+      // password" flag (doitac-1410 #011).
+      ...(updateUserDto.mustChangePassword !== undefined && {
+        mustChangePassword: updateUserDto.mustChangePassword,
+      }),
       email,
       password,
       photo,

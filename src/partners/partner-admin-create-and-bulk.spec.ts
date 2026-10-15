@@ -38,6 +38,14 @@ function buildService(
       findOne: jest
         .fn()
         .mockResolvedValue(opts.existingUser ? { id: 1 } : null),
+      createQueryBuilder: () => {
+        const qb = {
+          withDeleted: () => qb,
+          where: () => qb,
+          getOne: () => Promise.resolve(opts.existingUser ? { id: 1 } : null),
+        };
+        return qb;
+      },
     },
     partnerRepository: {
       find: jest.fn().mockResolvedValue(opts.partners ?? []),
@@ -143,7 +151,12 @@ describe('PartnersService.adminCreatePartner (#059)', () => {
   it('should refuse an email that already has an account', async () => {
     const { service } = buildService({ existingUser: true });
 
-    await expect(service.adminCreatePartner(DTO, 1)).rejects.toThrow();
+    // In words, so the admin knows why (doitac-1410 #011).
+    await expect(service.adminCreatePartner(DTO, 1)).rejects.toMatchObject({
+      response: {
+        message: expect.stringContaining('vip@example.com đã tồn tại'),
+      },
+    });
   });
 
   it('should record how the partner came to be active', async () => {

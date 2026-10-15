@@ -2969,12 +2969,20 @@ export class PartnersService {
     dto: AdminCreatePartnerDto,
     adminId: number,
   ): Promise<{ partnerId: number; userId: number }> {
-    const existing = await this.userRepository.findOne({
-      where: { email: dto.contactEmail },
-    });
+    // Said in words, with the address (doitac-1410 #011): the code alone
+    // reached the admin as a bare "Request failed". Case is ignored, as it is
+    // at sign-in, so "An@" and "an@" are the same account.
+    const existing = await this.userRepository
+      .createQueryBuilder('user')
+      .withDeleted()
+      .where('LOWER(user.email) = LOWER(:email)', {
+        email: dto.contactEmail.trim(),
+      })
+      .getOne();
     if (existing) {
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
+        message: `Email ${dto.contactEmail.trim()} đã tồn tại trên hệ thống. Vui lòng dùng email khác.`,
         errors: { contactEmail: 'emailAlreadyExists' },
       });
     }

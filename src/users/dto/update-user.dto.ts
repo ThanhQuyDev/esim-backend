@@ -3,6 +3,7 @@ import { CreateUserDto } from './create-user.dto';
 
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -54,6 +55,16 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsString()
   tierOverrideReason?: string | null;
+
+  /**
+   * Cleared when the user sets their own password (doitac-1410 #011). It was
+   * not on this DTO, so the update below never wrote it and an admin-created
+   * partner was asked to change their password again after every sign-in.
+   */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  mustChangePassword?: boolean;
 
   @ApiPropertyOptional({ type: () => FileDto })
   @IsOptional()
