@@ -1,3 +1,4 @@
+import { vnFold, vnFoldSql } from '../utils/vn-fold';
 import { partnerCommissionAmount } from './partner-commission-amount';
 import {
   BadRequestException,
@@ -1364,19 +1365,24 @@ export class PartnersService {
     if (query.tierCode) {
       qb.andWhere('partner.tierCode = :tierCode', { tierCode: query.tierCode });
     }
+    let looksLikeId = false;
     if (query.search) {
       // Phone included because that is what an admin has in front of them when
       // the applicant rings to ask where their approval got to (#055); the id
       // because that is what the reconciliation file quotes back (#058).
       const asId = Number(query.search.trim().replace(/^#/, ''));
-      const looksLikeId = Number.isInteger(asId) && asId > 0;
+      looksLikeId = Number.isInteger(asId) && asId > 0;
+      // Names compared without diacritics: an admin typing "Dung" must find
+      // "Hoàng Đình Dũng" (doitac-1410 #002).
       qb.andWhere(
-        `(partner.contactName ILIKE :search OR partner.contactEmail ILIKE :search OR partner.companyName ILIKE :search OR partner.contactPhone ILIKE :search${
+        `(${vnFoldSql('partner.contactName')} LIKE :folded OR ${vnFoldSql('partner.companyName')} LIKE :folded OR partner.contactEmail ILIKE :search OR partner.contactPhone ILIKE :search${
           looksLikeId ? ' OR partner.id = :id' : ''
         })`,
-        looksLikeId
-          ? { search: `%${query.search}%`, id: asId }
-          : { search: `%${query.search}%` },
+        {
+          search: `%${query.search.trim()}%`,
+          folded: `%${vnFold(query.search.trim())}%`,
+          ...(looksLikeId && { id: asId }),
+        },
       );
     }
 
@@ -1392,6 +1398,12 @@ export class PartnersService {
     // `offset/limit` rather than `skip/take`: `user` is many-to-one, so rows
     // never multiply, and skip/take's distinct-id wrapper cannot see the alias.
     const totalCount = await qb.getCount();
+    // A search for "9" also matches every phone number holding a 9; the
+    // partner whose id IS 9 is the one meant, so it comes first.
+    if (looksLikeId) {
+      qb.addSelect('CASE WHEN partner.id = :id THEN 0 ELSE 1 END', 'id_first');
+      qb.orderBy('id_first', 'ASC');
+    }
     qb.addSelect(
       `(SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) FROM "order" o
         WHERE o."attributedPartnerId" = partner.id
@@ -1399,7 +1411,7 @@ export class PartnersService {
           AND o.status IN ('paid', 'completed'))`,
       'revenue_sort',
     )
-      .orderBy('revenue_sort', 'DESC')
+      .addOrderBy('revenue_sort', 'DESC')
       .addOrderBy('partner.createdAt', 'DESC')
       .offset((page - 1) * limit)
       .limit(limit);
