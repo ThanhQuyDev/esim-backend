@@ -158,3 +158,33 @@ describe('Per-eSIM (ICCID) refund', () => {
     ]);
   });
 });
+
+describe('Refund eSIM count (doitac-1410 #020)', () => {
+  it('should record how many eSIMs each refund gave back', async () => {
+    const { service } = makeService({ 101: 'refunded' });
+    const query = jest.fn().mockResolvedValue([]);
+    (service as unknown as Record<string, unknown>).dataSource = { query };
+
+    await service.refundOrder(
+      7 as never,
+      { mode: 'wallet', amountVnd: 100000, esimIds: [103] } as never,
+      1,
+    );
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringContaining('"esimCount"'),
+      [1, 1],
+    );
+
+    // The whole line: only the two eSIMs not refunded before count.
+    query.mockClear();
+    await service.refundOrder(
+      7 as never,
+      { mode: 'wallet', amountVnd: 1000, orderItemIds: [11] } as never,
+      1,
+    );
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringContaining('"esimCount"'),
+      [1, 1],
+    );
+  });
+});

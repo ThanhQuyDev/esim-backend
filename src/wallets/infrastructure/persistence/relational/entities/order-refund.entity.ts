@@ -64,6 +64,10 @@ export class OrderRefundEntity extends EntityRelationalHelper {
   @Column({ type: Number, nullable: true })
   createdByAdminId!: number | null;
 
+  /** eSIMs this refund gave back; null on refunds made before it was kept. */
+  @Column({ type: Number, nullable: true })
+  esimCount?: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

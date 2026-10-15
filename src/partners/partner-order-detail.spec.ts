@@ -107,3 +107,29 @@ describe('PartnersService — order detail for a partner (#026)', () => {
     expect(sql[0]).toContain('o."attributedPartnerId" = $1');
   });
 });
+
+describe('PartnersService — refunds in the order detail (doitac-1410 #020)', () => {
+  it('should read the rate against what the customer kept and list each refund', async () => {
+    const refundedAt = '2026-10-14T03:00:00.000Z';
+    const { service, sql } = buildService({
+      orderNumber: 'ORD-5',
+      createdAt: PLACED,
+      // 3 eSIMs at 214 000đ, one given back: 7% of the 428 000đ kept.
+      revenueVnd: '642000',
+      refundedAmountVnd: '214000',
+      commissionVnd: '29960',
+      items: [{ planName: 'China 1GB', quantity: 3, refundedQuantity: 1 }],
+      refunds: [{ at: refundedAt, amountVnd: '214000', esimCount: 1 }],
+    });
+
+    const detail = await service.getMyOrderDetail(5, 'ORD-5');
+
+    expect(detail.commissionPercent).toBe(7);
+    expect(detail.refundedVnd).toBe(214000);
+    expect(detail.refunds).toEqual([
+      { at: refundedAt, amountVnd: 214000, esimCount: 1 },
+    ]);
+    expect(sql[0]).toContain("'refundedQuantity'");
+    expect(sql[0]).toContain('FROM order_refund r');
+  });
+});

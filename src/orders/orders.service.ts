@@ -2508,8 +2508,11 @@ export class OrdersService {
       await this.markItemRefunded(itemId);
     }
 
+    // How many eSIMs this refund gave back, for the partner's order history
+    // (doitac-1410 #020).
+    let refundedEsimCount = 0;
     if (!isPartial || selectedItemIds.length) {
-      await this.markRefundedEsims(
+      refundedEsimCount += await this.markRefundedEsims(
         order.id,
         isPartial ? selectedItemIds : undefined,
       );
@@ -2521,6 +2524,7 @@ export class OrdersService {
       for (const esim of selectedEsims) {
         try {
           await this.esimsService.update(esim.id, { status: 'refunded' });
+          refundedEsimCount += 1;
         } catch (err) {
           this.logger.error(
             `refundOrder: failed to mark esim ${esim.id} refunded: ${(err as Error).message}`,
@@ -2539,6 +2543,19 @@ export class OrdersService {
         ) {
           await this.markItemRefunded(itemId);
         }
+      }
+    }
+
+    if (refund?.id) {
+      try {
+        await this.dataSource.query(
+          `UPDATE order_refund SET "esimCount" = $1 WHERE id = $2`,
+          [refundedEsimCount, refund.id],
+        );
+      } catch (err) {
+        this.logger.error(
+          `refundOrder: failed to record the eSIM count of refund ${refund.id}: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -2600,29 +2617,33 @@ export class OrdersService {
    * `resolveDeliveredStatus` never overwrites `refunded`, so a late provider
    * callback cannot resurrect one of these.
    */
+  /** Marks the eSIMs refunded and returns how many it marked. */
   private async markRefundedEsims(
     orderId: number,
     onlyItemIds?: number[],
-  ): Promise<void> {
+  ): Promise<number> {
     const allItems = await this.orderItemsService.findByOrderId(orderId);
     const itemIds = (
       onlyItemIds?.length
         ? allItems.filter((item) => onlyItemIds.includes(Number(item.id)))
         : allItems
     ).map((item) => Number(item.id));
-    if (itemIds.length === 0) return;
+    if (itemIds.length === 0) return 0;
 
     const esims = await this.esimsService.findByOrderItemIds(itemIds);
+    let marked = 0;
     for (const esim of esims) {
       if (esim.status === 'refunded') continue;
       try {
         await this.esimsService.update(esim.id, { status: 'refunded' });
+        marked += 1;
       } catch (err) {
         this.logger.error(
           `refundOrder: failed to mark esim ${esim.id} refunded: ${(err as Error).message}`,
         );
       }
     }
+    return marked;
   }
 
   private async markItemRefunded(itemId: number): Promise<void> {

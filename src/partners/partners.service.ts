@@ -4904,11 +4904,31 @@ export class PartnersService {
                     'planName', p2.name,
                     'quantity', oi2.quantity,
                     'vndPrice', oi2."vndPrice",
-                    'refunded', oi2.status = 'refunded'
+                    'refunded', oi2.status = 'refunded',
+                    -- eSIMs of the line given back one by one (doitac-1410 #020).
+                    'refundedQuantity', (
+                      SELECT count(*)::int FROM esim re
+                      WHERE re."orderItemId" = oi2.id AND re.status = 'refunded'
+                    )
                   ) ORDER BY oi2.id
                 ) FILTER (WHERE oi2.id IS NOT NULL),
                 '[]'
-              ) AS items
+              ) AS items,
+              -- Every refund of the order, for "Lịch sử ghi nhận" (#020).
+              (
+                SELECT COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'at', r."createdAt",
+                      'amountVnd', r."amountVnd",
+                      'esimCount', r."esimCount"
+                    ) ORDER BY r."createdAt"
+                  ),
+                  '[]'
+                )
+                FROM order_refund r
+                WHERE r."orderId" = o.id AND r.status = 'completed'
+              ) AS refunds
        FROM "order" o
        LEFT JOIN order_partner_commission c ON c."orderId" = o.id
        LEFT JOIN partner_link l ON l.id = c."linkId"
@@ -4927,8 +4947,13 @@ export class PartnersService {
     if (!row) throw new NotFoundException('Không tìm thấy đơn hàng.');
 
     const revenueVnd = Number(row.revenueVnd ?? 0);
+    const refundedVnd = Number(row.refundedAmountVnd ?? 0);
     const commissionVnd =
       row.commissionVnd == null ? null : Number(row.commissionVnd);
+    // After a partial refund the commission left is the rate on what the
+    // customer kept, so the rate is read against that — not against the
+    // whole order, which showed 7% as 5.8% (doitac-1410 #020).
+    const keptVnd = Math.max(0, revenueVnd - refundedVnd);
 
     return {
       orderNumber: row.orderNumber,
@@ -4936,14 +4961,21 @@ export class PartnersService {
       createdAt: row.createdAt,
       items: row.items ?? [],
       revenueVnd,
-      refundedVnd: Number(row.refundedAmountVnd ?? 0),
+      refundedVnd,
       commissionVnd,
       // Read back from the money rather than the tier, so a rate that changed
       // after the order still shows what this order actually paid.
       commissionPercent:
-        commissionVnd && revenueVnd > 0
-          ? Math.round((commissionVnd / revenueVnd) * 1000) / 10
+        commissionVnd && keptVnd > 0
+          ? Math.round((commissionVnd / keptVnd) * 1000) / 10
           : null,
+      refunds: ((row.refunds ?? []) as Array<Record<string, unknown>>).map(
+        (r) => ({
+          at: r.at as string,
+          amountVnd: Number(r.amountVnd ?? 0),
+          esimCount: r.esimCount == null ? null : Number(r.esimCount),
+        }),
+      ),
       commissionStatus: row.commissionStatus ?? null,
       source: row.linkCode
         ? { type: 'link' as const, code: row.linkCode }
