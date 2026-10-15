@@ -84,6 +84,9 @@ describe('PartnersService — exporting the order list (#027)', () => {
         vndPrice: 500_000,
         linkCode: null,
         couponCode: 'VANA10',
+        couponDiscountType: 'percent',
+        couponDiscountValue: 10,
+        couponDiscountVnd: 50_000,
         customerType: 'returning',
         esimCount: 1,
         commissionPercent: null,
@@ -95,7 +98,7 @@ describe('PartnersService — exporting the order list (#027)', () => {
 
     const rows = await readSheet(await service.exportMyOrdersToExcel(5));
 
-    expect(rows[1][3]).toBe('Mã: VANA10');
+    expect(rows[1][3]).toBe('Mã: VANA10 (giảm 10% · -50.000đ)');
     expect(rows[1][4]).toBe('Khách quay lại');
     expect(rows[1][8]).toBe('Chờ xác nhận');
   });

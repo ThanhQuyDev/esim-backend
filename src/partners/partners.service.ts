@@ -136,6 +136,7 @@ import {
   SessionShapeEnum,
   PARTNER_LINK_ATTRIBUTION_DAYS,
 } from './partners.enum';
+import { couponSourceLabel } from './partner-coupon-label';
 
 /**
  * What a partner needs in order to pay (#047).
@@ -2757,7 +2758,7 @@ export class PartnersService {
               source: row.linkCode
                 ? `Link ${row.linkCode}`
                 : row.couponCode
-                  ? `Mã ${row.couponCode}`
+                  ? couponSourceLabel(row.couponCode, row, 'Mã ')
                   : '—',
               customer: row.customerType === 'new' ? 'Khách mới' : 'Khách cũ',
               esimCount: row.esimCount,
@@ -4675,6 +4676,14 @@ export class PartnersService {
               -- Which of the partner's discount codes brought the order, when
               -- it came in through a code rather than a link (#024).
               o."couponCode" AS "couponCode",
+              -- What the code gave the customer (doitac-1410 #021): its rule,
+              -- and the money it took off this order.
+              o."couponDiscountVndAmount" AS "couponDiscountVnd",
+              (SELECT cp."discountType" FROM coupon cp
+               WHERE cp.code = o."couponCode") AS "couponDiscountType",
+              (SELECT CASE WHEN cp."discountType" = 'fixed'
+                           THEN cp."discountAmount" ELSE cp."discountPercent" END
+               FROM coupon cp WHERE cp.code = o."couponCode") AS "couponDiscountValue",
               COALESCE(
                 json_agg(
                   json_build_object(
@@ -4778,6 +4787,16 @@ export class PartnersService {
         commissionStatus,
         linkCode: r.linkCode ?? null,
         couponCode: r.couponCode ?? null,
+        couponDiscountType: r.couponCode
+          ? (r.couponDiscountType ?? null)
+          : null,
+        couponDiscountValue:
+          r.couponCode && r.couponDiscountValue != null
+            ? Number(r.couponDiscountValue)
+            : null,
+        couponDiscountVnd: r.couponCode
+          ? Number(r.couponDiscountVnd ?? 0)
+          : null,
         customerType: r.isNewCustomer ? 'new' : 'returning',
         esimCount: Number(r.esimCount ?? 0),
         items: r.items ?? [],
@@ -4836,7 +4855,7 @@ export class PartnersService {
         source: order.linkCode
           ? `Link: /go/${order.linkCode}`
           : order.couponCode
-            ? `Mã: ${order.couponCode}`
+            ? couponSourceLabel(order.couponCode, order)
             : '—',
         customer: order.customerType === 'new' ? 'Khách mới' : 'Khách quay lại',
         esimCount: Number(order.esimCount ?? 0),

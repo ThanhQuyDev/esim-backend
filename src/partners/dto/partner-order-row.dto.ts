@@ -54,6 +54,18 @@ export class PartnerOrderRowDto {
   @ApiPropertyOptional({ type: String })
   couponCode?: string | null;
 
+  /** The code's rule: `percent` or `fixed` (doitac-1410 #021). */
+  @ApiPropertyOptional({ type: String })
+  couponDiscountType?: string | null;
+
+  /** Percent, or VND for a fixed code. */
+  @ApiPropertyOptional({ type: Number })
+  couponDiscountValue?: number | null;
+
+  /** What the code actually took off this order, in VND. */
+  @ApiPropertyOptional({ type: Number })
+  couponDiscountVnd?: number | null;
+
   /** Whether esim.vn had seen this buyer before this order (#021). */
   @ApiProperty({ required: false, enum: ['new', 'returning'] })
   customerType?: 'new' | 'returning';
