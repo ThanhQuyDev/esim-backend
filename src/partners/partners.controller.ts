@@ -52,6 +52,8 @@ import {
 } from './dto/partner-link.dto';
 import { PartnerOrderRowDto } from './dto/partner-order-row.dto';
 import { ReportFaultyEsimDto } from './dto/partner-esim-fault.dto';
+import { hashIpForFraudWatch } from '../orders/order-fraud-signals';
+import { clientIp } from '../tickets/ticket-spam-guard';
 
 @ApiTags('Partners')
 @Controller({ path: 'partners', version: '1' })
@@ -100,8 +102,28 @@ export class PartnersController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get('me')
   @HttpCode(HttpStatus.OK)
-  async getMe(@Request() req: { user: { id: number } }) {
-    return this.partnersService.getPartnerByUserId(req.user.id);
+  async getMe(
+    @Request()
+    req: { user: { id: number; role?: { id?: number | string } } } & Parameters<
+      typeof clientIp
+    >[0],
+    @Headers('user-agent') userAgent?: string,
+    @Headers('x-esim-client-ip') forwardedIp?: string,
+    @Headers('x-esim-client-ua') forwardedUa?: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    // The portal reads this on every page, which makes it the place to see
+    // where the partner works from (doitac-1410 #025). The portal's server
+    // passes the partner's own address and browser on, since it is the one
+    // calling here.
+    if (Number(req.user.role?.id) !== RoleEnum.admin) {
+      void this.partnersService.recordPartnerOrigin(
+        partner.id,
+        hashIpForFraudWatch(forwardedIp?.trim() || clientIp(req)),
+        forwardedUa?.trim() || userAgent || null,
+      );
+    }
+    return partner;
   }
 
   @ApiBearerAuth()

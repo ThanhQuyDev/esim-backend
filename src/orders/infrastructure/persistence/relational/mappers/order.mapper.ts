@@ -35,6 +35,12 @@ export class OrderMapper {
     domainEntity.referrerUserId = raw.referrerUserId;
     domainEntity.partnerLinkCode = raw.partnerLinkCode;
     domainEntity.attributedPartnerId = raw.attributedPartnerId;
+    // Fraud-watch marks (#036): left out of the mapper, they were computed on
+    // every affiliate order and never saved, so no admin ever saw one
+    // (doitac-1410 #025).
+    domainEntity.buyerIpHash = raw.buyerIpHash ?? null;
+    domainEntity.buyerVisitorId = raw.buyerVisitorId ?? null;
+    domainEntity.attributionWarning = raw.attributionWarning ?? null;
     domainEntity.referralDiscountVndAmount = Number(
       raw.referralDiscountVndAmount,
     );
@@ -113,6 +119,9 @@ export class OrderMapper {
     persistenceEntity.referrerUserId = domainEntity.referrerUserId;
     persistenceEntity.partnerLinkCode = domainEntity.partnerLinkCode;
     persistenceEntity.attributedPartnerId = domainEntity.attributedPartnerId;
+    persistenceEntity.buyerIpHash = domainEntity.buyerIpHash;
+    persistenceEntity.buyerVisitorId = domainEntity.buyerVisitorId;
+    persistenceEntity.attributionWarning = domainEntity.attributionWarning;
     persistenceEntity.referralDiscountVndAmount =
       domainEntity.referralDiscountVndAmount ?? 0;
     persistenceEntity.walletSpentVndAmount =

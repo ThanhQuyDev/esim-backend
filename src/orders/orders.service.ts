@@ -287,6 +287,7 @@ export class OrdersService {
     visitorId: string | null,
     ipHash: string | null,
     clickId?: string | null,
+    userAgent?: string | null,
   ): Promise<{
     visitorId: string | null;
     ipHash: string | null;
@@ -305,6 +306,25 @@ export class OrdersService {
         ipHash,
       );
       if (seenBefore) warnings.push('same_device_or_ip');
+    }
+
+    // The partner's own computer or network (doitac-1410 #025): compared with
+    // where the partner was seen using the portal, not only with their other
+    // orders.
+    if (ipHash) {
+      try {
+        const own = await this.partnersService.matchPartnerOrigin(
+          attributedPartnerId,
+          ipHash,
+          userAgent ?? null,
+        );
+        if (own === 'device') warnings.push('partner_device');
+        else if (own === 'ip') warnings.push('partner_ip');
+      } catch (err) {
+        this.logger?.error(
+          `resolveFraudSignals: partner origin check failed: ${(err as Error).message}`,
+        );
+      }
     }
 
     // What the session looked like on the way here (#040): an order that never
@@ -483,6 +503,7 @@ export class OrdersService {
       dto.visitorId ?? null,
       clientIpHash ?? null,
       dto.partnerClickId ?? null,
+      clientUserAgent ?? null,
     );
 
     // 3. Create order
@@ -797,6 +818,7 @@ export class OrdersService {
       dto.visitorId ?? null,
       clientIpHash ?? null,
       dto.partnerClickId ?? null,
+      clientUserAgent ?? null,
     );
 
     const totalVndCostPrice = planDetails.reduce((sum, item) => {

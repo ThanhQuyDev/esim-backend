@@ -62,3 +62,61 @@ describe('hashIpForFraudWatch (#036)', () => {
     expect(hashIpForFraudWatch('   ')).toBeNull();
   });
 });
+
+describe("PartnersService — the partner's own device or network (doitac-1410 #025)", () => {
+  function build(rows: unknown[]) {
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    const query = jest.fn().mockResolvedValue(rows);
+    Object.assign(service, { dataSource: { query } });
+    return { service, query };
+  }
+  const ip = hashIpForFraudWatch('203.0.113.9');
+
+  it('should flag the same device when network and browser both match', async () => {
+    const { service, query } = build([{ sameDevice: true }]);
+
+    await expect(
+      service.matchPartnerOrigin(8, ip, 'Mozilla/5.0 Chrome'),
+    ).resolves.toBe('device');
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('FROM partner_origin');
+    expect(sql).toContain("INTERVAL '30 days'");
+    expect(params[0]).toBe(8);
+    expect(params[2]).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it('should flag the same network when only the address matches', async () => {
+    const { service } = build([{ sameDevice: false }]);
+
+    await expect(service.matchPartnerOrigin(8, ip, 'Safari')).resolves.toBe(
+      'ip',
+    );
+  });
+
+  it('should say nothing for a network the partner was never seen on', async () => {
+    const { service } = build([{ sameDevice: null }]);
+
+    await expect(service.matchPartnerOrigin(8, ip, 'Safari')).resolves.toBe(
+      null,
+    );
+  });
+
+  it('should remember where the partner uses the portal from', async () => {
+    const { service, query } = build([]);
+
+    await service.recordPartnerOrigin(8, ip, 'Mozilla/5.0 Chrome');
+
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('INSERT INTO partner_origin');
+    expect(sql).toContain('ON CONFLICT');
+    expect(params[1]).toBe(ip);
+  });
+
+  it('should record nothing without an address', async () => {
+    const { service, query } = build([]);
+
+    await service.recordPartnerOrigin(8, null, 'Chrome');
+
+    expect(query).not.toHaveBeenCalled();
+  });
+});

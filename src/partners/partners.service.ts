@@ -7702,6 +7702,65 @@ export class PartnersService {
    * exactly like this. The order still earns — the brief is explicit — but it
    * is marked so an admin can review the partner's other transactions.
    */
+  /**
+   * Remember where the partner themself is using esim.vn from (doitac-1410
+   * #025). Called as they use the portal; one row per network + device, the
+   * last-seen time moved on each visit. Best-effort.
+   */
+  async recordPartnerOrigin(
+    partnerId: number,
+    ipHash: string | null,
+    userAgent: string | null,
+  ): Promise<void> {
+    if (!ipHash) return;
+    try {
+      await this.dataSource.query(
+        `INSERT INTO partner_origin ("partnerId", "ipHash", "deviceHash")
+         VALUES ($1, $2, $3)
+         ON CONFLICT ("partnerId", "ipHash", "deviceHash")
+         DO UPDATE SET "lastSeenAt" = now()`,
+        [
+          partnerId,
+          ipHash.slice(0, 32),
+          partnerDeviceFingerprint(ipHash, userAgent) ?? '',
+        ],
+      );
+    } catch (err) {
+      this.logger.error(
+        `recordPartnerOrigin(${partnerId}): ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Whether an affiliate order comes from where the partner themself was
+   * seen in the last 30 days (doitac-1410 #025): `device` when the network
+   * and the browser both match, `ip` when only the network does.
+   *
+   * The old check only compared the order with the partner's earlier ORDERS,
+   * so the partner buying through their own link on their own computer was
+   * never flagged — there was nothing of theirs to compare with.
+   */
+  async matchPartnerOrigin(
+    partnerId: number,
+    ipHash: string | null,
+    userAgent: string | null,
+  ): Promise<'device' | 'ip' | null> {
+    if (!ipHash) return null;
+    const deviceHash = partnerDeviceFingerprint(ipHash, userAgent);
+    const [row] = await this.dataSource.query(
+      `SELECT bool_or($3::text IS NOT NULL AND "deviceHash" = $3) AS "sameDevice"
+       FROM partner_origin
+       WHERE "partnerId" = $1
+         AND "ipHash" = $2
+         AND "lastSeenAt" >= now() - INTERVAL '30 days'`,
+      [partnerId, ipHash.slice(0, 32), deviceHash],
+    );
+    if (row?.sameDevice === true) return 'device';
+    if (row?.sameDevice === false) return 'ip';
+    return null;
+  }
+
   async hasOrderFromSameOrigin(
     partnerId: number,
     visitorId: string | null,
