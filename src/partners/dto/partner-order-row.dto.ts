@@ -50,6 +50,10 @@ export class PartnerOrderRowDto {
   @ApiPropertyOptional({ type: Number, example: 15 })
   commissionPercent?: number | null;
 
+  /** Why a refused order earned nothing, e.g. `self_phone` (doitac-1410 #027). */
+  @ApiPropertyOptional({ type: String })
+  rejectionReason?: string | null;
+
   /** Discount code the order came in on, when it was not a link (#024). */
   @ApiPropertyOptional({ type: String })
   couponCode?: string | null;

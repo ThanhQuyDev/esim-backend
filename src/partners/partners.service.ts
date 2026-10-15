@@ -314,13 +314,6 @@ function samePhone(a?: string | null, b?: string | null): boolean {
   return Boolean(left && right && left === right);
 }
 
-/** Tax codes and account numbers: spaces and dashes are decoration. */
-function sameDigits(a?: string | null, b?: string | null): boolean {
-  const left = a?.replace(/\D/g, '');
-  const right = b?.replace(/\D/g, '');
-  return Boolean(left && right && left.length >= 6 && left === right);
-}
-
 /**
  * What one attributed order is worth to the partner (#020).
  *
@@ -4734,6 +4727,7 @@ export class PartnersService {
               o."createdAt",
               c."commissionVnd",
               c.status AS "commissionStatus",
+              c."rejectionReason" AS "rejectionReason",
               l.code   AS "linkCode",
               -- The rate the order earns at (#026). Taken from the rate
               -- recorded with the commission; else read back from the money
@@ -4819,7 +4813,7 @@ export class PartnersService {
               OR o."couponCode" ILIKE '%' || $4 || '%')
          AND ($5::timestamptz IS NULL OR o."createdAt" >= $5)
          AND ($6::timestamptz IS NULL OR o."createdAt" < $6)
-       GROUP BY o.id, c."commissionVnd", c."commissionPercentSnapshot", c.status, l.code, pa.id, pa."userId"
+       GROUP BY o.id, c."commissionVnd", c."commissionPercentSnapshot", c.status, c."rejectionReason", l.code, pa.id, pa."userId"
        ORDER BY o."createdAt" DESC
        LIMIT $2`,
       [
@@ -4861,6 +4855,7 @@ export class PartnersService {
         commissionPercent:
           r.commissionPercent == null ? null : Number(r.commissionPercent),
         commissionStatus,
+        rejectionReason: r.rejectionReason ?? null,
         linkCode: r.linkCode ?? null,
         couponCode: r.couponCode ?? null,
         couponDiscountType: r.couponCode
@@ -4973,6 +4968,7 @@ export class PartnersService {
               c."commissionVnd",
               c."reversedCommissionVnd",
               c.status AS "commissionStatus",
+              c."rejectionReason",
               c."linkId",
               l.code AS "linkCode",
               o."couponCode",
@@ -5035,7 +5031,8 @@ export class PartnersService {
          AND o."orderNumber" = $2
          AND o."deletedAt" IS NULL
        GROUP BY o.id, c."commissionVnd", c."reversedCommissionVnd", c.status,
-                c."linkId", l.code, credit."createdAt", reversal."createdAt"`,
+                c."rejectionReason", c."linkId", l.code, credit."createdAt",
+                reversal."createdAt"`,
       [partnerId, orderNumber],
     );
 
@@ -5072,6 +5069,8 @@ export class PartnersService {
         }),
       ),
       commissionStatus: row.commissionStatus ?? null,
+      /** Why the order earned nothing, when it was refused (doitac-1410 #027). */
+      rejectionReason: row.rejectionReason ?? null,
       source: row.linkCode
         ? { type: 'link' as const, code: row.linkCode }
         : { type: 'coupon' as const, code: row.couponCode ?? null },
@@ -8370,65 +8369,60 @@ export class PartnersService {
    */
   async detectSelfReferral(
     partner: PartnerEntity,
-    order: { orderId: number; buyerUserId?: number | null },
+    order: {
+      orderId: number;
+      buyerUserId?: number | null;
+      /** Email and phone typed at checkout (doitac-1410 #027). */
+      contactEmail?: string | null;
+      contactPhone?: string | null;
+    },
   ): Promise<CommissionRejectionReasonEnum | null> {
     if (partner.userId && partner.userId === order.buyerUserId) {
       return CommissionRejectionReasonEnum.SELF_ACCOUNT;
     }
 
+    // doitac-1410 #027: the rule is EITHER the email OR the phone the partner
+    // registered with — on the buyer's account or typed at checkout. Tax code
+    // and bank account are no longer compared: in practice they matched
+    // nothing a self-referral actually changes.
     try {
+      const partnerUser = partner.userId
+        ? await this.userRepository.findOne({ where: { id: partner.userId } })
+        : null;
+      const partnerEmails = [partner.contactEmail, partnerUser?.email];
+      const partnerPhones = [partner.contactPhone, partnerUser?.phoneNumber];
+
+      const buyer = order.buyerUserId
+        ? await this.userRepository.findOne({
+            where: { id: order.buyerUserId },
+          })
+        : null;
+      const buyerEmails = [order.contactEmail, buyer?.email];
+      const buyerPhones = [order.contactPhone, buyer?.phoneNumber];
+
+      if (buyerEmails.some((b) => partnerEmails.some((p) => sameEmail(b, p)))) {
+        return CommissionRejectionReasonEnum.SELF_EMAIL;
+      }
+      if (buyerPhones.some((b) => partnerPhones.some((p) => samePhone(b, p)))) {
+        return CommissionRejectionReasonEnum.SELF_PHONE;
+      }
+
+      // A partner buying through a second partner account of their own.
       if (order.buyerUserId) {
-        const buyer = await this.userRepository.findOne({
-          where: { id: order.buyerUserId },
-        });
-
-        if (
-          buyer &&
-          sameEmail(buyer.email, partner.contactEmail) &&
-          // The partner's own account is the case above; this is a second
-          // account opened on the same address.
-          buyer.id !== partner.userId
-        ) {
-          return CommissionRejectionReasonEnum.SELF_EMAIL;
-        }
-        if (buyer && samePhone(buyer.phoneNumber, partner.contactPhone)) {
-          return CommissionRejectionReasonEnum.SELF_PHONE;
-        }
-
-        // A partner buying through a second partner account of their own: the
-        // payout details are what give it away.
         const buyerPartner = await this.partnerRepository.findOne({
           where: { userId: order.buyerUserId },
         });
         if (buyerPartner && buyerPartner.id !== partner.id) {
-          if (sameEmail(buyerPartner.contactEmail, partner.contactEmail)) {
+          if (
+            partnerEmails.some((p) => sameEmail(buyerPartner.contactEmail, p))
+          ) {
             return CommissionRejectionReasonEnum.SELF_EMAIL;
           }
-          if (samePhone(buyerPartner.contactPhone, partner.contactPhone)) {
+          if (
+            partnerPhones.some((p) => samePhone(buyerPartner.contactPhone, p))
+          ) {
             return CommissionRejectionReasonEnum.SELF_PHONE;
           }
-          if (sameDigits(buyerPartner.taxCode, partner.taxCode)) {
-            return CommissionRejectionReasonEnum.SELF_TAX_CODE;
-          }
-          if (
-            sameDigits(
-              buyerPartner.bankAccountNumber,
-              partner.bankAccountNumber,
-            )
-          ) {
-            return CommissionRejectionReasonEnum.SELF_BANK_ACCOUNT;
-          }
-        }
-      }
-
-      // The invoice is where a company buyer's tax code lands.
-      if (partner.taxCode) {
-        const [invoice] = await this.dataSource.query(
-          `SELECT "taxCode" FROM invoice WHERE "orderId" = $1 LIMIT 1`,
-          [order.orderId],
-        );
-        if (invoice && sameDigits(invoice.taxCode, partner.taxCode)) {
-          return CommissionRejectionReasonEnum.SELF_TAX_CODE;
         }
       }
     } catch (error) {
@@ -8480,6 +8474,9 @@ export class PartnersService {
     /** The discount code used on the order and what it took off (#060). */
     couponCode?: string | null;
     couponDiscountVnd?: number | null;
+    /** Email and phone typed at checkout (doitac-1410 #027). */
+    contactEmail?: string | null;
+    contactPhone?: string | null;
   }): Promise<OrderPartnerCommissionEntity | null> {
     const partner = await this.partnerRepository.findOne({
       where: { id: params.partnerId },
@@ -8497,6 +8494,8 @@ export class PartnersService {
     const selfReferral = await this.detectSelfReferral(partner, {
       orderId: params.orderId,
       buyerUserId: params.buyerUserId,
+      contactEmail: params.contactEmail ?? null,
+      contactPhone: params.contactPhone ?? null,
     });
     if (selfReferral) {
       this.logger.warn(

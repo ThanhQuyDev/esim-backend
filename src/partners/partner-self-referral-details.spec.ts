@@ -38,12 +38,22 @@ function buildDetector(opts: {
   } | null;
   buyerPartner?: Partial<PartnerEntity> | null;
   invoiceTaxCode?: string | null;
+  /** The partner's own sign-in account (doitac-1410 #027). */
+  partnerUser?: { email?: string | null; phoneNumber?: string | null } | null;
 }) {
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
     logger: { warn: jest.fn(), error: jest.fn() },
     userRepository: {
-      findOne: jest.fn().mockResolvedValue(opts.buyer ?? null),
+      findOne: jest.fn(({ where }: { where: { id: number } }) =>
+        Promise.resolve(
+          where.id === 100
+            ? (opts.partnerUser ?? null)
+            : where.id === opts.buyer?.id
+              ? opts.buyer
+              : null,
+        ),
+      ),
     },
     partnerRepository: {
       findOne: jest.fn().mockResolvedValue(opts.buyerPartner ?? null),
@@ -91,20 +101,12 @@ describe('PartnersService.detectSelfReferral (#041)', () => {
     ).resolves.toBe(CommissionRejectionReasonEnum.SELF_PHONE);
   });
 
-  it('should refuse a company buying on the partner own tax code', async () => {
+  it('should no longer refuse on a tax code or bank account (doitac-1410 #027)', async () => {
+    // The brief now settles on email OR phone; tax code and bank account
+    // matched nothing a self-referral actually changes.
     const service = buildDetector({
       buyer: { id: 200, email: 'ke-toan@example.com' },
       invoiceTaxCode: '0312345678',
-    });
-
-    await expect(
-      service.detectSelfReferral(REGISTERED, { orderId: 1, buyerUserId: 200 }),
-    ).resolves.toBe(CommissionRejectionReasonEnum.SELF_TAX_CODE);
-  });
-
-  it('should refuse a second partner account paid into the same bank account', async () => {
-    const service = buildDetector({
-      buyer: { id: 200, email: 'other@example.com' },
       buyerPartner: {
         id: 9,
         contactEmail: 'other@example.com',
@@ -115,7 +117,44 @@ describe('PartnersService.detectSelfReferral (#041)', () => {
 
     await expect(
       service.detectSelfReferral(REGISTERED, { orderId: 1, buyerUserId: 200 }),
-    ).resolves.toBe(CommissionRejectionReasonEnum.SELF_BANK_ACCOUNT);
+    ).resolves.toBeNull();
+  });
+
+  it('should refuse the partner phone typed at checkout (doitac-1410 #027)', async () => {
+    const service = buildDetector({
+      buyer: { id: 200, email: 'khach@example.com' },
+    });
+
+    await expect(
+      service.detectSelfReferral(REGISTERED, {
+        orderId: 1,
+        buyerUserId: 200,
+        contactPhone: '0901 234 567',
+      }),
+    ).resolves.toBe(CommissionRejectionReasonEnum.SELF_PHONE);
+  });
+
+  it('should refuse the partner email typed at checkout, guest or not', async () => {
+    const service = buildDetector({});
+
+    await expect(
+      service.detectSelfReferral(REGISTERED, {
+        orderId: 1,
+        buyerUserId: null,
+        contactEmail: 'VAN.A@example.com',
+      }),
+    ).resolves.toBe(CommissionRejectionReasonEnum.SELF_EMAIL);
+  });
+
+  it('should refuse the partner sign-in email as well as the contact one', async () => {
+    const service = buildDetector({
+      buyer: { id: 200, email: 'login@example.com' },
+      partnerUser: { email: 'Login@example.com' },
+    });
+
+    await expect(
+      service.detectSelfReferral(REGISTERED, { orderId: 1, buyerUserId: 200 }),
+    ).resolves.toBe(CommissionRejectionReasonEnum.SELF_EMAIL);
   });
 
   it('should pay an ordinary customer', async () => {

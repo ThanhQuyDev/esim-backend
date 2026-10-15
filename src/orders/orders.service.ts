@@ -350,6 +350,8 @@ export class OrdersService {
   private async createPendingCommissionIfAttributed(
     order: Order,
     attribution: { attributedPartnerId: number | null; linkId: number | null },
+    /** Email and phone typed at checkout (doitac-1410 #027). */
+    contact: { email?: string | null; phone?: string | null } = {},
   ): Promise<void> {
     if (!attribution.attributedPartnerId) return;
     try {
@@ -373,6 +375,9 @@ export class OrdersService {
           0,
         // A partner's own code is paid out of their commission (#060).
         couponCode: order.couponCode ?? null,
+        // Self-referral is caught on what was typed at checkout too (#027).
+        contactEmail: contact.email ?? null,
+        contactPhone: contact.phone ?? null,
         couponDiscountVnd: Number(order.couponDiscountVndAmount ?? 0),
       });
     } catch (err) {
@@ -561,7 +566,10 @@ export class OrdersService {
       );
     }
 
-    await this.createPendingCommissionIfAttributed(order, attribution);
+    await this.createPendingCommissionIfAttributed(order, attribution, {
+      email: dto.email ?? null,
+      phone: dto.phoneNumber ?? null,
+    });
 
     // 4. Group items by provider
     const airaloItems = planDetails.filter((i) => i.plan.provider === 'airalo');
@@ -877,7 +885,10 @@ export class OrdersService {
       );
     }
 
-    await this.createPendingCommissionIfAttributed(order, attribution);
+    await this.createPendingCommissionIfAttributed(order, attribution, {
+      email: dto.email ?? null,
+      phone: dto.phoneNumber ?? null,
+    });
 
     if (pricing.walletSpentVndAmount > 0) {
       await this.walletsService.createHold(
