@@ -46,6 +46,8 @@ import {
 import {
   CreatePartnerLinkDto,
   UpdatePartnerLinkDto,
+  QueryMyLinksDto,
+  AppealLinkDto,
 } from './dto/partner-link.dto';
 import { PartnerOrderRowDto } from './dto/partner-order-row.dto';
 import { ReportFaultyEsimDto } from './dto/partner-esim-fault.dto';
@@ -524,9 +526,12 @@ export class PartnersController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get('me/links')
   @HttpCode(HttpStatus.OK)
-  async getMyLinks(@Request() req: { user: { id: number } }) {
+  async getMyLinks(
+    @Request() req: { user: { id: number } },
+    @Query() query: QueryMyLinksDto,
+  ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
-    return this.partnersService.getMyLinks(partner.id);
+    return this.partnersService.getMyLinks(partner.id, query);
   }
 
   @ApiBearerAuth()
@@ -662,6 +667,57 @@ export class PartnersController {
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);
+  }
+
+  /** One link, its timeline and history, for the detail popup (doitac-1410 #018). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/links/:id/detail')
+  @HttpCode(HttpStatus.OK)
+  async getMyLinkDetail(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+    @Query() query: { from?: string; to?: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyLinkDetail(partner.id, Number(id), {
+      from: query.from,
+      to: query.to,
+    });
+  }
+
+  /** Bring back a link deleted within 30 days (doitac-1410 #018). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/links/:id/restore')
+  @HttpCode(HttpStatus.OK)
+  async restoreMyLink(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.restoreMyLink(partner.id, Number(id));
+  }
+
+  /** Record the appeal of a link esim.vn suspended (doitac-1410 #018). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/links/:id/appeal')
+  @HttpCode(HttpStatus.OK)
+  async appealMyLink(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+    @Body() dto: AppealLinkDto,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.appealMyLink(
+      partner.id,
+      Number(id),
+      dto.ticketId,
+    );
   }
 
   /** Remove a link from the partner's list (#016). */

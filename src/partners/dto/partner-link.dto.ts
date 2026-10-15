@@ -6,6 +6,9 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  IsIn,
+  IsNotEmpty,
+  IsInt,
 } from 'class-validator';
 
 /** Bounds for a code a partner names themselves (#014). */
@@ -61,4 +64,72 @@ export class UpdatePartnerLinkDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+}
+
+/** The link list's filters and order (doitac-1410 #018). */
+export class QueryMyLinksDto {
+  @ApiPropertyOptional({ enum: ['active', 'inactive', 'suspended', 'deleted'] })
+  @IsOptional()
+  @IsIn(['active', 'inactive', 'suspended', 'deleted'])
+  status?: string;
+
+  /** The `utm_source` the portal stores the channel as. */
+  @ApiPropertyOptional({ example: 'youtube' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  channel?: string;
+
+  /** The window the clicks, orders and commission are counted over. */
+  @ApiPropertyOptional({ example: '2026-10-01' })
+  @IsOptional()
+  @IsString()
+  from?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-16' })
+  @IsOptional()
+  @IsString()
+  to?: string;
+
+  /** When the link was created. */
+  @ApiPropertyOptional({ example: '2026-09-01' })
+  @IsOptional()
+  @IsString()
+  createdFrom?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-30' })
+  @IsOptional()
+  @IsString()
+  createdTo?: string;
+
+  @ApiPropertyOptional({
+    enum: ['updated', 'created', 'orders', 'commission', 'lastClick'],
+  })
+  @IsOptional()
+  @IsIn(['updated', 'created', 'orders', 'commission', 'lastClick'])
+  sort?: string;
+}
+
+/** An admin suspending or releasing one link (doitac-1410 #018). */
+export class SetLinkSuspensionDto {
+  @ApiProperty({ type: Boolean })
+  @IsBoolean()
+  suspended!: boolean;
+
+  /** Told to the partner by email and notification, so it is required. */
+  @ApiProperty({
+    example: 'Link dẫn tới nội dung vi phạm chính sách quảng cáo',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** The ticket a partner opened to appeal a suspended link (doitac-1410 #018). */
+export class AppealLinkDto {
+  @ApiPropertyOptional({ type: Number })
+  @IsOptional()
+  @IsInt()
+  ticketId?: number;
 }

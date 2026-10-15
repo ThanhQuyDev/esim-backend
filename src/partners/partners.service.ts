@@ -68,6 +68,7 @@ import { PartnerMemberAttributionEntity } from './infrastructure/persistence/rel
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
 import { PartnerReconciliationEntity } from './infrastructure/persistence/relational/entities/partner-reconciliation.entity';
+import { PartnerLinkEventEntity } from './infrastructure/persistence/relational/entities/partner-link-event.entity';
 import { PartnerDepositPromotionEntity } from './infrastructure/persistence/relational/entities/partner-deposit-promotion.entity';
 import { PartnerProgramSettingEntity } from './infrastructure/persistence/relational/entities/partner-program-setting.entity';
 import { PartnerNotificationEntity } from './infrastructure/persistence/relational/entities/partner-notification.entity';
@@ -105,6 +106,8 @@ import {
 } from './dto/admin-partner.dto';
 import {
   CreatePartnerLinkDto,
+  QueryMyLinksDto,
+  SetLinkSuspensionDto,
   UpdatePartnerLinkDto,
 } from './dto/partner-link.dto';
 import {
@@ -355,6 +358,9 @@ const PAYOUT_RESERVED_STATUSES = [
   PartnerPayoutStatusEnum.PENDING,
   PartnerPayoutStatusEnum.APPROVED,
 ];
+
+/** How long a partner can bring a deleted link back themselves (doitac-1410 #018). */
+const LINK_RESTORE_DAYS = 30;
 
 /** Vietnam's offset from UTC; the country keeps no daylight saving. */
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -1186,15 +1192,378 @@ export class PartnersService {
     });
   }
 
-  async getMyLinks(partnerId: number) {
-    // Deleted links stay in the list, marked by `deletedAt`, so the portal can
-    // show them as "Đã xóa" next to "Hoạt động" / "Đã tắt" (#054, test round
-    // 4). They are excluded everywhere a link is resolved, so they earn nothing.
-    return this.linkRepository.find({
-      where: { partnerId },
-      withDeleted: true,
-      order: { createdAt: 'DESC' },
+  /**
+   * The partner's links (doitac-1410 #018), filtered and ordered as the list
+   * asks, each with its clicks, orders and commission over the chosen window.
+   *
+   * Deleted links stay in the list, marked by `deletedAt`, so the portal can
+   * show them as "Đã xóa" (#054, test round 4) and restore them within
+   * {@link LINK_RESTORE_DAYS} days. They are excluded everywhere a link is
+   * resolved, so they earn nothing.
+   */
+  async getMyLinks(partnerId: number, query: QueryMyLinksDto = {}) {
+    // No window means since the link was made ("Từ khi tạo").
+    const window = query.from
+      ? resolveSummaryRange({ from: query.from, to: query.to })
+      : { from: new Date(0), to: new Date(Date.now() + 60_000) };
+    const created =
+      query.createdFrom || query.createdTo
+        ? resolveSummaryRange({
+            from: query.createdFrom ?? '1970-01-01',
+            to: query.createdTo ?? query.createdFrom,
+          })
+        : null;
+
+    const params: unknown[] = [partnerId, window.from, window.to];
+    const where: string[] = ['l."partnerId" = $1'];
+    if (query.status === 'deleted') {
+      where.push('l."deletedAt" IS NOT NULL');
+    } else if (query.status) {
+      params.push(query.status);
+      where.push(`l."deletedAt" IS NULL AND l.status = $${params.length}`);
+    }
+    if (query.channel) {
+      params.push(query.channel);
+      where.push(
+        `split_part(substring(l."targetPath" from 'utm_source=([^&]*)'), '&', 1) = $${params.length}`,
+      );
+    }
+    if (created) {
+      params.push(created.from, created.to);
+      where.push(
+        `l."createdAt" >= $${params.length - 1} AND l."createdAt" < $${params.length}`,
+      );
+    }
+
+    const order: Record<string, string> = {
+      updated: '"lastChangedAt" DESC NULLS LAST',
+      created: 'l."createdAt" DESC',
+      orders: '"periodOrders" DESC, l."createdAt" DESC',
+      commission: '"periodCommissionVnd" DESC, l."createdAt" DESC',
+      lastClick: 'l."lastClickedAt" DESC NULLS LAST, l."createdAt" DESC',
+    };
+
+    const rows = await this.dataSource.query(
+      `SELECT l.*,
+              COALESCE(ck.n, 0)::int AS "periodClicks",
+              COALESCE(co.orders, 0)::int AS "periodOrders",
+              COALESCE(co.commission, 0) AS "periodCommissionVnd",
+              ev."lastChangedAt",
+              COALESCE(ev.edits, 0)::int AS "editCount"
+         FROM partner_link l
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*) AS n FROM partner_link_click c
+            WHERE c."linkId" = l.id AND c."clickedAt" >= $2 AND c."clickedAt" < $3
+         ) ck ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT COUNT(DISTINCT c."orderId") FILTER (WHERE c.status <> 'reversed') AS orders,
+                  COALESCE(SUM(c."commissionVnd") FILTER (WHERE c.status <> 'reversed'), 0) AS commission
+             FROM order_partner_commission c
+            WHERE c."linkId" = l.id AND c."createdAt" >= $2 AND c."createdAt" < $3
+         ) co ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT MAX(e."createdAt") AS "lastChangedAt",
+                  COUNT(*) FILTER (WHERE e.action IN ('renamed', 'retargeted')) AS edits
+             FROM partner_link_event e WHERE e."linkId" = l.id
+         ) ev ON TRUE
+        WHERE ${where.join(' AND ')}
+        ORDER BY ${order[query.sort ?? 'created'] ?? order.created}`,
+      params,
+    );
+
+    return (rows as Record<string, any>[]).map((row) => this.linkRow(row));
+  }
+
+  /** A link as the portal reads it: numbers as numbers, dates as dates. */
+  private linkRow(row: Record<string, any>) {
+    const deletedAt = row.deletedAt ? new Date(row.deletedAt) : null;
+    return {
+      id: Number(row.id),
+      partnerId: Number(row.partnerId),
+      code: String(row.code),
+      label: row.label,
+      targetPath: row.targetPath ?? null,
+      status: row.status,
+      clickCount: Number(row.clickCount ?? 0),
+      conversionCount: Number(row.conversionCount ?? 0),
+      // A decimal column comes back as text; summed as text in the browser it
+      // read a million times too large (doitac-1410 #018).
+      totalCommissionVnd: Number(row.totalCommissionVnd ?? 0),
+      periodClicks: Number(row.periodClicks ?? 0),
+      periodOrders: Number(row.periodOrders ?? 0),
+      periodCommissionVnd: Number(row.periodCommissionVnd ?? 0),
+      editCount: Number(row.editCount ?? 0),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      lastChangedAt: row.lastChangedAt ?? row.updatedAt ?? null,
+      lastClickedAt: row.lastClickedAt ?? null,
+      deletedAt,
+      restorableUntil: deletedAt
+        ? new Date(
+            deletedAt.getTime() + LINK_RESTORE_DAYS * 24 * 60 * 60 * 1000,
+          )
+        : null,
+      suspendedByAdmin: Boolean(row.suspendedByAdmin),
+      suspendedReason: row.suspendedReason ?? null,
+      appealedAt: row.appealedAt ?? null,
+    };
+  }
+
+  /** Something happened to a link: write it to its history (doitac-1410 #018). */
+  private async logLinkEvent(
+    link: { id: number; partnerId: number },
+    action: string,
+    actorRole: 'partner' | 'admin' | 'system',
+    actorId: number | null,
+    detail?: Record<string, unknown>,
+  ): Promise<void> {
+    // The history records what was done; failing to record it must not undo
+    // or refuse the change itself.
+    try {
+      const events = this.dataSource.getRepository(PartnerLinkEventEntity);
+      await events.save(
+        events.create({
+          linkId: link.id,
+          partnerId: link.partnerId,
+          action,
+          actorRole,
+          actorId,
+          detail: detail ?? null,
+        }),
+      );
+    } catch (err) {
+      // Optional: a bare service in a unit test has no logger.
+      this.logger?.error(
+        `Link ${link.id} history (${action}) not written: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async linkCreated(
+    link: PartnerLinkEntity,
+  ): Promise<PartnerLinkEntity> {
+    await this.logLinkEvent(link, 'created', 'partner', null, {
+      label: link.label,
+      targetPath: link.targetPath ?? null,
     });
+    return link;
+  }
+
+  /**
+   * One link for the detail popup (doitac-1410 #018): its figures over the
+   * chosen window, its timeline and its history, newest first.
+   */
+  async getMyLinkDetail(
+    partnerId: number,
+    linkId: number,
+    range: { from?: string; to?: string } = {},
+  ) {
+    const [link] = await this.getMyLinksByIds(partnerId, [linkId], range);
+    if (!link) throw new NotFoundException('Không tìm thấy link.');
+    const events = await this.dataSource
+      .getRepository(PartnerLinkEventEntity)
+      .find({ where: { linkId }, order: { createdAt: 'DESC', id: 'DESC' } });
+    const statusEvents = [
+      'created',
+      'paused',
+      'resumed',
+      'suspended',
+      'unsuspended',
+      'restored',
+      'deleted',
+    ];
+    const statusSince =
+      events.find((e) => statusEvents.includes(e.action))?.createdAt ??
+      link.createdAt;
+    return {
+      ...link,
+      statusSince,
+      createdBy:
+        events.find((e) => e.action === 'created')?.actorRole ?? 'partner',
+      lastChangedBy: events[0]?.actorRole ?? 'partner',
+      retargetCount: events.filter((e) => e.action === 'retargeted').length,
+      events: events.map((e) => ({
+        id: e.id,
+        action: e.action,
+        actorRole: e.actorRole,
+        detail: e.detail ?? null,
+        createdAt: e.createdAt,
+      })),
+    };
+  }
+
+  private async getMyLinksByIds(
+    partnerId: number,
+    ids: number[],
+    range: { from?: string; to?: string },
+  ) {
+    const all = await this.getMyLinks(partnerId, {
+      from: range.from,
+      to: range.to,
+    });
+    return all.filter((l) => ids.includes(l.id));
+  }
+
+  /** Bring back a link deleted within {@link LINK_RESTORE_DAYS} days (doitac-1410 #018). */
+  async restoreMyLink(partnerId: number, linkId: number) {
+    const link = await this.linkRepository.findOne({
+      where: { id: linkId, partnerId },
+      withDeleted: true,
+    });
+    if (!link || !link.deletedAt) {
+      throw new NotFoundException('Không tìm thấy link đã xóa.');
+    }
+    const limit =
+      link.deletedAt.getTime() + LINK_RESTORE_DAYS * 24 * 60 * 60 * 1000;
+    if (Date.now() > limit) {
+      throw new BadRequestException(
+        `Đã quá ${LINK_RESTORE_DAYS} ngày kể từ khi xóa, chỉ esim.vn khôi phục được link này. Vui lòng liên hệ hỗ trợ.`,
+      );
+    }
+    await this.linkRepository.restore({ id: linkId });
+    await this.logLinkEvent(link, 'restored', 'partner', null);
+    const [restored] = await this.getMyLinksByIds(partnerId, [linkId], {});
+    return restored;
+  }
+
+  /**
+   * The partner appeals an admin's suspension of a link (doitac-1410 #018).
+   * The ticket itself is opened from the portal; this records that it was.
+   */
+  async appealMyLink(partnerId: number, linkId: number, ticketId?: number) {
+    const link = await this.linkRepository.findOne({
+      where: { id: linkId, partnerId },
+    });
+    if (!link) throw new NotFoundException('Không tìm thấy link.');
+    if (!link.suspendedByAdmin) {
+      throw new BadRequestException('Link này không bị esim.vn đình chỉ.');
+    }
+    if (link.appealedAt) {
+      throw new BadRequestException('Link này đang được kháng nghị.');
+    }
+    await this.linkRepository.update(
+      { id: linkId },
+      { appealedAt: new Date(), appealTicketId: ticketId ?? null },
+    );
+    await this.logLinkEvent(link, 'appealed', 'partner', null, {
+      ...(ticketId ? { ticketId } : {}),
+    });
+    const [updated] = await this.getMyLinksByIds(partnerId, [linkId], {});
+    return updated;
+  }
+
+  /**
+   * An admin suspends, or releases, one link (doitac-1410 #018).
+   *
+   * The partner is told why, by email and in the portal, at once: a link in
+   * a running campaign going quiet with no explanation is exactly what the
+   * brief warns about.
+   */
+  async adminSetLinkSuspension(
+    linkId: number,
+    dto: SetLinkSuspensionDto,
+    adminId: number,
+  ) {
+    const link = await this.linkRepository.findOne({ where: { id: linkId } });
+    if (!link) throw new NotFoundException('Không tìm thấy link.');
+    const reason = dto.reason.trim();
+
+    if (dto.suspended) {
+      if (link.suspendedByAdmin) {
+        throw new BadRequestException('Link này đang bị đình chỉ.');
+      }
+      await this.linkRepository.update(
+        { id: linkId },
+        {
+          statusBeforeSuspend:
+            link.status === PartnerLinkStatusEnum.SUSPENDED
+              ? link.statusBeforeSuspend
+              : link.status,
+          status: PartnerLinkStatusEnum.SUSPENDED,
+          suspendedByAdmin: true,
+          suspendedReason: reason,
+          appealedAt: null,
+          appealTicketId: null,
+        },
+      );
+    } else {
+      if (!link.suspendedByAdmin) {
+        throw new BadRequestException('Link này không bị đình chỉ.');
+      }
+      const partner = await this.getPartnerOrThrowById(link.partnerId);
+      // Still suspended with the account if the account itself is locked.
+      const accountFrozen = partner.status !== PartnerStatusEnum.ACTIVE;
+      await this.linkRepository.update(
+        { id: linkId },
+        {
+          ...(accountFrozen
+            ? {}
+            : {
+                status:
+                  link.statusBeforeSuspend ?? PartnerLinkStatusEnum.ACTIVE,
+                statusBeforeSuspend: null,
+              }),
+          suspendedByAdmin: false,
+          suspendedReason: null,
+          appealedAt: null,
+          appealTicketId: null,
+        },
+      );
+    }
+
+    await this.logLinkEvent(
+      link,
+      dto.suspended ? 'suspended' : 'unsuspended',
+      'admin',
+      adminId,
+      { reason },
+    );
+
+    const title = dto.suspended
+      ? `Link tiếp thị "${link.label}" bị đình chỉ`
+      : `Link tiếp thị "${link.label}" đã được gỡ đình chỉ`;
+    const body = dto.suspended
+      ? `esim.vn đã đình chỉ link esim.vn/go/${link.code}. Lý do: ${reason}\nTừ lúc này lượt nhấp mới không được ghi nhận cho bạn. Nếu bạn cho rằng chưa đúng, hãy bấm "Gửi kháng nghị" ở trang Link tiếp thị.`
+      : `esim.vn đã gỡ đình chỉ link esim.vn/go/${link.code}. Lý do: ${reason}\nLink hoạt động lại như trước khi bị đình chỉ.`;
+    await this.notifyOnePartner(link.partnerId, title, body, adminId);
+
+    const [updated] = await this.getMyLinksByIds(link.partnerId, [linkId], {});
+    return updated;
+  }
+
+  /** A notice to one partner, in the portal and by email (doitac-1410 #018). */
+  private async notifyOnePartner(
+    partnerId: number,
+    title: string,
+    body: string,
+    adminId: number | null,
+  ): Promise<void> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const notification = await this.notificationRepository.save(
+      this.notificationRepository.create({
+        title,
+        body,
+        audience: 'partner',
+        partnerId,
+        sendEmail: Boolean(partner.contactEmail),
+        createdByAdminId: adminId,
+      }),
+    );
+    if (!partner.contactEmail) return;
+    try {
+      await this.mailService.sendPartnerNotification({
+        to: partner.contactEmail,
+        contactName: partner.contactName ?? 'Quý đối tác',
+        title,
+        body,
+      });
+      notification.emailsSent = 1;
+      await this.notificationRepository.save(notification);
+    } catch (err) {
+      this.logger.error(
+        `Notice to partner ${partnerId} failed to email: ${(err as Error).message}`,
+      );
+    }
   }
 
   async createLink(partnerId: number, dto: CreatePartnerLinkDto) {
@@ -1231,21 +1600,8 @@ export class PartnersService {
         });
       }
 
-      return this.linkRepository.save(
-        this.linkRepository.create({
-          partnerId,
-          code,
-          label: dto.label,
-          targetPath: dto.targetPath ?? null,
-          status: PartnerLinkStatusEnum.ACTIVE,
-        }),
-      );
-    }
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const code = this.generateLinkCode();
-      try {
-        return await this.linkRepository.save(
+      return this.linkCreated(
+        await this.linkRepository.save(
           this.linkRepository.create({
             partnerId,
             code,
@@ -1253,6 +1609,23 @@ export class PartnersService {
             targetPath: dto.targetPath ?? null,
             status: PartnerLinkStatusEnum.ACTIVE,
           }),
+        ),
+      );
+    }
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = this.generateLinkCode();
+      try {
+        return this.linkCreated(
+          await this.linkRepository.save(
+            this.linkRepository.create({
+              partnerId,
+              code,
+              label: dto.label,
+              targetPath: dto.targetPath ?? null,
+              status: PartnerLinkStatusEnum.ACTIVE,
+            }),
+          ),
         );
       } catch (error) {
         if (attempt === 4) throw error;
@@ -1279,6 +1652,11 @@ export class PartnersService {
       );
     }
 
+    const before = {
+      label: link.label,
+      targetPath: link.targetPath ?? null,
+      status: link.status,
+    };
     Object.assign(link, {
       ...(dto.label !== undefined && { label: dto.label }),
       ...(dto.targetPath !== undefined && { targetPath: dto.targetPath }),
@@ -1288,7 +1666,33 @@ export class PartnersService {
           : PartnerLinkStatusEnum.INACTIVE,
       }),
     });
-    return this.linkRepository.save(link);
+    const saved = await this.linkRepository.save(link);
+
+    // What changed, for the link's history (doitac-1410 #018).
+    if (dto.label !== undefined && dto.label !== before.label) {
+      await this.logLinkEvent(saved, 'renamed', 'partner', null, {
+        from: before.label,
+        to: saved.label,
+      });
+    }
+    if (
+      dto.targetPath !== undefined &&
+      (dto.targetPath ?? null) !== before.targetPath
+    ) {
+      await this.logLinkEvent(saved, 'retargeted', 'partner', null, {
+        from: before.targetPath,
+        to: saved.targetPath ?? null,
+      });
+    }
+    if (saved.status !== before.status) {
+      await this.logLinkEvent(
+        saved,
+        saved.status === PartnerLinkStatusEnum.ACTIVE ? 'resumed' : 'paused',
+        'partner',
+        null,
+      );
+    }
+    return saved;
   }
 
   /**
@@ -1359,6 +1763,11 @@ export class PartnersService {
     if (!link) throw new NotFoundException('Không tìm thấy link.');
 
     await this.linkRepository.softRemove(link);
+    await this.logLinkEvent(link, 'deleted', 'partner', null, {
+      restorableUntil: new Date(
+        Date.now() + LINK_RESTORE_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString(),
+    });
   }
 
   /**
@@ -2640,11 +3049,14 @@ export class PartnersService {
         [partner.id],
       );
     } else if (runsProgramme) {
+      // A link an admin suspended on its own stays suspended: unlocking the
+      // account is not a decision about that link (doitac-1410 #018).
       await this.dataSource.query(
         `UPDATE partner_link
             SET status = COALESCE("statusBeforeSuspend", $3),
                 "statusBeforeSuspend" = NULL
-          WHERE "partnerId" = $1 AND status = $2`,
+          WHERE "partnerId" = $1 AND status = $2
+            AND "suspendedByAdmin" = false`,
         [
           partner.id,
           PartnerLinkStatusEnum.SUSPENDED,
@@ -2774,6 +3186,8 @@ export class PartnersService {
                 WHERE r."notificationId" = n.id
               ) AS "readCount"
        FROM partner_notification n
+       -- Broadcasts only; a notice to one partner is not an announcement.
+       WHERE n."partnerId" IS NULL
        ORDER BY n."createdAt" DESC
        LIMIT $2`,
       [PartnerStatusEnum.ACTIVE, take],
@@ -2819,7 +3233,8 @@ export class PartnersService {
        FROM partner_notification n
        LEFT JOIN partner_notification_read r
          ON r."notificationId" = n.id AND r."partnerId" = $1
-       WHERE n.audience = 'all' OR n.audience = $2
+       WHERE (n."partnerId" IS NULL AND (n.audience = 'all' OR n.audience = $2))
+          OR n."partnerId" = $1
        ORDER BY n."createdAt" DESC
        LIMIT $3`,
       [partnerId, partner.partnerType, take],
@@ -2861,7 +3276,8 @@ export class PartnersService {
     await this.dataSource.query(
       `INSERT INTO partner_notification_read ("notificationId", "partnerId")
        SELECT n.id, $1 FROM partner_notification n
-       WHERE n.audience = 'all' OR n.audience = $2
+       WHERE (n."partnerId" IS NULL AND (n.audience = 'all' OR n.audience = $2))
+          OR n."partnerId" = $1
        ON CONFLICT ("notificationId", "partnerId") DO NOTHING`,
       [partnerId, partner.partnerType],
     );
@@ -4015,6 +4431,18 @@ export class PartnersService {
       }),
     );
     await this.linkRepository.increment({ id: link.id }, 'clickCount', 1);
+    // For "Lần nhấp gần nhất" (doitac-1410 #018). Never at the cost of the
+    // redirect the customer is waiting on.
+    try {
+      await this.linkRepository.update(
+        { id: link.id },
+        { lastClickedAt: new Date() },
+      );
+    } catch (err) {
+      this.logger?.error(
+        `Link ${link.id} last click not stamped: ${(err as Error).message}`,
+      );
+    }
 
     return { targetPath: link.targetPath ?? null, clickId };
   }

@@ -21,7 +21,10 @@ import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import { PartnersService } from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
-import { CreatePartnerLinkDto } from './dto/partner-link.dto';
+import {
+  CreatePartnerLinkDto,
+  SetLinkSuspensionDto,
+} from './dto/partner-link.dto';
 import { ReviewEsimFaultDto } from './dto/partner-esim-fault.dto';
 import {
   QueryPartnerDto,
@@ -258,6 +261,24 @@ export class AdminPartnersController {
   }
 
   /** The partner programme's settings (#075, #076, #077). */
+  /**
+   * Suspend or release one marketing link (doitac-1410 #018). The partner is
+   * told why by email and in the portal.
+   */
+  @Patch('links/:linkId/suspension')
+  @HttpCode(HttpStatus.OK)
+  setLinkSuspension(
+    @Param('linkId') linkId: number,
+    @Body() dto: SetLinkSuspensionDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminSetLinkSuspension(
+      Number(linkId),
+      dto,
+      req.user.id,
+    );
+  }
+
   /** Deposit promotions (doitac-1410 #015). */
   @Get('deposit-promotions')
   @HttpCode(HttpStatus.OK)

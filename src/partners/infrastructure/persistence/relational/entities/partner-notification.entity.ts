@@ -34,6 +34,13 @@ export class PartnerNotificationEntity extends EntityRelationalHelper {
   sendEmail!: boolean;
 
   /**
+   * Set for a notice to one partner — a link suspended or released
+   * (doitac-1410 #018) — rather than an announcement to an audience.
+   */
+  @Column({ type: Number, nullable: true })
+  partnerId?: number | null;
+
+  /**
    * How many emails actually went out.
    *
    * Recorded rather than inferred from the audience, because a partner with no

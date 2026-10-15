@@ -48,6 +48,8 @@ function buildService(opts: {
             },
       ),
       increment: jest.fn().mockResolvedValue(undefined),
+      // Stamps "Lần nhấp gần nhất" (doitac-1410 #018).
+      update: jest.fn().mockResolvedValue(undefined),
     },
     partnerRepository: {
       findOne: jest.fn().mockResolvedValue({
@@ -222,5 +224,21 @@ describe('PartnersService.resolveOrderAttribution — the click id outranks the 
         clickedAt: new Date().toISOString(),
       }),
     ).resolves.toMatchObject({ attributedPartnerId: 5 });
+  });
+});
+
+describe('PartnersService.recordClick — the last click (doitac-1410 #018)', () => {
+  it('should stamp when the link was last clicked', async () => {
+    const service = buildService({});
+    const links = (
+      service as unknown as { linkRepository: { update: jest.Mock } }
+    ).linkRepository;
+
+    await service.recordClick('VANA2026', {});
+
+    expect(links.update).toHaveBeenCalledWith(
+      { id: 11 },
+      { lastClickedAt: expect.any(Date) },
+    );
   });
 });
