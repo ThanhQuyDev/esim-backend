@@ -157,4 +157,11 @@ describe('PartnersService — partner wallet summary', () => {
     expect(summary.pendingPayoutVnd).toBe(400_000);
     expect(summary.availableBalanceVnd).toBe(100_000);
   });
+
+  it('should tell the partner the minimum withdrawal set in Cấu hình chung (doitac-1410 #010)', async () => {
+    // The payout screen had 100.000đ written into it whatever the admin set.
+    const summary = await buildService().getWalletSummaryForPartner(5);
+
+    expect(summary.payoutMinVnd).toBe(50_000);
+  });
 });

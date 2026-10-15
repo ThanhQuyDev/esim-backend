@@ -902,6 +902,14 @@ export class PartnersService {
         cardFeePercent: PARTNER_CARD_TOPUP_FEE_PERCENT,
       },
       /**
+       * The smallest withdrawal, from "Cấu hình chung" (doitac-1410 #010). The
+       * payout screen had 100.000đ written into it, so the admin's setting
+       * changed what the server accepted but not what the partner was told.
+       */
+      payoutMinVnd: await this.payoutMinVndFor(
+        (await this.getPartnerOrThrowById(partnerId)).partnerType,
+      ),
+      /**
        * Below this the portal nags a distribution partner to top up (#077).
        *
        * A warning, never a block: running out in the middle of an order is

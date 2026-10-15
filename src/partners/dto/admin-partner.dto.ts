@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   PARTNER_DEPOSIT_MAX_VND,
   PARTNER_DEPOSIT_MIN_VND,
-  PARTNER_PAYOUT_MIN_VND,
 } from '../partners.constants';
 import { Type } from 'class-transformer';
 import {
@@ -371,7 +370,10 @@ export class CreateDepositRequestDto {
 export class CreatePartnerPayoutDto {
   @ApiProperty({ type: Number, example: 200000 })
   @IsInt()
-  @Min(PARTNER_PAYOUT_MIN_VND)
+  // Only "more than nothing" here: the real minimum is the one set in "Cấu
+  // hình chung", checked in the service. A fixed floor here overruled an admin
+  // who set it lower (doitac-1410 #010).
+  @Min(1)
   amountVnd!: number;
 
   @ApiPropertyOptional({ type: String })
