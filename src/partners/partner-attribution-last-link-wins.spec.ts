@@ -1,4 +1,8 @@
 import { PartnersService } from './partners.service';
+import { signClickToken } from './partner-click-token';
+
+/** The visitor's own signed click, required to bind (doitac-1410 #026). */
+const TOKEN = signClickToken('ab'.repeat(16));
 
 /**
  * The later link replaces the earlier one (#038).
@@ -21,6 +25,16 @@ function buildService(opts: {
     resolveLinkForAttribution: jest.fn().mockResolvedValue(opts.link ?? null),
     resolveMemberAttribution: jest.fn().mockResolvedValue(opts.member ?? null),
     memberAttributionRepository: { save },
+    // The cookie's code counts only when this device clicked it (#026).
+    linkClickedFromDevice: jest.fn().mockResolvedValue(true),
+    partnerRepository: { findOne: jest.fn().mockResolvedValue({ id: 2 }) },
+    attributionDaysFor: jest.fn().mockResolvedValue(30),
+    resolveClickForAttribution: jest.fn((token?: string | null) =>
+      Promise.resolve(token ? (opts.link ?? null) : null),
+    ),
+    linkRepository: {
+      findOne: jest.fn().mockResolvedValue({ code: 'PARTNER-B' }),
+    },
   });
 
   return { service, save };
@@ -52,7 +66,7 @@ describe('PartnersService — the later link wins (#038)', () => {
       link: { partnerId: 2, linkId: 22 },
     });
 
-    await service.bindLinkToMember(42, 'PARTNER-B');
+    await service.bindLinkToMember(42, 'PARTNER-B', TOKEN);
 
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 42, partnerId: 2, linkId: 22 }),
@@ -67,7 +81,7 @@ describe('PartnersService — the later link wins (#038)', () => {
     });
     const before = Date.now();
 
-    await service.bindLinkToMember(42, 'PARTNER-B');
+    await service.bindLinkToMember(42, 'PARTNER-B', TOKEN);
 
     const saved = save.mock.calls[0][0] as { attributedAt: Date };
     expect(saved.attributedAt.getTime()).toBeGreaterThanOrEqual(before);

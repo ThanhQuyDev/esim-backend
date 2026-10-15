@@ -153,6 +153,7 @@ describe('PartnersService.resolveOrderAttribution — the click id outranks the 
     click?: { partnerId: number; linkId: number } | null;
     link?: { partnerId: number; linkId: number } | null;
     member?: { partnerId: number; linkId: number | null } | null;
+    deviceClicked?: boolean;
   }) {
     const saveMember = jest.fn().mockResolvedValue(undefined);
     const service = Object.create(PartnersService.prototype) as PartnersService;
@@ -166,6 +167,13 @@ describe('PartnersService.resolveOrderAttribution — the click id outranks the 
         .fn()
         .mockResolvedValue(opts.member ?? null),
       memberAttributionRepository: { save: saveMember },
+      // A bare code from the cookie needs this device's own click (#026).
+      linkClickedFromDevice: jest
+        .fn()
+        .mockResolvedValue(opts.deviceClicked ?? true),
+      partnerRepository: { findOne: jest.fn().mockResolvedValue({ id: 5 }) },
+      attributionDaysFor: jest.fn().mockResolvedValue(30),
+      resolveDeviceForAttribution: jest.fn().mockResolvedValue(null),
     });
     return { service, saveMember };
   }
@@ -224,6 +232,24 @@ describe('PartnersService.resolveOrderAttribution — the click id outranks the 
         clickedAt: new Date().toISOString(),
       }),
     ).resolves.toMatchObject({ attributedPartnerId: 5 });
+  });
+
+  it('should not trust a typed link code this device never clicked (doitac-1410 #026)', async () => {
+    // Cookie stuffing: somebody sets esim_partner_link=VANA2026 by hand.
+    const { service } = withSignals({
+      click: null,
+      link: { partnerId: 5, linkId: 7 },
+      deviceClicked: false,
+    });
+
+    await expect(
+      service.resolveOrderAttribution({
+        linkCode: 'VANA2026',
+        clickedAt: new Date().toISOString(),
+        ipHash: 'f'.repeat(32),
+        userAgent: 'Chrome',
+      }),
+    ).resolves.toMatchObject({ attributedPartnerId: null });
   });
 });
 

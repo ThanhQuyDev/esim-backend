@@ -1,5 +1,6 @@
 import { PartnersService } from './partners.service';
 import { PartnerStatusEnum, PartnerTypeEnum } from './partners.enum';
+import { signClickToken } from './partner-click-token';
 
 /**
  * Attribution that follows the account, not the browser (#034).
@@ -78,16 +79,57 @@ describe('PartnersService — attribution bound to the account (#034)', () => {
   it('should store the newest link when one is bound', async () => {
     const { service, save } = buildService({ row: null });
     Object.assign(service, {
+      resolveClickForAttribution: jest
+        .fn()
+        .mockResolvedValue({ partnerId: 8, linkId: 11 }),
+      linkRepository: {
+        findOne: jest.fn().mockResolvedValue({ id: 11, code: 'VANA2026' }),
+      },
+    });
+
+    await service.bindLinkToMember(
+      42,
+      'VANA2026',
+      signClickToken('cd'.repeat(16)),
+    );
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 42, partnerId: 8, linkId: 11 }),
+    );
+  });
+
+  it('should refuse to bind on the link code alone (doitac-1410 #026)', async () => {
+    // The code is printed on every post: typing it must not pin a partner to
+    // somebody's account. Only the visitor's own signed click may.
+    const { service, save } = buildService({ row: null });
+    Object.assign(service, {
       resolveLinkForAttribution: jest
         .fn()
         .mockResolvedValue({ partnerId: 8, linkId: 11 }),
     });
 
-    await service.bindLinkToMember(42, 'VANA2026');
+    await expect(service.bindLinkToMember(42, 'VANA2026')).resolves.toBeNull();
+    await expect(
+      service.bindLinkToMember(42, 'VANA2026', 'cd'.repeat(16)),
+    ).resolves.toBeNull();
+    expect(save).not.toHaveBeenCalled();
+  });
 
-    expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 42, partnerId: 8, linkId: 11 }),
-    );
+  it('should refuse a token for a different link', async () => {
+    const { service, save } = buildService({ row: null });
+    Object.assign(service, {
+      resolveClickForAttribution: jest
+        .fn()
+        .mockResolvedValue({ partnerId: 8, linkId: 11 }),
+      linkRepository: {
+        findOne: jest.fn().mockResolvedValue({ id: 11, code: 'OTHER' }),
+      },
+    });
+
+    await expect(
+      service.bindLinkToMember(42, 'VANA2026', signClickToken('cd'.repeat(16))),
+    ).resolves.toBeNull();
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('should store nothing for a code that no longer attributes', async () => {

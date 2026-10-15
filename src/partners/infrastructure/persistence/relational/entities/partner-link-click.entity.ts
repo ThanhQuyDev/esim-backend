@@ -58,6 +58,13 @@ export class PartnerLinkClickEntity extends EntityRelationalHelper {
   @Column({ type: String, length: 64, nullable: true })
   deviceHash?: string | null;
 
+  /**
+   * Handed out as a signed token (doitac-1410 #026): only the token may then
+   * claim this click, not the bare id.
+   */
+  @Column({ type: Boolean, default: false })
+  signed?: boolean;
+
   @CreateDateColumn()
   clickedAt!: Date;
 }

@@ -128,11 +128,12 @@ export class SubmitOrderDto {
     type: String,
     example: '9f1c7b2a4d6e8f0a1b3c5d7e9f0a1b2c',
     description:
-      'The click id the server minted at /go/[code] and put in the redirect URL. Read back from the landing URL the browser kept, so the attribution no longer depends on a cookie surviving for weeks (#039). Outranks partnerLinkCode when both arrive.',
+      'The signed click token from the storefront HttpOnly cookie set at /go/[code] (doitac-1410 #026); a bare click id only for a click from before tokens (#039). Outranks partnerLinkCode when both arrive.',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(64)
+  // A signed click token is longer than the bare id (doitac-1410 #026).
+  @MaxLength(128)
   partnerClickId?: string;
 
   @ApiPropertyOptional({

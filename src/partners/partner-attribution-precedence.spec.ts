@@ -14,7 +14,9 @@ function buildService(opts: {
   link?: { partnerId: number; linkId: number } | null;
   member?: { partnerId: number; linkId: number | null } | null;
 }) {
-  const bindLinkToMember = jest.fn().mockResolvedValue(null);
+  // Binding on purchase now writes the account row directly, the link having
+  // been checked against this device's own click (doitac-1410 #026).
+  const bindLinkToMember = jest.fn().mockResolvedValue(undefined);
   const service = Object.create(PartnersService.prototype) as PartnersService;
 
   Object.assign(service, {
@@ -23,7 +25,11 @@ function buildService(opts: {
       .mockResolvedValue(opts.couponPartnerId ?? null),
     resolveLinkForAttribution: jest.fn().mockResolvedValue(opts.link ?? null),
     resolveMemberAttribution: jest.fn().mockResolvedValue(opts.member ?? null),
-    bindLinkToMember,
+    saveMemberAttribution: bindLinkToMember,
+    linkClickedFromDevice: jest.fn().mockResolvedValue(true),
+    partnerRepository: { findOne: jest.fn().mockResolvedValue({ id: 3 }) },
+    attributionDaysFor: jest.fn().mockResolvedValue(30),
+    resolveClickForAttribution: jest.fn().mockResolvedValue(null),
   });
 
   return { service, bindLinkToMember };
@@ -115,7 +121,7 @@ describe('PartnersService — which signal wins (#033, #034, #035)', () => {
       buyerUserId: 42,
     });
 
-    expect(bindLinkToMember).toHaveBeenCalledWith(42, 'VANA2026');
+    expect(bindLinkToMember).toHaveBeenCalledWith(42, 3, 11);
   });
 
   it('should not bind anything for a guest checkout', async () => {

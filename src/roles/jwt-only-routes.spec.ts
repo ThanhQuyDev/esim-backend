@@ -25,6 +25,8 @@ const ALLOWED_JWT_ONLY = [
   'files/infrastructure/uploader/s3-presigned/files.controller.ts#POST upload',
   'files/infrastructure/uploader/s3/files.controller.ts#POST upload',
   'partners/partners.controller.ts#POST links/:code/bind',
+  // The signed click from the storefront's HttpOnly cookie (doitac-1410 #026).
+  'partners/partners.controller.ts#POST links/bind-click',
   'payment/payment.controller.ts#POST plan/checkout',
   'payment/payment.controller.ts#POST plan/bank-transfer',
   'tickets/tickets.controller.ts#GET mine',

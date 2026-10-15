@@ -587,11 +587,35 @@ export class PartnersController {
   async bindLinkToMember(
     @Request() req: { user: { id: number } },
     @Param('code') code: string,
+    @Body() body: { clickToken?: string } = {},
   ) {
     const bound = await this.partnersService.bindLinkToMember(
       req.user.id,
       code,
+      body?.clickToken ?? null,
     );
+    return { bound: Boolean(bound) };
+  }
+
+  /**
+   * Bind the visitor's own signed click to their account (doitac-1410 #026).
+   * The storefront reads the token from its HttpOnly cookie on the server and
+   * passes it on; a bare link code no longer binds anything.
+   */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Post('links/bind-click')
+  @HttpCode(HttpStatus.OK)
+  async bindClickToMember(
+    @Request() req: { user: { id: number } },
+    @Body() body: { clickToken?: string } = {},
+  ) {
+    const bound = body?.clickToken
+      ? await this.partnersService.bindClickToMember(
+          req.user.id,
+          body.clickToken,
+        )
+      : null;
     return { bound: Boolean(bound) };
   }
 

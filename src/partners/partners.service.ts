@@ -32,6 +32,11 @@ import {
 import type { PartnerDocument } from './infrastructure/persistence/relational/entities/partner.entity';
 import { partnerDeviceFingerprint } from './partner-device-fingerprint';
 import {
+  isClickToken,
+  signClickToken,
+  verifyClickToken,
+} from './partner-click-token';
+import {
   PartnerPurchaseQuote,
   partnerPurchaseQuote,
   partnerPurchaseRejection,
@@ -4585,7 +4590,11 @@ export class PartnersService {
       referrer?: string | null;
       visitorId?: string | null;
     },
-  ): Promise<{ targetPath: string | null; clickId: string } | null> {
+  ): Promise<{
+    targetPath: string | null;
+    clickId: string;
+    clickToken: string;
+  } | null> {
     const link = await this.linkRepository.findOne({
       where: { code, status: PartnerLinkStatusEnum.ACTIVE },
     });
@@ -4605,6 +4614,7 @@ export class PartnersService {
         visitorId: meta.visitorId ?? null,
         clickId,
         deviceHash: partnerDeviceFingerprint(meta.ipHash, meta.userAgent),
+        signed: true,
       }),
     );
     await this.linkRepository.increment({ id: link.id }, 'clickCount', 1);
@@ -4621,7 +4631,73 @@ export class PartnersService {
       );
     }
 
-    return { targetPath: link.targetPath ?? null, clickId };
+    // The browser keeps the signed token, never the bare id (doitac-1410 #026).
+    return {
+      targetPath: link.targetPath ?? null,
+      clickId,
+      clickToken: signClickToken(clickId),
+    };
+  }
+
+  /** Where an active link points, with no click recorded (doitac-1410 #026). */
+  async linkTarget(
+    code: string,
+  ): Promise<{ targetPath: string | null } | null> {
+    const link = await this.linkRepository.findOne({
+      where: { code, status: PartnerLinkStatusEnum.ACTIVE },
+    });
+    return link ? { targetPath: link.targetPath ?? null } : null;
+  }
+
+  /**
+   * The click id a browser value stands for (doitac-1410 #026): the id inside a
+   * genuine signed token, or — for a click minted before tokens — the bare id.
+   * A forged token is nothing.
+   */
+  private clickIdOf(value?: string | null): string | null {
+    const raw = value?.trim();
+    if (!raw) return null;
+    if (isClickToken(raw)) return verifyClickToken(raw);
+    return /^[0-9a-f]{16,64}$/.test(raw) ? raw : null;
+  }
+
+  /**
+   * Bind the click in the visitor's signed cookie to their account (#034,
+   * doitac-1410 #026) — the cookie is server-set and HttpOnly, so the storefront
+   * passes the token itself rather than a link code anyone could type.
+   */
+  async bindClickToMember(
+    userId: number,
+    clickToken: string,
+  ): Promise<{ partnerId: number; linkId: number } | null> {
+    if (!isClickToken(clickToken)) return null;
+    const resolved = await this.resolveClickForAttribution(clickToken);
+    if (!resolved) return null;
+    await this.saveMemberAttribution(
+      userId,
+      resolved.partnerId,
+      resolved.linkId,
+    );
+    return resolved;
+  }
+
+  /**
+   * Whether this device clicked this link inside the window (doitac-1410
+   * #026). A plain link code and time from an old cookie are anybody's to
+   * type; a click from the same network and browser is not.
+   */
+  private async linkClickedFromDevice(
+    linkId: number,
+    ipHash: string | null | undefined,
+    userAgent: string | null | undefined,
+    since: Date,
+  ): Promise<boolean> {
+    const deviceHash = partnerDeviceFingerprint(ipHash, userAgent);
+    if (!deviceHash) return false;
+    const click = await this.linkClickRepository.findOne({
+      where: { linkId, deviceHash, clickedAt: MoreThan(since) },
+    });
+    return Boolean(click);
   }
 
   // ───────────────────────── Partner portal read models ─────────────────────────
@@ -7880,12 +7956,35 @@ export class PartnersService {
     );
     if (!resolved) return fromAccount();
 
+    // A bare code and time are whatever the browser says (doitac-1410 #026):
+    // they count only when this device really clicked that link.
+    const partnerForWindow = await this.partnerRepository.findOne({
+      where: { id: resolved.partnerId },
+    });
+    const since = this.attributionWindowStart(
+      new Date(),
+      partnerForWindow ? await this.attributionDaysFor(partnerForWindow) : 30,
+    );
+    if (
+      !(await this.linkClickedFromDevice(
+        resolved.linkId,
+        params.ipHash,
+        params.userAgent,
+        since,
+      ))
+    ) {
+      return fromAccount();
+    }
+
     // Buying while signed in also binds the attribution to the account, so the
     // customer's next order from any device still finds it (#034).
     if (params.buyerUserId) {
-      void this.bindLinkToMember(params.buyerUserId, params.linkCode).catch(
-        () => undefined,
-      );
+      // Already checked against this device's own click above (#026).
+      void this.saveMemberAttribution(
+        params.buyerUserId,
+        resolved.partnerId,
+        resolved.linkId,
+      ).catch(() => undefined);
     }
 
     return {
@@ -7906,17 +8005,25 @@ export class PartnersService {
   async bindLinkToMember(
     userId: number,
     code: string,
+    clickToken?: string | null,
   ): Promise<{ partnerId: number; linkId: number } | null> {
-    const resolved = await this.resolveLinkForAttribution(code, new Date());
-    if (!resolved) return null;
-
+    // A link code is public — printed on every post — so binding by the code
+    // alone let anyone pin any partner to an account. The click token from the
+    // visitor's own signed cookie is required, and must be for this link
+    // (doitac-1410 #026).
+    if (!clickToken || !isClickToken(clickToken)) return null;
+    const fromClick = await this.resolveClickForAttribution(clickToken);
+    if (!fromClick) return null;
+    const link = await this.linkRepository.findOne({
+      where: { id: fromClick.linkId },
+    });
+    if (link?.code !== code) return null;
     await this.saveMemberAttribution(
       userId,
-      resolved.partnerId,
-      resolved.linkId,
+      fromClick.partnerId,
+      fromClick.linkId,
     );
-
-    return resolved;
+    return fromClick;
   }
 
   /**
@@ -8039,13 +8146,19 @@ export class PartnersService {
   async resolveClickForAttribution(
     clickId?: string | null,
   ): Promise<{ partnerId: number; linkId: number } | null> {
-    const id = clickId?.trim();
+    const raw = clickId?.trim();
+    if (!raw) return null;
+    // Signed token, or a bare id from before tokens existed (doitac-1410 #026).
+    const token = isClickToken(raw);
+    const id = this.clickIdOf(raw);
     if (!id) return null;
 
     const click = await this.linkClickRepository.findOne({
       where: { clickId: id },
     });
     if (!click) return null;
+    // A click handed out as a token can only be claimed with that token.
+    if (click.signed && !token) return null;
 
     const link = await this.linkRepository.findOne({
       where: { id: click.linkId, status: PartnerLinkStatusEnum.ACTIVE },
@@ -8096,7 +8209,7 @@ export class PartnersService {
     events: { type?: string | null; ref?: string | null }[];
   }): Promise<{ recorded: number }> {
     const visitorId = payload.visitorId?.trim().slice(0, 64) || null;
-    const clickId = payload.clickId?.trim().slice(0, 64) || null;
+    const clickId = this.clickIdOf(payload.clickId)?.slice(0, 64) || null;
     // Without one of these the rows could never be read back for a session.
     if (!visitorId && !clickId) return { recorded: 0 };
 
@@ -8143,7 +8256,7 @@ export class PartnersService {
     clickId?: string | null;
   }): Promise<SessionShapeEnum | null> {
     const visitorId = params.visitorId?.trim() || null;
-    const clickId = params.clickId?.trim() || null;
+    const clickId = this.clickIdOf(params.clickId);
     if (!visitorId && !clickId) return null;
 
     // The session, not the lifetime: a day is far longer than any checkout.

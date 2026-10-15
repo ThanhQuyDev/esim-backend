@@ -47,7 +47,8 @@ class RecordSessionEventsDto {
   })
   @IsOptional()
   @IsString()
-  @MaxLength(64)
+  // A signed click token is longer than the bare id (doitac-1410 #026).
+  @MaxLength(128)
   clickId?: string;
 
   @ApiPropertyOptional({ type: [SessionEventDto] })
