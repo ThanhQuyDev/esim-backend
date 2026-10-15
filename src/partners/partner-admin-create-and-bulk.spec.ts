@@ -14,7 +14,11 @@ import { PartnerStatusEnum } from './partners.enum';
 function buildService(
   opts: {
     existingUser?: boolean;
-    partners?: { id: number; status: PartnerStatusEnum }[];
+    partners?: {
+      id: number;
+      status: PartnerStatusEnum;
+      partnerType?: string;
+    }[];
   } = {},
 ) {
   const savedUsers: Record<string, unknown>[] = [];
@@ -24,6 +28,8 @@ function buildService(
   const partnerSave = jest
     .fn()
     .mockImplementation((row) => Promise.resolve(row));
+  const walletUpdate = jest.fn().mockResolvedValue(undefined);
+  const queries: { sql: string; params: unknown[] }[] = [];
 
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
@@ -45,7 +51,12 @@ function buildService(
       }),
     },
     mailService: { sendPartnerAccountCreated },
+    walletRepository: { update: walletUpdate },
     dataSource: {
+      query: jest.fn().mockImplementation((sql: string, params: unknown[]) => {
+        queries.push({ sql, params });
+        return Promise.resolve([]);
+      }),
       transaction: async (fn: (m: unknown) => Promise<unknown>) =>
         fn({
           getRepository: (entity: { name: string }) => ({
@@ -68,6 +79,8 @@ function buildService(
     statusChanges,
     sendPartnerAccountCreated,
     partnerSave,
+    walletUpdate,
+    queries,
   };
 }
 
@@ -143,6 +156,65 @@ describe('PartnersService.adminCreatePartner (#059)', () => {
       toStatus: PartnerStatusEnum.ACTIVE,
       changedByAdminId: 1,
     });
+  });
+});
+
+describe('PartnersService.bulkUpdateStatus — what a lock actually does (doitac-1410 #004)', () => {
+  // The row menu goes through the bulk path; it used to change the badge only.
+  it('should freeze the wallet and suspend links and codes on a hold', async () => {
+    const { service, walletUpdate, queries } = buildService({
+      partners: [
+        { id: 3, status: PartnerStatusEnum.ACTIVE, partnerType: 'kol' },
+      ],
+    });
+
+    await service.bulkUpdateStatus(
+      { ids: [3], status: PartnerStatusEnum.HOLD, reason: 'Kiểm tra' },
+      1,
+    );
+
+    expect(walletUpdate).toHaveBeenCalledWith(
+      { partnerId: 3 },
+      { status: 'locked' },
+    );
+    const sql = queries.map((q) => q.sql).join(' ');
+    expect(sql).toMatch(/"statusBeforeSuspend" = status/);
+    expect(sql).toMatch(/UPDATE coupon SET "suspendedAt" = now\(\)/);
+    expect(sql).not.toMatch(/DELETE FROM session/);
+  });
+
+  it('should sign a locked partner out everywhere', async () => {
+    const { service, queries } = buildService({
+      partners: [
+        { id: 3, status: PartnerStatusEnum.ACTIVE, partnerType: 'kol' },
+      ],
+    });
+
+    await service.bulkUpdateStatus(
+      { ids: [3], status: PartnerStatusEnum.DISABLED, reason: 'Gian lận' },
+      1,
+    );
+
+    expect(queries.some((q) => /DELETE FROM session/.test(q.sql))).toBe(true);
+  });
+
+  it('should give each link back its own state on unlock', async () => {
+    const { service, walletUpdate, queries } = buildService({
+      partners: [{ id: 3, status: PartnerStatusEnum.HOLD, partnerType: 'kol' }],
+    });
+
+    await service.bulkUpdateStatus(
+      { ids: [3], status: PartnerStatusEnum.ACTIVE },
+      1,
+    );
+
+    expect(walletUpdate).toHaveBeenCalledWith(
+      { partnerId: 3 },
+      { status: 'active' },
+    );
+    const sql = queries.map((q) => q.sql).join(' ');
+    expect(sql).toMatch(/COALESCE\("statusBeforeSuspend"/);
+    expect(sql).toMatch(/"suspendedAt" = NULL/);
   });
 });
 

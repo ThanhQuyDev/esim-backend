@@ -40,6 +40,10 @@ export class PartnerLinkEntity extends EntityRelationalHelper {
   @Column({ type: String, default: PartnerLinkStatusEnum.ACTIVE })
   status!: PartnerLinkStatusEnum;
 
+  /** The partner's own on/off, restored when the suspension lifts (#004). */
+  @Column({ type: String, nullable: true })
+  statusBeforeSuspend?: PartnerLinkStatusEnum | null;
+
   @Column({ type: 'int', default: 0 })
   clickCount!: number;
 

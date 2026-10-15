@@ -32,7 +32,6 @@ function buildService(partner: Partial<PartnerEntity>) {
   } as PartnerEntity;
 
   const walletUpdate = jest.fn().mockResolvedValue(undefined);
-  const linkUpdate = jest.fn().mockResolvedValue(undefined);
   const query = jest.fn().mockResolvedValue([]);
   const statusSave = jest
     .fn()
@@ -46,12 +45,11 @@ function buildService(partner: Partial<PartnerEntity>) {
       save: jest.fn().mockImplementation((r) => Promise.resolve(r)),
     },
     walletRepository: { update: walletUpdate },
-    linkRepository: { update: linkUpdate },
     statusChangeRepository: { create: (r: unknown) => r, save: statusSave },
     dataSource: { query },
   });
 
-  return { service, walletUpdate, linkUpdate, query, statusSave };
+  return { service, walletUpdate, query, statusSave };
 }
 
 describe('PartnersService.updateStatus — tạm khoá (#061)', () => {
@@ -71,8 +69,10 @@ describe('PartnersService.updateStatus — tạm khoá (#061)', () => {
     );
   });
 
-  it('should switch off a marketing partner’s links', async () => {
-    const { service, linkUpdate } = buildService({});
+  it('should suspend a marketing partner’s links and codes, remembering each link’s state', async () => {
+    // "Bị đình chỉ" (doitac-1410 #004), not "tắt": unlocking must give back
+    // what the partner had chosen.
+    const { service, query } = buildService({});
 
     await service.updateStatus(
       8,
@@ -81,15 +81,19 @@ describe('PartnersService.updateStatus — tạm khoá (#061)', () => {
       'Nghi ngờ',
     );
 
-    expect(linkUpdate).toHaveBeenCalledWith(
-      { partnerId: 8 },
-      { status: PartnerLinkStatusEnum.INACTIVE },
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('"statusBeforeSuspend" = status'),
+      [8, PartnerLinkStatusEnum.SUSPENDED],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE coupon SET "suspendedAt" = now()'),
+      [8],
     );
   });
 
   it('should leave a distributor’s links alone unless they run the programme', async () => {
     // A distributor without the affiliate grant (#048) has no links to stop.
-    const { service, linkUpdate } = buildService({
+    const { service, query } = buildService({
       partnerType: PartnerTypeEnum.DISTRIBUTION,
       canAffiliate: false,
     });
@@ -101,7 +105,7 @@ describe('PartnersService.updateStatus — tạm khoá (#061)', () => {
       'Nghi ngờ',
     );
 
-    expect(linkUpdate).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
   });
 
   it('should not sign them out — a hold is not a lock', async () => {
@@ -114,7 +118,11 @@ describe('PartnersService.updateStatus — tạm khoá (#061)', () => {
       'Nghi ngờ',
     );
 
-    expect(query).not.toHaveBeenCalled();
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes('DELETE FROM session'),
+      ),
+    ).toBe(false);
   });
 
   it('should demand a reason', async () => {
@@ -138,9 +146,10 @@ describe('PartnersService.updateStatus — khoá tài khoản (#061)', () => {
       'Gian lận',
     );
 
-    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('DELETE FROM session');
-    expect(params).toEqual([100]);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM session'),
+      [100],
+    );
   });
 
   it('should freeze the wallet as well', async () => {
@@ -162,7 +171,7 @@ describe('PartnersService.updateStatus — khoá tài khoản (#061)', () => {
 
 describe('PartnersService.updateStatus — mở khoá (#061)', () => {
   it('should put the wallet and the links back', async () => {
-    const { service, walletUpdate, linkUpdate } = buildService({
+    const { service, walletUpdate, query } = buildService({
       status: PartnerStatusEnum.HOLD,
     });
 
@@ -172,9 +181,10 @@ describe('PartnersService.updateStatus — mở khoá (#061)', () => {
       { partnerId: 8 },
       { status: PartnerWalletStatusEnum.ACTIVE },
     );
-    expect(linkUpdate).toHaveBeenCalledWith(
-      { partnerId: 8 },
-      { status: PartnerLinkStatusEnum.ACTIVE },
+    // Each link goes back to what the partner had, not all to "active".
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('COALESCE("statusBeforeSuspend", $3)'),
+      [8, PartnerLinkStatusEnum.SUSPENDED, PartnerLinkStatusEnum.ACTIVE],
     );
   });
 

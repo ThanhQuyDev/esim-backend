@@ -54,6 +54,8 @@ export enum PartnerDepositRequestStatusEnum {
 export enum PartnerLinkStatusEnum {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
+  /** "Bị đình chỉ": the partner is held or locked (doitac-1410 #004). */
+  SUSPENDED = 'suspended',
 }
 
 export enum OrderPartnerCommissionStatusEnum {

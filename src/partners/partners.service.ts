@@ -1139,6 +1139,14 @@ export class PartnersService {
       where: { id: linkId, partnerId },
     });
     if (!link) throw new NotFoundException('Không tìm thấy link.');
+    if (
+      link.status === PartnerLinkStatusEnum.SUSPENDED &&
+      dto.isActive !== undefined
+    ) {
+      throw new BadRequestException(
+        'Link đang bị đình chỉ vì tài khoản đang bị khóa, chưa thể bật/tắt.',
+      );
+    }
 
     Object.assign(link, {
       ...(dto.label !== undefined && { label: dto.label }),
@@ -1194,7 +1202,9 @@ export class PartnersService {
         status:
           link.status === PartnerLinkStatusEnum.ACTIVE
             ? 'Đang hoạt động'
-            : 'Đã tắt',
+            : link.status === PartnerLinkStatusEnum.SUSPENDED
+              ? 'Bị đình chỉ'
+              : 'Đã tắt',
       });
     }
 
@@ -1288,6 +1298,15 @@ export class PartnersService {
   }
 
   async createPayoutRequest(partnerId: number, dto: CreatePartnerPayoutDto) {
+    // A held or locked partner's commission is frozen: no withdrawal until the
+    // account is unlocked (doitac-1410 #004).
+    const requester = await this.getPartnerOrThrowById(partnerId);
+    if (requester.status !== PartnerStatusEnum.ACTIVE) {
+      throw new BadRequestException(
+        'Tài khoản đang bị tạm khóa, số tiền hoa hồng đang bị đóng băng nên chưa thể tạo yêu cầu rút tiền. Vui lòng liên hệ admin.',
+      );
+    }
+
     // Withdrawing is part of the affiliate programme: a distributor's ký quỹ
     // balance is there to buy stock with (#048).
     this.assertMayAffiliate(
@@ -2407,15 +2426,41 @@ export class PartnersService {
       },
     );
 
-    // Links and codes are the marketing partner's half of "dừng hoạt động".
-    if (partner.partnerType === PartnerTypeEnum.KOL || partner.canAffiliate) {
-      await this.linkRepository.update(
-        { partnerId: partner.id },
-        {
-          status: frozen
-            ? PartnerLinkStatusEnum.INACTIVE
-            : PartnerLinkStatusEnum.ACTIVE,
-        },
+    // Links and codes are the marketing partner's half of "dừng hoạt động":
+    // both go to "Bị đình chỉ", which stops clicks and codes earning
+    // commission. Each link remembers whether the partner had it on or paused,
+    // and unlocking gives that back rather than switching everything on
+    // (doitac-1410 #004). A distributor without the affiliate grant (#048)
+    // has none.
+    const runsProgramme =
+      partner.partnerType === PartnerTypeEnum.KOL || partner.canAffiliate;
+    if (runsProgramme && frozen) {
+      await this.dataSource.query(
+        `UPDATE partner_link
+            SET "statusBeforeSuspend" = status, status = $2
+          WHERE "partnerId" = $1 AND status <> $2`,
+        [partner.id, PartnerLinkStatusEnum.SUSPENDED],
+      );
+      await this.dataSource.query(
+        `UPDATE coupon SET "suspendedAt" = now()
+          WHERE "partnerId" = $1 AND "suspendedAt" IS NULL`,
+        [partner.id],
+      );
+    } else if (runsProgramme) {
+      await this.dataSource.query(
+        `UPDATE partner_link
+            SET status = COALESCE("statusBeforeSuspend", $3),
+                "statusBeforeSuspend" = NULL
+          WHERE "partnerId" = $1 AND status = $2`,
+        [
+          partner.id,
+          PartnerLinkStatusEnum.SUSPENDED,
+          PartnerLinkStatusEnum.ACTIVE,
+        ],
+      );
+      await this.dataSource.query(
+        `UPDATE coupon SET "suspendedAt" = NULL WHERE "partnerId" = $1`,
+        [partner.id],
       );
     }
 
@@ -2900,7 +2945,12 @@ export class PartnersService {
       if (partner.status === dto.status) continue;
       const fromStatus = partner.status;
       partner.status = dto.status;
-      await this.partnerRepository.save(partner);
+      const saved = await this.partnerRepository.save(partner);
+      // The row menu goes through this bulk path too, so it must freeze the
+      // wallet, suspend links/codes and sign a locked partner out exactly like
+      // the single-partner endpoint. It did not, which is why "Tạm khóa" and
+      // "Khóa tài khoản" changed the badge and nothing else (doitac-1410 #004).
+      await this.applyStatusConsequences(saved, fromStatus);
       await this.recordStatusChange({
         partnerId: partner.id,
         fromStatus,
@@ -4075,6 +4125,11 @@ export class PartnersService {
       where: { id: couponId, partnerId },
     });
     if (!coupon) throw new NotFoundException('Không tìm thấy mã giảm giá.');
+    if (coupon.suspendedAt) {
+      throw new BadRequestException(
+        'Mã đang bị đình chỉ vì tài khoản đang bị khóa, chưa thể bật/tắt.',
+      );
+    }
 
     coupon.isActive = isActive;
     await this.couponRepository.save(coupon);
@@ -4095,6 +4150,7 @@ export class PartnersService {
               c."maxUsage",
               c."expiresAt",
               c."isActive",
+              c."suspendedAt",
               (
                 SELECT COUNT(*)::int FROM "order" o
                 WHERE o."attributedPartnerId" = $1
@@ -4123,6 +4179,8 @@ export class PartnersService {
       maxUsage: r.maxUsage == null ? null : Number(r.maxUsage),
       expiresAt: r.expiresAt ?? null,
       isActive: !!r.isActive,
+      /** "Bị đình chỉ" while the partner is held or locked (doitac-1410 #004). */
+      suspended: !!r.suspendedAt,
       myOrders: Number(r.myOrders ?? 0),
       discountGivenVnd: Number(r.discountGivenVnd ?? 0),
     }));
@@ -6704,6 +6762,7 @@ export class PartnersService {
 
     if (!coupon?.partnerId) return null;
     if (coupon.isActive === false) return null;
+    if (coupon.suspendedAt) return null;
 
     return coupon.partnerId;
   }

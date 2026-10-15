@@ -21,6 +21,7 @@ export class CouponMapper {
       : null;
     domain.expiresAt = raw.expiresAt;
     domain.isActive = raw.isActive;
+    domain.suspendedAt = raw.suspendedAt ?? null;
     domain.isPopular = raw.isPopular;
     domain.isPublic = raw.isPublic;
     domain.partnerId = raw.partnerId ?? null;

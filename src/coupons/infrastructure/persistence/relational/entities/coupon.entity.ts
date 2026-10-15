@@ -56,6 +56,13 @@ export class CouponEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: true })
   isActive: boolean;
 
+  /**
+   * Set while the owning partner is held or locked ("Bị đình chỉ", doitac-1410
+   * #004). Separate from isActive so the partner's own on/off survives.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  suspendedAt?: Date | null;
+
   @Index()
   @Column({ type: Boolean, default: false })
   isPopular: boolean;

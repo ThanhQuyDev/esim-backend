@@ -208,7 +208,7 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
       // A marketing partner, so the affiliate grant never comes into it (#048).
       getPartnerOrThrowById: jest
         .fn()
-        .mockResolvedValue({ id: 5, partnerType: 'kol' }),
+        .mockResolvedValue({ id: 5, partnerType: 'kol', status: 'active' }),
       payoutRepository: {
         createQueryBuilder: () => sum(0),
         create: (row: unknown) => row,

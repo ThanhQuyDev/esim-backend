@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import {
   Column,
   CreateDateColumn,
@@ -31,6 +32,10 @@ export class UserEntity extends EntityRelationalHelper {
   @Column({ type: String, unique: true, nullable: true })
   email: string | null;
 
+  // The domain User already hides this, but a UserEntity reaches responses
+  // whole when it rides along on a relation (partner.user on GET partners/me
+  // and the admin partner list sent the bcrypt hash, doitac-1410 #004).
+  @Exclude({ toPlainOnly: true })
   @Column({ nullable: true })
   password?: string;
 

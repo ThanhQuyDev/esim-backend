@@ -34,6 +34,7 @@ import { OtpService } from '../otp/otp.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PartnerEntity } from '../partners/infrastructure/persistence/relational/entities/partner.entity';
+import { PARTNER_LOCKED_MESSAGE } from './strategies/jwt.strategy';
 import { PartnerStatusEnum, PartnerTypeEnum } from '../partners/partners.enum';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
@@ -83,8 +84,7 @@ export class AuthService {
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         errors: {
-          email:
-            'Tài khoản đối tác của bạn đã bị khoá. Vui lòng liên hệ bộ phận hỗ trợ của esim.vn.',
+          email: PARTNER_LOCKED_MESSAGE,
         },
       });
     }

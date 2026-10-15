@@ -46,6 +46,9 @@ export class Coupon {
   @ApiProperty({ type: Boolean, example: true })
   isActive: boolean;
 
+  /** Set while the owning partner is held or locked (doitac-1410 #004). */
+  suspendedAt?: Date | null;
+
   @ApiProperty({ type: Boolean, example: false })
   isPopular: boolean;
 

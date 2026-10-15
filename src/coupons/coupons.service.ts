@@ -145,7 +145,9 @@ export class CouponsService {
       throw new NotFoundException('Coupon not found');
     }
 
-    if (!coupon.isActive) {
+    // A partner's code stops working while the partner is held or locked
+    // (doitac-1410 #004).
+    if (!coupon.isActive || coupon.suspendedAt) {
       throw new BadRequestException('Coupon is inactive');
     }
 
