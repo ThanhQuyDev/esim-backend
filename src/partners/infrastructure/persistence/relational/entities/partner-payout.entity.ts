@@ -67,6 +67,13 @@ export class PartnerPayoutEntity extends EntityRelationalHelper {
   @Column({ type: Number, nullable: true })
   walletTransactionId?: number | null;
 
+  /**
+   * "2026-09" when the system raised this request on sending September's
+   * statement (doitac-1410 #012); null for one the partner made themselves.
+   */
+  @Column({ type: 'varchar', length: 7, nullable: true })
+  reconciliationPeriod?: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

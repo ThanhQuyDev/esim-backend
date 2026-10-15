@@ -3501,6 +3501,7 @@ export class PartnersService {
                 pay."createdAt",
                 pay."processedAt",
                 pay."bankAccountInfo",
+                pay."reconciliationPeriod",
                 p."contactName",
                 p."contactEmail",
                 p."contactPhone",
@@ -3536,8 +3537,12 @@ export class PartnersService {
           createdAt,
           processedAt: row.processedAt ? new Date(row.processedAt) : null,
           // "Kỳ tài chính" is the month the partner asked in, which is what a
-          // payout run is grouped by.
-          period: `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`,
+          // payout run is grouped by — or, for one the system raised with a
+          // statement, the month that statement closed (doitac-1410 #012).
+          period:
+            row.reconciliationPeriod ??
+            `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`,
+          autoRaised: Boolean(row.reconciliationPeriod),
           bankName: row.bankName ?? null,
           bankAccountNumber: account,
           bankAccountHolder: row.bankAccountHolder ?? null,
@@ -4566,6 +4571,22 @@ export class PartnersService {
 
     let sent = 0;
     for (const row of rows) {
+      // The month's commission is claimed for the partner the moment the
+      // statement goes out (doitac-1410 #012), whether or not they have an
+      // email on file.
+      try {
+        await this.raisePayoutForReconciliation(
+          row.partnerId,
+          period,
+          row.commissionVnd,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Reconciliation payout for partner ${row.partnerId} (${period}) failed: ${
+            (err as Error).message
+          }`,
+        );
+      }
       if (!row.contactEmail) continue;
       try {
         const attachment = await this.buildReconciliationAttachment(
@@ -4598,6 +4619,62 @@ export class PartnersService {
 
     this.logger.log(
       `Reconciliation emails for ${period}: ${sent}/${rows.length} sent`,
+    );
+  }
+
+  /**
+   * Raise the month's withdrawal when its statement is sent (doitac-1410 #012).
+   *
+   * "Chốt hoa hồng tháng n ... tự động tạo lệnh rút tiền ngay khi gửi đối soát
+   * hoa hồng để thanh toán đúng số tiền tại thời điểm chốt". The amount is
+   * fixed here: a refund that arrives in month n+1 takes its commission back
+   * from the wallet afterwards, which may then go below zero — the debt is
+   * shown and paid off by the next commissions (#007), and this request is
+   * not touched.
+   *
+   * Never more than the partner can withdraw right now (an older debt comes
+   * first), never twice for one month, and never for an account or wallet
+   * that is frozen.
+   */
+  async raisePayoutForReconciliation(
+    partnerId: number,
+    period: string,
+    commissionVnd: number,
+  ): Promise<PartnerPayoutEntity | null> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    if (partner.status !== PartnerStatusEnum.ACTIVE) return null;
+    const runsProgramme =
+      partner.partnerType === PartnerTypeEnum.KOL ||
+      Boolean(partner.canAffiliate);
+    if (!runsProgramme) return null;
+
+    const already = await this.payoutRepository.findOne({
+      where: { partnerId, reconciliationPeriod: period },
+    });
+    if (already) return null;
+
+    const summary = await this.getWalletSummaryForPartner(partnerId);
+    if (summary.status === PartnerWalletStatusEnum.LOCKED) return null;
+    const amountVnd = Math.min(
+      Math.round(Number(commissionVnd) || 0),
+      summary.availableBalanceVnd,
+    );
+    if (amountVnd <= 0) return null;
+
+    const [year, month] = period.split('-');
+    return this.payoutRepository.save(
+      this.payoutRepository.create({
+        partnerId,
+        amountVnd,
+        bankAccountInfo: formatPartnerBankAccount(partner),
+        bankName: partner.bankName ?? null,
+        bankAccountNumber: partner.bankAccountNumber ?? null,
+        bankAccountHolder: partner.bankAccountHolder ?? null,
+        bankBranch: partner.bankBranch ?? null,
+        status: PartnerPayoutStatusEnum.PENDING,
+        reconciliationPeriod: period,
+        adminNote: `Hệ thống tự tạo khi gửi đối soát hoa hồng tháng ${month}/${year}.`,
+      }),
     );
   }
 
