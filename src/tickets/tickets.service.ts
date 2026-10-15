@@ -7,9 +7,10 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { TicketMessageEntity } from './infrastructure/persistence/relational/entities/ticket-message.entity';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { TicketRepository } from './infrastructure/persistence/ticket.repository';
@@ -47,7 +48,39 @@ export class TicketsService {
     @InjectRepository(TicketMessageEntity)
     private readonly messageRepository: Repository<TicketMessageEntity>,
     private readonly mailService: MailService,
+    @Optional() private readonly dataSource?: DataSource,
   ) {}
+
+  /**
+   * A notice in the partner's portal bell (doitac-1410 #023): a partner who
+   * does not open the ticket still learns it was closed. The email goes out
+   * separately, so the notice itself sends none. Best-effort.
+   */
+  private async notifyPartnerPortal(
+    ticket: Ticket,
+    title: string,
+    body: string,
+  ): Promise<void> {
+    if (!this.dataSource || !ticket.fromPartner || !ticket.customerEmail) {
+      return;
+    }
+    try {
+      await this.dataSource.query(
+        `INSERT INTO partner_notification
+           (title, body, audience, "partnerId", "sendEmail", "emailsSent")
+         SELECT $1, $2, 'partner', p.id, false, 0
+         FROM partner p
+         LEFT JOIN "user" u ON u.id = p."userId"
+         WHERE lower(p."contactEmail") = lower($3) OR lower(u.email) = lower($3)
+         LIMIT 1`,
+        [title.slice(0, 200), body, ticket.customerEmail],
+      );
+    } catch (err) {
+      this.logger.error(
+        `Ticket ${ticket.id}: portal notice failed — ${(err as Error).message}`,
+      );
+    }
+  }
 
   /**
    * The conversation on one ticket (#032).
@@ -543,6 +576,12 @@ export class TicketsService {
         `Ticket ${ticketNumber}: could not post the close notice to the thread — ${(err as Error).message}`,
       );
     }
+
+    await this.notifyPartnerPortal(
+      ticket,
+      `Yêu cầu hỗ trợ ${ticketNumber} đã được đóng`,
+      `Yêu cầu «${ticket.subject}» đã được đóng. Nếu vẫn cần hỗ trợ, hãy tạo yêu cầu mới ở menu Hỗ trợ.`,
+    );
 
     if (!ticket.customerEmail) return;
 

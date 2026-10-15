@@ -230,3 +230,68 @@ describe('Ticket lifecycle (#061)', () => {
     });
   });
 });
+
+describe('TicketsService — partner portal notice on close (doitac-1410 #023)', () => {
+  function build(ticket: Record<string, unknown>) {
+    const repository = {
+      findById: jest.fn().mockResolvedValue(ticket),
+      update: jest.fn((_id: unknown, data: Record<string, unknown>) =>
+        Promise.resolve({ ...ticket, ...data }),
+      ),
+    };
+    const messages = {
+      create: jest.fn((v: unknown) => v),
+      save: jest.fn((v: unknown) => Promise.resolve(v)),
+    };
+    const mailService = {
+      sendTicketResolved: jest.fn().mockResolvedValue(undefined),
+    };
+    const query = jest.fn().mockResolvedValue([]);
+    const service = new TicketsService(
+      repository as never,
+      messages as never,
+      mailService as never,
+      { query } as never,
+    );
+    (service as unknown as Record<string, unknown>).logger = {
+      log: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    return { service, query, mailService };
+  }
+
+  it('should put a notice in the partner bell when an admin closes their ticket', async () => {
+    const { service, query, mailService } = build({
+      id: 5,
+      ticketNumber: 'HT-000005',
+      subject: 'Hoa hồng',
+      status: TicketStatus.IN_PROGRESS,
+      customerEmail: 'kol@esim.test',
+      fromPartner: true,
+    });
+
+    await service.updateStatus(5, TicketStatus.CLOSED);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('INSERT INTO partner_notification');
+    expect(params[0]).toContain('HT-000005');
+    expect(params[2]).toBe('kol@esim.test');
+    expect(mailService.sendTicketResolved).toHaveBeenCalled();
+  });
+
+  it('should not touch partner notices for a customer ticket', async () => {
+    const { service, query } = build({
+      id: 6,
+      subject: 'eSIM',
+      status: TicketStatus.IN_PROGRESS,
+      customerEmail: 'khach@esim.test',
+      fromPartner: false,
+    });
+
+    await service.updateStatus(6, TicketStatus.CLOSED);
+
+    expect(query).not.toHaveBeenCalled();
+  });
+});
