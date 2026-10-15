@@ -1,3 +1,4 @@
+import './utils/force-utc';
 import 'dotenv/config';
 import {
   ClassSerializerInterceptor,

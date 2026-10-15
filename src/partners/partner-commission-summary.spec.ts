@@ -85,7 +85,10 @@ describe('PartnersService.adminCommissionSummary (#063)', () => {
     await service.adminCommissionSummary();
 
     const [sql, params] = query.mock.calls[1] as [string, unknown[]];
-    expect(sql).toContain("date_trunc('month', now())");
+    // The month starts at 00:00 in Vietnam, not on the UTC clock (doitac-1410 #028).
+    expect(sql).toContain(
+      "date_trunc('month', now() AT TIME ZONE 'Asia/Ho_Chi_Minh')",
+    );
     expect(params).toEqual(['pending', 'paid']);
   });
 

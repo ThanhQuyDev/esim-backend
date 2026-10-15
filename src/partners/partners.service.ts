@@ -386,6 +386,17 @@ function vnDayStart([y, m, d]: [number, number, number]): Date {
 }
 
 /**
+ * The first instant of this month, and of last month, in Vietnam
+ * (doitac-1410 #028). `date_trunc('month', now())` cut on the database's UTC
+ * clock, so from 00:00 to 07:00 on the 1st the "tháng này" figures still
+ * counted the month before.
+ */
+const VN_MONTH_START_SQL =
+  "(date_trunc('month', now() AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh')";
+const VN_PREV_MONTH_START_SQL =
+  "(date_trunc('month', (now() AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '1 month') AT TIME ZONE 'Asia/Ho_Chi_Minh')";
+
+/**
  * Day bounds for the dashboard window (#010), in Vietnamese days
  * (doitac-1410 #017).
  *
@@ -2585,10 +2596,10 @@ export class PartnersService {
          COALESCE(SUM("amountVnd") FILTER (WHERE status = $1), 0) AS "requestedVnd",
          COUNT(DISTINCT "partnerId") FILTER (WHERE status = $1) AS "requestedPartners",
          COALESCE(SUM("amountVnd") FILTER (
-           WHERE status = $2 AND "processedAt" >= date_trunc('month', now())
+           WHERE status = $2 AND "processedAt" >= ${VN_MONTH_START_SQL}
          ), 0) AS "paidVnd",
          COUNT(DISTINCT "partnerId") FILTER (
-           WHERE status = $2 AND "processedAt" >= date_trunc('month', now())
+           WHERE status = $2 AND "processedAt" >= ${VN_MONTH_START_SQL}
          ) AS "paidPartners"
        FROM partner_payout`,
       [PartnerPayoutStatusEnum.PENDING, PartnerPayoutStatusEnum.PAID],
@@ -2801,10 +2812,10 @@ export class PartnersService {
          COALESCE(SUM("amountVnd") FILTER (WHERE status = $1), 0) AS "requestedVnd",
          COUNT(DISTINCT "partnerId") FILTER (WHERE status = $1) AS "requestedPartners",
          COALESCE(SUM("amountVnd") FILTER (
-           WHERE status = $2 AND "processedAt" >= date_trunc('month', now())
+           WHERE status = $2 AND "processedAt" >= ${VN_MONTH_START_SQL}
          ), 0) AS "paidMonthVnd",
          COUNT(DISTINCT "partnerId") FILTER (
-           WHERE status = $2 AND "processedAt" >= date_trunc('month', now())
+           WHERE status = $2 AND "processedAt" >= ${VN_MONTH_START_SQL}
          ) AS "paidMonthPartners",
          COALESCE(SUM("amountVnd") FILTER (WHERE status = $2), 0) AS "paidAllVnd",
          COUNT(DISTINCT "partnerId") FILTER (WHERE status = $2) AS "paidAllPartners"
@@ -6845,10 +6856,10 @@ export class PartnersService {
     const [mom] = await this.dataSource.query(
       `WITH bounds AS (
          SELECT
-           date_trunc('month', now()) AS this_start,
-           date_trunc('month', now() - INTERVAL '1 month') AS prev_start,
-           date_trunc('month', now() - INTERVAL '1 month')
-             + (now() - date_trunc('month', now())) AS prev_cutoff
+           ${VN_MONTH_START_SQL} AS this_start,
+           ${VN_PREV_MONTH_START_SQL} AS prev_start,
+           ${VN_PREV_MONTH_START_SQL}
+             + (now() - ${VN_MONTH_START_SQL}) AS prev_cutoff
        )
        SELECT
          COALESCE(SUM(c."commissionVnd") FILTER (
@@ -7562,7 +7573,7 @@ export class PartnersService {
               COUNT(*) FILTER (WHERE status = $3) AS "onHold",
               COUNT(*) FILTER (
                 WHERE status <> $1
-                  AND "createdAt" >= date_trunc('month', now())
+                  AND "createdAt" >= ${VN_MONTH_START_SQL}
               ) AS "newThisMonth"
        FROM partner
        WHERE "deletedAt" IS NULL

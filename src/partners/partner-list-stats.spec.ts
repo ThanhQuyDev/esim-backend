@@ -68,7 +68,10 @@ describe('PartnersService.adminPartnerListStats (#057)', () => {
     await service.adminPartnerListStats();
 
     const [sql] = query.mock.calls[0] as [string];
-    expect(sql).toContain("date_trunc('month', now())");
+    // The month starts at 00:00 in Vietnam, not on the UTC clock (doitac-1410 #028).
+    expect(sql).toContain(
+      "date_trunc('month', now() AT TIME ZONE 'Asia/Ho_Chi_Minh')",
+    );
     // And a locked account is not "new" either.
     expect(sql).toContain(
       'WHERE status <> $1\n                  AND "createdAt"',
