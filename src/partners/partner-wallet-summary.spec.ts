@@ -17,26 +17,30 @@ describe('PartnersService — partner wallet summary', () => {
   function buildService({
     balanceVnd = 0,
     pendingPayout = 0,
+    approvedPayout = 0,
     pendingCommission = 0,
     paidPayout = 0,
   } = {}) {
     /** Fake query builder that answers based on the status asked for. */
     function sumBuilder(byStatus: Record<string, number>) {
-      let status = '';
+      let statuses: string[] = [];
       const builder = {
         select: () => builder,
         // The paid-payout query also counts the payments (#029).
         addSelect: () => builder,
         where: () => builder,
-        andWhere: (_clause: string, params: { status: string }) => {
-          status = params.status;
+        // One status, or a list of them (doitac-1410 #005).
+        andWhere: (
+          _clause: string,
+          params: { status?: string; statuses?: string[] },
+        ) => {
+          statuses = params.statuses ?? [params.status ?? ''];
           return builder;
         },
-        getRawOne: () =>
-          Promise.resolve({
-            sum: String(byStatus[status] ?? 0),
-            count: byStatus[status] ? '1' : '0',
-          }),
+        getRawOne: () => {
+          const sum = statuses.reduce((t, st) => t + (byStatus[st] ?? 0), 0);
+          return Promise.resolve({ sum: String(sum), count: sum ? '1' : '0' });
+        },
       };
       return builder;
     }
@@ -65,6 +69,7 @@ describe('PartnersService — partner wallet summary', () => {
         createQueryBuilder: () =>
           sumBuilder({
             [PartnerPayoutStatusEnum.PENDING]: pendingPayout,
+            [PartnerPayoutStatusEnum.APPROVED]: approvedPayout,
             [PartnerPayoutStatusEnum.PAID]: paidPayout,
           }),
       },
@@ -136,5 +141,20 @@ describe('PartnersService — partner wallet summary', () => {
       pendingCommissionVnd: 0,
       withdrawnVnd: 0,
     });
+  });
+
+  it('should keep an approved withdrawal held until it is paid (doitac-1410 #005)', async () => {
+    // Approving used to hand the money back, so the partner could ask for it
+    // again before the transfer was recorded.
+    const service = buildService({
+      balanceVnd: 500_000,
+      pendingPayout: 100_000,
+      approvedPayout: 300_000,
+    });
+
+    const summary = await service.getWalletSummaryForPartner(5);
+
+    expect(summary.pendingPayoutVnd).toBe(400_000);
+    expect(summary.availableBalanceVnd).toBe(100_000);
   });
 });

@@ -322,6 +322,17 @@ const BANK_CHANGE_OTP_RESEND_MS = 60 * 1000;
 const BANK_CHANGE_OTP_MAX_ATTEMPTS = 5;
 
 /**
+ * Withdrawals whose amount is held off the available balance: from the
+ * request until the transfer is recorded (or the request is turned down), so
+ * an approval can never hand the money back to be claimed again
+ * (doitac-1410 #005).
+ */
+const PAYOUT_RESERVED_STATUSES = [
+  PartnerPayoutStatusEnum.PENDING,
+  PartnerPayoutStatusEnum.APPROVED,
+];
+
+/**
  * Day bounds for the dashboard window (#010).
  *
  * `to` is pushed to the start of the next day so the last day counts in full —
@@ -817,8 +828,12 @@ export class PartnersService {
           .createQueryBuilder('payout')
           .select('COALESCE(SUM(payout.amountVnd), 0)', 'sum')
           .where('payout.partnerId = :partnerId', { partnerId })
-          .andWhere('payout.status = :status', {
-            status: PartnerPayoutStatusEnum.PENDING,
+          // Held from the moment it is requested until the transfer is
+          // recorded: an approved request is still money on its way out, and
+          // releasing it at approval let the partner request it a second
+          // time (doitac-1410 #005).
+          .andWhere('payout.status IN (:...statuses)', {
+            statuses: PAYOUT_RESERVED_STATUSES,
           })
           .getRawOne<{ sum: string }>(),
         // Earned but not yet credited: the order is done, reconciliation is not.
@@ -5881,7 +5896,8 @@ export class PartnersService {
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(pay."amountVnd"), 0) AS "pendingPayoutVnd"
          FROM partner_payout pay
-         WHERE pay."partnerId" = p.id AND pay.status = 'pending'
+         -- Pending and approved alike are still held (doitac-1410 #005).
+         WHERE pay."partnerId" = p.id AND pay.status IN ('pending', 'approved')
        ) pp ON TRUE
        LEFT JOIN LATERAL (
          SELECT COUNT(*) FILTER (
