@@ -1,4 +1,5 @@
 import { partnerCommissionAmount } from './partner-commission-amount';
+import { PartnersService } from './partners.service';
 
 /**
  * #060 (test round 4) — a partner's own discount code comes out of their
@@ -44,5 +45,44 @@ describe('partnerCommissionAmount (#060)', () => {
         ownCouponDiscountVnd: 10_000,
       }).commissionVnd,
     ).toBe(0);
+  });
+});
+
+describe('the order anh Thọ tested (doitac-1410 #009)', () => {
+  // 3 eSIM, 642.000đ, the partner's own code takes 10.000đ, tier 7%:
+  // 7% × 642.000 − 10.000 = 34.940đ. The order hands over the value AFTER
+  // the discount (632.000đ), which is what the old rule multiplied by 7%.
+  it('should pay 34.940đ, worked through the real service path', async () => {
+    const save = jest.fn().mockImplementation((row) => Promise.resolve(row));
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    Object.assign(service, {
+      logger: { warn: jest.fn() },
+      partnerRepository: {
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ id: 9, partnerType: 'kol', tierCode: 'T7' }),
+      },
+      detectSelfReferral: jest.fn().mockResolvedValue(null),
+      tierRepository: {
+        findOne: jest.fn().mockResolvedValue({ commissionPercent: 7 }),
+      },
+      couponRepository: {
+        findOne: jest.fn().mockResolvedValue({ code: 'NAM2026', partnerId: 9 }),
+      },
+      commissionRepository: { create: (row: unknown) => row, save },
+    });
+
+    await service.createPendingCommissionForOrder({
+      orderId: 1,
+      partnerId: 9,
+      linkId: null,
+      orderValueVnd: 632_000,
+      couponCode: 'nam2026',
+      couponDiscountVnd: 10_000,
+    });
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ commissionVnd: 34_940 }),
+    );
   });
 });
