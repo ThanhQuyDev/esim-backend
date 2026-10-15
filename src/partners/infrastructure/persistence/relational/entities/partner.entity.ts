@@ -128,6 +128,13 @@ export class PartnerEntity extends EntityRelationalHelper {
   contractInfo?: { label: string; value: string }[] | null;
 
   /**
+   * Files attached to the application (doitac-1410 #013). Stored outside the
+   * public uploads folder and read back only through an admin route.
+   */
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  documents!: PartnerDocument[];
+
+  /**
    * Deposit limits for this partner alone (#061).
    *
    * The programme-wide 100.000đ–10 triệu (#047) is a default, not a rule: a
@@ -202,3 +209,13 @@ export class PartnerEntity extends EntityRelationalHelper {
   @DeleteDateColumn()
   deletedAt!: Date;
 }
+
+/** One file attached to a partner application (doitac-1410 #013). */
+export type PartnerDocument = {
+  id: string;
+  /** The applicant's own file name, shown to the admin. */
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+};

@@ -20,6 +20,16 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { extname, join } from 'path';
+import {
+  PARTNER_DOCUMENTS_DIR,
+  PARTNER_DOCUMENT_MAX_FILES,
+  documentUploadToken,
+  isAllowedPartnerDocument,
+  verifyDocumentUploadToken,
+} from './partner-documents';
+import type { PartnerDocument } from './infrastructure/persistence/relational/entities/partner.entity';
 import { partnerDeviceFingerprint } from './partner-device-fingerprint';
 import {
   PartnerPurchaseQuote,
@@ -4620,6 +4630,88 @@ export class PartnersService {
     this.logger.log(
       `Reconciliation emails for ${period}: ${sent}/${rows.length} sent`,
     );
+  }
+
+  /** Applying returns the token that opens the document upload (doitac-1410 #013). */
+  documentUploadTokenFor(partnerId: number): string {
+    return documentUploadToken(
+      partnerId,
+      this.configService.getOrThrow('auth.secret', { infer: true }),
+    );
+  }
+
+  /**
+   * Attach files to an application (doitac-1410 #013).
+   *
+   * Only with the token its own application returned, only while it is still
+   * waiting for a decision, and never more than five files in all.
+   */
+  async attachApplicationDocuments(
+    token: string | undefined,
+    files: Express.Multer.File[],
+  ): Promise<{ documents: PartnerDocument[] }> {
+    const partnerId = verifyDocumentUploadToken(
+      token,
+      this.configService.getOrThrow('auth.secret', { infer: true }),
+    );
+    if (!partnerId) {
+      throw new ForbiddenException(
+        'Phiên tải tài liệu đã hết hạn. Vui lòng gửi tài liệu cho esim.vn qua email hỗ trợ.',
+      );
+    }
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    if (partner.status !== PartnerStatusEnum.PENDING) {
+      throw new BadRequestException('Hồ sơ này đã được xử lý.');
+    }
+    if (!files?.length) {
+      throw new BadRequestException('Vui lòng chọn ít nhất một file.');
+    }
+    const existing = partner.documents ?? [];
+    if (existing.length + files.length > PARTNER_DOCUMENT_MAX_FILES) {
+      throw new BadRequestException(
+        `Tối đa ${PARTNER_DOCUMENT_MAX_FILES} file cho mỗi hồ sơ.`,
+      );
+    }
+    for (const file of files) {
+      const problem = isAllowedPartnerDocument(file);
+      if (problem) throw new BadRequestException(problem);
+    }
+
+    const dir = join(PARTNER_DOCUMENTS_DIR, String(partnerId));
+    await mkdir(dir, { recursive: true });
+    const added: PartnerDocument[] = [];
+    for (const file of files) {
+      const id = `${randomBytes(12).toString('hex')}${extname(file.originalname).toLowerCase()}`;
+      await writeFile(join(dir, id), file.buffer);
+      added.push({
+        id,
+        // Multer reads the name as latin1; Vietnamese names need it back.
+        name: Buffer.from(file.originalname, 'latin1').toString('utf8'),
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        uploadedAt: new Date().toISOString(),
+      });
+    }
+    const documents = [...existing, ...added];
+    await this.partnerRepository.update({ id: partnerId }, { documents });
+    return { documents };
+  }
+
+  /** One attached file, for the admin (doitac-1410 #013). */
+  async readApplicationDocument(
+    partnerId: number,
+    documentId: string,
+  ): Promise<{ document: PartnerDocument; content: Buffer }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const document = (partner.documents ?? []).find((d) => d.id === documentId);
+    // The id is ours (hex + extension), never a path the caller chose.
+    if (!document || !/^[a-f0-9]{24}\.[a-z]+$/.test(document.id)) {
+      throw new NotFoundException('Không tìm thấy tài liệu.');
+    }
+    const content = await readFile(
+      join(PARTNER_DOCUMENTS_DIR, String(partnerId), document.id),
+    );
+    return { document, content };
   }
 
   /**

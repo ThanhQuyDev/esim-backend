@@ -12,9 +12,18 @@ import {
   Query,
   Request,
   Res,
+  Headers,
+  UploadedFiles,
+  UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import {
+  PARTNER_DOCUMENT_MAX_BYTES,
+  PARTNER_DOCUMENT_MAX_FILES,
+} from './partner-documents';
 import { Response } from 'express';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../roles/roles.decorator';
@@ -48,8 +57,39 @@ export class PartnersController {
 
   @Post('apply')
   @HttpCode(HttpStatus.CREATED)
-  apply(@Body() dto: PartnerApplyDto) {
-    return this.partnersService.apply(dto);
+  async apply(@Body() dto: PartnerApplyDto) {
+    const result = await this.partnersService.apply(dto);
+    return {
+      ...result,
+      // Opens the document upload for this application only, for an hour
+      // (doitac-1410 #013).
+      documentUploadToken: this.partnersService.documentUploadTokenFor(
+        result.partnerId,
+      ),
+    };
+  }
+
+  /**
+   * Attach documents to an application just sent (doitac-1410 #013). No
+   * session — the applicant has no account yet — so the token from `apply`
+   * is the key. Held in memory and checked before anything is written.
+   */
+  @Post('apply/documents')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FilesInterceptor('files', PARTNER_DOCUMENT_MAX_FILES, {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: PARTNER_DOCUMENT_MAX_BYTES,
+        files: PARTNER_DOCUMENT_MAX_FILES,
+      },
+    }),
+  )
+  attachApplicationDocuments(
+    @Headers('x-application-token') token: string | undefined,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.partnersService.attachApplicationDocuments(token, files);
   }
 
   @ApiBearerAuth()

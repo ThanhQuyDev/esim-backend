@@ -40,3 +40,5 @@ lerna-debug.log*
 .env.prod
 /ormconfig.json
 .codegpt
+# Partner application documents (doitac-1410 #013) — never served publicly
+/private

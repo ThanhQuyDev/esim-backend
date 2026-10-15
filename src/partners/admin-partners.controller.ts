@@ -558,6 +558,27 @@ export class AdminPartnersController {
     return this.partnersService.adminPartnerPerformance(Number(id));
   }
 
+  /** A file attached to the application, for the admin only (doitac-1410 #013). */
+  @Get(':id/documents/:documentId')
+  async getApplicationDocument(
+    @Param('id') id: number,
+    @Param('documentId') documentId: string,
+    @Res() res: Response,
+  ) {
+    const { document, content } =
+      await this.partnersService.readApplicationDocument(
+        Number(id),
+        documentId,
+      );
+    res.setHeader('Content-Type', document.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename*=UTF-8''${encodeURIComponent(document.name)}`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(content);
+  }
+
   /** The partner page's figures over a period the admin picks (doitac-1410 #004). */
   @Get(':id/stats')
   @HttpCode(HttpStatus.OK)
