@@ -418,3 +418,32 @@ describe('Pending email lookup', () => {
     ).resolves.toEqual({ pendingEmail: null, stage: null });
   });
 });
+
+describe('EmailChangeService — the partner profile follows (doitac-1410 #022)', () => {
+  it('should move the partner contact address that was the sign-in address', async () => {
+    const { service } = await pendingFor('123456');
+    const query = jest.fn().mockResolvedValue([]);
+    (service as unknown as Record<string, unknown>).dataSource = { query };
+
+    await service.confirmChange(7, 'new@esim.vn', '123456');
+
+    expect(query).toHaveBeenCalledTimes(1);
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('UPDATE partner SET "contactEmail" = $1');
+    expect(sql).toContain('lower("contactEmail") = lower($3)');
+    expect(params[0]).toBe('new@esim.vn');
+    expect(params[1]).toBe(7);
+  });
+
+  it('should still change the sign-in address if the partner update fails', async () => {
+    const { service, updates } = await pendingFor('123456');
+    (service as unknown as Record<string, unknown>).dataSource = {
+      query: jest.fn().mockRejectedValue(new Error('db down')),
+    };
+
+    const updated = await service.confirmChange(7, 'new@esim.vn', '123456');
+
+    expect(updated.email).toBe('new@esim.vn');
+    expect(updates).toHaveLength(1);
+  });
+});

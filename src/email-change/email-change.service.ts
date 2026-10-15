@@ -1,10 +1,12 @@
 import {
   Injectable,
+  Logger,
+  Optional,
   UnprocessableEntityException,
   HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import bcrypt from 'bcryptjs';
 import { EmailChangeRequestEntity } from './entities/email-change-request.entity';
 import { UsersService } from '../users/users.service';
@@ -46,7 +48,38 @@ export class EmailChangeService {
     private readonly requestRepository: Repository<EmailChangeRequestEntity>,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
+    @Optional() private readonly dataSource?: DataSource,
   ) {}
+
+  private readonly logger = new Logger(EmailChangeService.name);
+
+  /**
+   * A partner's profile shows (and mails codes to) `partner.contactEmail`, not
+   * the sign-in address, so moving one without the other left every profile
+   * tab on the old address — even after signing in with the new one
+   * (doitac-1410 #022). Only a contact address that WAS the sign-in address
+   * follows; one the partner set apart on purpose stays.
+   */
+  private async followOnPartner(
+    userId: User['id'],
+    oldEmail: string | null | undefined,
+    newEmail: string,
+  ): Promise<void> {
+    if (!this.dataSource) return;
+    try {
+      await this.dataSource.query(
+        `UPDATE partner SET "contactEmail" = $1, "updatedAt" = now()
+         WHERE "userId" = $2
+           AND ("contactEmail" IS NULL OR "contactEmail" = ''
+                OR lower("contactEmail") = lower($3))`,
+        [newEmail, Number(userId), oldEmail ?? ''],
+      );
+    } catch (err) {
+      this.logger.error(
+        `followOnPartner: user ${userId}: ${(err as Error).message}`,
+      );
+    }
+  }
 
   private fail(field: string, error: string): never {
     throw new UnprocessableEntityException({
@@ -230,6 +263,7 @@ export class EmailChangeService {
       email: newEmail,
     });
     await this.requestRepository.delete({ userId: Number(userId) });
+    await this.followOnPartner(userId, user.email, newEmail);
 
     if (!updated) this.fail('user', 'notFound');
     return updated;
