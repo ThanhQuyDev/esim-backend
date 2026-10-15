@@ -31,6 +31,8 @@ export enum PartnerWalletTransactionTypeEnum {
   COMMISSION_REVERSED = 'commission_reversed',
   PAYOUT = 'payout',
   PAYOUT_REJECTED = 'payout_rejected',
+  /** The extra a deposit promotion adds to a top-up (doitac-1410 #015). */
+  DEPOSIT_BONUS = 'deposit_bonus',
 }
 
 /**

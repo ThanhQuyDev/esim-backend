@@ -1,4 +1,5 @@
 import {
+  Delete,
   Body,
   Controller,
   Get,
@@ -29,6 +30,7 @@ import {
 import {
   AdjustPartnerWalletDto,
   UpdatePartnerWalletStatusDto,
+  UpsertDepositPromotionDto,
   AssignPartnerTierDto,
   ProcessPartnerPayoutDto,
   RejectPartnerDto,
@@ -256,6 +258,48 @@ export class AdminPartnersController {
   }
 
   /** The partner programme's settings (#075, #076, #077). */
+  /** Deposit promotions (doitac-1410 #015). */
+  @Get('deposit-promotions')
+  @HttpCode(HttpStatus.OK)
+  listDepositPromotions() {
+    return this.partnersService.adminListDepositPromotions();
+  }
+
+  @Post('deposit-promotions')
+  @HttpCode(HttpStatus.CREATED)
+  createDepositPromotion(
+    @Body() dto: UpsertDepositPromotionDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminSaveDepositPromotion(
+      null,
+      dto,
+      req.user.id,
+    );
+  }
+
+  @Patch('deposit-promotions/:promotionId')
+  @HttpCode(HttpStatus.OK)
+  updateDepositPromotion(
+    @Param('promotionId') promotionId: number,
+    @Body() dto: UpsertDepositPromotionDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminSaveDepositPromotion(
+      Number(promotionId),
+      dto,
+      req.user.id,
+    );
+  }
+
+  @Delete('deposit-promotions/:promotionId')
+  @HttpCode(HttpStatus.OK)
+  deleteDepositPromotion(@Param('promotionId') promotionId: number) {
+    return this.partnersService.adminDeleteDepositPromotion(
+      Number(promotionId),
+    );
+  }
+
   @Get('program-settings')
   @HttpCode(HttpStatus.OK)
   getProgramSettings() {

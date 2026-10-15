@@ -57,6 +57,8 @@ describe('PartnersService — partner wallet summary', () => {
           lowDepositWarningVnd: 500_000,
         }),
       },
+      // Running deposit promotions (doitac-1410 #015).
+      runningDepositPromotions: jest.fn().mockResolvedValue([]),
       getOrCreateWallet: jest
         .fn()
         .mockResolvedValue({ balanceVnd, status: 'active' }),

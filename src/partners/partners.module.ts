@@ -22,6 +22,7 @@ import { PartnerMemberAttributionEntity } from './infrastructure/persistence/rel
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
 import { PartnerReconciliationEntity } from './infrastructure/persistence/relational/entities/partner-reconciliation.entity';
+import { PartnerDepositPromotionEntity } from './infrastructure/persistence/relational/entities/partner-deposit-promotion.entity';
 import { PartnerProgramSettingEntity } from './infrastructure/persistence/relational/entities/partner-program-setting.entity';
 import { PartnerNotificationEntity } from './infrastructure/persistence/relational/entities/partner-notification.entity';
 import { PartnerNotificationReadEntity } from './infrastructure/persistence/relational/entities/partner-notification-read.entity';
@@ -56,6 +57,8 @@ import { MailModule } from '../mail/mail.module';
       PartnerNotificationReadEntity,
       // Đối tác báo eSIM lỗi, admin duyệt tay mới hoàn tiền (#046).
       PartnerEsimFaultReportEntity,
+      // Deposit promotions (doitac-1410 #015).
+      PartnerDepositPromotionEntity,
     ]),
   ],
   controllers: [

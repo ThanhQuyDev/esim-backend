@@ -19,6 +19,8 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  IsDateString,
+  IsNumber,
 } from 'class-validator';
 import { PartnerStatusEnum, PartnerTopupMethodEnum } from '../partners.enum';
 
@@ -388,4 +390,46 @@ export class UpdatePartnerWalletStatusDto {
   @ApiProperty({ type: Boolean, example: true })
   @IsBoolean()
   locked!: boolean;
+}
+
+/** A deposit promotion, as the admin sets it up (doitac-1410 #015). */
+export class UpsertDepositPromotionDto {
+  @ApiProperty({ example: 'Tặng 5% tháng 11' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  name!: string;
+
+  @ApiProperty({ example: 5 })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100)
+  bonusPercent!: number;
+
+  @ApiProperty({ example: 5_000_000 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minDepositVnd!: number;
+
+  @ApiPropertyOptional({ example: 500_000, nullable: true })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  maxBonusVnd?: number | null;
+
+  @ApiProperty({ example: '2026-11-01T00:00:00+07:00' })
+  @IsDateString()
+  startsAt!: string;
+
+  @ApiProperty({ example: '2026-11-30T23:59:59+07:00' })
+  @IsDateString()
+  endsAt!: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

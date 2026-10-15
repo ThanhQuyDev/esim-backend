@@ -68,6 +68,7 @@ import { PartnerMemberAttributionEntity } from './infrastructure/persistence/rel
 import { PartnerSessionEventEntity } from './infrastructure/persistence/relational/entities/partner-session-event.entity';
 import { PartnerStatusChangeEntity } from './infrastructure/persistence/relational/entities/partner-status-change.entity';
 import { PartnerReconciliationEntity } from './infrastructure/persistence/relational/entities/partner-reconciliation.entity';
+import { PartnerDepositPromotionEntity } from './infrastructure/persistence/relational/entities/partner-deposit-promotion.entity';
 import { PartnerProgramSettingEntity } from './infrastructure/persistence/relational/entities/partner-program-setting.entity';
 import { PartnerNotificationEntity } from './infrastructure/persistence/relational/entities/partner-notification.entity';
 import { PartnerNotificationReadEntity } from './infrastructure/persistence/relational/entities/partner-notification-read.entity';
@@ -89,6 +90,7 @@ import {
 } from './dto/query-partner.dto';
 import {
   AdjustPartnerWalletDto,
+  UpsertDepositPromotionDto,
   AssignPartnerTierDto,
   BulkPartnerStatusDto,
   CreateDepositRequestDto,
@@ -916,6 +918,19 @@ export class PartnersService {
        * payout screen had 100.000đ written into it, so the admin's setting
        * changed what the server accepted but not what the partner was told.
        */
+      /**
+       * Deposit promotions running now (doitac-1410 #015). Information only:
+       * an unreadable list shows none rather than taking the wallet down.
+       */
+      depositPromotions: (
+        await this.runningDepositPromotions().catch(() => [])
+      ).map((p) => ({
+        name: p.name,
+        bonusPercent: Number(p.bonusPercent),
+        minDepositVnd: Number(p.minDepositVnd),
+        maxBonusVnd: p.maxBonusVnd != null ? Number(p.maxBonusVnd) : null,
+        endsAt: p.endsAt,
+      })),
       payoutMinVnd: await this.payoutMinVndFor(
         (await this.getPartnerOrThrowById(partnerId)).partnerType,
       ),
@@ -955,7 +970,11 @@ export class PartnersService {
       PartnerWalletTransactionTypeEnum.MANUAL_DEBIT,
     ];
     if (partner.partnerType !== PartnerTypeEnum.KOL) {
-      types.push(PartnerWalletTransactionTypeEnum.DEPOSIT);
+      types.push(
+        PartnerWalletTransactionTypeEnum.DEPOSIT,
+        // A promotion's extra on a top-up (doitac-1410 #015).
+        PartnerWalletTransactionTypeEnum.DEPOSIT_BONUS,
+      );
     }
     return this.transactionRepository.find({
       where: { partnerId, type: In(types) },
@@ -3367,7 +3386,131 @@ export class PartnersService {
     request.confirmedByAdminId = opts.adminId;
     request.confirmedAt = new Date();
     request.walletTransactionId = transaction.id;
-    return this.depositRequestRepository.save(request);
+    const saved = await this.depositRequestRepository.save(request);
+
+    // The promotion running when the money arrived (doitac-1410 #015). A
+    // failure here must not undo a deposit that has already been credited.
+    try {
+      await this.applyDepositBonus(request, request.confirmedAt);
+    } catch (err) {
+      this.logger.error(
+        `Deposit bonus for request ${request.id} failed: ${(err as Error).message}`,
+      );
+    }
+    return saved;
+  }
+
+  /**
+   * The bonus a top-up earns under the promotion running at `at`
+   * (doitac-1410 #015): the best one whose minimum the amount reaches.
+   * Worked on what the partner sent, not on what reached the wallet after a
+   * card fee, so the advertised "nạp 5 triệu tặng 5%" is what they get.
+   */
+  async depositBonusFor(
+    amountVnd: number,
+    at: Date,
+  ): Promise<{
+    promotion: PartnerDepositPromotionEntity;
+    bonusVnd: number;
+  } | null> {
+    const promotions = await this.dataSource
+      .getRepository(PartnerDepositPromotionEntity)
+      .createQueryBuilder('p')
+      .where('p.isActive = true')
+      .andWhere('p.startsAt <= :at AND p.endsAt >= :at', { at })
+      .andWhere('p.minDepositVnd <= :amount', { amount: amountVnd })
+      .getMany();
+    let best: {
+      promotion: PartnerDepositPromotionEntity;
+      bonusVnd: number;
+    } | null = null;
+    for (const promotion of promotions) {
+      const raw = Math.floor(
+        (amountVnd * Number(promotion.bonusPercent)) / 100,
+      );
+      const cap =
+        promotion.maxBonusVnd != null ? Number(promotion.maxBonusVnd) : null;
+      const bonusVnd = cap != null ? Math.min(raw, cap) : raw;
+      if (bonusVnd > 0 && (!best || bonusVnd > best.bonusVnd)) {
+        best = { promotion, bonusVnd };
+      }
+    }
+    return best;
+  }
+
+  private async applyDepositBonus(
+    request: PartnerDepositRequestEntity,
+    at: Date,
+  ): Promise<void> {
+    const bonus = await this.depositBonusFor(Number(request.amountVnd), at);
+    if (!bonus) return;
+    await this.createWalletTransaction(
+      request.partnerId,
+      PartnerWalletTransactionTypeEnum.DEPOSIT_BONUS,
+      bonus.bonusVnd,
+      {
+        sourceType: 'partner_deposit_promotion',
+        sourceId: String(bonus.promotion.id),
+        // One bonus per top-up, however many times the confirmation runs.
+        idempotencyKey: `partner_deposit_bonus:${request.id}`,
+        reason: `Khuyến mãi "${bonus.promotion.name}": tặng ${Number(bonus.promotion.bonusPercent)}% khi nạp ký quỹ`,
+        createdByAdminId: null,
+      },
+    );
+  }
+
+  /** Deposit promotions, newest first (doitac-1410 #015). */
+  adminListDepositPromotions() {
+    return this.dataSource
+      .getRepository(PartnerDepositPromotionEntity)
+      .find({ order: { startsAt: 'DESC' } });
+  }
+
+  async adminSaveDepositPromotion(
+    id: number | null,
+    dto: UpsertDepositPromotionDto,
+    adminId: number,
+  ) {
+    const startsAt = new Date(dto.startsAt);
+    const endsAt = new Date(dto.endsAt);
+    if (!(endsAt > startsAt)) {
+      throw new BadRequestException(
+        'Thời gian kết thúc phải sau thời gian bắt đầu.',
+      );
+    }
+    const repo = this.dataSource.getRepository(PartnerDepositPromotionEntity);
+    const row = id ? await repo.findOne({ where: { id } }) : repo.create();
+    if (!row)
+      throw new NotFoundException('Không tìm thấy chương trình khuyến mãi.');
+    Object.assign(row, {
+      name: dto.name.trim(),
+      bonusPercent: dto.bonusPercent,
+      minDepositVnd: dto.minDepositVnd,
+      maxBonusVnd: dto.maxBonusVnd ?? null,
+      startsAt,
+      endsAt,
+      isActive: dto.isActive ?? true,
+      ...(id ? {} : { createdByAdminId: adminId }),
+    });
+    return repo.save(row);
+  }
+
+  async adminDeleteDepositPromotion(id: number) {
+    await this.dataSource
+      .getRepository(PartnerDepositPromotionEntity)
+      .delete({ id });
+    return { deleted: true };
+  }
+
+  /** What the top-up screen shows a distribution partner right now (doitac-1410 #015). */
+  async runningDepositPromotions(at = new Date()) {
+    return this.dataSource
+      .getRepository(PartnerDepositPromotionEntity)
+      .createQueryBuilder('p')
+      .where('p.isActive = true')
+      .andWhere('p.startsAt <= :at AND p.endsAt >= :at', { at })
+      .orderBy('p.minDepositVnd', 'ASC')
+      .getMany();
   }
 
   // ───────────────────────── Admin: commissions / payouts ─────────────────────────
