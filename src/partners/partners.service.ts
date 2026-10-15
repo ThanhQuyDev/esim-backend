@@ -322,6 +322,18 @@ const BANK_CHANGE_OTP_RESEND_MS = 60 * 1000;
 const BANK_CHANGE_OTP_MAX_ATTEMPTS = 5;
 
 /**
+ * A tier as a partner may see it: everything but the % added to cost price,
+ * which is a trade secret and is never shown to a partner (doitac-1410 #006).
+ */
+function withoutCostMarkup<T extends { costMarkupPercent?: unknown }>(
+  tier: T,
+): Omit<T, 'costMarkupPercent'> {
+  const rest = { ...tier };
+  delete rest.costMarkupPercent;
+  return rest;
+}
+
+/**
  * Withdrawals whose amount is held off the available balance: from the
  * request until the transfer is recorded (or the request is turned down), so
  * an approval can never hand the money back to be claimed again
@@ -4691,7 +4703,9 @@ export class PartnersService {
   }
 
   /** Tiers a partner can be placed in, for the "Hạng đối tác" comparison. */
-  async getMyTiers(partnerId: number): Promise<PartnerTierEntity[]> {
+  async getMyTiers(
+    partnerId: number,
+  ): Promise<Omit<PartnerTierEntity, 'costMarkupPercent'>[]> {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const tiers = await this.tierRepository.find({
       where: {
@@ -4716,7 +4730,7 @@ export class PartnersService {
       if (own) tiers.push(own);
     }
 
-    return tiers;
+    return tiers.map(withoutCostMarkup);
   }
 
   /**
@@ -5023,7 +5037,6 @@ export class PartnersService {
     partnerId: number,
     filters: { search?: string; destinationId?: number; limit?: number } = {},
   ): Promise<{
-    markupPercent: number;
     plans: {
       id: number;
       name: string;
@@ -5070,8 +5083,9 @@ export class PartnersService {
       [filters.destinationId ?? null, search, limit],
     );
 
+    // The markup itself is not sent: it is a trade secret, and the partner
+    // reads only the price they pay (doitac-1410 #006).
     return {
-      markupPercent,
       plans: (rows as Record<string, any>[]).map((row) => {
         const listPriceVnd = Number(row.vndPrice ?? 0);
         const unitPriceVnd = partnerPurchaseUnitPriceVnd(
@@ -5812,8 +5826,8 @@ export class PartnersService {
       },
       wallet,
       tier: {
-        current: currentTier,
-        next: nextTier,
+        current: currentTier && withoutCostMarkup(currentTier),
+        next: nextTier && withoutCostMarkup(nextTier),
         /**
          * When this tier took effect (#042). Orders placed before it kept the
          * rate of the tier the partner was on then — nothing is recalculated

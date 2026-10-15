@@ -78,7 +78,7 @@ describe('PartnerPurchaseService', () => {
         query: jest
           .fn()
           .mockResolvedValueOnce([{ id: 5, slug: 'jp' }])
-          .mockResolvedValue([{ n: 100 }]),
+          .mockResolvedValue([{ esims: 100, waitingItems: 0, failedItems: 0 }]),
       });
 
       await service.purchase(8, { planId: 5, quantity: 100 });
@@ -91,7 +91,7 @@ describe('PartnerPurchaseService', () => {
         query: jest
           .fn()
           .mockResolvedValueOnce([{ id: 5, slug: 'jp' }])
-          .mockResolvedValue([{ n: 100 }]),
+          .mockResolvedValue([{ esims: 100, waitingItems: 0, failedItems: 0 }]),
       });
 
       await service.purchase(8, { planId: 5, quantity: 100 });
@@ -129,7 +129,7 @@ describe('PartnerPurchaseService', () => {
         query: jest
           .fn()
           .mockResolvedValueOnce([{ id: 5, slug: 'jp' }])
-          .mockResolvedValue([{ n: 0 }]),
+          .mockResolvedValue([{ esims: 0, waitingItems: 0, failedItems: 1 }]),
       });
 
       await expect(
@@ -145,6 +145,39 @@ describe('PartnerPurchaseService', () => {
       );
     });
 
+    it('should KHÔNG hoàn tiền khi nhà cung cấp đã nhận đơn mà eSIM chưa về (doitac-1410 #006)', async () => {
+      // Airalo/eSIM Access/MicroEsim/Billion trả eSIM qua webhook sau vài
+      // giây tới vài phút. Hoàn ở đây là đối tác cầm eSIM miễn phí.
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 5, slug: 'jp' }])
+        .mockResolvedValue([{ esims: 0, waitingItems: 1, failedItems: 0 }]);
+      const { service, refundWalletForPurchase } = build({ query });
+
+      const result = await service.purchase(8, { planId: 5, quantity: 100 });
+
+      expect(refundWalletForPurchase).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ esimCount: 0, pendingEsims: 100 });
+    });
+
+    it('should đánh dấu đơn thất bại khi đã hoàn tiền', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 5, slug: 'jp' }])
+        .mockResolvedValue([{ esims: 0, waitingItems: 0, failedItems: 1 }]);
+      const { service } = build({ query });
+
+      await expect(
+        service.purchase(8, { planId: 5, quantity: 100 }),
+      ).rejects.toThrow();
+
+      expect(
+        query.mock.calls.some(([sql]: [string]) =>
+          /UPDATE "order" SET status = 'failed'/.test(sql),
+        ),
+      ).toBe(true);
+    });
+
     it('should giữ nguyên đơn khi chỉ cấp thiếu một phần', async () => {
       // Cấp 98/100 thì đối tác báo lỗi từng cái, admin duyệt tay (A4) — tự
       // hoàn một phần ở đây sẽ hoàn cả tiền của eSIM đang dùng được.
@@ -152,7 +185,7 @@ describe('PartnerPurchaseService', () => {
         query: jest
           .fn()
           .mockResolvedValueOnce([{ id: 5, slug: 'jp' }])
-          .mockResolvedValue([{ n: 98 }]),
+          .mockResolvedValue([{ esims: 98, waitingItems: 0, failedItems: 0 }]),
       });
 
       const result = await service.purchase(8, { planId: 5, quantity: 100 });
@@ -166,7 +199,7 @@ describe('PartnerPurchaseService', () => {
         query: jest
           .fn()
           .mockResolvedValueOnce([{ id: 5, slug: 'jp' }])
-          .mockResolvedValue([{ n: 100 }]),
+          .mockResolvedValue([{ esims: 100, waitingItems: 0, failedItems: 0 }]),
       });
 
       await expect(
@@ -185,7 +218,9 @@ describe('PartnerPurchaseService', () => {
         query: jest
           .fn()
           .mockResolvedValueOnce([{ id: 77, status: 'pending' }]) // đơn
-          .mockResolvedValueOnce([{ n: 0 }]) // số eSIM
+          .mockResolvedValueOnce([
+            { esims: 0, waitingItems: 0, failedItems: 1 },
+          ])
           .mockResolvedValueOnce([{ costVnd: '10800000' }]), // đã trừ ví
       });
 
@@ -200,13 +235,31 @@ describe('PartnerPurchaseService', () => {
       );
     });
 
+    it('should từ chối huỷ khi nhà cung cấp đã nhận đơn (doitac-1410 #006)', async () => {
+      const { service, refundWalletForPurchase } = build({
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([{ id: 77, status: 'paid' }])
+          .mockResolvedValueOnce([
+            { esims: 0, waitingItems: 1, failedItems: 0 },
+          ]),
+      });
+
+      await expect(service.cancelPurchase(8, 'PTN-1-AAA')).rejects.toThrow(
+        'eSIM đang được cấp',
+      );
+      expect(refundWalletForPurchase).not.toHaveBeenCalled();
+    });
+
     it('should từ chối huỷ khi eSIM đã cấp', async () => {
       // eSIM đã cấp là hàng đã giao — đối tác có thể đã bán đi rồi.
       const { service, refundWalletForPurchase } = build({
         query: jest
           .fn()
           .mockResolvedValueOnce([{ id: 77, status: 'completed' }])
-          .mockResolvedValueOnce([{ n: 100 }]),
+          .mockResolvedValueOnce([
+            { esims: 100, waitingItems: 0, failedItems: 0 },
+          ]),
       });
 
       await expect(service.cancelPurchase(8, 'PTN-1-AAA')).rejects.toThrow(

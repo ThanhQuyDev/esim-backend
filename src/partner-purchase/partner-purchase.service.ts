@@ -47,6 +47,7 @@ export class PartnerPurchaseService {
     listPriceVnd: number;
     marginVnd: number;
     esimCount: number;
+    pendingEsims: number;
   }> {
     const partner = await this.partnersService.getPartnerOrThrowById(partnerId);
 
@@ -88,12 +89,18 @@ export class PartnerPurchaseService {
       },
     });
 
-    const esimCount = await this.countEsims(order.id);
+    const state = await this.provisioningState(order.id);
 
-    // Không cấp được eSIM nào: hoàn nguyên tiền thay vì để đối tác mất tiền
-    // chờ người xử lý. Cấp thiếu một phần thì giữ nguyên và để đối tác báo
-    // từng eSIM lỗi — admin duyệt tay, theo quyết định A4.
-    if (esimCount === 0) {
+    // Chỉ hoàn tiền khi nhà cung cấp KHÔNG nhận đơn (doitac-1410 #006).
+    //
+    // Trước đây đếm eSIM ngay sau khi gửi đơn, và 0 eSIM là hoàn tiền. Nhưng
+    // Airalo, eSIM Access, MicroEsim, Billion, Gadget Korea đều trả eSIM sau,
+    // qua webhook: đơn đã đặt và esim.vn đã trả tiền nhà cung cấp, đối tác vẫn
+    // được hoàn — và khi eSIM về thì đối tác cầm eSIM miễn phí (đơn
+    // PTN-261014031301833 trên beta: 3 eSIM Airalo, ví được hoàn 324.000đ).
+    // Giờ đơn nhà cung cấp đã nhận là đơn đang chờ cấp; chỉ đơn bị từ chối
+    // ngay (không có mã đơn nhà cung cấp, không có eSIM) mới được hoàn.
+    if (state.esims === 0 && state.waitingItems === 0) {
       await this.partnersService.refundWalletForPurchase(partnerId, {
         orderId: order.id,
         orderNumber: order.orderNumber,
@@ -101,13 +108,20 @@ export class PartnerPurchaseService {
         suffix: 'provisioning-failed',
         reason: `Hoàn tiền: đơn ${order.orderNumber} không cấp được eSIM nào`,
       });
+      // Đơn đã hoàn tiền thì không được nằm ở "đã thanh toán".
+      await this.dataSource.query(
+        `UPDATE "order" SET status = 'failed' WHERE id = $1`,
+        [order.id],
+      );
       this.logger.error(
-        `purchase: order ${order.orderNumber} provisioned 0 eSIMs, refunded ${quote.totalVnd}đ to partner ${partnerId}`,
+        `purchase: order ${order.orderNumber} rejected by the provider, refunded ${quote.totalVnd}đ to partner ${partnerId}`,
       );
       throw new BadRequestException(
-        `Nhà cung cấp chưa cấp được eSIM cho đơn này. Tiền đã được hoàn lại ví, bạn có thể thử lại hoặc chọn gói khác.`,
+        `Nhà cung cấp chưa nhận đơn này. Tiền đã được hoàn lại ví, bạn có thể thử lại hoặc chọn gói khác.`,
       );
     }
+
+    const esimCount = state.esims;
 
     return {
       orderNumber: order.orderNumber,
@@ -118,6 +132,8 @@ export class PartnerPurchaseService {
       listPriceVnd: quote.listTotalVnd,
       marginVnd: quote.marginVnd,
       esimCount,
+      /** eSIM nhà cung cấp còn đang cấp; hiện dần trong Quản lý eSIM. */
+      pendingEsims: Math.max(0, quote.quantity - esimCount),
     };
   }
 
@@ -144,7 +160,15 @@ export class PartnerPurchaseService {
     }
     const order = rows[0] as { id: number; status: string };
 
-    const esimCount = await this.countEsims(order.id);
+    const state = await this.provisioningState(order.id);
+    const esimCount = state.esims;
+    // Nhà cung cấp đã nhận đơn thì esim.vn đã trả tiền và eSIM đang về: huỷ
+    // lúc này là đối tác lấy lại tiền rồi vẫn nhận eSIM (doitac-1410 #006).
+    if (state.waitingItems > 0) {
+      throw new BadRequestException(
+        `Đơn ${orderNumber} đã được nhà cung cấp tiếp nhận, eSIM đang được cấp nên không huỷ được. Nếu sau ít phút vẫn chưa có eSIM, hãy liên hệ esim.vn.`,
+      );
+    }
     if (esimCount > 0) {
       throw new BadRequestException(
         `Đơn ${orderNumber} đã cấp ${esimCount} eSIM nên không tự huỷ được. Nếu eSIM lỗi, hãy báo lỗi để esim.vn kiểm tra và hoàn tiền.`,
@@ -174,14 +198,36 @@ export class PartnerPurchaseService {
     return { orderNumber, refundedVnd };
   }
 
-  private async countEsims(orderId: number): Promise<number> {
+  /**
+   * Tình trạng cấp eSIM của một đơn: bao nhiêu eSIM đã về, bao nhiêu dòng nhà
+   * cung cấp đã nhận (có mã đơn bên họ) mà eSIM chưa về, bao nhiêu dòng bị từ
+   * chối ngay (doitac-1410 #006).
+   */
+  private async provisioningState(orderId: number): Promise<{
+    esims: number;
+    waitingItems: number;
+    failedItems: number;
+  }> {
     const rows = await this.dataSource.query(
-      `SELECT count(*)::int AS n
-         FROM esim e
-         JOIN order_item oi ON oi.id = e."orderItemId"
-        WHERE oi."orderId" = $1`,
+      `SELECT COALESCE(SUM(x.n), 0)::int AS esims,
+              COUNT(*) FILTER (
+                WHERE x.n = 0 AND x."orderRequestId" IS NOT NULL
+              )::int AS "waitingItems",
+              COUNT(*) FILTER (
+                WHERE x.n = 0 AND x."orderRequestId" IS NULL
+              )::int AS "failedItems"
+         FROM (
+           SELECT oi."orderRequestId",
+                  (SELECT count(*) FROM esim e WHERE e."orderItemId" = oi.id) AS n
+             FROM order_item oi
+            WHERE oi."orderId" = $1
+         ) x`,
       [orderId],
     );
-    return Number(rows[0]?.n ?? 0);
+    return {
+      esims: Number(rows[0]?.esims ?? 0),
+      waitingItems: Number(rows[0]?.waitingItems ?? 0),
+      failedItems: Number(rows[0]?.failedItems ?? 0),
+    };
   }
 }
