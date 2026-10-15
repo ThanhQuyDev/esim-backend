@@ -28,6 +28,7 @@ import {
 } from './dto/query-partner.dto';
 import {
   AdjustPartnerWalletDto,
+  UpdatePartnerWalletStatusDto,
   AssignPartnerTierDto,
   ProcessPartnerPayoutDto,
   RejectPartnerDto,
@@ -557,6 +558,17 @@ export class AdminPartnersController {
     return this.partnersService.adminPartnerPerformance(Number(id));
   }
 
+  /** The partner page's figures over a period the admin picks (doitac-1410 #004). */
+  @Get(':id/stats')
+  @HttpCode(HttpStatus.OK)
+  adminPartnerStats(
+    @Param('id') id: number,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.partnersService.adminPartnerStats(Number(id), { from, to });
+  }
+
   /** Create a marketing link on a partner's behalf (#061). */
   @Post(':id/links')
   @HttpCode(HttpStatus.CREATED)
@@ -591,6 +603,30 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   assignTier(@Param('id') id: number, @Body() dto: AssignPartnerTierDto) {
     return this.partnersService.assignTier(Number(id), dto);
+  }
+
+  /** The wallet popup's "Thông tin" tab (doitac-1410 #004). */
+  @Get(':id/wallet')
+  @HttpCode(HttpStatus.OK)
+  getWallet(@Param('id') id: number) {
+    return this.partnersService.getWalletSummaryForPartner(Number(id));
+  }
+
+  /** The wallet popup's "Lịch sử giao dịch" tab (doitac-1410 #004). */
+  @Get(':id/wallet/transactions')
+  @HttpCode(HttpStatus.OK)
+  getWalletHistory(@Param('id') id: number, @Query('limit') limit?: number) {
+    return this.partnersService.adminWalletHistory(Number(id), Number(limit));
+  }
+
+  /** Freeze or release the wallet on its own (doitac-1410 #004). */
+  @Patch(':id/wallet/status')
+  @HttpCode(HttpStatus.OK)
+  setWalletStatus(
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerWalletStatusDto,
+  ) {
+    return this.partnersService.setWalletLocked(Number(id), dto.locked);
   }
 
   @Post(':id/wallet/adjust')

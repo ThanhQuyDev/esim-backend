@@ -103,6 +103,27 @@ describe('sign-in while the partner profile is pending (#001)', () => {
     expect(createdSessions).toHaveLength(0);
   });
 
+  it('should tell a locked partner the account is locked (doitac-1410 #004)', async () => {
+    // It used to read "login fail", as if the password were wrong.
+    const { service, createdSessions } = await makeService({
+      id: 7,
+      partnerType: PartnerTypeEnum.KOL,
+      status: PartnerStatusEnum.DISABLED,
+    });
+
+    await expect(
+      service.validateLogin({ email: 'kol@esim.vn', password: PASSWORD }),
+    ).rejects.toMatchObject({
+      response: {
+        message:
+          'Tài khoản của Quý đối tác hiện đang bị khóa, vui lòng liên hệ admin để được hỗ trợ',
+        errors: { email: 'partnerLocked' },
+      },
+    });
+
+    expect(createdSessions).toHaveLength(0);
+  });
+
   it('should let an approved partner through', async () => {
     const { service, createdSessions } = await makeService({
       id: 5,

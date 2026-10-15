@@ -380,3 +380,10 @@ export class CreatePartnerPayoutDto {
   @MaxLength(1000)
   bankAccountInfo?: string;
 }
+
+/** Freeze (`true`) or release the partner's wallet (doitac-1410 #004). */
+export class UpdatePartnerWalletStatusDto {
+  @ApiProperty({ type: Boolean, example: true })
+  @IsBoolean()
+  locked!: boolean;
+}

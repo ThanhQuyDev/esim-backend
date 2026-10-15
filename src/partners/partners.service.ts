@@ -896,6 +896,57 @@ export class PartnersService {
   }
 
   /**
+   * The transaction history in the admin's wallet popup (doitac-1410 #004).
+   *
+   * Only money a person moved: for a marketing partner, the admin's manual
+   * credits and debits to their commission; for a distribution partner, also
+   * the deposits they paid in. Order-by-order lines are left out — those are
+   * on the orders and commission pages, and here they buried the adjustments.
+   */
+  async adminWalletHistory(partnerId: number, limit = 100) {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const types: PartnerWalletTransactionTypeEnum[] = [
+      PartnerWalletTransactionTypeEnum.MANUAL_CREDIT,
+      PartnerWalletTransactionTypeEnum.MANUAL_DEBIT,
+    ];
+    if (partner.partnerType !== PartnerTypeEnum.KOL) {
+      types.push(PartnerWalletTransactionTypeEnum.DEPOSIT);
+    }
+    return this.transactionRepository.find({
+      where: { partnerId, type: In(types) },
+      order: { createdAt: 'DESC' },
+      take: Math.min(Math.max(Number(limit) || 100, 1), 500),
+    });
+  }
+
+  /**
+   * Freeze or release the wallet on its own, from the wallet popup
+   * (doitac-1410 #004): "Tạm khóa (đóng băng hoa hồng hoặc số dư ký quỹ)".
+   *
+   * A frozen wallet stops withdrawals and stock purchases while the partner
+   * can still sign in. It cannot be released while the account itself is held
+   * or locked — that freeze belongs to the account, and is lifted with it.
+   */
+  async setWalletLocked(partnerId: number, locked: boolean) {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    if (!locked && partner.status !== PartnerStatusEnum.ACTIVE) {
+      throw new BadRequestException(
+        'Tài khoản đối tác đang bị khóa nên ví cũng bị đóng băng theo. Mở khóa tài khoản để mở lại ví.',
+      );
+    }
+    const wallet = await this.getOrCreateWallet(partnerId);
+    await this.walletRepository.update(
+      { id: wallet.id },
+      {
+        status: locked
+          ? PartnerWalletStatusEnum.LOCKED
+          : PartnerWalletStatusEnum.ACTIVE,
+      },
+    );
+    return this.getWalletSummaryForPartner(partnerId);
+  }
+
+  /**
    * May this partner run the affiliate programme (#048)?
    *
    * A marketing partner is the affiliate programme. A distribution partner buys
@@ -1327,6 +1378,13 @@ export class PartnersService {
     }
 
     const summary = await this.getWalletSummaryForPartner(partnerId);
+    // The admin can freeze the commission alone, from the wallet popup,
+    // without locking the whole account (doitac-1410 #004).
+    if (summary.status === PartnerWalletStatusEnum.LOCKED) {
+      throw new BadRequestException(
+        'Số tiền hoa hồng của bạn đang bị tạm khóa nên chưa thể tạo yêu cầu rút tiền. Vui lòng liên hệ admin.',
+      );
+    }
     if (dto.amountVnd > summary.availableBalanceVnd) {
       throw new BadRequestException(
         'Số dư khả dụng không đủ để tạo yêu cầu rút tiền này.',
@@ -1621,6 +1679,61 @@ export class PartnersService {
         };
       }),
       distribution: null,
+    };
+  }
+
+  /**
+   * The figures on the admin's partner page, over a period the admin picks
+   * (doitac-1410 #004).
+   *
+   * Each side shows what that partner sees on their own dashboard, read by the
+   * very same queries, so the admin and the partner can never be looking at
+   * two different numbers for one month. A marketing partner's view adds the
+   * refunded orders and their share, which the partner's own dashboard leaves
+   * out. A distribution partner who also runs the marketing programme gets both.
+   */
+  async adminPartnerStats(
+    partnerId: number,
+    range: { from?: string; to?: string } = {},
+  ) {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const isDistribution = partner.partnerType === PartnerTypeEnum.DISTRIBUTION;
+    const runsProgramme = !isDistribution || Boolean(partner.canAffiliate);
+
+    let marketing: Record<string, unknown> | null = null;
+    if (runsProgramme) {
+      const summary = await this.getMySummary(partnerId, range);
+      const { from, to } = resolveSummaryRange(range);
+      const [refunds] = await this.dataSource.query(
+        `SELECT COUNT(*) AS "refundedOrders"
+         FROM "order" o
+         WHERE o."attributedPartnerId" = $1
+           AND o."deletedAt" IS NULL
+           AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
+           AND o.status = 'refunded'
+           AND o."createdAt" >= $2 AND o."createdAt" < $3`,
+        [partnerId, from, to],
+      );
+      const orders = Number(summary.performance.orders ?? 0);
+      const refundedOrders = Number(refunds?.refundedOrders ?? 0);
+      const all = orders + refundedOrders;
+      marketing = {
+        ...summary,
+        refundedOrders,
+        refundRatePercent:
+          all > 0 ? Math.round((refundedOrders / all) * 1000) / 10 : 0,
+      };
+    }
+
+    const distribution = isDistribution
+      ? await this.getMyDistributionSummary(partnerId, range)
+      : null;
+
+    return {
+      partnerType: partner.partnerType,
+      wallet: await this.getWalletSummaryForPartner(partnerId),
+      marketing,
+      distribution,
     };
   }
 

@@ -225,4 +225,29 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
       } as never),
     ).rejects.toThrow('Số dư khả dụng không đủ');
   });
+
+  it('should refuse a withdrawal while the admin has frozen the wallet (doitac-1410 #004)', async () => {
+    const service = buildSummaryService(500000);
+    Object.assign(service, {
+      getPartnerOrThrowById: jest
+        .fn()
+        .mockResolvedValue({ id: 5, partnerType: 'kol', status: 'active' }),
+      getWalletSummaryForPartner: jest.fn().mockResolvedValue({
+        availableBalanceVnd: 500000,
+        status: 'locked',
+      }),
+      payoutRepository: {
+        createQueryBuilder: () => sum(0),
+        create: (row: unknown) => row,
+        save: jest.fn(),
+      },
+    });
+
+    await expect(
+      service.createPayoutRequest(5, {
+        amountVnd: 100_000,
+        status: PartnerPayoutStatusEnum.PENDING,
+      } as never),
+    ).rejects.toThrow('đang bị tạm khóa');
+  });
 });

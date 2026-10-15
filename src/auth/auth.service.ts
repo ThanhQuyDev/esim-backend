@@ -81,10 +81,14 @@ export class AuthService {
     // A locked account cannot sign in at all, and is told why rather than
     // being left to guess at a wrong password (#061).
     if (partner?.status === PartnerStatusEnum.DISABLED) {
+      // The message travels as `message`, with a code beside it, because the
+      // sign-in page shows `message` and a sentence sitting in `errors.email`
+      // reached the partner as a bare "Login failed" (doitac-1410 #004).
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
+        message: PARTNER_LOCKED_MESSAGE,
         errors: {
-          email: PARTNER_LOCKED_MESSAGE,
+          email: 'partnerLocked',
         },
       });
     }
