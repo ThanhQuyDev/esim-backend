@@ -5706,6 +5706,17 @@ export class PartnersService {
     partnerId: number,
   ): Promise<Omit<PartnerTierEntity, 'costMarkupPercent'>[]> {
     const partner = await this.getPartnerOrThrowById(partnerId);
+
+    // A partner on an internal tier sits outside the ladder altogether: they
+    // see the one tier they are on and nothing else — not the rungs they
+    // could "climb" to (doitac-1410 #024).
+    if (partner.tierCode) {
+      const own = await this.tierRepository.findOne({
+        where: { partnerType: partner.partnerType, tierCode: partner.tierCode },
+      });
+      if (own?.isInternal) return [withoutCostMarkup(own)];
+    }
+
     const tiers = await this.tierRepository.find({
       where: {
         partnerType: partner.partnerType,
@@ -6783,10 +6794,17 @@ export class PartnersService {
     });
     const currentTier =
       tiers.find((t) => t.tierCode === partner.tierCode) ?? null;
-    const nextTier =
-      tiers.find(
-        (t) => Number(t.minVolumeVnd) > Number(currentTier?.minVolumeVnd ?? -1),
-      ) ?? null;
+    // Only the public ladder has a "next" rung, and a partner on an internal
+    // tier is not on it: they used to read "Còn 0 ₫ doanh số để lên hạng
+    // Bạc" (doitac-1410 #024).
+    const isInternalTier = Boolean(currentTier?.isInternal);
+    const nextTier = isInternalTier
+      ? null
+      : (tiers.find(
+          (t) =>
+            !t.isInternal &&
+            Number(t.minVolumeVnd) > Number(currentTier?.minVolumeVnd ?? -1),
+        ) ?? null);
 
     const revenueTotal = Number(perf?.revenueTotal ?? 0);
     const toNextTierVnd = nextTier
@@ -6827,6 +6845,8 @@ export class PartnersService {
       tier: {
         current: currentTier && withoutCostMarkup(currentTier),
         next: nextTier && withoutCostMarkup(nextTier),
+        /** A negotiated tier, outside the revenue ladder (doitac-1410 #024). */
+        isInternal: isInternalTier,
         /**
          * When this tier took effect (#042). Orders placed before it kept the
          * rate of the tier the partner was on then — nothing is recalculated
