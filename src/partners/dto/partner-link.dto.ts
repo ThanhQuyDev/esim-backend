@@ -68,9 +68,12 @@ export class UpdatePartnerLinkDto {
 
 /** The link list's filters and order (doitac-1410 #018). */
 export class QueryMyLinksDto {
-  @ApiPropertyOptional({ enum: ['active', 'inactive', 'suspended', 'deleted'] })
+  /** `live`: every link but the deleted, which have their own tab (#019). */
+  @ApiPropertyOptional({
+    enum: ['live', 'active', 'inactive', 'suspended', 'deleted'],
+  })
   @IsOptional()
-  @IsIn(['active', 'inactive', 'suspended', 'deleted'])
+  @IsIn(['live', 'active', 'inactive', 'suspended', 'deleted'])
   status?: string;
 
   /** The `utm_source` the portal stores the channel as. */
@@ -132,4 +135,26 @@ export class AppealLinkDto {
   @IsOptional()
   @IsInt()
   ticketId?: number;
+}
+
+/** Asking esim.vn to restore a deleted link (doitac-1410 #019). */
+export class RequestLinkRestoreDto {
+  @ApiProperty({ example: 'Link vẫn đang in trên tờ rơi phát ở sân bay' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason!: string;
+}
+
+/** An admin deciding a restore request (doitac-1410 #019). */
+export class DecideLinkRestoreDto {
+  @ApiProperty({ type: Boolean })
+  @IsBoolean()
+  approve!: boolean;
+
+  @ApiPropertyOptional({ example: 'Đã xác minh link đang in trên ấn phẩm' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }

@@ -23,6 +23,7 @@ import { PartnersService } from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
 import {
   CreatePartnerLinkDto,
+  DecideLinkRestoreDto,
   SetLinkSuspensionDto,
 } from './dto/partner-link.dto';
 import { ReviewEsimFaultDto } from './dto/partner-esim-fault.dto';
@@ -273,6 +274,21 @@ export class AdminPartnersController {
     @Request() req: { user: { id: number } },
   ) {
     return this.partnersService.adminSetLinkSuspension(
+      Number(linkId),
+      dto,
+      req.user.id,
+    );
+  }
+
+  /** Approve or refuse a partner's request to restore a link (doitac-1410 #019). */
+  @Post('links/:linkId/restore-request')
+  @HttpCode(HttpStatus.OK)
+  decideLinkRestore(
+    @Param('linkId') linkId: number,
+    @Body() dto: DecideLinkRestoreDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminDecideLinkRestore(
       Number(linkId),
       dto,
       req.user.id,

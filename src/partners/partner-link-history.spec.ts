@@ -90,7 +90,9 @@ describe('marketing links (doitac-1410 #018)', () => {
         deletedAt: new Date(Date.now() - 31 * DAY),
       });
 
-      await expect(service.restoreMyLink(9, 5)).rejects.toThrow('chỉ esim.vn');
+      await expect(service.restoreMyLink(9, 5)).rejects.toThrow(
+        'gửi yêu cầu khôi phục',
+      );
       expect(restore).not.toHaveBeenCalled();
     });
   });
@@ -264,6 +266,140 @@ describe('marketing links (doitac-1410 #018)', () => {
       // Summed as text in the browser, it read a million times too large.
       expect(row.totalCommissionVnd).toBe(260868);
       expect(row.periodCommissionVnd).toBe(1000);
+    });
+  });
+
+  describe('deleted links (doitac-1410 #019)', () => {
+    it('should send a link restored once already to admin approval', async () => {
+      const { service, restore } = buildService({
+        id: 5,
+        partnerId: 9,
+        deletedAt: new Date(Date.now() - DAY),
+        restoreCount: 1,
+      });
+
+      await expect(service.restoreMyLink(9, 5)).rejects.toThrow(
+        'đã khôi phục 1 lần',
+      );
+      expect(restore).not.toHaveBeenCalled();
+    });
+
+    it('should file the request and keep the link deleted', async () => {
+      const { service, update, restore, savedEvents } = buildService({
+        id: 5,
+        partnerId: 9,
+        deletedAt: new Date(Date.now() - 40 * DAY),
+        restoreRequestedAt: null,
+      });
+
+      await service.requestMyLinkRestore(9, 5, '  Link đang in trên tờ rơi  ');
+
+      expect(update).toHaveBeenCalledWith(
+        { id: 5 },
+        {
+          restoreRequestedAt: expect.any(Date),
+          restoreRequestReason: 'Link đang in trên tờ rơi',
+        },
+      );
+      expect(restore).not.toHaveBeenCalled();
+      expect(savedEvents[0]).toMatchObject({ action: 'restore_requested' });
+    });
+
+    it('should not file a second request while one waits', async () => {
+      const { service } = buildService({
+        id: 5,
+        partnerId: 9,
+        deletedAt: new Date(),
+        restoreRequestedAt: new Date(),
+      });
+      await expect(service.requestMyLinkRestore(9, 5, 'x')).rejects.toThrow(
+        'đang chờ admin phê duyệt',
+      );
+    });
+
+    it('should restore on approval and tell the partner', async () => {
+      const { service, restore, savedEvents, notifications } = buildService({
+        id: 5,
+        partnerId: 9,
+        code: 'MINHTRAN',
+        label: 'Video Nhật Bản',
+        deletedAt: new Date(),
+        restoreRequestedAt: new Date(),
+      });
+
+      await service.adminDecideLinkRestore(5, { approve: true }, 1);
+
+      expect(restore).toHaveBeenCalledWith({ id: 5 });
+      expect(savedEvents[0]).toMatchObject({
+        action: 'restored',
+        actorRole: 'admin',
+      });
+      expect(String(notifications[0].title)).toContain('đã được khôi phục');
+    });
+
+    it('should leave it deleted on refusal, with the reason told', async () => {
+      const { service, restore, notifications } = buildService({
+        id: 5,
+        partnerId: 9,
+        code: 'MINHTRAN',
+        label: 'Video Nhật Bản',
+        deletedAt: new Date(),
+        restoreRequestedAt: new Date(),
+      });
+
+      await service.adminDecideLinkRestore(
+        5,
+        { approve: false, note: 'Link vi phạm' },
+        1,
+      );
+
+      expect(restore).not.toHaveBeenCalled();
+      expect(String(notifications[0].body)).toContain('Link vi phạm');
+    });
+  });
+
+  describe('channel performance (doitac-1410 #019)', () => {
+    it('should work out conversion as orders over clicks, with a total', async () => {
+      const service = Object.create(
+        PartnersService.prototype,
+      ) as PartnersService;
+      Object.assign(service, {
+        dataSource: {
+          query: jest.fn().mockResolvedValue([
+            {
+              channel: 'youtube',
+              links: 3,
+              clicks: 200,
+              orders: 10,
+              revenueVnd: '3000000',
+              commissionVnd: '210000',
+            },
+            {
+              channel: 'other',
+              links: 1,
+              clicks: 50,
+              orders: 1,
+              revenueVnd: '500000',
+              commissionVnd: '35000',
+            },
+          ]),
+        },
+      });
+
+      const result = await service.getMyChannelPerformance(9);
+
+      expect(result.channels[0]).toMatchObject({
+        channel: 'youtube',
+        revenueVnd: 3000000,
+        conversionPercent: 5,
+      });
+      expect(result.total).toMatchObject({
+        links: 4,
+        clicks: 250,
+        orders: 11,
+        commissionVnd: 245000,
+        conversionPercent: 4.4,
+      });
     });
   });
 });

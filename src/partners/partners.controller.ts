@@ -48,6 +48,7 @@ import {
   UpdatePartnerLinkDto,
   QueryMyLinksDto,
   AppealLinkDto,
+  RequestLinkRestoreDto,
 } from './dto/partner-link.dto';
 import { PartnerOrderRowDto } from './dto/partner-order-row.dto';
 import { ReportFaultyEsimDto } from './dto/partner-esim-fault.dto';
@@ -699,6 +700,42 @@ export class PartnersController {
   ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
     return this.partnersService.restoreMyLink(partner.id, Number(id));
+  }
+
+  /** Per-channel performance for the link page (doitac-1410 #019). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/links-channels')
+  @HttpCode(HttpStatus.OK)
+  async getMyChannelPerformance(
+    @Request() req: { user: { id: number } },
+    @Query() query: { from?: string; to?: string },
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyChannelPerformance(partner.id, {
+      from: query.from,
+      to: query.to,
+    });
+  }
+
+  /** Ask esim.vn to restore a deleted link (doitac-1410 #019). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/links/:id/restore-request')
+  @HttpCode(HttpStatus.OK)
+  async requestMyLinkRestore(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+    @Body() dto: RequestLinkRestoreDto,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.requestMyLinkRestore(
+      partner.id,
+      Number(id),
+      dto.reason,
+    );
   }
 
   /** Record the appeal of a link esim.vn suspended (doitac-1410 #018). */

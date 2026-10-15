@@ -65,6 +65,16 @@ export class PartnerLinkEntity extends EntityRelationalHelper {
   @Column({ type: Number, nullable: true })
   appealTicketId?: number | null;
 
+  /**
+   * The partner asked esim.vn to restore this deleted link, and why
+   * (doitac-1410 #019). Cleared when an admin decides.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  restoreRequestedAt?: Date | null;
+
+  @Column({ type: String, length: 1000, nullable: true })
+  restoreRequestReason?: string | null;
+
   @Column({ type: 'int', default: 0 })
   clickCount!: number;
 

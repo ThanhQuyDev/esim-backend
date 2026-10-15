@@ -106,6 +106,7 @@ import {
 } from './dto/admin-partner.dto';
 import {
   CreatePartnerLinkDto,
+  DecideLinkRestoreDto,
   QueryMyLinksDto,
   SetLinkSuspensionDto,
   UpdatePartnerLinkDto,
@@ -1218,6 +1219,9 @@ export class PartnersService {
     const where: string[] = ['l."partnerId" = $1'];
     if (query.status === 'deleted') {
       where.push('l."deletedAt" IS NOT NULL');
+    } else if (query.status === 'live') {
+      // Everything but the deleted, which have their own tab (doitac-1410 #019).
+      where.push('l."deletedAt" IS NULL');
     } else if (query.status) {
       params.push(query.status);
       where.push(`l."deletedAt" IS NULL AND l.status = $${params.length}`);
@@ -1249,6 +1253,8 @@ export class PartnersService {
               COALESCE(co.orders, 0)::int AS "periodOrders",
               COALESCE(co.commission, 0) AS "periodCommissionVnd",
               ev."lastChangedAt",
+              ev."deletedBy",
+              COALESCE(ev.restores, 0)::int AS "restoreCount",
               COALESCE(ev.edits, 0)::int AS "editCount"
          FROM partner_link l
          LEFT JOIN LATERAL (
@@ -1263,7 +1269,14 @@ export class PartnersService {
          ) co ON TRUE
          LEFT JOIN LATERAL (
            SELECT MAX(e."createdAt") AS "lastChangedAt",
-                  COUNT(*) FILTER (WHERE e.action IN ('renamed', 'retargeted')) AS edits
+                  COUNT(*) FILTER (WHERE e.action IN ('renamed', 'retargeted')) AS edits,
+                  -- Restores within the last 30 days: from the second on, an
+                  -- admin decides (doitac-1410 #019).
+                  COUNT(*) FILTER (
+                    WHERE e.action = 'restored' AND e."createdAt" >= now() - INTERVAL '30 days'
+                  ) AS restores,
+                  (ARRAY_AGG(e."actorRole" ORDER BY e."createdAt" DESC)
+                     FILTER (WHERE e.action = 'deleted'))[1] AS "deletedBy"
              FROM partner_link_event e WHERE e."linkId" = l.id
          ) ev ON TRUE
         WHERE ${where.join(' AND ')}
@@ -1306,6 +1319,18 @@ export class PartnersService {
       suspendedByAdmin: Boolean(row.suspendedByAdmin),
       suspendedReason: row.suspendedReason ?? null,
       appealedAt: row.appealedAt ?? null,
+      // Deleted links (doitac-1410 #019): who deleted it, and whether the
+      // partner may bring it back alone or has to ask.
+      deletedBy: row.deletedBy ?? null,
+      restoreCount: Number(row.restoreCount ?? 0),
+      canSelfRestore: Boolean(
+        deletedAt &&
+        Number(row.restoreCount ?? 0) === 0 &&
+        Date.now() <=
+          deletedAt.getTime() + LINK_RESTORE_DAYS * 24 * 60 * 60 * 1000,
+      ),
+      restoreRequestedAt: row.restoreRequestedAt ?? null,
+      restoreRequestReason: row.restoreRequestReason ?? null,
     };
   }
 
@@ -1413,17 +1438,168 @@ export class PartnersService {
     if (!link || !link.deletedAt) {
       throw new NotFoundException('Không tìm thấy link đã xóa.');
     }
-    const limit =
-      link.deletedAt.getTime() + LINK_RESTORE_DAYS * 24 * 60 * 60 * 1000;
-    if (Date.now() > limit) {
+    const [row] = await this.getMyLinksByIds(partnerId, [linkId], {});
+    if (!row?.canSelfRestore) {
       throw new BadRequestException(
-        `Đã quá ${LINK_RESTORE_DAYS} ngày kể từ khi xóa, chỉ esim.vn khôi phục được link này. Vui lòng liên hệ hỗ trợ.`,
+        row && row.restoreCount > 0
+          ? 'Link này đã khôi phục 1 lần trước đó. Từ lần khôi phục thứ hai, vui lòng gửi yêu cầu để admin duyệt.'
+          : `Đã quá ${LINK_RESTORE_DAYS} ngày kể từ khi xóa, vui lòng gửi yêu cầu khôi phục để esim.vn hỗ trợ.`,
       );
     }
     await this.linkRepository.restore({ id: linkId });
     await this.logLinkEvent(link, 'restored', 'partner', null);
     const [restored] = await this.getMyLinksByIds(partnerId, [linkId], {});
     return restored;
+  }
+
+  /**
+   * Ask esim.vn to restore a deleted link the partner cannot restore alone
+   * (doitac-1410 #019): more than 30 days on, or restored once already. The
+   * link stays deleted until an admin decides.
+   */
+  async requestMyLinkRestore(
+    partnerId: number,
+    linkId: number,
+    reason: string,
+  ) {
+    const link = await this.linkRepository.findOne({
+      where: { id: linkId, partnerId },
+      withDeleted: true,
+    });
+    if (!link || !link.deletedAt) {
+      throw new NotFoundException('Không tìm thấy link đã xóa.');
+    }
+    if (link.restoreRequestedAt) {
+      throw new BadRequestException('Link này đang chờ admin phê duyệt.');
+    }
+    await this.linkRepository.update(
+      { id: linkId },
+      { restoreRequestedAt: new Date(), restoreRequestReason: reason.trim() },
+    );
+    await this.logLinkEvent(link, 'restore_requested', 'partner', null, {
+      reason: reason.trim(),
+    });
+    const [updated] = await this.getMyLinksByIds(partnerId, [linkId], {});
+    return updated;
+  }
+
+  /** An admin decides a restore request (doitac-1410 #019); the partner is told. */
+  async adminDecideLinkRestore(
+    linkId: number,
+    dto: DecideLinkRestoreDto,
+    adminId: number,
+  ) {
+    const link = await this.linkRepository.findOne({
+      where: { id: linkId },
+      withDeleted: true,
+    });
+    if (!link || !link.deletedAt || !link.restoreRequestedAt) {
+      throw new NotFoundException('Không có yêu cầu khôi phục cho link này.');
+    }
+    await this.linkRepository.update(
+      { id: linkId },
+      { restoreRequestedAt: null, restoreRequestReason: null },
+    );
+    const note = dto.note?.trim();
+    if (dto.approve) {
+      await this.linkRepository.restore({ id: linkId });
+      await this.logLinkEvent(link, 'restored', 'admin', adminId, {
+        ...(note ? { reason: note } : {}),
+      });
+    } else {
+      await this.logLinkEvent(link, 'restore_rejected', 'admin', adminId, {
+        ...(note ? { reason: note } : {}),
+      });
+    }
+    await this.notifyOnePartner(
+      link.partnerId,
+      dto.approve
+        ? `Link "${link.label}" đã được khôi phục`
+        : `Yêu cầu khôi phục link "${link.label}" chưa được duyệt`,
+      dto.approve
+        ? `esim.vn đã khôi phục link esim.vn/go/${link.code} theo yêu cầu của bạn.${note ? ` Ghi chú: ${note}` : ''}`
+        : `esim.vn chưa duyệt yêu cầu khôi phục link esim.vn/go/${link.code}.${note ? ` Lý do: ${note}` : ''}`,
+      adminId,
+    );
+    const [updated] = await this.getMyLinksByIds(link.partnerId, [linkId], {});
+    return updated;
+  }
+
+  /**
+   * "Hiệu suất theo kênh" (doitac-1410 #019): revenue, commission, clicks and
+   * orders per channel over the chosen window. Deleted links still count —
+   * what they earned was earned.
+   */
+  async getMyChannelPerformance(
+    partnerId: number,
+    range: { from?: string; to?: string } = {},
+  ) {
+    const window = range.from
+      ? resolveSummaryRange(range)
+      : { from: new Date(0), to: new Date(Date.now() + 60_000) };
+    const rows = await this.dataSource.query(
+      `WITH links AS (
+         SELECT l.id,
+                COALESCE(
+                  NULLIF(split_part(substring(l."targetPath" from 'utm_source=([^&]*)'), '&', 1), ''),
+                  'other'
+                ) AS channel
+           FROM partner_link l
+          WHERE l."partnerId" = $1
+       )
+       SELECT k.channel,
+              COUNT(DISTINCT k.id)::int AS links,
+              COALESCE(SUM(ck.n), 0)::int AS clicks,
+              COALESCE(SUM(co.orders), 0)::int AS orders,
+              COALESCE(SUM(co.revenue), 0) AS "revenueVnd",
+              COALESCE(SUM(co.commission), 0) AS "commissionVnd"
+         FROM links k
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*) AS n FROM partner_link_click c
+            WHERE c."linkId" = k.id AND c."clickedAt" >= $2 AND c."clickedAt" < $3
+         ) ck ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT COUNT(DISTINCT c."orderId") AS orders,
+                  COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS revenue,
+                  COALESCE(SUM(c."commissionVnd"), 0) AS commission
+             FROM order_partner_commission c
+             JOIN "order" o ON o.id = c."orderId" AND o."deletedAt" IS NULL
+            WHERE c."linkId" = k.id AND c.status <> 'reversed'
+              AND c."createdAt" >= $2 AND c."createdAt" < $3
+         ) co ON TRUE
+        GROUP BY k.channel
+        ORDER BY "revenueVnd" DESC, clicks DESC`,
+      [partnerId, window.from, window.to],
+    );
+    const pct = (orders: number, clicks: number) =>
+      clicks > 0 ? Math.round((orders / clicks) * 1000) / 10 : 0;
+    const channels = (rows as Record<string, any>[]).map((r) => {
+      const clicks = Number(r.clicks ?? 0);
+      const orders = Number(r.orders ?? 0);
+      return {
+        channel: String(r.channel),
+        links: Number(r.links ?? 0),
+        clicks,
+        orders,
+        revenueVnd: Number(r.revenueVnd ?? 0),
+        commissionVnd: Number(r.commissionVnd ?? 0),
+        conversionPercent: pct(orders, clicks),
+      };
+    });
+    const total = channels.reduce(
+      (t, c) => ({
+        links: t.links + c.links,
+        clicks: t.clicks + c.clicks,
+        orders: t.orders + c.orders,
+        revenueVnd: t.revenueVnd + c.revenueVnd,
+        commissionVnd: t.commissionVnd + c.commissionVnd,
+      }),
+      { links: 0, clicks: 0, orders: 0, revenueVnd: 0, commissionVnd: 0 },
+    );
+    return {
+      channels,
+      total: { ...total, conversionPercent: pct(total.orders, total.clicks) },
+    };
   }
 
   /**
