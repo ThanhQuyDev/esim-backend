@@ -202,4 +202,12 @@ describe('PartnersService.adminRevenueByPartnerType (#050)', () => {
     expect(result.totalRevenueVnd).toBe(280);
     expect(result.previousTotalRevenueVnd).toBe(140);
   });
+
+  it('should take an eSIM refunded to the wallet off the distribution revenue (doitac-1410 #046)', async () => {
+    const { service, query } = buildService({});
+    await service.adminRevenueByPartnerType();
+    const [sql] = query.mock.calls[1] as [string];
+    expect(sql).toContain("rt.type = 'order_purchase_reversal'");
+    expect(sql).toContain('rt."orderId" = o.id');
+  });
 });

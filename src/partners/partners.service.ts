@@ -342,6 +342,17 @@ function samePhone(a?: string | null, b?: string | null): boolean {
 const ORDER_REVENUE_SQL = `COALESCE(NULLIF(o."eligibleSpendVnd", 0), NULLIF(o."payableVndPrice" + o."walletSpentVndAmount", 0), o."vndPrice")`;
 
 /**
+ * What a partner's own purchase left esim.vn with (doitac-1410 #046): the
+ * order total less any eSIM refunded to their wallet after a fault report —
+ * such a refund leaves the order "paid", so the order total alone overstates
+ * it. Used wherever the admin sees a distribution partner's revenue.
+ */
+const PARTNER_PURCHASE_KEPT_SQL = `(${ORDER_REVENUE_SQL} - COALESCE((
+    SELECT SUM(rt."amountVnd") FROM partner_wallet_transaction rt
+     WHERE rt."orderId" = o.id
+       AND rt.type = 'order_purchase_reversal'), 0))`;
+
+/**
  * How long an affiliate order sits as "Chờ xác nhận" before the commission is
  * approved (#019) — the window in which customers cancel or ask for a refund.
  */
@@ -8688,11 +8699,15 @@ export class PartnersService {
     // The distribution side: what the partner paid us. An order of theirs that
     // was credited to another partner is that partner's, not theirs, so it is
     // left out here and counted above.
+    // An eSIM refunded to the wallet after a fault report (#038) leaves the
+    // order "paid", so the refund is taken off here: revenue is what esim.vn
+    // actually kept (doitac-1410 #046).
+    const keptSql = PARTNER_PURCHASE_KEPT_SQL;
     const purchases = await this.dataSource.query(
       `SELECT p."partnerType" AS "partnerType",
-              COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+              COALESCE(SUM(${keptSql}) FILTER (
                 WHERE o."createdAt" >= $1 AND o."createdAt" < $2), 0) AS "purchasesVnd",
-              COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
+              COALESCE(SUM(${keptSql}) FILTER (
                 WHERE o."createdAt" >= $3 AND o."createdAt" < $4), 0) AS "prevPurchasesVnd"
        FROM "order" o
        JOIN partner p ON p."userId" = o."userId"
@@ -8920,7 +8935,7 @@ export class PartnersService {
          UNION ALL
 
          SELECT o.id AS "orderId", o."createdAt", p."partnerType",
-                ${ORDER_REVENUE_SQL} AS "revenueVnd"
+                ${PARTNER_PURCHASE_KEPT_SQL} AS "revenueVnd"
          FROM "order" o
          JOIN partner p ON p."userId" = o."userId"
          WHERE o."deletedAt" IS NULL AND o.status = ANY($3)
@@ -9060,7 +9075,7 @@ export class PartnersService {
          UNION ALL
 
          SELECT o.id AS "orderId", pa.id AS "partnerId",
-                ${ORDER_REVENUE_SQL} AS "revenueVnd",
+                ${PARTNER_PURCHASE_KEPT_SQL} AS "revenueVnd",
                 0 AS "commissionVnd"
          FROM "order" o
          JOIN partner pa ON pa."userId" = o."userId" AND pa."deletedAt" IS NULL
