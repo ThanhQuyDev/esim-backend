@@ -262,6 +262,16 @@ export class AdminPartnersController {
     return this.partnersService.adminListNotifications(Number(limit) || 50);
   }
 
+  /** The figures on top of "Tiếp thị liên kết" (doitac-1410 #051). */
+  @Get('links/stats')
+  @HttpCode(HttpStatus.OK)
+  adminLinkStats(@Query() query: { from?: string; to?: string }) {
+    return this.partnersService.adminLinkStats({
+      from: query.from,
+      to: query.to,
+    });
+  }
+
   /** The partner programme's settings (#075, #076, #077). */
   /**
    * Suspend or release one marketing link (doitac-1410 #018). The partner is

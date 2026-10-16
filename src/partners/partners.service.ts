@@ -1902,6 +1902,64 @@ export class PartnersService {
   }
 
   /**
+   * The four figures on top of the admin's "Tiếp thị liên kết" page
+   * (doitac-1410 #051). Counts of links are as they stand now; orders,
+   * commission and landing-page changes are over the chosen window, whose
+   * length in days the page prints ("Đổi trang đích trong 7 ngày").
+   */
+  async adminLinkStats(range: { from?: string; to?: string } = {}) {
+    const { from, to } = resolveSummaryRange(range);
+    const [links] = await this.dataSource.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE l."deletedAt" IS NULL)::int AS total,
+         COUNT(*) FILTER (WHERE l."deletedAt" IS NULL AND l.status = 'active')::int AS active,
+         COUNT(*) FILTER (WHERE l."deletedAt" IS NULL AND l.status = 'inactive')::int AS paused,
+         COUNT(*) FILTER (WHERE l."deletedAt" IS NULL AND l.status = 'suspended')::int AS suspended,
+         COUNT(*) FILTER (WHERE l."deletedAt" IS NULL AND l.status = 'suspended'
+                            AND l."appealedAt" IS NOT NULL)::int AS appealing,
+         COUNT(*) FILTER (WHERE l."deletedAt" IS NOT NULL)::int AS deleted,
+         COUNT(*) FILTER (WHERE l."deletedAt" IS NOT NULL
+                            AND l."restoreRequestedAt" IS NOT NULL)::int AS "restorePending"
+       FROM partner_link l
+       JOIN partner p ON p.id = l."partnerId" AND p."deletedAt" IS NULL`,
+    );
+    const [period] = await this.dataSource.query(
+      `SELECT
+         (SELECT COUNT(DISTINCT c."orderId")::int FROM order_partner_commission c
+           WHERE c."linkId" IS NOT NULL AND c.status <> 'reversed'
+             AND c."createdAt" >= $1 AND c."createdAt" < $2) AS orders,
+         (SELECT COALESCE(SUM(c."commissionVnd"), 0) FROM order_partner_commission c
+           WHERE c."linkId" IS NOT NULL AND c.status <> 'reversed'
+             AND c."createdAt" >= $1 AND c."createdAt" < $2) AS "commissionVnd",
+         (SELECT COUNT(DISTINCT e."linkId")::int FROM partner_link_event e
+           WHERE e.action = 'retargeted'
+             AND e."createdAt" >= $1 AND e."createdAt" < $2) AS retargeted`,
+      [from, to],
+    );
+    const n = (v: unknown) => Number(v ?? 0);
+    return {
+      range: { from: from.toISOString(), to: to.toISOString() },
+      days: Math.max(
+        1,
+        Math.round((to.getTime() - from.getTime()) / 86_400_000),
+      ),
+      total: {
+        links: n(links?.total),
+        active: n(links?.active),
+        orders: n(period?.orders),
+        commissionVnd: n(period?.commissionVnd),
+      },
+      retargeted: n(period?.retargeted),
+      suspended: { links: n(links?.suspended), appealing: n(links?.appealing) },
+      restorePending: {
+        links: n(links?.restorePending),
+        deleted: n(links?.deleted),
+        paused: n(links?.paused),
+      },
+    };
+  }
+
+  /**
    * An admin suspends, or releases, one link (doitac-1410 #018).
    *
    * The partner is told why, by email and in the portal, at once: a link in
