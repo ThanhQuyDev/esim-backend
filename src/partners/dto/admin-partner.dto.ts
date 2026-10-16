@@ -18,6 +18,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateNested,
   IsDateString,
   IsNumber,
@@ -162,6 +163,33 @@ export class QueryPartnerPayoutDto {
   @IsInt()
   @Min(1)
   limit?: number;
+}
+
+/** "Hoàn tiền" on a distribution partner's order (doitac-1410 #058). */
+export class AdminRefundPartnerPurchaseDto {
+  @ApiPropertyOptional({ type: [String], description: 'ICCID cần hoàn' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  iccids?: string[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    description: 'Hoàn cả sản phẩm (mọi eSIM của dòng)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @Type(() => Number)
+  @IsInt({ each: true })
+  itemIds?: number[];
+
+  @ApiProperty({ example: 'eSIM không kết nối được, nhà mạng xác nhận lỗi' })
+  @IsString()
+  @MinLength(5, { message: 'Vui lòng nhập lý do hoàn tiền (ít nhất 5 ký tự).' })
+  @MaxLength(500)
+  reason!: string;
 }
 
 /** "Duyệt chi" or "Từ chối" for the rows an admin ticked (#069). */

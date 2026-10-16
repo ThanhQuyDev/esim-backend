@@ -20,7 +20,11 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
-import { AdminLinkListQuery, PartnersService } from './partners.service';
+import {
+  AdminLinkListQuery,
+  AdminPartnerOrderQuery,
+  PartnersService,
+} from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
 import {
   CreatePartnerLinkDto,
@@ -53,6 +57,7 @@ import {
   UpdatePartnerAffiliateGrantDto,
   UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerStatusDto,
+  AdminRefundPartnerPurchaseDto,
 } from './dto/admin-partner.dto';
 import {
   CreatePartnerTierDto,
@@ -446,17 +451,12 @@ export class AdminPartnersController {
   /** "Đơn hàng đối tác": the partner screens, with the scope opened up (#071). */
   @Get('orders')
   @HttpCode(HttpStatus.OK)
-  listPartnerOrders(
-    @Query()
-    query: {
-      partnerType?: string;
-      partnerId?: number;
-      search?: string;
-      status?: string;
-      limit?: number;
-    },
-  ) {
-    return this.partnersService.adminListPartnerOrders(query);
+  listPartnerOrders(@Query() query: AdminPartnerOrderQuery) {
+    // Never from the URL: only the export takes every row.
+    return this.partnersService.adminListPartnerOrders({
+      ...query,
+      unbounded: false,
+    });
   }
 
   /** The names for the "lọc theo đối tác" select box (#071). */
@@ -470,25 +470,51 @@ export class AdminPartnersController {
   @Get('orders/export-excel')
   @HttpCode(HttpStatus.OK)
   async exportPartnerOrders(
-    @Query()
-    query: {
-      partnerType?: string;
-      partnerId?: number;
-      search?: string;
-      status?: string;
-    },
+    @Query() query: AdminPartnerOrderQuery,
     @Res() res: Response,
   ): Promise<void> {
     const buffer =
       await this.partnersService.adminExportPartnerOrdersToExcel(query);
-    const stamp = new Date().toISOString().slice(0, 10);
+    // Named after the tab (doitac-1410 #058).
+    const base =
+      query.partnerType === 'distribution'
+        ? 'Don-hang-doi-tac-phan-phoi'
+        : 'Don-hang-doi-tac-tiep-thi';
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="don-hang-doi-tac-${stamp}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${downloadFilename(base)}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);
+  }
+
+  /** "Xem chi tiết" of a partner order (doitac-1410 #058). */
+  @Get('orders/:orderNumber/detail')
+  @HttpCode(HttpStatus.OK)
+  partnerOrderDetail(
+    @Param('orderNumber') orderNumber: string,
+    @Query('partnerType') partnerType?: string,
+  ) {
+    return this.partnersService.adminGetPartnerOrderDetail(
+      orderNumber,
+      partnerType,
+    );
+  }
+
+  /** "Hoàn tiền" on a distribution partner's order (doitac-1410 #058). */
+  @Post('orders/:orderNumber/refund')
+  @HttpCode(HttpStatus.OK)
+  refundPartnerPurchase(
+    @Param('orderNumber') orderNumber: string,
+    @Body() dto: AdminRefundPartnerPurchaseDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminRefundPartnerPurchase(
+      orderNumber,
+      dto,
+      req.user.id,
+    );
   }
 
   /** The four figures at the head of "Tài chính" (#067). */

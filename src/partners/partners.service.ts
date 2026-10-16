@@ -242,6 +242,26 @@ function formatPartnerBankAccount(partner: {
 const PAYOUT_PERIOD_SQL = `COALESCE(pay."reconciliationPeriod",
   to_char((pay."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM'))`;
 
+/** The filters of "Đơn hàng đối tác" (#071, doitac-1410 #058). */
+export type AdminPartnerOrderQuery = {
+  partnerType?: string;
+  partnerId?: number | string;
+  search?: string;
+  status?: string;
+  limit?: number | string;
+  planName?: string;
+  iccid?: string;
+  email?: string;
+  /** Distribution: BUY_NEW or TOPUP. */
+  orderType?: string;
+  /** Marketing: link, coupon or member. */
+  source?: string;
+  /** Vietnamese days, YYYY-MM-DD. */
+  from?: string;
+  to?: string;
+  unbounded?: boolean;
+};
+
 type AdminPayoutRow = {
   id: number;
   partnerId: number;
@@ -3395,40 +3415,258 @@ export class PartnersService {
    * figures drift from the partner's, and a partner disputing a number needs
    * both screens to agree.
    */
-  async adminListPartnerOrders(query: {
-    partnerType?: string;
-    partnerId?: number;
-    search?: string;
-    status?: string;
-    limit?: number;
-  }) {
+  async adminListPartnerOrders(query: AdminPartnerOrderQuery) {
     const partnerId = Number(query.partnerId) || null;
-    const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
+    // The file takes every matching order, the screen one page (#058).
+    const limit = query.unbounded
+      ? 5000
+      : Math.min(Math.max(Number(query.limit) || 50, 1), 200);
 
     if (query.partnerType === PartnerTypeEnum.DISTRIBUTION) {
       return this.getMyPurchases(partnerId, {
         search: query.search,
         status: query.status,
         limit,
+        unbounded: query.unbounded,
+        // doitac-1410 #058: the partner's own filters, for the admin too.
+        planName: query.planName,
+        iccid: query.iccid,
+        email: query.email,
+        orderType: query.orderType,
+        from: query.from,
+        to: query.to,
       });
     }
 
+    // From–to in Vietnamese days, as on every other partner screen.
+    const range =
+      query.from || query.to
+        ? resolveSummaryRange({
+            from: query.from || query.to,
+            to: query.to || query.from,
+          })
+        : null;
     return this.getMyOrders(partnerId, limit, {
       search: query.search,
       status: query.status,
+      from: range?.from,
+      to: range?.to,
+      planName: query.planName,
+      iccid: query.iccid,
+      email: query.email,
+      source: query.source,
     });
+  }
+
+  /**
+   * "Xem chi tiết" of a partner order for the admin (doitac-1410 #058): the
+   * very screen the partner reads — the attributed order for a marketing
+   * partner, the purchase for a distribution one — plus who the partner is.
+   */
+  async adminGetPartnerOrderDetail(orderNumber: string, partnerType?: string) {
+    const code = String(orderNumber ?? '')
+      .trim()
+      .replace(/^#+\s*/, '');
+    if (partnerType === PartnerTypeEnum.DISTRIBUTION) {
+      const [row] = await this.dataSource.query(
+        `SELECT pa.id FROM "order" o
+           JOIN partner pa ON pa."userId" = o."userId"
+            AND pa."deletedAt" IS NULL
+            AND pa."partnerType" = '${PartnerTypeEnum.DISTRIBUTION}'
+          WHERE o."orderNumber" = $1 AND o."deletedAt" IS NULL`,
+        [code],
+      );
+      if (!row) throw new NotFoundException('Không tìm thấy đơn hàng.');
+      const partner = await this.getPartnerOrThrowById(Number(row.id));
+      return {
+        partner: this.partnerBadge(partner),
+        ...(await this.getMyPurchaseDetail(partner.id, code)),
+      };
+    }
+    const [row] = await this.dataSource.query(
+      `SELECT "attributedPartnerId" AS id FROM "order"
+        WHERE "orderNumber" = $1 AND "deletedAt" IS NULL`,
+      [code],
+    );
+    if (!row?.id) throw new NotFoundException('Không tìm thấy đơn hàng.');
+    const partner = await this.getPartnerOrThrowById(Number(row.id));
+    return {
+      partner: this.partnerBadge(partner),
+      ...(await this.getMyOrderDetail(partner.id, code)),
+    };
+  }
+
+  private partnerBadge(partner: PartnerEntity) {
+    return {
+      id: partner.id,
+      name:
+        (partner.legalType === 'company' && partner.companyName) ||
+        partner.contactName ||
+        `Đối tác #${partner.id}`,
+      contactName: partner.contactName ?? null,
+      email: partner.contactEmail ?? null,
+    };
+  }
+
+  /**
+   * "Hoàn tiền" on a distribution partner's order (doitac-1410 #058): the
+   * admin picks eSIMs (or whole products) and their agent price goes back to
+   * the partner's wallet — the partner paid from the wallet, so that is where
+   * the money returns, never the customer eXU wallet the order screen uses.
+   *
+   * One wallet entry per eSIM, keyed by its ICCID, so a double click or a
+   * retry cannot pay twice; a pending fault report on the same eSIM is closed
+   * with it so it cannot be approved into a second refund.
+   */
+  async adminRefundPartnerPurchase(
+    orderNumber: string,
+    input: { iccids?: string[]; itemIds?: number[]; reason: string },
+    adminId: number,
+  ): Promise<{ refundedVnd: number; esims: string[] }> {
+    const reason = String(input.reason ?? '').trim();
+    if (reason.length < 5) {
+      throw new BadRequestException(
+        'Vui lòng nhập lý do hoàn tiền (ít nhất 5 ký tự).',
+      );
+    }
+    const code = String(orderNumber ?? '')
+      .trim()
+      .replace(/^#+\s*/, '');
+    const [order] = await this.dataSource.query(
+      `SELECT o.id, o."orderNumber", o."orderType", o.status, pa.id AS "partnerId",
+              (SELECT COALESCE(-SUM(t."amountVnd"), 0)::bigint
+                 FROM partner_wallet_transaction t
+                WHERE t."orderId" = o.id
+                  AND t.type IN ('${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE}',
+                                 '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')
+              ) AS "remainingVnd"
+         FROM "order" o
+         JOIN partner pa ON pa."userId" = o."userId"
+          AND pa."deletedAt" IS NULL
+          AND pa."partnerType" = '${PartnerTypeEnum.DISTRIBUTION}'
+        WHERE o."orderNumber" = $1 AND o."deletedAt" IS NULL`,
+      [code],
+    );
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng.');
+    let remaining = Number(order.remainingVnd ?? 0);
+    if (order.status === 'refunded' || remaining <= 0) {
+      throw new BadRequestException('Đơn hàng này đã được hoàn tiền hết.');
+    }
+
+    const credit = async (amountVnd: number, suffix: string, what: string) => {
+      const amount = Math.min(Math.round(amountVnd), remaining);
+      if (amount <= 0) return 0;
+      await this.refundWalletForPurchase(Number(order.partnerId), {
+        orderId: Number(order.id),
+        orderNumber: order.orderNumber,
+        amountVnd: amount,
+        suffix,
+        reason: `Hoàn tiền ${what} — đơn ${order.orderNumber}: ${reason}`,
+        createdByAdminId: adminId,
+      });
+      remaining -= amount;
+      return amount;
+    };
+
+    // A topup has no eSIM of its own: what is left of it goes back whole.
+    if (order.orderType === 'TOPUP') {
+      const refundedVnd = await credit(remaining, 'admin-topup', 'topup');
+      await this.dataSource.query(
+        `UPDATE "order" SET status = 'refunded' WHERE id = $1`,
+        [order.id],
+      );
+      return { refundedVnd, esims: [] };
+    }
+
+    const itemIds = (input.itemIds ?? []).map(Number).filter((n) => n > 0);
+    const iccids = (input.iccids ?? [])
+      .map((v) => String(v).trim())
+      .filter(Boolean);
+    if (!itemIds.length && !iccids.length) {
+      throw new BadRequestException(
+        'Chọn ít nhất một sản phẩm hoặc một eSIM để hoàn tiền.',
+      );
+    }
+    const picked: Record<string, any>[] = await this.dataSource.query(
+      `SELECT e.iccid, oi.id AS "itemId", oi."vndPrice"
+         FROM esim e
+         JOIN order_item oi ON oi.id = e."orderItemId"
+        WHERE oi."orderId" = $1
+          AND e."deletedAt" IS NULL
+          AND COALESCE(e.status, '') <> 'refunded'
+          AND (e.iccid = ANY($2::text[]) OR oi.id = ANY($3::int[]))
+        ORDER BY e.id`,
+      [order.id, iccids, itemIds],
+    );
+    // A product line that never got its eSIMs is refunded by the line.
+    const bare: Record<string, any>[] = itemIds.length
+      ? await this.dataSource.query(
+          `SELECT oi.id, oi."vndPrice", oi.quantity FROM order_item oi
+            WHERE oi."orderId" = $1 AND oi.id = ANY($2::int[])
+              AND NOT EXISTS (SELECT 1 FROM esim e WHERE e."orderItemId" = oi.id)`,
+          [order.id, itemIds],
+        )
+      : [];
+    if (!picked.length && !bare.length) {
+      throw new BadRequestException('Các eSIM đã chọn đều đã được hoàn tiền.');
+    }
+
+    let refundedVnd = 0;
+    const done: string[] = [];
+    for (const esim of picked) {
+      const amount = await credit(
+        Number(esim.vndPrice ?? 0),
+        `admin-${esim.iccid}`,
+        `eSIM ${esim.iccid}`,
+      );
+      refundedVnd += amount;
+      done.push(String(esim.iccid));
+      await this.dataSource.query(
+        `UPDATE esim SET status = 'refunded' WHERE iccid = $1`,
+        [esim.iccid],
+      );
+      await this.dataSource.query(
+        `UPDATE partner_esim_fault_report
+            SET status = '${PartnerEsimFaultStatusEnum.APPROVED}', "refundVnd" = $2,
+                "reviewedByAdminId" = $3, "reviewedAt" = now(),
+                "adminNote" = 'Đã hoàn tiền tại Đơn hàng đối tác'
+          WHERE iccid = $1 AND status = '${PartnerEsimFaultStatusEnum.PENDING}'`,
+        [esim.iccid, amount, adminId],
+      );
+    }
+    for (const line of bare) {
+      refundedVnd += await credit(
+        Number(line.vndPrice ?? 0) * Number(line.quantity ?? 1),
+        `admin-item-${line.id}`,
+        'sản phẩm chưa cấp eSIM',
+      );
+    }
+    await this.dataSource.query(
+      `UPDATE "order" o SET status = 'refunded'
+        WHERE o.id = $1
+          AND EXISTS (SELECT 1 FROM esim e JOIN order_item oi ON oi.id = e."orderItemId"
+                       WHERE oi."orderId" = o.id)
+          AND NOT EXISTS (SELECT 1 FROM esim e JOIN order_item oi ON oi.id = e."orderItemId"
+                           WHERE oi."orderId" = o.id AND e.status <> 'refunded')`,
+      [order.id],
+    );
+    return { refundedVnd, esims: done };
   }
 
   /** The names for the "lọc theo đối tác" select box (#071). */
   async adminPartnerOptions(
     partnerType?: string,
   ): Promise<{ id: number; name: string; email: string | null }[]> {
+    // A company by its own name (doitac-1410 #058).
     const rows = await this.dataSource.query(
-      `SELECT id, "contactName" AS name, "contactEmail" AS email
+      `SELECT id,
+              CASE WHEN "legalType" = 'company' AND "companyName" IS NOT NULL
+                   THEN "companyName" ELSE "contactName" END AS name,
+              "contactEmail" AS email
        FROM partner
        WHERE "deletedAt" IS NULL
          AND ($1::text IS NULL OR "partnerType" = $1)
-       ORDER BY "contactName" ASC NULLS LAST
+       ORDER BY name ASC NULLS LAST
        LIMIT 1000`,
       [partnerType || null],
     );
@@ -3441,16 +3679,13 @@ export class PartnersService {
   }
 
   /** The admin's partner-order list as a spreadsheet (#071). */
-  async adminExportPartnerOrdersToExcel(query: {
-    partnerType?: string;
-    partnerId?: number;
-    search?: string;
-    status?: string;
-  }): Promise<Buffer> {
+  async adminExportPartnerOrdersToExcel(
+    query: AdminPartnerOrderQuery,
+  ): Promise<Buffer> {
     const distribution = query.partnerType === PartnerTypeEnum.DISTRIBUTION;
     const rows = (await this.adminListPartnerOrders({
       ...query,
-      limit: 200,
+      unbounded: true,
     })) as Record<string, any>[];
 
     const workbook = new ExcelJS.Workbook();
@@ -3469,6 +3704,8 @@ export class PartnersService {
           { header: 'Mã ID đối tác', key: 'partnerId', width: 14 },
           { header: 'Đối tác', key: 'partnerName', width: 26 },
           { header: 'Sản phẩm', key: 'products', width: 40 },
+          { header: 'Loại đơn', key: 'orderType', width: 12 },
+          { header: 'Email nhận eSIM', key: 'deliveryEmail', width: 28 },
           { header: 'Giá niêm yết (VND)', key: 'listVnd', width: 20 },
           { header: 'Đã thanh toán (VND)', key: 'paidVnd', width: 20 },
           { header: 'Hoàn tiền (VND)', key: 'refundedVnd', width: 18 },
@@ -3506,7 +3743,12 @@ export class PartnersService {
               orderNumber: row.orderNumber,
               partnerId: row.partnerId,
               partnerName: row.partnerName ?? '',
-              products,
+              products:
+                row.orderType === 'TOPUP' && row.topupPackageName
+                  ? `Topup ${row.topupPackageName}`
+                  : products,
+              orderType: row.orderType === 'TOPUP' ? 'Nạp topup' : 'Mua eSIM',
+              deliveryEmail: row.deliveryEmail ?? '',
               listVnd: row.listVnd,
               paidVnd: row.paidVnd,
               refundedVnd: row.refundedVnd,
@@ -5571,6 +5813,13 @@ export class PartnersService {
       /** Chỉ lấy đơn đặt trong khoảng này — dùng cho file đối soát tháng (#006). */
       from?: Date;
       to?: Date;
+      // The admin's "Đơn hàng đối tác" filters (doitac-1410 #058):
+      planName?: string;
+      iccid?: string;
+      /** The customer's account email, or the one the eSIM was sent to. */
+      email?: string;
+      /** "Nguồn ghi nhận": link, coupon, or a customer tied to the partner. */
+      source?: string;
     } = {},
   ): Promise<PartnerOrderRowDto[]> {
     // A null partner is the admin's view of every marketing partner at once
@@ -5578,11 +5827,17 @@ export class PartnersService {
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
     const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
     const status = filters.status?.trim() || null;
+    const text = (value?: string) => value?.trim() || null;
+    const source = ['link', 'coupon', 'member'].includes(filters.source ?? '')
+      ? filters.source!
+      : null;
     const rows = await this.dataSource.query(
       `SELECT o."orderNumber",
               o.status,
               pa.id AS "partnerId",
-              pa."contactName" AS "partnerName",
+              -- A company by its own name (doitac-1410 #058).
+              CASE WHEN pa."legalType" = 'company' AND pa."companyName" IS NOT NULL
+                   THEN pa."companyName" ELSE pa."contactName" END AS "partnerName",
               ${ORDER_REVENUE_SQL} AS "vndPrice",
               COALESCE(o."refundedAmountVnd", 0) AS "refundedAmountVnd",
               o."createdAt",
@@ -5674,7 +5929,30 @@ export class PartnersService {
               OR o."couponCode" ILIKE '%' || $4 || '%')
          AND ($5::timestamptz IS NULL OR o."createdAt" >= $5)
          AND ($6::timestamptz IS NULL OR o."createdAt" < $6)
-       GROUP BY o.id, c."commissionVnd", c."commissionPercentSnapshot", c.status, c."rejectionReason", l.code, pa.id, pa."userId"
+         -- doitac-1410 #058. EXISTS, so an order still lists every product.
+         AND (
+           $7::text IS NULL
+           OR EXISTS (SELECT 1 FROM order_item fi JOIN plan fp ON fp.id = fi."planId"
+                       WHERE fi."orderId" = o.id AND fp.name ILIKE '%' || $7 || '%')
+         )
+         AND (
+           $8::text IS NULL
+           OR EXISTS (SELECT 1 FROM order_item fi JOIN esim fe ON fe."orderItemId" = fi.id
+                       WHERE fi."orderId" = o.id AND fe.iccid ILIKE '%' || $8 || '%')
+         )
+         AND (
+           $9::text IS NULL
+           OR o."deliveryEmail" ILIKE '%' || $9 || '%'
+           OR EXISTS (SELECT 1 FROM "user" fu
+                       WHERE fu.id = o."userId" AND fu.email ILIKE '%' || $9 || '%')
+         )
+         AND (
+           $10::text IS NULL
+           OR ($10 = 'link' AND c."linkId" IS NOT NULL)
+           OR ($10 = 'coupon' AND c."linkId" IS NULL AND o."couponCode" IS NOT NULL)
+           OR ($10 = 'member' AND c."linkId" IS NULL AND o."couponCode" IS NULL)
+         )
+       GROUP BY o.id, c."commissionVnd", c."commissionPercentSnapshot", c.status, c."rejectionReason", c."linkId", l.code, pa.id, pa."userId"
        ORDER BY o."createdAt" DESC
        LIMIT $2`,
       [
@@ -5684,6 +5962,10 @@ export class PartnersService {
         search,
         filters.from ?? null,
         filters.to ?? null,
+        text(filters.planName),
+        text(filters.iccid),
+        text(filters.email),
+        source,
       ],
     );
 
@@ -7363,7 +7645,9 @@ export class PartnersService {
       `SELECT o."orderNumber",
               o.status,
               pa.id AS "partnerId",
-              pa."contactName" AS "partnerName",
+              -- A company by its own name (doitac-1410 #058).
+              CASE WHEN pa."legalType" = 'company' AND pa."companyName" IS NOT NULL
+                   THEN pa."companyName" ELSE pa."contactName" END AS "partnerName",
               o."orderType",
               ${ORDER_REVENUE_SQL} AS "paidVnd",
               -- Before any discount, so the page can show what the margin was.
@@ -7765,8 +8049,11 @@ export class PartnersService {
       const unit = Number(line.vndPrice ?? 0);
       const agentTotalVnd = unit * quantity;
       return {
+        itemId: Number(line.id),
         planName: (line.planName as string) ?? null,
         quantity,
+        /** One eSIM at the agent price — what a refund of it gives back (#058). */
+        unitVnd: unit,
         agentTotalVnd,
         suggestedRetailTotalVnd: partnerSuggestedRetailVnd(unit) * quantity,
         destination: (line.destination as string) ?? null,
@@ -7797,6 +8084,25 @@ export class PartnersService {
       };
     });
 
+    // Money that went back to the wallet: a fault approved or a refund made
+    // on the admin's order screen (doitac-1410 #058). The order's own
+    // refunded total never sees these, so the wallet is the record.
+    const refunds = (
+      (await this.dataSource.query(
+        `SELECT t."amountVnd", t.reason, t."createdAt"
+           FROM partner_wallet_transaction t
+          WHERE t."orderId" = $1
+            AND t.type = '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}'
+          ORDER BY t."createdAt"`,
+        [orderId],
+      )) as Record<string, any>[]
+    ).map((t) => ({
+      amountVnd: Number(t.amountVnd ?? 0),
+      reason: (t.reason as string) ?? null,
+      at: t.createdAt,
+    }));
+    const walletRefundedVnd = refunds.reduce((sum, r) => sum + r.amountVnd, 0);
+
     return {
       orderNumber: code,
       status: summary?.status ?? null,
@@ -7805,7 +8111,8 @@ export class PartnersService {
       updatedAt: order?.updatedAt ?? null,
       paymentMethod: 'Ví ký quỹ',
       paidVnd: summary?.paidVnd ?? 0,
-      refundedVnd: summary?.refundedVnd ?? 0,
+      refundedVnd: Math.max(summary?.refundedVnd ?? 0, walletRefundedVnd),
+      refunds,
       esimCount: summary?.esimCount ?? 0,
       deliveryEmail: summary?.deliveryEmail ?? null,
       agentTotalVnd: products.reduce((sum, p) => sum + p.agentTotalVnd, 0),
