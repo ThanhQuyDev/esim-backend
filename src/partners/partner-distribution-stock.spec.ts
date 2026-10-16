@@ -857,3 +857,38 @@ describe('PartnersService.exportMyPurchasesToExcel (doitac-1410 #043)', () => {
     expect(line('ICCID')).toBe('111, 222, 333');
   });
 });
+
+describe('PartnersService.getMyTiers deposit threshold (doitac-1410 #045)', () => {
+  it('should give a distribution partner the deposit threshold but never the cost markup', async () => {
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    const tier = {
+      id: 1,
+      partnerType: 'distribution',
+      tierCode: 'BRONZE',
+      tierName: 'Đồng',
+      minVolumeVnd: 15000000,
+      minDepositVnd: 50000000,
+      costMarkupPercent: 100,
+      isActive: true,
+      isInternal: false,
+      sortOrder: 1,
+    };
+    Object.assign(service, {
+      getPartnerOrThrowById: jest.fn().mockResolvedValue({
+        id: 11,
+        partnerType: 'distribution',
+        tierCode: 'BRONZE',
+      }),
+      tierRepository: {
+        findOne: jest.fn().mockResolvedValue(tier),
+        find: jest.fn().mockResolvedValue([tier]),
+      },
+    });
+    const [own] = await service.getMyTiers(11);
+    expect(own).toMatchObject({
+      minDepositVnd: 50000000,
+      minVolumeVnd: 15000000,
+    });
+    expect(own).not.toHaveProperty('costMarkupPercent');
+  });
+});
