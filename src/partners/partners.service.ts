@@ -1,4 +1,5 @@
 import { vnFold, vnFoldSql } from '../utils/vn-fold';
+import { sanitizeNotificationHtml } from './notification-html';
 import { partnerCommissionAmount } from './partner-commission-amount';
 import {
   Optional,
@@ -122,6 +123,7 @@ import {
   UpdatePartnerStatusDto,
   UpdatePartnerProgramSettingDto,
   CreatePartnerNotificationDto,
+  UpdatePartnerNotificationDto,
   UpdateReconciliationStatusDto,
   BulkPayoutDecisionDto,
 } from './dto/admin-partner.dto';
@@ -260,6 +262,17 @@ export type AdminPartnerOrderQuery = {
   from?: string;
   to?: string;
   unbounded?: boolean;
+};
+
+/** One announcement on a partner's bell or banner (#079, doitac-1410 #062). */
+type MyNotificationRow = {
+  id: number;
+  title: string;
+  body: string;
+  createdAt: Date;
+  isRead: boolean;
+  priority: string;
+  isFeatured: boolean;
 };
 
 type AdminPayoutRow = {
@@ -4331,9 +4344,12 @@ export class PartnersService {
     const notification = await this.notificationRepository.save(
       this.notificationRepository.create({
         title: dto.title.trim(),
-        body: dto.body.trim(),
+        // Rich text from the editor, with what could run taken out (#062).
+        body: sanitizeNotificationHtml(dto.body),
         audience: dto.audience ?? 'all',
         sendEmail: dto.sendEmail ?? false,
+        priority: dto.priority ?? 'normal',
+        isFeatured: dto.isFeatured ?? false,
         createdByAdminId: adminId,
       }),
     );
@@ -4373,6 +4389,45 @@ export class PartnersService {
     return this.notificationRepository.save(notification);
   }
 
+  /**
+   * "Sửa" on a sent announcement (doitac-1410 #062). Bells and banners show
+   * the new text at once; no email goes out again.
+   */
+  async adminUpdateNotification(
+    id: number,
+    dto: UpdatePartnerNotificationDto,
+  ): Promise<PartnerNotificationEntity> {
+    const notification = await this.notificationRepository.findOne({
+      where: { id },
+    });
+    if (!notification || notification.partnerId) {
+      throw new NotFoundException('Không tìm thấy thông báo.');
+    }
+    Object.assign(notification, {
+      ...(dto.title !== undefined && { title: dto.title.trim() }),
+      ...(dto.body !== undefined && {
+        body: sanitizeNotificationHtml(dto.body),
+      }),
+      ...(dto.audience !== undefined && { audience: dto.audience }),
+      ...(dto.priority !== undefined && { priority: dto.priority }),
+      ...(dto.isFeatured !== undefined && { isFeatured: dto.isFeatured }),
+      updatedAt: new Date(),
+    });
+    return this.notificationRepository.save(notification);
+  }
+
+  /** "Xóa" a sent announcement: gone from every bell and banner (#062). */
+  async adminDeleteNotification(id: number): Promise<{ ok: true }> {
+    const notification = await this.notificationRepository.findOne({
+      where: { id },
+    });
+    if (!notification || notification.partnerId) {
+      throw new NotFoundException('Không tìm thấy thông báo.');
+    }
+    await this.notificationRepository.softDelete(id);
+    return { ok: true };
+  }
+
   /** Everything an admin has sent, with how far it reached (#079). */
   async adminListNotifications(
     limit = 50,
@@ -4394,7 +4449,7 @@ export class PartnersService {
               ) AS "readCount"
        FROM partner_notification n
        -- Broadcasts only; a notice to one partner is not an announcement.
-       WHERE n."partnerId" IS NULL
+       WHERE n."partnerId" IS NULL AND n."deletedAt" IS NULL
        ORDER BY n."createdAt" DESC
        LIMIT $2`,
       [PartnerStatusEnum.ACTIVE, take],
@@ -4404,6 +4459,7 @@ export class PartnersService {
       ...row,
       id: Number(row.id),
       emailsSent: Number(row.emailsSent ?? 0),
+      isFeatured: Boolean(row.isFeatured),
       recipients: Number(row.recipients ?? 0),
       readCount: Number(row.readCount ?? 0),
     })) as (PartnerNotificationEntity & {
@@ -4423,39 +4479,49 @@ export class PartnersService {
     limit = 20,
   ): Promise<{
     unreadCount: number;
-    data: {
-      id: number;
-      title: string;
-      body: string;
-      createdAt: Date;
-      isRead: boolean;
-    }[];
+    data: MyNotificationRow[];
+    /** "Nổi bật" ones for the top of the page, read or not (#062). */
+    featured: MyNotificationRow[];
   }> {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const take = Math.min(Math.max(Number(limit) || 20, 1), 100);
 
-    const rows = await this.dataSource.query(
-      `SELECT n.id, n.title, n.body, n."createdAt",
-              (r.id IS NOT NULL) AS "isRead"
+    const select = `SELECT n.id, n.title, n.body, n."createdAt", n.priority,
+              n."isFeatured", (r.id IS NOT NULL) AS "isRead"
        FROM partner_notification n
        LEFT JOIN partner_notification_read r
          ON r."notificationId" = n.id AND r."partnerId" = $1
-       WHERE (n."partnerId" IS NULL AND (n.audience = 'all' OR n.audience = $2))
-          OR n."partnerId" = $1
-       ORDER BY n."createdAt" DESC
-       LIMIT $3`,
-      [partnerId, partner.partnerType, take],
-    );
+       WHERE n."deletedAt" IS NULL
+         AND ((n."partnerId" IS NULL AND (n.audience = 'all' OR n.audience = $2))
+              OR n."partnerId" = $1)`;
+    const [rows, featuredRows] = await Promise.all([
+      this.dataSource.query(`${select} ORDER BY n."createdAt" DESC LIMIT $3`, [
+        partnerId,
+        partner.partnerType,
+        take,
+      ]),
+      this.dataSource.query(
+        `${select} AND n."isFeatured" ORDER BY n."createdAt" DESC LIMIT 20`,
+        [partnerId, partner.partnerType],
+      ),
+    ]);
 
-    const data = (rows as Record<string, any>[]).map((row) => ({
+    const toRow = (row: Record<string, any>): MyNotificationRow => ({
       id: Number(row.id),
       title: row.title,
       body: row.body,
       createdAt: row.createdAt,
       isRead: Boolean(row.isRead),
-    }));
+      priority: row.priority ?? 'normal',
+      isFeatured: Boolean(row.isFeatured),
+    });
+    const data = (rows as Record<string, any>[]).map(toRow);
 
-    return { unreadCount: data.filter((row) => !row.isRead).length, data };
+    return {
+      unreadCount: data.filter((row) => !row.isRead).length,
+      data,
+      featured: (featuredRows as Record<string, any>[]).map(toRow),
+    };
   }
 
   /**
@@ -4483,8 +4549,9 @@ export class PartnersService {
     await this.dataSource.query(
       `INSERT INTO partner_notification_read ("notificationId", "partnerId")
        SELECT n.id, $1 FROM partner_notification n
-       WHERE (n."partnerId" IS NULL AND (n.audience = 'all' OR n.audience = $2))
-          OR n."partnerId" = $1
+       WHERE n."deletedAt" IS NULL
+         AND ((n."partnerId" IS NULL AND (n.audience = 'all' OR n.audience = $2))
+              OR n."partnerId" = $1)
        ON CONFLICT ("notificationId", "partnerId") DO NOTHING`,
       [partnerId, partner.partnerType],
     );

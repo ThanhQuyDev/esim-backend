@@ -224,12 +224,13 @@ export class CreatePartnerNotificationDto {
   @MaxLength(200)
   title!: string;
 
+  /** HTML from the rich-text editor (doitac-1410 #062). */
   @ApiProperty({
-    example: 'Hệ thống sẽ tạm dừng từ 01:00 đến 03:00 ngày 05/10.',
+    example: '<p>Hệ thống sẽ tạm dừng từ 01:00 đến 03:00 ngày 05/10.</p>',
   })
   @IsString()
   @IsNotEmpty()
-  @MaxLength(5000)
+  @MaxLength(100000)
   body!: string;
 
   @ApiPropertyOptional({
@@ -247,6 +248,50 @@ export class CreatePartnerNotificationDto {
   @IsOptional()
   @IsBoolean()
   sendEmail?: boolean;
+
+  /** Bình thường / Quan trọng / Khẩn cấp — the banner's colour (#062). */
+  @ApiPropertyOptional({ enum: ['normal', 'important', 'urgent'] })
+  @IsOptional()
+  @IsIn(['normal', 'important', 'urgent'])
+  priority?: string;
+
+  /** "Nổi bật": shown at the top of the page (doitac-1410 #062). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
+}
+
+/** "Sửa" on a sent announcement (doitac-1410 #062): no email goes again. */
+export class UpdatePartnerNotificationDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  title?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100000)
+  body?: string;
+
+  @ApiPropertyOptional({ enum: ['all', 'kol', 'distribution'] })
+  @IsOptional()
+  @IsIn(['all', 'kol', 'distribution'])
+  audience?: string;
+
+  @ApiPropertyOptional({ enum: ['normal', 'important', 'urgent'] })
+  @IsOptional()
+  @IsIn(['normal', 'important', 'urgent'])
+  priority?: string;
+
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
 }
 
 /** The partner programme's settings (#075, #076, #077). */

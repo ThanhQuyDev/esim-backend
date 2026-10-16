@@ -1,4 +1,8 @@
 import { DataSource } from 'typeorm';
+import {
+  notificationBodyHtml,
+  notificationBodyText,
+} from '../partners/notification-html';
 import { Optional, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { I18nContext } from 'nestjs-i18n';
@@ -770,7 +774,9 @@ export class MailService {
     const context = {
       contactName: data.contactName,
       title: data.title,
-      body: data.body,
+      body: notificationBodyText(data.body),
+      // The rich-text body (doitac-1410 #062), already cleaned.
+      bodyHtml: notificationBodyHtml(data.body),
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       app_name: appName,
       logoUrl: BRAND_LOGO_URL,
@@ -789,7 +795,7 @@ export class MailService {
       subject: subjectCompiled,
       text: `${data.title}
 
-${data.body}`,
+${notificationBodyText(data.body)}`,
       templatePath: '',
       context: {},
       html: htmlCompiled,

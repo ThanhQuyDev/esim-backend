@@ -52,6 +52,7 @@ import {
   UpdateReconciliationStatusDto,
   UpdatePartnerProgramSettingDto,
   CreatePartnerNotificationDto,
+  UpdatePartnerNotificationDto,
   QueryPartnerPayoutDto,
   BulkPayoutDecisionDto,
   UpdatePartnerAffiliateGrantDto,
@@ -261,6 +262,23 @@ export class AdminPartnersController {
     @Request() req: { user: { id: number } },
   ) {
     return this.partnersService.adminCreateNotification(dto, req.user.id);
+  }
+
+  /** "Sửa" a sent announcement; no email goes again (doitac-1410 #062). */
+  @Patch('notifications/:id')
+  @HttpCode(HttpStatus.OK)
+  updateNotification(
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerNotificationDto,
+  ) {
+    return this.partnersService.adminUpdateNotification(Number(id), dto);
+  }
+
+  /** "Xóa" a sent announcement (doitac-1410 #062). */
+  @Delete('notifications/:id')
+  @HttpCode(HttpStatus.OK)
+  deleteNotification(@Param('id') id: number) {
+    return this.partnersService.adminDeleteNotification(Number(id));
   }
 
   /** Everything that has been sent, with how far it reached (#079). */

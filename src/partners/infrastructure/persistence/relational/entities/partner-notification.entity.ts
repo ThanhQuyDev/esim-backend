@@ -1,6 +1,7 @@
 import {
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   Index,
   PrimaryGeneratedColumn,
@@ -53,7 +54,29 @@ export class PartnerNotificationEntity extends EntityRelationalHelper {
   @Column({ type: Number, nullable: true })
   createdByAdminId!: number | null;
 
+  /**
+   * `normal` | `important` | `urgent` — the banner's colour: blue, amber,
+   * red (doitac-1410 #062).
+   */
+  @Column({ type: String, length: 20, default: 'normal' })
+  priority!: string;
+
+  /**
+   * "Nổi bật": shown at the top of the page until an admin unticks it
+   * (doitac-1410 #062).
+   */
+  @Column({ type: Boolean, default: false })
+  isFeatured!: boolean;
+
   @Index()
   @CreateDateColumn()
   createdAt!: Date;
+
+  /** Set by "Sửa" on the sent list (doitac-1410 #062). */
+  @Column({ type: 'timestamp', nullable: true })
+  updatedAt!: Date | null;
+
+  /** "Xóa" on the sent list: gone from every bell and banner (#062). */
+  @DeleteDateColumn({ type: 'timestamp', nullable: true })
+  deletedAt!: Date | null;
 }
