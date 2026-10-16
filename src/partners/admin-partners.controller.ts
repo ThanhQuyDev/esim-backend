@@ -20,7 +20,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
-import { PartnersService } from './partners.service';
+import { AdminLinkListQuery, PartnersService } from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
 import {
   CreatePartnerLinkDto,
@@ -260,6 +260,13 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   listNotifications(@Query('limit') limit?: number) {
     return this.partnersService.adminListNotifications(Number(limit) || 50);
+  }
+
+  /** Every partner's links, filtered (doitac-1410 #052, #054). */
+  @Get('links')
+  @HttpCode(HttpStatus.OK)
+  adminListLinks(@Query() query: AdminLinkListQuery) {
+    return this.partnersService.adminListLinks(query);
   }
 
   /** The figures on top of "Tiếp thị liên kết" (doitac-1410 #051). */

@@ -530,6 +530,35 @@ export function classifyPartnerOrder(
   return { validity: 'pending', invalidReason: null };
 }
 
+/** Filters of the admin's "Tiếp thị liên kết" list (doitac-1410 #052). */
+export type AdminLinkListQuery = {
+  page?: number | string;
+  limit?: number | string;
+  /** Name / email / phone / id of the partner. */
+  partner?: string;
+  /** Link name / landing page / marketing link. */
+  link?: string;
+  /** `utm_source` of the landing page. */
+  channel?: string;
+  /** active | inactive | suspended | appealing | deleted | restore_pending */
+  status?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
+  /** Who made the latest change: admin | partner. */
+  actor?: string;
+};
+
+/** What the admin's link list calls a link's state (doitac-1410 #052). */
+function adminLinkState(row: Record<string, any>): string {
+  if (row.deletedAt)
+    return row.restoreRequestedAt ? 'restore_pending' : 'deleted';
+  if (row.status === 'suspended')
+    return row.appealedAt ? 'appealing' : 'suspended';
+  return row.status === 'active' ? 'active' : 'inactive';
+}
+
 @Injectable()
 export class PartnersService {
   private readonly logger = new Logger(PartnersService.name);
@@ -1899,6 +1928,156 @@ export class PartnersService {
     });
     const [updated] = await this.getMyLinksByIds(partnerId, [linkId], {});
     return updated;
+  }
+
+  /**
+   * Every partner's links for the admin's "Tiếp thị liên kết" list
+   * (doitac-1410 #052, #054), with the filters the brief lists. The status
+   * shown is the one an admin acts on: a suspended link under appeal reads
+   * "Đang kháng nghị", a deleted one with a restore request "Chờ duyệt khôi
+   * phục". "Cập nhật" is the latest thing that happened to the link, by
+   * whoever did it.
+   */
+  async adminListLinks(query: AdminLinkListQuery = {}) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
+    const params: unknown[] = [];
+    const where: string[] = ['p."deletedAt" IS NULL'];
+    const add = (sql: string, ...values: unknown[]) => {
+      const start = params.length;
+      params.push(...values);
+      where.push(sql.replace(/\$(\d+)/g, (_, i) => `$${start + Number(i)}`));
+    };
+
+    const partner = query.partner?.trim().replace(/^#+\s*/, '');
+    if (partner && /^\d{1,5}$/.test(partner)) {
+      // A short number is a partner id ("9"), not every phone holding a 9
+      // (doitac-1410 #057's complaint).
+      add(`p.id = $1`, Number(partner));
+    } else if (partner) {
+      add(
+        `(p."contactName" ILIKE '%' || $1 || '%' OR p."companyName" ILIKE '%' || $1 || '%'
+          OR p."contactEmail" ILIKE '%' || $1 || '%' OR p."contactPhone" ILIKE '%' || $1 || '%')`,
+        partner,
+      );
+    }
+    const link = query.link?.trim();
+    if (link) {
+      // A pasted "esim.vn/go/CODE" finds the link by its code.
+      const code = link.replace(/^.*\/go\//i, '');
+      add(
+        `(l.label ILIKE '%' || $1 || '%' OR l."targetPath" ILIKE '%' || $1 || '%'
+          OR l.code ILIKE '%' || $2 || '%')`,
+        link,
+        code,
+      );
+    }
+    if (query.channel) {
+      add(
+        `split_part(substring(l."targetPath" from 'utm_source=([^&]*)'), '&', 1) = $1`,
+        query.channel,
+      );
+    }
+    const status: Record<string, string> = {
+      active: `l."deletedAt" IS NULL AND l.status = 'active'`,
+      inactive: `l."deletedAt" IS NULL AND l.status = 'inactive'`,
+      suspended: `l."deletedAt" IS NULL AND l.status = 'suspended' AND l."appealedAt" IS NULL`,
+      appealing: `l."deletedAt" IS NULL AND l.status = 'suspended' AND l."appealedAt" IS NOT NULL`,
+      deleted: `l."deletedAt" IS NOT NULL AND l."restoreRequestedAt" IS NULL`,
+      restore_pending: `l."deletedAt" IS NOT NULL AND l."restoreRequestedAt" IS NOT NULL`,
+    };
+    if (query.status && status[query.status]) where.push(status[query.status]);
+    // "Từ" alone runs to today, "đến" alone from the start (doitac-1410 #052).
+    const today = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+    });
+    if (query.createdFrom || query.createdTo) {
+      const r = resolveSummaryRange({
+        from: query.createdFrom || '2000-01-01',
+        to: query.createdTo || today,
+      });
+      add(`l."createdAt" >= $1 AND l."createdAt" < $2`, r.from, r.to);
+    }
+    if (query.updatedFrom || query.updatedTo) {
+      const r = resolveSummaryRange({
+        from: query.updatedFrom || '2000-01-01',
+        to: query.updatedTo || today,
+      });
+      add(
+        `COALESCE(ev."lastChangedAt", l."updatedAt") >= $1
+         AND COALESCE(ev."lastChangedAt", l."updatedAt") < $2`,
+        r.from,
+        r.to,
+      );
+    }
+    if (query.actor === 'admin' || query.actor === 'partner') {
+      add(`COALESCE(ev."lastActor", 'partner') = $1`, query.actor);
+    }
+
+    const from = `
+      FROM partner_link l
+      JOIN partner p ON p.id = l."partnerId"
+      LEFT JOIN LATERAL (
+        SELECT MAX(e."createdAt") AS "lastChangedAt",
+               (ARRAY_AGG(e."actorRole" ORDER BY e."createdAt" DESC))[1] AS "lastActor",
+               (ARRAY_AGG(e."actorRole" ORDER BY e."createdAt" ASC)
+                  FILTER (WHERE e.action = 'created'))[1] AS "createdBy",
+               COUNT(*) FILTER (WHERE e.action IN ('renamed', 'retargeted'))::int AS edits
+          FROM partner_link_event e WHERE e."linkId" = l.id
+      ) ev ON TRUE
+      WHERE ${where.join(' AND ')}`;
+
+    const [{ total }] = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total ${from}`,
+      params,
+    );
+    const rows = await this.dataSource.query(
+      `SELECT l.id, l.code, l.label, l."targetPath", l.status, l."deletedAt",
+              l."appealedAt", l."restoreRequestedAt", l."suspendedReason",
+              l."createdAt", l."updatedAt", l."clickCount",
+              p.id AS "partnerId", p."contactName", p."companyName", p."legalType",
+              ev."lastChangedAt", ev."lastActor", ev."createdBy",
+              COALESCE(ev.edits, 0) AS edits,
+              (SELECT COUNT(DISTINCT c."orderId")::int FROM order_partner_commission c
+                WHERE c."linkId" = l.id AND c.status <> 'reversed') AS orders,
+              (SELECT COALESCE(SUM(c."commissionVnd"), 0) FROM order_partner_commission c
+                WHERE c."linkId" = l.id AND c.status <> 'reversed') AS "commissionVnd"
+       ${from}
+       ORDER BY COALESCE(ev."lastChangedAt", l."updatedAt") DESC, l.id DESC
+       OFFSET ${(page - 1) * limit} LIMIT ${limit}`,
+      params,
+    );
+
+    return {
+      total: Number(total ?? 0),
+      page,
+      limit,
+      data: (rows as Record<string, any>[]).map((r) => ({
+        id: Number(r.id),
+        code: String(r.code),
+        label: r.label ?? null,
+        targetPath: r.targetPath ?? null,
+        state: adminLinkState(r),
+        partner: {
+          id: Number(r.partnerId),
+          // A company is shown by its own name (doitac-1410 #056, #057).
+          name:
+            (r.legalType === 'company' && r.companyName) ||
+            r.contactName ||
+            r.companyName ||
+            null,
+        },
+        suspendedReason: r.suspendedReason ?? null,
+        createdAt: r.createdAt,
+        createdBy: (r.createdBy as string) ?? 'partner',
+        updatedAt: r.lastChangedAt ?? r.updatedAt,
+        updatedBy: (r.lastActor as string) ?? 'partner',
+        editCount: Number(r.edits ?? 0),
+        clicks: Number(r.clickCount ?? 0),
+        orders: Number(r.orders ?? 0),
+        commissionVnd: Number(r.commissionVnd ?? 0),
+      })),
+    };
   }
 
   /**
