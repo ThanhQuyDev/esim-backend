@@ -24,6 +24,8 @@ import { AdminLinkListQuery, PartnersService } from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
 import {
   CreatePartnerLinkDto,
+  AdminRestoreLinkDto,
+  BulkLinkStatusDto,
   DecideLinkRestoreDto,
   SetLinkSuspensionDto,
 } from './dto/partner-link.dto';
@@ -260,6 +262,48 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   listNotifications(@Query('limit') limit?: number) {
     return this.partnersService.adminListNotifications(Number(limit) || 50);
+  }
+
+  /** "Xuất file" of the link list, with its filters (doitac-1410 #053). */
+  @Get('links/export-excel')
+  @HttpCode(HttpStatus.OK)
+  async exportLinks(
+    @Query() query: AdminLinkListQuery,
+    @Res() res: Response,
+  ): Promise<void> {
+    const buffer = await this.partnersService.adminExportLinksToExcel(query);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-lien-ket-tiep-thi')}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
+  /** "Thay đổi trạng thái" for the ticked links (doitac-1410 #053). */
+  @Patch('links/bulk-status')
+  @HttpCode(HttpStatus.OK)
+  bulkLinkStatus(
+    @Body() dto: BulkLinkStatusDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminBulkLinkStatus(dto, req.user.id);
+  }
+
+  /** An admin brings back a deleted link (doitac-1410 #053, #055). */
+  @Post('links/:linkId/restore')
+  @HttpCode(HttpStatus.OK)
+  restoreLink(
+    @Param('linkId') linkId: number,
+    @Body() dto: AdminRestoreLinkDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminRestoreLink(
+      Number(linkId),
+      dto.reason,
+      req.user.id,
+    );
   }
 
   /** Every partner's links, filtered (doitac-1410 #052, #054). */
@@ -695,8 +739,13 @@ export class AdminPartnersController {
   adminCreateLinkForPartner(
     @Param('id') id: number,
     @Body() dto: CreatePartnerLinkDto,
+    @Request() req: { user: { id: number } },
   ) {
-    return this.partnersService.adminCreateLinkForPartner(Number(id), dto);
+    return this.partnersService.adminCreateLinkForPartner(
+      Number(id),
+      dto,
+      req.user.id,
+    );
   }
 
   /** Record an admin's own note on this partner (#056). */

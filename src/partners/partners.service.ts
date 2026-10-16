@@ -1785,6 +1785,168 @@ export class PartnersService {
     return updated;
   }
 
+  /**
+   * An admin brings back a deleted link, with or without a request from the
+   * partner (doitac-1410 #053, #055); the reason goes into its history and
+   * the partner is told.
+   */
+  async adminRestoreLink(linkId: number, reason: string, adminId: number) {
+    const link = await this.linkRepository.findOne({
+      where: { id: linkId },
+      withDeleted: true,
+    });
+    if (!link) throw new NotFoundException('Không tìm thấy link.');
+    if (!link.deletedAt) {
+      throw new BadRequestException('Link này chưa bị xóa.');
+    }
+    const note = reason.trim();
+    await this.linkRepository.update(
+      { id: linkId },
+      { restoreRequestedAt: null, restoreRequestReason: null },
+    );
+    await this.linkRepository.restore({ id: linkId });
+    await this.logLinkEvent(link, 'restored', 'admin', adminId, {
+      reason: note,
+    });
+    await this.notifyOnePartner(
+      link.partnerId,
+      `Link "${link.label}" đã được khôi phục`,
+      `esim.vn đã khôi phục link esim.vn/go/${link.code}. Lý do: ${note}`,
+      adminId,
+    );
+    const [updated] = await this.getMyLinksByIds(link.partnerId, [linkId], {});
+    return updated;
+  }
+
+  /**
+   * "Thay đổi trạng thái" for the ticked links (doitac-1410 #053). Each link
+   * goes through the same single-link action, so the rules, history and
+   * partner notice are the same; a link the action does not fit (already
+   * suspended, not deleted…) is skipped and reported, not failed for all.
+   */
+  async adminBulkLinkStatus(
+    input: {
+      linkIds: number[];
+      action: 'suspend' | 'unsuspend' | 'restore';
+      reason: string;
+    },
+    adminId: number,
+  ): Promise<{ done: number[]; skipped: { id: number; reason: string }[] }> {
+    const done: number[] = [];
+    const skipped: { id: number; reason: string }[] = [];
+    for (const id of [...new Set(input.linkIds.map(Number))]) {
+      try {
+        if (input.action === 'restore') {
+          await this.adminRestoreLink(id, input.reason, adminId);
+        } else {
+          await this.adminSetLinkSuspension(
+            id,
+            { suspended: input.action === 'suspend', reason: input.reason },
+            adminId,
+          );
+        }
+        done.push(id);
+      } catch (err) {
+        skipped.push({ id, reason: (err as Error).message });
+      }
+    }
+    return { done, skipped };
+  }
+
+  /**
+   * "Xuất file" of the admin's link list, with its filters (doitac-1410 #053).
+   */
+  async adminExportLinksToExcel(query: AdminLinkListQuery): Promise<Buffer> {
+    const rows: Awaited<ReturnType<PartnersService['adminListLinks']>>['data'] =
+      [];
+    for (let page = 1; page <= 50; page += 1) {
+      const { data, total } = await this.adminListLinks({
+        ...query,
+        page,
+        limit: 100,
+      });
+      rows.push(...data);
+      if (!data.length || rows.length >= total) break;
+    }
+    const stateLabel: Record<string, string> = {
+      active: 'Hoạt động',
+      inactive: 'Tạm tắt',
+      suspended: 'Bị đình chỉ',
+      appealing: 'Đang kháng nghị',
+      deleted: 'Đã xóa',
+      restore_pending: 'Chờ duyệt khôi phục',
+    };
+    const actor: Record<string, string> = {
+      admin: 'Admin',
+      partner: 'Đối tác',
+      system: 'Hệ thống',
+    };
+    const vnTime = (value: unknown) =>
+      value
+        ? new Date(value as string).toLocaleString('vi-VN', {
+            timeZone: 'Asia/Ho_Chi_Minh',
+          })
+        : '';
+    const param = (path: string | null, key: string) =>
+      path
+        ? (new URLSearchParams(path.split('?')[1] ?? '').get(key) ?? '')
+        : '';
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Danh sách liên kết');
+    sheet.columns = [
+      { header: 'Mã ID đối tác', key: 'partnerId', width: 12 },
+      { header: 'Tên đối tác', key: 'partner', width: 30 },
+      { header: 'Tên liên kết', key: 'label', width: 32 },
+      { header: 'Link tiếp thị', key: 'link', width: 34 },
+      { header: 'Trang đích', key: 'target', width: 40 },
+      { header: 'Kênh quảng bá', key: 'channel', width: 14 },
+      { header: 'Mã phân biệt nguồn', key: 'subid', width: 20 },
+      { header: 'Trạng thái', key: 'state', width: 20 },
+      { header: 'Lý do đình chỉ', key: 'suspendedReason', width: 30 },
+      { header: 'Thời gian tạo', key: 'createdAt', width: 20 },
+      { header: 'Tạo bởi', key: 'createdBy', width: 10 },
+      { header: 'Thời gian cập nhật', key: 'updatedAt', width: 20 },
+      { header: 'Cập nhật bởi', key: 'updatedBy', width: 12 },
+      { header: 'Số lần sửa', key: 'edits', width: 10 },
+      { header: 'Lượt nhấp', key: 'clicks', width: 10 },
+      { header: 'Số đơn', key: 'orders', width: 10 },
+      {
+        header: 'Hoa hồng (VND)',
+        key: 'commission',
+        width: 16,
+        style: { numFmt: '#,##0' },
+      },
+    ];
+    for (const r of rows) {
+      sheet.addRow({
+        partnerId: r.partner.id,
+        partner: r.partner.name ?? '',
+        label: r.label ?? '',
+        link: `esim.vn/go/${r.code}`,
+        target: (r.targetPath ?? '/').split('?')[0],
+        channel: param(r.targetPath, 'utm_source'),
+        subid:
+          param(r.targetPath, 'utm_content') || param(r.targetPath, 'subid'),
+        state: stateLabel[r.state] ?? r.state,
+        suspendedReason: r.suspendedReason ?? '',
+        createdAt: vnTime(r.createdAt),
+        createdBy: actor[r.createdBy] ?? r.createdBy,
+        updatedAt: vnTime(r.updatedAt),
+        updatedBy: actor[r.updatedBy] ?? r.updatedBy,
+        edits: r.editCount,
+        clicks: r.clicks,
+        orders: r.orders,
+        commission: r.commissionVnd,
+      });
+    }
+    sheet.getRow(1).font = { bold: true };
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
   /** An admin decides a restore request (doitac-1410 #019); the partner is told. */
   async adminDecideLinkRestore(
     linkId: number,
@@ -2930,6 +3092,7 @@ export class PartnersService {
   async adminCreateLinkForPartner(
     partnerId: number,
     dto: CreatePartnerLinkDto,
+    adminId: number | null = null,
   ) {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const code = dto.code?.trim().toUpperCase() || this.generateLinkCode();
@@ -2939,7 +3102,7 @@ export class PartnersService {
       throw new BadRequestException(`Mã link "${code}" đã được dùng.`);
     }
 
-    return this.linkRepository.save(
+    const link = await this.linkRepository.save(
       this.linkRepository.create({
         partnerId: partner.id,
         code,
@@ -2948,6 +3111,12 @@ export class PartnersService {
         status: PartnerLinkStatusEnum.ACTIVE,
       }),
     );
+    // "Tạo bởi Admin" in the list and the partner's history (doitac-1410 #053).
+    await this.logLinkEvent(link, 'created', 'admin', adminId, {
+      label: link.label,
+      targetPath: link.targetPath ?? null,
+    });
+    return link;
   }
 
   /**

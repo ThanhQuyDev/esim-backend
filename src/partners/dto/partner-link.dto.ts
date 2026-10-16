@@ -1,14 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
   MinLength,
-  IsIn,
-  IsNotEmpty,
-  IsInt,
 } from 'class-validator';
 
 /** Bounds for a code a partner names themselves (#014). */
@@ -147,6 +150,40 @@ export class RequestLinkRestoreDto {
 }
 
 /** An admin deciding a restore request (doitac-1410 #019). */
+/**
+ * "Thay đổi trạng thái" for the ticked links (doitac-1410 #053). The reason is
+ * required: it is what the partner reads in the link's "Lịch sử thay đổi".
+ */
+export class BulkLinkStatusDto {
+  @ApiProperty({ type: [Number] })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Chưa chọn liên kết nào.' })
+  @ArrayMaxSize(200)
+  @IsInt({ each: true })
+  linkIds!: number[];
+
+  @ApiProperty({ enum: ['suspend', 'unsuspend', 'restore'] })
+  @IsIn(['suspend', 'unsuspend', 'restore'])
+  action!: 'suspend' | 'unsuspend' | 'restore';
+
+  @ApiProperty({
+    example: 'Link dẫn tới nội dung vi phạm chính sách quảng cáo',
+  })
+  @IsString()
+  @MinLength(5, { message: 'Vui lòng nhập lý do (ít nhất 5 ký tự).' })
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** An admin brings back a deleted link (doitac-1410 #053, #055). */
+export class AdminRestoreLinkDto {
+  @ApiProperty({ example: 'Đối tác xoá nhầm, đã xác minh qua điện thoại' })
+  @IsString()
+  @MinLength(5, { message: 'Vui lòng nhập lý do (ít nhất 5 ký tự).' })
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class DecideLinkRestoreDto {
   @ApiProperty({ type: Boolean })
   @IsBoolean()
