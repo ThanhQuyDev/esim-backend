@@ -1,3 +1,4 @@
+import { downloadFilename } from '../utils/download-filename';
 import { vnFold, vnFoldSql } from '../utils/vn-fold';
 import { sanitizeNotificationHtml } from './notification-html';
 import { partnerCommissionAmount } from './partner-commission-amount';
@@ -6751,7 +6752,8 @@ export class PartnersService {
       });
 
       return {
-        filename: `doi-soat-${period}-doi-tac-${partnerId}.xlsx`,
+        // Ten-chuc-nang_ngay-thang-nam_gio-phut-giay (doitac-1410 #075).
+        filename: downloadFilename(`Doi-soat-${period}-doi-tac-${partnerId}`),
         content,
       };
     } catch (err) {

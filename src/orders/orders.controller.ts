@@ -1,3 +1,4 @@
+import { downloadFilename } from '../utils/download-filename';
 import {
   Controller,
   Get,
@@ -36,10 +37,7 @@ import { QueryOrderDto } from './dto/query-order.dto';
 import { Order } from './domain/order';
 import { OrdersService } from './orders.service';
 import { AddOrderNoteDto } from './dto/add-order-note.dto';
-import {
-  OrdersExportService,
-  exportFileTimestamp,
-} from './orders-export.service';
+import { OrdersExportService } from './orders-export.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { UserOrderDetailDto } from './dto/user-order-detail.dto';
@@ -137,7 +135,8 @@ export class OrdersController {
     @Res() res: Response,
   ): Promise<void> {
     const buffer = await this.ordersExportService.exportToExcel(query?.filters);
-    const filename = `don-hang-doi-soat-${exportFileTimestamp()}.xlsx`;
+    // Ten-chuc-nang_ngay-thang-nam_gio-phut-giay (doitac-1410 #075).
+    const filename = downloadFilename('Doi-soat-don-hang');
 
     res.set({
       'Content-Type':

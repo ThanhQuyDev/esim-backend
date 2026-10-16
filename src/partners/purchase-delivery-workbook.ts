@@ -1,3 +1,4 @@
+import { downloadFilename } from '../utils/download-filename';
 import { Workbook } from 'exceljs';
 
 /**
@@ -170,7 +171,11 @@ export async function buildPurchaseDeliveryWorkbook(
 }
 
 /** Tên file tải về, an toàn trên Windows lẫn trình duyệt. */
-export function purchaseDeliveryFilename(orderNumber: string): string {
+export function purchaseDeliveryFilename(
+  orderNumber: string,
+  at: Date = new Date(),
+): string {
   const safe = orderNumber.replace(/[^A-Za-z0-9_-]/g, '-');
-  return `esim-${safe}.xlsx`;
+  // Ten-chuc-nang_ngay-thang-nam_gio-phut-giay (doitac-1410 #075).
+  return downloadFilename(`Giao-eSIM-${safe}`, 'xlsx', at);
 }

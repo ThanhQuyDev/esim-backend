@@ -128,12 +128,14 @@ describe('purchase delivery workbook', () => {
   });
 
   describe('tên file', () => {
-    it('should giữ mã đơn và bỏ ký tự không an toàn', () => {
-      expect(purchaseDeliveryFilename('PTN-123-ABC')).toBe(
-        'esim-PTN-123-ABC.xlsx',
+    it('should giữ mã đơn, bỏ ký tự không an toàn và ghi thời điểm tải (doitac-1410 #075)', () => {
+      // 07:30:05 on 16/10/2026 in Vietnam.
+      const at = new Date('2026-10-16T00:30:05Z');
+      expect(purchaseDeliveryFilename('PTN-123-ABC', at)).toBe(
+        'Giao-eSIM-PTN-123-ABC_16-10-2026_07-30-05.xlsx',
       );
-      expect(purchaseDeliveryFilename('PTN/123 ABC')).toBe(
-        'esim-PTN-123-ABC.xlsx',
+      expect(purchaseDeliveryFilename('PTN/123 ABC', at)).toBe(
+        'Giao-eSIM-PTN-123-ABC_16-10-2026_07-30-05.xlsx',
       );
     });
   });

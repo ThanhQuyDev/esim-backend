@@ -154,11 +154,11 @@ export class AdminPartnersController {
   ): Promise<void> {
     const buffer =
       await this.partnersService.adminExportReconciliationsToExcel(query);
-    const period = query.period || new Date().toISOString().slice(0, 7);
+    // Ten-chuc-nang_ngay-thang-nam_gio-phut-giay (doitac-1410 #075).
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="doi-soat-hoa-hong-${period}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${downloadFilename('Doi-soat-hoa-hong')}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);
@@ -568,11 +568,10 @@ export class AdminPartnersController {
     @Res() res: Response,
   ): Promise<void> {
     const buffer = await this.partnersService.adminExportPayoutsToExcel(query);
-    const stamp = new Date().toISOString().slice(0, 10);
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="yeu-cau-rut-tien-${stamp}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${downloadFilename('Yeu-cau-rut-tien')}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);

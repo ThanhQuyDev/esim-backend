@@ -1,3 +1,4 @@
+import { downloadFilename } from '../utils/download-filename';
 import {
   BadRequestException,
   Body,
@@ -98,14 +99,14 @@ export class ApnSupportController {
   @Get('export')
   async exportExcel(@Res() res: Response) {
     const buffer = await this.apnSupportService.exportExcel();
-    const date = new Date().toISOString().slice(0, 10);
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="apn-tiktok-gpt-${date}.xlsx"`,
+      // Ten-chuc-nang_ngay-thang-nam_gio-phut-giay (doitac-1410 #075).
+      `attachment; filename="${downloadFilename('Danh-sach-APN-TikTok-ChatGPT')}"`,
     );
     res.send(buffer);
   }

@@ -133,7 +133,9 @@ describe('email đối soát kèm file', () => {
     await service.sendScheduledReconciliationEmails();
 
     const arg = sendPartnerReconciliationStatement.mock.calls[0][0];
-    expect(arg.attachment.filename).toBe('doi-soat-2026-08-doi-tac-8.xlsx');
+    expect(arg.attachment.filename).toBe(
+      'Doi-soat-2026-08-doi-tac-8_05-09-2026_00-00-00.xlsx',
+    );
 
     const wb = await openAttachment(arg.attachment.content);
     expect(wb.worksheets.map((w) => w.name)).toEqual([
