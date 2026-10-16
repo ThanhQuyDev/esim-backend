@@ -583,6 +583,44 @@ export class PartnersController {
     );
   }
 
+  /**
+   * "Xuất file" on Đơn hàng (doitac-1410 #043), with the list's filters.
+   * Declared before `me/purchases/:orderNumber` so "export" is not an order code.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/purchases/export')
+  @HttpCode(HttpStatus.OK)
+  async exportMyPurchases(
+    @Request() req: { user: { id: number } },
+    @Res() res: Response,
+    @Query() query: Record<string, string | undefined>,
+  ): Promise<void> {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    const buffer = await this.partnersService.exportMyPurchasesToExcel(
+      partner.id,
+      {
+        status: query.status,
+        orderNumber: query.orderNumber,
+        planName: query.planName,
+        iccid: query.iccid,
+        email: query.email,
+        orderType: query.orderType,
+        from: query.from,
+        to: query.to,
+      },
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      // Danh-sach-don-hang_13-10-2026_01-18-29.xlsx, as the brief names it.
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-don-hang')}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   /** "Chi tiết đơn hàng" of one of the partner's own orders (doitac-1410 #042). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

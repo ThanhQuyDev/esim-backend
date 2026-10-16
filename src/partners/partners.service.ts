@@ -6692,6 +6692,8 @@ export class PartnersService {
       /** Bought from–to, in Vietnamese days. */
       from?: string;
       to?: string;
+      /** The Excel export takes every order, not one screen (doitac-1410 #043). */
+      unbounded?: boolean;
     } = {},
   ): Promise<
     {
@@ -6725,7 +6727,10 @@ export class PartnersService {
     const partner = partnerId
       ? await this.getPartnerOrThrowById(partnerId)
       : null;
-    const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+    const limit = Math.min(
+      Math.max(filters.limit ?? 50, 1),
+      filters.unbounded ? 50_000 : 200,
+    );
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
     const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
     const status = filters.status?.trim() || null;
@@ -6864,6 +6869,204 @@ export class PartnersService {
       topupPackageName: row.topupPackageName ?? null,
       targetIccid: row.targetIccid ?? null,
     }));
+  }
+
+  /**
+   * "Xuất file" on Đơn hàng (doitac-1410 #043): every order matching the
+   * list's filters. Sheet "Đơn hàng" has one row per order; sheet "Sản phẩm"
+   * one row per product line with its plan details and its ICCIDs.
+   */
+  async exportMyPurchasesToExcel(
+    partnerId: number,
+    filters: Omit<
+      Parameters<PartnersService['getMyPurchases']>[1],
+      'limit'
+    > = {},
+  ): Promise<Buffer> {
+    const purchases = await this.getMyPurchases(partnerId, {
+      ...filters,
+      limit: 50_000,
+      unbounded: true,
+    });
+    const codes = purchases.map((p) => p.orderNumber);
+    const lines: Record<string, any>[] = codes.length
+      ? await this.dataSource.query(
+          `SELECT o."orderNumber", oi.id, oi.quantity, oi."vndPrice",
+                  p.name AS "planName", p.slug AS "planCode", p."dataMb",
+                  p.call, p.sms, p."durationDays", p."operatorName", p.speed,
+                  p.type,
+                  COALESCE(d.name, r.name, p."countryCode") AS destination,
+                  (SELECT string_agg(e.iccid, ', ' ORDER BY e.id) FROM esim e
+                    WHERE e."orderItemId" = oi.id AND e."deletedAt" IS NULL)
+                    AS iccids
+             FROM "order" o
+             JOIN order_item oi ON oi."orderId" = o.id
+             LEFT JOIN plan p ON p.id = oi."planId"
+             LEFT JOIN destination d ON d.id = p."destinationId"
+             LEFT JOIN region r ON r.id = p."regionId"
+            WHERE o."orderNumber" = ANY($1)
+            ORDER BY o."createdAt" DESC, oi.id`,
+          [codes],
+        )
+      : [];
+
+    const statusLabel: Record<string, string> = {
+      pending: 'Chờ thanh toán',
+      paid: 'Đã thanh toán',
+      processing: 'Đang xử lý',
+      completed: 'Hoàn tất',
+      cancelled: 'Đã huỷ',
+      failed: 'Thất bại',
+      refunded: 'Đã hoàn tiền',
+      manual_intervention: 'esim.vn đang xử lý',
+    };
+    const typeLabel: Record<string, string> = {
+      fixed: 'Cố định',
+      daily: 'Theo ngày',
+      unlimited: 'Không giới hạn',
+      'unlimited-reduce': 'Không giới hạn giảm tốc',
+    };
+    const vnTime = (value: unknown) => {
+      if (!value) return '';
+      const date = new Date(value as string);
+      return Number.isNaN(date.getTime())
+        ? ''
+        : date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    };
+    const dataText = (mb: unknown) => {
+      if (mb == null) return '';
+      const n = Number(mb);
+      if (n <= 0) return 'Không giới hạn';
+      return n >= 1024 ? `${Math.round((n / 1024) * 100) / 100} GB` : `${n} MB`;
+    };
+    const money = '#,##0';
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+
+    const orders = workbook.addWorksheet('Đơn hàng');
+    orders.columns = [
+      { header: 'Mã đơn hàng', key: 'orderNumber', width: 30 },
+      { header: 'Khách hàng (email nhận eSIM)', key: 'email', width: 30 },
+      { header: 'Sản phẩm', key: 'products', width: 50 },
+      { header: 'Số eSIM', key: 'esims', width: 9 },
+      {
+        header: 'Tổng tiền (VND)',
+        key: 'paid',
+        width: 16,
+        style: { numFmt: money },
+      },
+      {
+        header: 'Đã hoàn (VND)',
+        key: 'refunded',
+        width: 14,
+        style: { numFmt: money },
+      },
+      {
+        header: 'Tổng giá bán lẻ đề xuất (VND)',
+        key: 'retail',
+        width: 26,
+        style: { numFmt: money },
+      },
+      { header: 'Loại đơn', key: 'type', width: 10 },
+      { header: 'ICCID được topup', key: 'targetIccid', width: 24 },
+      { header: 'Ngày mua', key: 'createdAt', width: 20 },
+      { header: 'Trạng thái', key: 'status', width: 18 },
+    ];
+    for (const p of purchases) {
+      const own = lines.filter((l) => l.orderNumber === p.orderNumber);
+      const isTopup = p.orderType === 'TOPUP';
+      orders.addRow({
+        orderNumber: p.orderNumber,
+        email: p.deliveryEmail ?? '',
+        products: isTopup
+          ? (p.topupPackageName ?? 'Gói topup')
+          : own
+              .map((l) => `${l.planName ?? '—'} × ${Number(l.quantity)}`)
+              .join('; '),
+        esims: p.esimCount,
+        paid: p.paidVnd,
+        refunded: p.refundedVnd,
+        retail: isTopup
+          ? null
+          : own.reduce(
+              (sum, l) =>
+                sum +
+                partnerSuggestedRetailVnd(Number(l.vndPrice ?? 0)) *
+                  Number(l.quantity ?? 0),
+              0,
+            ),
+        type: isTopup ? 'Topup' : 'Mua eSIM',
+        targetIccid: p.targetIccid ?? '',
+        createdAt: vnTime(p.createdAt),
+        status: statusLabel[p.status] ?? p.status,
+      });
+    }
+
+    const items = workbook.addWorksheet('Sản phẩm');
+    items.columns = [
+      { header: 'Mã đơn hàng', key: 'orderNumber', width: 30 },
+      { header: 'Tên sản phẩm', key: 'planName', width: 36 },
+      { header: 'Mã gói cước', key: 'planCode', width: 32 },
+      { header: 'Số lượng', key: 'quantity', width: 9 },
+      {
+        header: 'Giá đại lý / eSIM (VND)',
+        key: 'unit',
+        width: 20,
+        style: { numFmt: money },
+      },
+      {
+        header: 'Tổng giá đại lý (VND)',
+        key: 'agent',
+        width: 20,
+        style: { numFmt: money },
+      },
+      {
+        header: 'Tổng giá bán lẻ đề xuất (VND)',
+        key: 'retail',
+        width: 26,
+        style: { numFmt: money },
+      },
+      { header: 'Điểm đến', key: 'destination', width: 18 },
+      { header: 'Dung lượng', key: 'data', width: 12 },
+      { header: 'Gọi / SMS', key: 'callSms', width: 22 },
+      { header: 'Thời hạn (ngày)', key: 'days', width: 14 },
+      { header: 'Nhà mạng', key: 'operator', width: 18 },
+      { header: 'Tốc độ', key: 'speed', width: 10 },
+      { header: 'Loại gói', key: 'type', width: 22 },
+      { header: 'ICCID', key: 'iccids', width: 60 },
+    ];
+    for (const l of lines) {
+      const unit = Number(l.vndPrice ?? 0);
+      const quantity = Number(l.quantity ?? 0);
+      const call = Number(l.call ?? 0);
+      const sms = Number(l.sms ?? 0);
+      items.addRow({
+        orderNumber: l.orderNumber,
+        planName: l.planName ?? '',
+        planCode: l.planCode ?? '',
+        quantity,
+        unit,
+        agent: unit * quantity,
+        retail: partnerSuggestedRetailVnd(unit) * quantity,
+        destination: l.destination ?? '',
+        data: dataText(l.dataMb),
+        callSms:
+          call > 0 || sms > 0 ? `Gọi ${call} phút · SMS ${sms}` : 'Không',
+        days: l.durationDays ?? '',
+        operator: l.operatorName ?? '',
+        speed: l.speed ?? '',
+        type: typeLabel[l.type ?? ''] ?? l.type ?? '',
+        iccids: l.iccids ?? '',
+      });
+    }
+
+    for (const sheet of [orders, items]) {
+      sheet.getRow(1).font = { bold: true };
+      sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    }
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   /**

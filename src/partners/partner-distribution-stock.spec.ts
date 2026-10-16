@@ -788,3 +788,72 @@ describe('requestForMyPurchase sent twice (doitac-1410 #042)', () => {
     ).rejects.toThrow('Bạn vừa gửi yêu cầu này cho đơn hàng');
   });
 });
+
+describe('PartnersService.exportMyPurchasesToExcel (doitac-1410 #043)', () => {
+  it('should export one row per order and one per product line', async () => {
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    const getMyPurchases = jest.fn().mockResolvedValue([
+      {
+        orderNumber: 'PTN-1',
+        status: 'paid',
+        orderType: 'BUY_NEW',
+        paidVnd: 324000,
+        refundedVnd: 0,
+        esimCount: 3,
+        createdAt: '2026-10-13T20:13:01.000Z',
+        deliveryEmail: 'khach@esim.test',
+        topupPackageName: null,
+        targetIccid: null,
+        items: [],
+      },
+    ]);
+    const query = jest.fn().mockResolvedValue([
+      {
+        orderNumber: 'PTN-1',
+        id: 5,
+        quantity: 3,
+        vndPrice: '108000',
+        planName: 'Thailand 3GB',
+        planCode: 'thailand-3gb',
+        dataMb: 3072,
+        call: null,
+        sms: null,
+        durationDays: 30,
+        operatorName: 'AIS',
+        speed: '5G',
+        type: 'fixed',
+        destination: 'Thailand',
+        iccids: '111, 222, 333',
+      },
+    ]);
+    Object.assign(service, { getMyPurchases, dataSource: { query } });
+
+    const buffer = await service.exportMyPurchasesToExcel(11, {
+      orderType: 'BUY_NEW',
+    });
+
+    expect(getMyPurchases).toHaveBeenCalledWith(
+      11,
+      expect.objectContaining({ orderType: 'BUY_NEW', unbounded: true }),
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as never);
+    const read = (name: string) => {
+      const sheet = workbook.getWorksheet(name)!;
+      const header = (sheet.getRow(1).values as unknown[]).slice(1);
+      const row = (sheet.getRow(2).values as unknown[]).slice(1);
+      return (col: string) => row[header.indexOf(col)];
+    };
+    const order = read('Đơn hàng');
+    expect(order('Khách hàng (email nhận eSIM)')).toBe('khach@esim.test');
+    expect(order('Sản phẩm')).toBe('Thailand 3GB × 3');
+    expect(order('Tổng tiền (VND)')).toBe(324000);
+    expect(order('Tổng giá bán lẻ đề xuất (VND)')).toBe(540000);
+    expect(order('Loại đơn')).toBe('Mua eSIM');
+    expect(order('Trạng thái')).toBe('Đã thanh toán');
+    const line = read('Sản phẩm');
+    expect(line('Giá đại lý / eSIM (VND)')).toBe(108000);
+    expect(line('Tổng giá đại lý (VND)')).toBe(324000);
+    expect(line('ICCID')).toBe('111, 222, 333');
+  });
+});
