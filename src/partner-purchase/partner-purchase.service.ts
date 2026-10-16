@@ -7,6 +7,7 @@ import {
 import { DataSource } from 'typeorm';
 import { OrdersService } from '../orders/orders.service';
 import { PartnersService } from '../partners/partners.service';
+import { TopupService } from '../topup/topup.service';
 
 /**
  * Đối tác phân phối tự đặt mua hàng, trả bằng ví ký quỹ (#046).
@@ -28,7 +29,98 @@ export class PartnerPurchaseService {
     private readonly dataSource: DataSource,
     private readonly partnersService: PartnersService,
     private readonly ordersService: OrdersService,
+    private readonly topupService: TopupService,
   ) {}
+
+  /**
+   * "Gửi lại email eSIM" from one eSIM's page (doitac-1410 #039): that eSIM
+   * only, to the order's delivery email when the partner set one, else to
+   * the partner's own address — the same rule as the first send (#034).
+   */
+  async resendEsimEmail(
+    partnerId: number,
+    iccid: string,
+  ): Promise<{ sent: number }> {
+    const { orderId } = await this.partnersService.assertOwnsEsim(
+      partnerId,
+      iccid,
+    );
+    const result = await this.ordersService.resendEsimEmail(orderId, {
+      onlyIccid: iccid,
+    });
+    if (!result.sent) {
+      throw new BadRequestException(
+        'Chưa gửi được email: eSIM chưa được cấp hoặc đơn chưa có email nhận.',
+      );
+    }
+    return { sent: result.sent };
+  }
+
+  /**
+   * Topup packages this eSIM can take, at the partner's agent price
+   * (doitac-1410 #039) — cost + tier markup, the same rule as a new eSIM.
+   */
+  async listTopupPackages(partnerId: number, iccid: string) {
+    await this.partnersService.assertOwnsEsim(partnerId, iccid);
+    const { packages } = await this.topupService.listPackagesWithCost(iccid);
+    return Promise.all(
+      packages.map(async (pkg) => {
+        const agentPriceVnd =
+          pkg.costVnd > 0
+            ? await this.partnersService.partnerAgentPriceVnd(
+                partnerId,
+                pkg.costVnd,
+              )
+            : 0;
+        // No supplier cost or provider id leaves the server.
+        return {
+          packageId: pkg.packageId,
+          name: pkg.name,
+          dataText: pkg.dataAmountText,
+          durationDays: pkg.durationDays,
+          isUnlimited: pkg.isUnlimited,
+          agentPriceVnd,
+          retailPriceVnd: Number(pkg.vndPrice ?? 0),
+          purchasable: agentPriceVnd > 0,
+        };
+      }),
+    );
+  }
+
+  /**
+   * "Topup hộ khách" (doitac-1410 #039): pay from the deposit wallet, then
+   * recharge. The debit happens before the supplier is called, like a
+   * purchase; a supplier failure leaves the order in manual intervention for
+   * esim.vn to finish or refund.
+   */
+  async topupEsim(
+    partnerId: number,
+    iccid: string,
+    packageId: string,
+  ): Promise<{ orderNumber: string; status: string; amountVnd: number }> {
+    await this.partnersService.assertOwnsEsim(partnerId, iccid);
+    const partner = await this.partnersService.getPartnerOrThrowById(partnerId);
+    return this.topupService.checkoutForPartner(
+      partner.userId,
+      { iccid, packageId },
+      (costVnd) =>
+        this.partnersService.partnerAgentPriceVnd(partnerId, costVnd),
+      async (order, amountVnd) => {
+        const rejection =
+          await this.partnersService.partnerWalletPaymentRejection(
+            partnerId,
+            amountVnd,
+          );
+        if (rejection) throw new BadRequestException(rejection);
+        await this.partnersService.debitWalletForPurchase(partnerId, {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          amountVnd,
+          reason: `Topup eSIM ${iccid} – đơn ${order.orderNumber}`,
+        });
+      },
+    );
+  }
 
   /**
    * Đặt mua `quantity` eSIM của một gói.

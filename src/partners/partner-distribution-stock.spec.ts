@@ -396,3 +396,112 @@ describe('PartnersService.reviewEsimFaultReport — approval (doitac-1410 #039)'
     expect(query.mock.calls[1][1]).toEqual([7]);
   });
 });
+
+describe('PartnersService.getMyEsimDetail (doitac-1410 #039)', () => {
+  const ESIM_ROW = {
+    iccid: '8900000633806287368',
+    status: 'sold',
+    apn: 'internet',
+    smdpAddress: 'smdp.example',
+    activationCode: 'ABC',
+    lpa: 'LPA:1$smdp.example$ABC',
+    directAppleInstallationUrl: null,
+    dataUsed: null,
+    dataTotal: '3072',
+    activatedAt: null,
+    expiresAt: null,
+    createdAt: '2026-10-14T03:13:01.000Z',
+    updatedAt: '2026-10-14T03:13:01.000Z',
+    orderNumber: 'PTN-1',
+    deliveryEmail: null,
+    costVnd: '36000',
+    planId: 5,
+    planName: 'Thailand 3GB / 30day',
+    planCode: 'thailand-3gb-30day',
+    provider: 'esimaccess',
+    operatorName: 'AIS',
+    planType: 'fixed',
+    dataMb: 3072,
+    durationDays: 30,
+    call: null,
+    sms: null,
+    speed: '4G',
+    ipExport: null,
+    isNonHkIp: true,
+    dailyResetPolicy: null,
+    dailyResetUtcOffset: null,
+    topUp: true,
+    destination: 'Thailand',
+    openReport: null,
+  };
+
+  function build(owned: boolean, topups: Record<string, unknown>[] = []) {
+    const query = jest.fn((sql: string) => {
+      if (sql.includes('SELECT e.id AS "esimId"')) {
+        return Promise.resolve(
+          owned ? [{ esimId: 3, orderId: 77, orderNumber: 'PTN-1' }] : [],
+        );
+      }
+      if (sql.includes(`"orderType" = 'TOPUP'`)) return Promise.resolve(topups);
+      return Promise.resolve([ESIM_ROW]);
+    });
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    Object.assign(service, {
+      dataSource: { query },
+      getPartnerOrThrowById: jest
+        .fn()
+        .mockResolvedValue({ id: 11, userId: 20 }),
+    });
+    return { service, query };
+  }
+
+  it('should refuse an eSIM another account bought', async () => {
+    const { service, query } = build(false);
+    await expect(
+      service.getMyEsimDetail(11, '8900000633806287368'),
+    ).rejects.toThrow('Không tìm thấy eSIM');
+    // Ownership is checked against this partner's own user account.
+    expect((query.mock.calls[0] as unknown[])[1]).toEqual([
+      '8900000633806287368',
+      20,
+    ]);
+  });
+
+  it('should give the install links, plan code and partner prices', async () => {
+    const { service } = build(true, [
+      {
+        orderNumber: 'TOPUP-9',
+        status: 'completed',
+        vndPrice: '120000',
+        topupPackageName: 'Thailand 3GB',
+        topupDataText: '3GB',
+        topupDurationDays: 7,
+        topupIsUnlimited: false,
+        createdAt: '2026-10-15T03:00:00.000Z',
+      },
+    ]);
+    const detail = await service.getMyEsimDetail(11, '8900000633806287368');
+    expect(detail).toMatchObject({
+      planCode: 'thailand-3gb-30day',
+      ipExport: 'IP nội địa (không qua Hồng Kông)',
+      agentPriceVnd: 36000,
+      suggestedRetailVnd: 60000,
+      appleInstallUrl:
+        'https://esimsetup.apple.com/esim_qrcode_provisioning?carddata=LPA:1$smdp.example$ABC',
+      androidInstallUrl:
+        'https://esimsetup.android.com/esim_qrcode_provisioning?carddata=LPA:1$smdp.example$ABC',
+      refundable: true,
+      plan: { name: 'Thailand 3GB / 30day', dataMb: 3072, durationDays: 30 },
+      topups: [
+        {
+          orderNumber: 'TOPUP-9',
+          priceVnd: 120000,
+          packageName: 'Thailand 3GB',
+          durationDays: 7,
+        },
+      ],
+    });
+    // No supplier name leaves the server.
+    expect(detail).not.toHaveProperty('provider');
+  });
+});

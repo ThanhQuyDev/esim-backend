@@ -48,3 +48,10 @@ export const ADMIN_MANUAL_PAYMENT_METHOD = 'ADMIN_MANUAL';
  * pricing SQL to 25,500, which quietly put the two out of step.
  */
 export const FALLBACK_USD_VND_RATE = 25500;
+
+/**
+ * `order.paymentMethod` for a topup a distribution partner buys for their
+ * customer out of the deposit wallet (doitac-1410 #039) — the same value as a
+ * partner's own eSIM purchase, so the admin order list treats both alike.
+ */
+export const PARTNER_WALLET_PAYMENT_METHOD = 'partner_wallet';

@@ -396,6 +396,20 @@ export class PartnersController {
     });
   }
 
+  /** "Chi tiết eSIM" of one eSIM the partner bought (doitac-1410 #039). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/esims/:iccid')
+  @HttpCode(HttpStatus.OK)
+  async getMyEsimDetail(
+    @Request() req: { user: { id: number } },
+    @Param('iccid') iccid: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyEsimDetail(partner.id, iccid);
+  }
+
   /** The orders a distribution partner placed themselves (#046). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

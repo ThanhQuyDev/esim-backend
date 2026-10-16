@@ -1844,7 +1844,7 @@ export class OrdersService {
    */
   async resendEsimEmail(
     orderId: number,
-    options: { onlyOrderItemIds?: number[] } = {},
+    options: { onlyOrderItemIds?: number[]; onlyIccid?: string } = {},
   ): Promise<{
     sent: number;
     skippedReason?: string;
@@ -1871,8 +1871,12 @@ export class OrdersService {
         )
       : allItems;
 
-    const esims = await this.esimsService.findByOrderItemIds(
-      orderItems.map((i) => i.id),
+    const esims = (
+      await this.esimsService.findByOrderItemIds(orderItems.map((i) => i.id))
+    ).filter(
+      // "Gửi lại email eSIM" from one eSIM's page mails that eSIM only
+      // (doitac-1410 #039).
+      (esim) => !options.onlyIccid || esim.iccid === options.onlyIccid,
     );
 
     if (esims.length === 0) {

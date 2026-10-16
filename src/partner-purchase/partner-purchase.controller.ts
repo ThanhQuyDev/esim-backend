@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -16,6 +17,7 @@ import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import { CreatePartnerPurchaseDto } from './dto/create-partner-purchase.dto';
 import { CreatePartnerCartPurchaseDto } from './dto/create-partner-cart-purchase.dto';
+import { PartnerEsimTopupDto } from './dto/partner-esim-topup.dto';
 import { PartnerPurchaseService } from './partner-purchase.service';
 
 /**
@@ -81,6 +83,49 @@ export class PartnerPurchaseController {
       items: dto.items,
       recipientEmail: dto.recipientEmail ?? null,
     });
+  }
+
+  /** "Gửi lại email eSIM" from one eSIM's page (doitac-1410 #039). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/esims/:iccid/resend-email')
+  @HttpCode(HttpStatus.OK)
+  async resendEsimEmail(
+    @Request() req: { user: { id: number } },
+    @Param('iccid') iccid: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.purchaseService.resendEsimEmail(partner.id, iccid);
+  }
+
+  /** Topup packages for one eSIM, at the agent price (doitac-1410 #039). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/esims/:iccid/topup-packages')
+  @HttpCode(HttpStatus.OK)
+  async listTopupPackages(
+    @Request() req: { user: { id: number } },
+    @Param('iccid') iccid: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.purchaseService.listTopupPackages(partner.id, iccid);
+  }
+
+  /** "Topup hộ khách", paid from the deposit wallet (doitac-1410 #039). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/esims/:iccid/topup')
+  @HttpCode(HttpStatus.CREATED)
+  async topupEsim(
+    @Request() req: { user: { id: number } },
+    @Param('iccid') iccid: string,
+    @Body() dto: PartnerEsimTopupDto,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.purchaseService.topupEsim(partner.id, iccid, dto.packageId);
   }
 
   /** Đối tác tự huỷ đơn chưa cấp eSIM và nhận lại tiền vào ví. */

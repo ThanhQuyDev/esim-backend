@@ -39,6 +39,7 @@ import {
   TOPUP_ORDER_NUMBER_PREFIX,
   TOPUP_ORDER_STATUS,
   ADMIN_MANUAL_PAYMENT_METHOD,
+  PARTNER_WALLET_PAYMENT_METHOD,
 } from './topup.constants';
 import { Plan } from '../plans/domain/plan';
 import { FilterPlanDto } from '../plans/dto/query-plan.dto';
@@ -194,6 +195,98 @@ export class TopupService {
       status,
       vndAmount,
       walletSpentVndAmount: vndAmount,
+    };
+  }
+
+  /**
+   * The packages an eSIM can take, each with what it costs esim.vn in đồng
+   * (doitac-1410 #039) — a distribution partner is charged cost + their tier
+   * markup, not the retail price a customer pays.
+   */
+  async listPackagesWithCost(iccid: string): Promise<{
+    iccid: string;
+    provider: TopupProvider;
+    packages: (TopupPackageDto & { costVnd: number })[];
+  }> {
+    const list = await this.listPackages(iccid);
+    const rate = await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE);
+    return {
+      ...list,
+      packages: list.packages.map((pkg) => ({
+        ...pkg,
+        costVnd: roundVndToThousands(rate * (Number(pkg.price) || 0)),
+      })),
+    };
+  }
+
+  /**
+   * "Topup hộ khách" from the partner portal (doitac-1410 #039), paid out of
+   * the partner's deposit wallet.
+   *
+   * Same order as a customer's topup (so the package, its snapshot and the
+   * provider call are the ones already in use), priced at `priceFor(cost)`.
+   * `pay` debits the wallet; when it refuses (balance too low, wallet
+   * locked) the order is failed before any supplier is called. A supplier
+   * failure afterwards lands in manual intervention like every other topup.
+   */
+  async checkoutForPartner(
+    userId: number,
+    input: { iccid: string; packageId: string },
+    priceFor: (costVnd: number) => Promise<number>,
+    pay: (
+      order: { id: number; orderNumber: string },
+      amountVnd: number,
+    ) => Promise<void>,
+  ): Promise<{ orderNumber: string; status: string; amountVnd: number }> {
+    const { provider } = await this.resolveProviderForIccid(input.iccid);
+    const { order } = await this.createPendingTopupOrder(userId, {
+      iccid: input.iccid,
+      packageId: input.packageId,
+      provider,
+      paymentMethod: PARTNER_WALLET_PAYMENT_METHOD as TopupPaymentMethod,
+    });
+
+    const costVnd = Number(order.vndCostPrice ?? 0);
+    if (costVnd <= 0) {
+      await this.orderRepository.update(order.id, {
+        status: TOPUP_ORDER_STATUS.FAILED,
+      } as never);
+      throw new BadRequestException(
+        'Gói topup này chưa có giá vốn, chưa thể bán cho đối tác.',
+      );
+    }
+    const amountVnd = await priceFor(costVnd);
+
+    await this.orderRepository.update(order.id, {
+      vndPrice: amountVnd,
+      subtotalVndPrice: amountVnd,
+      payableVndPrice: 0,
+    } as never);
+
+    try {
+      await pay(
+        { id: Number(order.id), orderNumber: order.orderNumber },
+        amountVnd,
+      );
+    } catch (err) {
+      await this.orderRepository.update(order.id, {
+        status: TOPUP_ORDER_STATUS.FAILED,
+      } as never);
+      throw err;
+    }
+
+    await this.orderRepository.update(order.id, {
+      status: TOPUP_ORDER_STATUS.PAID,
+    } as never);
+    await this.executeTopup(order.orderNumber);
+
+    const finalized = await this.orderRepository.findByOrderNumber(
+      order.orderNumber,
+    );
+    return {
+      orderNumber: order.orderNumber,
+      status: finalized?.status ?? TOPUP_ORDER_STATUS.PAID,
+      amountVnd,
     };
   }
 

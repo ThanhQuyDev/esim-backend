@@ -6304,6 +6304,202 @@ export class PartnersService {
   }
 
   /**
+   * The eSIM a partner bought, or a 404 — never someone else's (doitac-1410 #039).
+   * An ICCID is printed on the card and easy to guess, so every per-eSIM
+   * action (detail, resend, topup) checks ownership here first.
+   */
+  async assertOwnsEsim(
+    partnerId: number,
+    iccid: string,
+  ): Promise<{ esimId: number; orderId: number; orderNumber: string }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const rows = await this.dataSource.query(
+      `SELECT e.id AS "esimId", o.id AS "orderId", o."orderNumber"
+         FROM esim e
+         JOIN order_item oi ON oi.id = e."orderItemId"
+         JOIN "order" o ON o.id = oi."orderId"
+        WHERE e.iccid = $1 AND o."userId" = $2
+          AND o."deletedAt" IS NULL AND e."deletedAt" IS NULL
+        ORDER BY e.id DESC LIMIT 1`,
+      [String(iccid ?? '').trim(), partner.userId],
+    );
+    if (!rows.length) {
+      throw new NotFoundException('Không tìm thấy eSIM này trong kho của bạn.');
+    }
+    return {
+      esimId: Number(rows[0].esimId),
+      orderId: Number(rows[0].orderId),
+      orderNumber: String(rows[0].orderNumber),
+    };
+  }
+
+  /**
+   * What this partner pays for something whose cost is `costVnd`: the same
+   * cost + tier markup, rounded to the thousand, as a new eSIM (#046) — used
+   * for a topup bought for a customer (doitac-1410 #039).
+   */
+  async partnerAgentPriceVnd(
+    partnerId: number,
+    costVnd: number,
+  ): Promise<number> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    return partnerPurchaseUnitPriceVnd(
+      costVnd,
+      await this.purchaseMarkupPercentFor(partner),
+    );
+  }
+
+  /**
+   * Why this partner cannot pay `amountVnd` from the wallet right now, or
+   * null — the purchase checks, for a topup bought for a customer
+   * (doitac-1410 #039).
+   */
+  async partnerWalletPaymentRejection(
+    partnerId: number,
+    amountVnd: number,
+  ): Promise<string | null> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const wallet = await this.getOrCreateWallet(partnerId);
+    return partnerPurchaseRejection(
+      {
+        partnerType: partner.partnerType,
+        partnerStatus: partner.status,
+        walletLocked: wallet.status !== PartnerWalletStatusEnum.ACTIVE,
+        balanceVnd: Number(wallet.balanceVnd),
+      },
+      {
+        quantity: 1,
+        unitPriceVnd: amountVnd,
+        totalVnd: amountVnd,
+        listUnitPriceVnd: amountVnd,
+        listTotalVnd: amountVnd,
+        marginVnd: 0,
+        marginPercent: 0,
+      },
+    );
+  }
+
+  /**
+   * "Chi tiết eSIM" on the partner portal (doitac-1410 #039): the admin's
+   * detail page cut down to what a reseller needs — status, install codes,
+   * the plan, the agent / suggested retail price and their own topups. No
+   * supplier, supplier cost or buyer data.
+   */
+  async getMyEsimDetail(partnerId: number, iccid: string) {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const { esimId } = await this.assertOwnsEsim(partnerId, iccid);
+
+    const [row] = await this.dataSource.query(
+      `SELECT e.iccid, e.status, e."apnValue" AS apn, e."smdpAddress",
+              e."activationCode", e.lpa, e."directAppleInstallationUrl",
+              e."qrAccessToken", e."dataUsed", e."dataTotal",
+              e."activatedAt", e."expiresAt", e."createdAt", e."updatedAt",
+              o."orderNumber", o."deliveryEmail",
+              COALESCE(oi."vndPrice" / NULLIF(oi.quantity, 0), 0) AS "costVnd",
+              p.id AS "planId", p.name AS "planName", p.slug AS "planCode",
+              p.provider, p."operatorName", p.type AS "planType",
+              p."dataMb", p."durationDays", p.call, p.sms, p.speed,
+              p."ipExport", p."isNonHkIp", p."dailyResetPolicy",
+              p."dailyResetUtcOffset", COALESCE(p."topUp", false) AS "topUp",
+              COALESCE(d.name, r.name, p."countryCode") AS destination,
+              (SELECT fr.kind FROM partner_esim_fault_report fr
+                WHERE fr.iccid = e.iccid AND fr.status = 'pending'
+                ORDER BY fr.id DESC LIMIT 1) AS "openReport"
+         FROM esim e
+         JOIN order_item oi ON oi.id = e."orderItemId"
+         JOIN "order" o ON o.id = oi."orderId"
+         LEFT JOIN plan p ON p.id = oi."planId"
+         LEFT JOIN destination d ON d.id = p."destinationId"
+         LEFT JOIN region r ON r.id = p."regionId"
+        WHERE e.id = $1`,
+      [esimId],
+    );
+
+    // Only the partner's own topups: a topup the end customer paid for on the
+    // storefront has a price the partner never saw.
+    const topups = await this.dataSource.query(
+      `SELECT o."orderNumber", o.status, o."vndPrice", o."topupPackageName",
+              o."topupDataText", o."topupDurationDays", o."topupIsUnlimited",
+              o."createdAt"
+         FROM "order" o
+        WHERE o."orderType" = 'TOPUP' AND o."targetIccid" = $1
+          AND o."userId" = $2 AND o."deletedAt" IS NULL
+        ORDER BY o."createdAt" DESC`,
+      [row.iccid, partner.userId],
+    );
+
+    const costVnd = Number(row.costVnd ?? 0);
+    const lpa: string | null = row.lpa ?? null;
+    return {
+      iccid: row.iccid as string,
+      status: (row.status as string) ?? null,
+      orderNumber: row.orderNumber as string,
+      deliveryEmail: (row.deliveryEmail as string) ?? null,
+      apn: (row.apn as string) ?? null,
+      /** The plan's slug — "Mã gói cước" for the partner's own reconciliation. */
+      planCode: (row.planCode as string) ?? null,
+      ipExport:
+        (row.ipExport as string) ||
+        (row.isNonHkIp ? 'IP nội địa (không qua Hồng Kông)' : null),
+      refundable: planRefundSupported({
+        provider: row.provider,
+        name: row.planName,
+        operatorName: row.operatorName,
+      }),
+      dailyResetPolicy: (row.dailyResetPolicy as string) ?? null,
+      dailyResetUtcOffset:
+        row.dailyResetUtcOffset == null
+          ? null
+          : Number(row.dailyResetUtcOffset),
+      agentPriceVnd: costVnd,
+      suggestedRetailVnd: partnerSuggestedRetailVnd(costVnd),
+      createdAt: row.createdAt ?? null,
+      activatedAt: row.activatedAt ?? null,
+      expiresAt: row.expiresAt ?? null,
+      updatedAt: row.updatedAt ?? null,
+      dataUsed: row.dataUsed == null ? null : Number(row.dataUsed),
+      dataTotal: row.dataTotal == null ? null : Number(row.dataTotal),
+      smdpAddress: (row.smdpAddress as string) ?? null,
+      activationCode: (row.activationCode as string) ?? null,
+      lpa,
+      // Same links as the purchase email (1779400000000).
+      appleInstallUrl:
+        (row.directAppleInstallationUrl as string) ||
+        (lpa
+          ? `https://esimsetup.apple.com/esim_qrcode_provisioning?carddata=${lpa}`
+          : null),
+      androidInstallUrl: lpa
+        ? `https://esimsetup.android.com/esim_qrcode_provisioning?carddata=${lpa}`
+        : null,
+      plan: {
+        name: (row.planName as string) ?? null,
+        destination: (row.destination as string) ?? null,
+        type: (row.planType as string) ?? null,
+        dataMb: row.dataMb == null ? null : Number(row.dataMb),
+        durationDays:
+          row.durationDays == null ? null : Number(row.durationDays),
+        call: row.call == null ? null : Number(row.call),
+        sms: row.sms == null ? null : Number(row.sms),
+        operatorName: (row.operatorName as string) ?? null,
+        speed: (row.speed as string) ?? null,
+        topUp: Boolean(row.topUp),
+      },
+      openReport: (row.openReport as 'fault' | 'refund' | null) ?? null,
+      topups: (topups as Record<string, any>[]).map((t) => ({
+        orderNumber: String(t.orderNumber),
+        status: String(t.status),
+        priceVnd: Number(t.vndPrice ?? 0),
+        packageName: (t.topupPackageName as string) ?? null,
+        dataText: (t.topupDataText as string) ?? null,
+        durationDays:
+          t.topupDurationDays == null ? null : Number(t.topupDurationDays),
+        isUnlimited: Boolean(t.topupIsUnlimited),
+        createdAt: t.createdAt ?? null,
+      })),
+    };
+  }
+
+  /**
    * The orders this distribution partner placed themselves (#046).
    *
    * `getMyOrders` above answers the marketing question — orders somebody else
