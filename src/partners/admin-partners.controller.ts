@@ -323,6 +323,19 @@ export class AdminPartnersController {
     });
   }
 
+  /** One link with its history, for "Xem chi tiết" (doitac-1410 #054, #055). */
+  @Get('links/:linkId')
+  @HttpCode(HttpStatus.OK)
+  adminGetLinkDetail(
+    @Param('linkId') linkId: number,
+    @Query() query: { from?: string; to?: string },
+  ) {
+    return this.partnersService.adminGetLinkDetail(Number(linkId), {
+      from: query.from,
+      to: query.to,
+    });
+  }
+
   /** The partner programme's settings (#075, #076, #077). */
   /**
    * Suspend or release one marketing link (doitac-1410 #018). The partner is

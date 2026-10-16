@@ -194,3 +194,35 @@ describe('PartnersService.adminExportLinksToExcel (doitac-1410 #053)', () => {
     expect(cell('Hoa hồng (VND)')).toBe(120000);
   });
 });
+
+describe('PartnersService.adminGetLinkDetail (doitac-1410 #054)', () => {
+  it('should give the partner view of the link plus whose it is, deleted or not', async () => {
+    const findOne = jest
+      .fn()
+      .mockResolvedValue({ id: 5, partnerId: 9, deletedAt: new Date() });
+    const getMyLinkDetail = jest
+      .fn()
+      .mockResolvedValue({ id: 5, events: [], statusSince: 'x' });
+    const s = service({
+      linkRepository: { findOne },
+      getPartnerOrThrowById: jest.fn().mockResolvedValue({
+        id: 9,
+        legalType: 'company',
+        companyName: 'Công ty ABC',
+        contactName: 'Nguyễn A',
+        contactEmail: 'a@abc.vn',
+      }),
+      getMyLinkDetail,
+    });
+    const detail = await s.adminGetLinkDetail(5, { from: '2026-10-01' });
+    expect(findOne).toHaveBeenCalledWith({
+      where: { id: 5 },
+      withDeleted: true,
+    });
+    expect(getMyLinkDetail).toHaveBeenCalledWith(9, 5, { from: '2026-10-01' });
+    expect(detail).toMatchObject({
+      id: 5,
+      partner: { id: 9, name: 'Công ty ABC', email: 'a@abc.vn' },
+    });
+  });
+});

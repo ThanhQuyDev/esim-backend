@@ -1819,6 +1819,34 @@ export class PartnersService {
   }
 
   /**
+   * One link for the admin's "Xem chi tiết" (doitac-1410 #054, #055): what
+   * the partner sees in their own popup — figures, status since, history —
+   * plus whose link it is. Works for a deleted link too.
+   */
+  async adminGetLinkDetail(
+    linkId: number,
+    range: { from?: string; to?: string } = {},
+  ) {
+    const link = await this.linkRepository.findOne({
+      where: { id: linkId },
+      withDeleted: true,
+    });
+    if (!link) throw new NotFoundException('Không tìm thấy link.');
+    const partner = await this.getPartnerOrThrowById(link.partnerId);
+    const detail = await this.getMyLinkDetail(link.partnerId, linkId, range);
+    return {
+      ...detail,
+      partner: {
+        id: partner.id,
+        name:
+          (partner.legalType === 'company' && partner.companyName) ||
+          partner.contactName,
+        email: partner.contactEmail,
+      },
+    };
+  }
+
+  /**
    * "Thay đổi trạng thái" for the ticked links (doitac-1410 #053). Each link
    * goes through the same single-link action, so the rules, history and
    * partner notice are the same; a link the action does not fit (already
