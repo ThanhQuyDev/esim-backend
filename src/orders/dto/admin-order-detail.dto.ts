@@ -390,6 +390,23 @@ export class AdminOrderDetailDto {
   @ApiPropertyOptional({ type: () => AdminOrderAfterRefundDto })
   afterRefund?: AdminOrderAfterRefundDto;
 
+  /** Admin notes, newest first (doitac-1410 #067). */
+  @ApiPropertyOptional()
+  notes?: { id: number; body: string; createdAt: Date; by: string }[];
+
+  /** Every refund with its reason and admin note (doitac-1410 #067). */
+  @ApiPropertyOptional()
+  refunds?: {
+    id: number;
+    createdAt: Date;
+    mode: string;
+    amountVnd: number;
+    esimCount: number | null;
+    reason: string | null;
+    adminNote: string | null;
+    by: string | null;
+  }[];
+
   @ApiProperty({ type: Number })
   userId: number;
 

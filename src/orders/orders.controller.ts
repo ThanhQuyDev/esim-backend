@@ -35,6 +35,7 @@ import {
 import { QueryOrderDto } from './dto/query-order.dto';
 import { Order } from './domain/order';
 import { OrdersService } from './orders.service';
+import { AddOrderNoteDto } from './dto/add-order-note.dto';
 import {
   OrdersExportService,
   exportFileTimestamp,
@@ -198,6 +199,18 @@ export class OrdersController {
     return this.ordersService.retryProvisioning(Number(id), {
       itemIds: dto?.itemIds,
     });
+  }
+
+  /** "Thêm ghi chú" on an order, for the record (doitac-1410 #067). */
+  @Post(':id/notes')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiParam({ name: 'id', type: String, required: true })
+  addOrderNote(
+    @Param('id') id: Order['id'],
+    @Body() dto: AddOrderNoteDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.ordersService.addOrderNote(Number(id), dto.body, req.user.id);
   }
 
   @Post(':id/refund')

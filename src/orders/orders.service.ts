@@ -2189,6 +2189,83 @@ export class OrdersService {
     };
   }
 
+  /**
+   * "Ghi chú" an admin keeps on an order (doitac-1410 #067), for the record.
+   */
+  async addOrderNote(orderId: number, body: string, adminId: number) {
+    const text = String(body ?? '').trim();
+    if (text.length < 2) {
+      throw new BadRequestException('Vui lòng nhập nội dung ghi chú.');
+    }
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng.');
+    const [note] = await this.dataSource.query(
+      `INSERT INTO order_note ("orderId", "adminId", body)
+       VALUES ($1, $2, $3)
+       RETURNING id, "orderId", body, "createdAt"`,
+      [orderId, adminId, text.slice(0, 2000)],
+    );
+    return note;
+  }
+
+  /**
+   * The order's admin notes and every refund with its reason and the
+   * admin's own note (doitac-1410 #067) — the refund note used to be saved
+   * and shown nowhere.
+   */
+  private async orderNotesAndRefunds(orderId: number): Promise<{
+    notes: { id: number; body: string; createdAt: Date; by: string }[];
+    refunds: {
+      id: number;
+      createdAt: Date;
+      mode: string;
+      amountVnd: number;
+      esimCount: number | null;
+      reason: string | null;
+      adminNote: string | null;
+      by: string | null;
+    }[];
+  }> {
+    const adminName = `COALESCE(NULLIF(TRIM(CONCAT(u."firstName", ' ', u."lastName")), ''), u.email)`;
+    const [notes, refunds] = await Promise.all([
+      this.dataSource.query(
+        `SELECT n.id, n.body, n."createdAt", ${adminName} AS "by"
+           FROM order_note n
+           LEFT JOIN "user" u ON u.id = n."adminId"
+          WHERE n."orderId" = $1
+          ORDER BY n."createdAt" DESC, n.id DESC`,
+        [orderId],
+      ),
+      this.dataSource.query(
+        `SELECT r.id, r."createdAt", r.mode, r."amountVnd", r."esimCount",
+                r.reason, r."adminNote", ${adminName} AS "by"
+           FROM order_refund r
+           LEFT JOIN "user" u ON u.id = r."createdByAdminId"
+          WHERE r."orderId" = $1
+          ORDER BY r."createdAt" DESC, r.id DESC`,
+        [orderId],
+      ),
+    ]);
+    return {
+      notes: (notes as Record<string, any>[]).map((n) => ({
+        id: Number(n.id),
+        body: String(n.body),
+        createdAt: n.createdAt,
+        by: n.by ?? 'Admin',
+      })),
+      refunds: (refunds as Record<string, any>[]).map((r) => ({
+        id: Number(r.id),
+        createdAt: r.createdAt,
+        mode: String(r.mode),
+        amountVnd: Number(r.amountVnd ?? 0),
+        esimCount: r.esimCount == null ? null : Number(r.esimCount),
+        reason: r.reason ?? null,
+        adminNote: r.adminNote ?? null,
+        by: r.by ?? null,
+      })),
+    };
+  }
+
   async findDetailById(id: Order['id']): Promise<AdminOrderDetailDto | null> {
     const order = await this.orderRepository.findById(id);
     if (!order) return null;
@@ -2219,6 +2296,7 @@ export class OrdersService {
     }
 
     const topup = await this.buildTopupDetail(order);
+    const { notes, refunds } = await this.orderNotesAndRefunds(order.id);
 
     // Money before / after refunds (#009, round 4), and each line's share of
     // the discount, which is what refunding that line pays back.
@@ -2275,6 +2353,9 @@ export class OrdersService {
       refundedAmountVnd: refundedVnd,
       refundStatus: order.refundStatus ?? null,
       afterRefund,
+      // doitac-1410 #067
+      notes,
+      refunds,
       userId: order.userId,
       user: user
         ? {
