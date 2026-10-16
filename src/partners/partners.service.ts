@@ -711,6 +711,9 @@ export class PartnersService {
       });
     }
 
+    // The account starts on the "Hạng mặc định" of its type (doitac-1410 #059).
+    const tierCode = await this.defaultTierCode(partnerTypeFor(dto));
+
     return this.dataSource.transaction(async (manager) => {
       const salt = await bcrypt.genSalt();
       const password = await bcrypt.hash(dto.password, salt);
@@ -733,6 +736,7 @@ export class PartnersService {
       const partner = await partnerRepo.save(
         partnerRepo.create({
           userId: user.id,
+          tierCode,
           // An API applicant runs as a distribution partner; what they picked
           // is kept for the admin (#053, test round 4).
           partnerType: partnerTypeFor(dto),
@@ -4113,6 +4117,12 @@ export class PartnersService {
       );
     }
 
+    // Put on the "Hạng mặc định" of their type unless an admin already chose
+    // one (doitac-1410 #059).
+    if (!partner.tierCode) {
+      partner.tierCode = await this.defaultTierCode(partner.partnerType);
+    }
+
     const saved = await this.dataSource.transaction(async (manager) => {
       partner.status = PartnerStatusEnum.ACTIVE;
       partner.approvedAt = new Date();
@@ -4649,6 +4659,7 @@ export class PartnersService {
     // from an email without a mistake.
     const temporaryPassword = randomBytes(6).toString('base64url');
 
+    const defaultTier = await this.defaultTierCode(dto.partnerType);
     const created = await this.dataSource.transaction(async (manager) => {
       const salt = await bcrypt.genSalt();
       const password = await bcrypt.hash(temporaryPassword, salt);
@@ -4673,6 +4684,8 @@ export class PartnersService {
       const partner = await partnerRepo.save(
         partnerRepo.create({
           userId: user.id,
+          // doitac-1410 #059
+          tierCode: defaultTier,
           partnerType: dto.partnerType,
           requestedType: dto.partnerType,
           legalType: dto.legalType,
@@ -5611,10 +5624,12 @@ export class PartnersService {
   // ───────────────────────── Admin: tiers ─────────────────────────
 
   async createTier(dto: CreatePartnerTierDto): Promise<PartnerTierEntity> {
-    return this.tierRepository.save(
+    const tierCode = String(dto.tierCode ?? '').trim();
+    await this.assertTierCodeFree(dto.partnerType, tierCode);
+    const saved = await this.tierRepository.save(
       this.tierRepository.create({
         partnerType: dto.partnerType,
-        tierCode: dto.tierCode,
+        tierCode,
         tierName: dto.tierName,
         minVolumeVnd: dto.minVolumeVnd ?? 0,
         commissionPercent: dto.commissionPercent ?? 0,
@@ -5630,6 +5645,85 @@ export class PartnersService {
         isActive: dto.isActive ?? true,
       }),
     );
+    if (dto.isDefault && saved.isActive) await this.makeDefaultTier(saved);
+    return saved;
+  }
+
+  /**
+   * "Hạng đối tác" for the admin (doitac-1410 #059, #060): every tier, the
+   * inactive ones too — "Trạng thái" is a column, not a filter — with how
+   * many partners sit on each.
+   */
+  async adminListTiers(): Promise<
+    (PartnerTierEntity & { partnerCount: number })[]
+  > {
+    const tiers = await this.tierRepository.find({
+      order: { partnerType: 'ASC', sortOrder: 'ASC', id: 'ASC' },
+    });
+    const counts: { partnerType: string; tierCode: string; n: number }[] =
+      await this.dataSource.query(
+        `SELECT "partnerType", "tierCode", COUNT(*)::int AS n
+           FROM partner
+          WHERE "deletedAt" IS NULL AND "tierCode" IS NOT NULL
+          GROUP BY 1, 2`,
+      );
+    return tiers.map((tier) =>
+      Object.assign(tier, {
+        partnerCount:
+          counts.find(
+            (c) =>
+              c.partnerType === tier.partnerType &&
+              c.tierCode === tier.tierCode,
+          )?.n ?? 0,
+      }),
+    );
+  }
+
+  /** The tier a new partner of this type starts on, if one is set (#059). */
+  async defaultTierCode(partnerType: string): Promise<string | null> {
+    const tier = await this.tierRepository.findOne({
+      where: {
+        partnerType: partnerType as PartnerTypeEnum,
+        isDefault: true,
+        isActive: true,
+      },
+    });
+    return tier?.tierCode ?? null;
+  }
+
+  /** Only one "Hạng mặc định" per partner type (#059). */
+  private async makeDefaultTier(tier: PartnerTierEntity): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `UPDATE partner_tier SET "isDefault" = false
+          WHERE "partnerType" = $1 AND id <> $2 AND "isDefault"`,
+        [tier.partnerType, tier.id],
+      );
+      await manager.query(
+        `UPDATE partner_tier SET "isDefault" = true WHERE id = $1`,
+        [tier.id],
+      );
+    });
+    tier.isDefault = true;
+  }
+
+  private async assertTierCodeFree(
+    partnerType: string,
+    tierCode: string,
+    exceptId?: number,
+  ): Promise<void> {
+    if (!tierCode) throw new BadRequestException('Vui lòng nhập mã hạng.');
+    const [taken] = await this.dataSource.query(
+      `SELECT id FROM partner_tier
+        WHERE "partnerType" = $1 AND LOWER("tierCode") = LOWER($2)
+          AND ($3::int IS NULL OR id <> $3)`,
+      [partnerType, tierCode, exceptId ?? null],
+    );
+    if (taken) {
+      throw new ConflictException(
+        `Mã hạng ${tierCode} đã có, vui lòng chọn mã khác.`,
+      );
+    }
   }
 
   async findAllTiers(
@@ -5647,6 +5741,27 @@ export class PartnersService {
   ): Promise<PartnerTierEntity> {
     const tier = await this.tierRepository.findOne({ where: { id } });
     if (!tier) throw new NotFoundException(`Tier ${id} not found`);
+
+    // A new code (doitac-1410 #059): the partners on the tier follow it, or
+    // they would be left on a code that no longer exists.
+    const newCode = dto.tierCode?.trim();
+    if (newCode && newCode !== tier.tierCode) {
+      await this.assertTierCodeFree(tier.partnerType, newCode, tier.id);
+      const oldCode = tier.tierCode;
+      await this.dataSource.transaction(async (manager) => {
+        await manager.query(
+          `UPDATE partner_tier SET "tierCode" = $1 WHERE id = $2`,
+          [newCode, tier.id],
+        );
+        await manager.query(
+          `UPDATE partner SET "tierCode" = $1
+            WHERE "partnerType" = $2 AND "tierCode" = $3`,
+          [newCode, tier.partnerType, oldCode],
+        );
+      });
+      tier.tierCode = newCode;
+    }
+
     Object.assign(tier, {
       ...(dto.tierName !== undefined && { tierName: dto.tierName }),
       ...(dto.minVolumeVnd !== undefined && { minVolumeVnd: dto.minVolumeVnd }),
@@ -5669,7 +5784,11 @@ export class PartnersService {
       ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
     });
-    return this.tierRepository.save(tier);
+    // An inactive tier cannot be where new partners start.
+    if (!tier.isActive || dto.isDefault === false) tier.isDefault = false;
+    const saved = await this.tierRepository.save(tier);
+    if (dto.isDefault && saved.isActive) await this.makeDefaultTier(saved);
+    return saved;
   }
 
   async removeTier(id: number): Promise<void> {

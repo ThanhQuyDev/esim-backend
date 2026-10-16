@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Min,
 } from 'class-validator';
 import { PartnerTypeEnum } from '../partners.enum';
@@ -100,9 +101,31 @@ export class CreatePartnerTierDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** "Hạng mặc định" for new partners of this type (doitac-1410 #059). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
 }
 
 export class UpdatePartnerTierDto {
+  /** The code can be changed too (doitac-1410 #059, #060). */
+  @ApiPropertyOptional({ example: 'SILVER' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{1,40}$/, {
+    message:
+      'Mã hạng chỉ gồm chữ không dấu, số, "_" hoặc "-", tối đa 40 ký tự.',
+  })
+  tierCode?: string;
+
+  /** "Hạng mặc định" for new partners of this type (doitac-1410 #059). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
   @ApiPropertyOptional({
     type: Number,
     example: 100000000,

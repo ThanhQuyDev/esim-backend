@@ -33,6 +33,8 @@ function buildService(
 
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
+    // No default tier configured (doitac-1410 #059).
+    defaultTierCode: jest.fn().mockResolvedValue(null),
     logger: { warn: jest.fn(), log: jest.fn(), error: jest.fn() },
     userRepository: {
       findOne: jest

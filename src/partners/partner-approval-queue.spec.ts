@@ -32,6 +32,8 @@ function buildListService() {
 
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
+    // No default tier configured (doitac-1410 #059).
+    defaultTierCode: jest.fn().mockResolvedValue(null),
     partnerRepository: { createQueryBuilder: () => qb },
     dataSource: { query: jest.fn().mockResolvedValue([]) },
   });
@@ -119,6 +121,8 @@ function buildDecisionService(status: PartnerStatusEnum) {
   const save = jest.fn().mockImplementation((row) => Promise.resolve(row));
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
+    // No default tier configured (doitac-1410 #059).
+    defaultTierCode: jest.fn().mockResolvedValue(null),
     logger: { warn: jest.fn(), log: jest.fn(), error: jest.fn() },
     adminFindById: jest.fn().mockResolvedValue(partner),
     partnerRepository: { save },

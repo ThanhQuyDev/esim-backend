@@ -29,6 +29,8 @@ describe('PartnersService — application decision emails', () => {
 
     const service = Object.create(PartnersService.prototype) as PartnersService;
     Object.assign(service, {
+      // No default tier configured (doitac-1410 #059).
+      defaultTierCode: jest.fn().mockResolvedValue(null),
       logger: { error: jest.fn(), warn: jest.fn() },
       partnerRepository,
       userRepository: { update: jest.fn() },

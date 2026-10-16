@@ -598,7 +598,8 @@ export class AdminPartnersController {
   @Get('tiers')
   @HttpCode(HttpStatus.OK)
   listTiers() {
-    return this.partnersService.findAllTiers();
+    // Inactive ones too, with their partner count (doitac-1410 #059, #060).
+    return this.partnersService.adminListTiers();
   }
 
   @Post('tiers')

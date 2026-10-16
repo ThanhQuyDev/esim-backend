@@ -75,6 +75,13 @@ export class PartnerTierEntity extends EntityRelationalHelper {
   @Column({ type: 'int', default: 0 })
   sortOrder!: number;
 
+  /**
+   * "Hạng mặc định" (doitac-1410 #059, #060): a new partner of this type is put
+   * on it. At most one per type.
+   */
+  @Column({ type: Boolean, default: false })
+  isDefault!: boolean;
+
   @Index()
   @Column({ type: Boolean, default: true })
   isActive!: boolean;
