@@ -376,13 +376,23 @@ export class PartnersController {
   @HttpCode(HttpStatus.OK)
   async getMyEsims(
     @Request() req: { user: { id: number } },
-    @Query() query: { search?: string; status?: string; limit?: string },
+    @Query() query: Record<string, string | undefined>,
   ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
     return this.partnersService.getMyEsims(partner.id, {
       search: query.search,
       status: query.status,
       limit: query.limit ? Number(query.limit) : undefined,
+      // doitac-1410 #037
+      planType: query.planType,
+      topUp:
+        query.topUp === 'true'
+          ? true
+          : query.topUp === 'false'
+            ? false
+            : undefined,
+      from: query.from,
+      to: query.to,
     });
   }
 

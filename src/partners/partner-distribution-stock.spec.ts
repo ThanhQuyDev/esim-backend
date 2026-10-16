@@ -46,6 +46,8 @@ describe('PartnersService.getMyEsims (#046)', () => {
         activatedAt: '2026-09-20T03:00:00.000Z',
         expiresAt: '2026-10-20T03:00:00.000Z',
         createdAt: '2026-09-18T03:00:00.000Z',
+        planType: null,
+        topUp: false,
       },
     ]);
 
@@ -62,6 +64,8 @@ describe('PartnersService.getMyEsims (#046)', () => {
         activatedAt: '2026-09-20T03:00:00.000Z',
         expiresAt: '2026-10-20T03:00:00.000Z',
         createdAt: '2026-09-18T03:00:00.000Z',
+        planType: null,
+        topUp: false,
       },
     ]);
   });
@@ -79,7 +83,16 @@ describe('PartnersService.getMyEsims (#046)', () => {
 
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).not.toContain("8984'--");
-    expect(params).toEqual([100, 'active', "8984'--", 20]);
+    expect(params).toEqual([
+      100,
+      'active',
+      "8984'--",
+      20,
+      null,
+      null,
+      null,
+      null,
+    ]);
   });
 
   it('should cap how many rows one call can ask for', async () => {
@@ -236,5 +249,26 @@ describe('PartnersService.getMyPurchases (#046)', () => {
 
     const [, params] = query.mock.calls[0] as [string, unknown[]];
     expect(params[3]).toBe(200);
+  });
+});
+
+describe('PartnersService.getMyEsims filters (doitac-1410 #037)', () => {
+  it('should filter by plan type, top-up and the created range in Vietnamese days', async () => {
+    const { service, query } = buildService([]);
+
+    await service.getMyEsims(8, {
+      planType: 'daily, unlimited',
+      topUp: true,
+      from: '2026-10-14',
+      to: '2026-10-14',
+    });
+
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('p.type = ANY($5)');
+    expect(sql).toContain('COALESCE(p."topUp", false) = $6');
+    expect(params[4]).toEqual(['daily', 'unlimited']);
+    expect(params[5]).toBe(true);
+    expect((params[6] as Date).toISOString()).toBe('2026-10-13T17:00:00.000Z');
+    expect((params[7] as Date).toISOString()).toBe('2026-10-14T17:00:00.000Z');
   });
 });

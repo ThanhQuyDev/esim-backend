@@ -6131,7 +6131,18 @@ export class PartnersService {
    */
   async getMyEsims(
     partnerId: number,
-    filters: { search?: string; status?: string; limit?: number } = {},
+    filters: {
+      search?: string;
+      status?: string;
+      limit?: number;
+      // doitac-1410 #037:
+      /** fixed / daily / unlimited / unlimited-reduce, comma-separated. */
+      planType?: string;
+      topUp?: boolean;
+      /** Created from–to, in Vietnamese days. */
+      from?: string;
+      to?: string;
+    } = {},
   ): Promise<
     {
       iccid: string | null;
@@ -6145,6 +6156,8 @@ export class PartnersService {
       activatedAt: string | null;
       expiresAt: string | null;
       createdAt: string | null;
+      planType: string | null;
+      topUp: boolean;
     }[]
   > {
     const partner = await this.getPartnerOrThrowById(partnerId);
@@ -6152,6 +6165,18 @@ export class PartnersService {
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
     const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
     const status = filters.status?.trim() || null;
+    const planTypes =
+      filters.planType
+        ?.split(',')
+        .map((t) => t.trim())
+        .filter(Boolean) ?? [];
+    const range =
+      filters.from || filters.to
+        ? resolveSummaryRange({
+            from: filters.from || filters.to,
+            to: filters.to || filters.from,
+          })
+        : null;
 
     const rows = await this.dataSource.query(
       `SELECT e.iccid,
@@ -6165,7 +6190,9 @@ export class PartnersService {
               e."dataTotal",
               e."activatedAt",
               e."expiresAt",
-              o."createdAt"
+              o."createdAt",
+              p.type AS "planType",
+              COALESCE(p."topUp", false) AS "topUp"
        FROM esim e
        JOIN order_item oi ON oi.id = e."orderItemId"
        JOIN "order" o ON o.id = oi."orderId"
@@ -6181,9 +6208,23 @@ export class PartnersService {
            OR o."orderNumber" ILIKE '%' || $3 || '%'
            OR p.name ILIKE '%' || $3 || '%'
          )
+         -- Plan type, top-up and the created range (doitac-1410 #037).
+         AND ($5::text[] IS NULL OR p.type = ANY($5))
+         AND ($6::boolean IS NULL OR COALESCE(p."topUp", false) = $6)
+         AND ($7::timestamptz IS NULL OR o."createdAt" >= $7)
+         AND ($8::timestamptz IS NULL OR o."createdAt" < $8)
        ORDER BY o."createdAt" DESC, e.id DESC
        LIMIT $4`,
-      [partner.userId, status, search, limit],
+      [
+        partner.userId,
+        status,
+        search,
+        limit,
+        planTypes.length ? planTypes : null,
+        filters.topUp ?? null,
+        range?.from ?? null,
+        range?.to ?? null,
+      ],
     );
 
     return (rows as Record<string, any>[]).map((row) => ({
@@ -6198,6 +6239,8 @@ export class PartnersService {
       activatedAt: row.activatedAt ?? null,
       expiresAt: row.expiresAt ?? null,
       createdAt: row.createdAt ?? null,
+      planType: row.planType ?? null,
+      topUp: Boolean(row.topUp),
     }));
   }
 
