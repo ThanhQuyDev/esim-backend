@@ -43,6 +43,17 @@ export class PartnerEsimFaultReportEntity {
   @Column({ type: String })
   reason!: string;
 
+  /** `fault` (Báo lỗi) or `refund` (Yêu cầu hoàn tiền) — doitac-1410 #039. */
+  @Column({ type: String, default: 'fault' })
+  kind!: string;
+
+  /** The support ticket the report opened (doitac-1410 #039). */
+  @Column({ type: Number, nullable: true })
+  ticketId?: number | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  attachments?: string[] | null;
+
   @Index()
   @Column({ type: String, default: PartnerEsimFaultStatusEnum.PENDING })
   status!: PartnerEsimFaultStatusEnum;

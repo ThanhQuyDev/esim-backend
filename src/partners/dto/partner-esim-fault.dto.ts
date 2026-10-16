@@ -1,7 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -29,8 +32,23 @@ export class ReportFaultyEsimDto {
   @ApiProperty({ example: 'Quét QR báo mã đã được dùng' })
   @IsString()
   @MinLength(5, { message: 'Vui lòng mô tả lỗi (ít nhất 5 ký tự).' })
-  @MaxLength(500)
+  // 2000 characters, as the brief allows (doitac-1410 #039).
+  @MaxLength(2000, { message: 'Mô tả tối đa 2000 ký tự.' })
   reason!: string;
+
+  /** `fault` = Báo lỗi, `refund` = Yêu cầu hoàn tiền (doitac-1410 #039). */
+  @ApiPropertyOptional({ enum: ['fault', 'refund'] })
+  @IsOptional()
+  @IsIn(['fault', 'refund'])
+  kind?: 'fault' | 'refund';
+
+  /** Uploaded images / videos describing the problem. */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  attachments?: string[];
 }
 
 /** Admin duyệt hoặc từ chối một phiếu báo lỗi (#046). */

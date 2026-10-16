@@ -52,6 +52,8 @@ import {
 import { PartnerEsimFaultReportEntity } from './infrastructure/persistence/relational/entities/partner-esim-fault-report.entity';
 import * as ExcelJS from 'exceljs';
 import { PlansService } from '../plans/plans.service';
+import { Plan } from '../plans/domain/plan';
+import { TicketsService } from '../tickets/tickets.service';
 import {
   LEDGER_KIND_LABEL,
   LEDGER_TYPES,
@@ -568,6 +570,8 @@ export class PartnersService {
     private readonly onepayService: OnepayService,
     /** The admin's plan filters, reused for the price list (doitac-1410 #033). */
     @Optional() private readonly plansService?: PlansService,
+    /** eSIM reports open a support ticket (doitac-1410 #039). */
+    @Optional() private readonly ticketsService?: TicketsService,
   ) {}
 
   /**
@@ -6158,6 +6162,13 @@ export class PartnersService {
       createdAt: string | null;
       planType: string | null;
       topUp: boolean;
+      // doitac-1410 #038:
+      durationDays: number | null;
+      hasCallSms: boolean;
+      tiktokAi: boolean;
+      refundable: boolean;
+      /** An open "Báo lỗi" / "Yêu cầu hoàn tiền" on this eSIM. */
+      openReport: 'fault' | 'refund' | null;
     }[]
   > {
     const partner = await this.getPartnerOrThrowById(partnerId);
@@ -6192,7 +6203,15 @@ export class PartnersService {
               e."expiresAt",
               o."createdAt",
               p.type AS "planType",
-              COALESCE(p."topUp", false) AS "topUp"
+              COALESCE(p."topUp", false) AS "topUp",
+              p.id AS "planId",
+              p."durationDays",
+              (COALESCE(p.sms, 0) > 0 OR COALESCE(p.call, 0) > 0) AS "hasCallSms",
+              p.provider,
+              p."operatorName",
+              (SELECT fr.kind FROM partner_esim_fault_report fr
+                WHERE fr.iccid = e.iccid AND fr.status = 'pending'
+                ORDER BY fr.id DESC LIMIT 1) AS "openReport"
        FROM esim e
        JOIN order_item oi ON oi.id = e."orderItemId"
        JOIN "order" o ON o.id = oi."orderId"
@@ -6227,6 +6246,37 @@ export class PartnersService {
       ],
     );
 
+    // TikTok & AI judged exactly as on the price list (doitac-1410 #038).
+    const tiktokByPlan = new Map<number, boolean>();
+    const planIds = [
+      ...new Set(
+        (rows as Record<string, any>[])
+          .map((r) => Number(r.planId))
+          .filter((id) => id > 0),
+      ),
+    ];
+    if (this.plansService && planIds.length) {
+      try {
+        const plans = (
+          await Promise.all(
+            planIds.map((id) => this.plansService!.findById(id)),
+          )
+        ).filter(Boolean) as Plan[];
+        for (const plan of await this.plansService.withAppSupport(plans)) {
+          tiktokByPlan.set(
+            Number(plan.id),
+            Boolean(
+              plan.appSupport?.tiktokAllDevices && plan.appSupport?.chatGpt,
+            ),
+          );
+        }
+      } catch (err) {
+        this.logger.warn(
+          `getMyEsims: TikTok support not judged: ${(err as Error).message}`,
+        );
+      }
+    }
+
     return (rows as Record<string, any>[]).map((row) => ({
       iccid: row.iccid ?? null,
       status: row.status ?? null,
@@ -6241,6 +6291,15 @@ export class PartnersService {
       createdAt: row.createdAt ?? null,
       planType: row.planType ?? null,
       topUp: Boolean(row.topUp),
+      durationDays: row.durationDays == null ? null : Number(row.durationDays),
+      hasCallSms: Boolean(row.hasCallSms),
+      tiktokAi: tiktokByPlan.get(Number(row.planId)) ?? false,
+      refundable: planRefundSupported({
+        provider: row.provider,
+        name: row.planName,
+        operatorName: row.operatorName,
+      }),
+      openReport: (row.openReport as 'fault' | 'refund' | null) ?? null,
     }));
   }
 
@@ -6996,8 +7055,16 @@ export class PartnersService {
    */
   async reportFaultyEsim(
     partnerId: number,
-    input: { orderNumber: string; iccid: string; reason: string },
+    input: {
+      orderNumber: string;
+      iccid: string;
+      reason: string;
+      /** `fault` = Báo lỗi, `refund` = Yêu cầu hoàn tiền (doitac-1410 #039). */
+      kind?: 'fault' | 'refund';
+      attachments?: string[];
+    },
   ): Promise<PartnerEsimFaultReportEntity> {
+    const kind = input.kind === 'refund' ? 'refund' : 'fault';
     const partner = await this.getPartnerOrThrowById(partnerId);
     const iccid = input.iccid.trim();
     const reason = input.reason.trim();
@@ -7009,10 +7076,12 @@ export class PartnersService {
     }
 
     const rows = await this.dataSource.query(
-      `SELECT o.id AS "orderId"
+      `SELECT o.id AS "orderId", e.status AS "esimStatus",
+              p.provider, p.name AS "planName", p."operatorName"
          FROM esim e
          JOIN order_item oi ON oi.id = e."orderItemId"
          JOIN "order" o ON o.id = oi."orderId"
+         LEFT JOIN plan p ON p.id = oi."planId"
         WHERE e.iccid = $1
           AND o."orderNumber" = $2
           AND o."userId" = $3
@@ -7025,6 +7094,24 @@ export class PartnersService {
         `Không tìm thấy eSIM ${iccid} trong đơn ${input.orderNumber} của bạn.`,
       );
     }
+    if (rows[0].esimStatus === 'refunded') {
+      throw new BadRequestException(`eSIM ${iccid} đã được hoàn tiền.`);
+    }
+    if (
+      kind === 'refund' &&
+      !planRefundSupported({
+        provider: rows[0].provider,
+        name: rows[0].planName,
+        operatorName: rows[0].operatorName,
+      })
+    ) {
+      throw new BadRequestException(
+        `Gói ${rows[0].planName ?? ''} không hỗ trợ hoàn tiền.`.replace(
+          '  ',
+          ' ',
+        ),
+      );
+    }
 
     const open = await this.faultReportRepository.findOne({
       where: { iccid, status: PartnerEsimFaultStatusEnum.PENDING },
@@ -7035,17 +7122,48 @@ export class PartnersService {
       );
     }
 
-    return this.faultReportRepository.save(
+    const attachments = (input.attachments ?? []).filter(Boolean).slice(0, 10);
+    const report = await this.faultReportRepository.save(
       this.faultReportRepository.create({
         partnerId,
         orderId: Number(rows[0].orderId),
         orderNumber: input.orderNumber,
         iccid,
         reason,
+        kind,
+        attachments: attachments.length ? attachments : null,
         status: PartnerEsimFaultStatusEnum.PENDING,
         refundVnd: 0,
       }),
     );
+
+    // Into the admin's Tickets, where eSIM support is handled
+    // (doitac-1410 #039). The report stays the record of the money; the ticket
+    // is the conversation. Never at the cost of the report itself.
+    if (this.ticketsService && partner.contactEmail) {
+      try {
+        const subject =
+          kind === 'refund'
+            ? 'Hoàn tiền đơn hàng / eSIM lỗi'
+            : 'eSIM lỗi hoặc không kích hoạt được';
+        const ticket = await this.ticketsService.create({
+          customerEmail: partner.contactEmail,
+          subject,
+          description: `${subject}\nĐơn hàng: ${input.orderNumber}\nICCID: ${iccid}\n\n${reason}`,
+          orderId: input.orderNumber,
+          iccid,
+          planDestination: rows[0].planName ?? undefined,
+          attachments,
+        } as never);
+        report.ticketId = Number(ticket.id);
+        await this.faultReportRepository.save(report);
+      } catch (err) {
+        this.logger.error(
+          `reportFaultyEsim: ticket for ${iccid} not opened: ${(err as Error).message}`,
+        );
+      }
+    }
+    return report;
   }
 
   /** Phiếu báo lỗi của một đối tác, hoặc của tất cả khi admin xem (#046). */
@@ -7126,7 +7244,24 @@ export class PartnersService {
 
     report.status = PartnerEsimFaultStatusEnum.APPROVED;
     report.refundVnd = refundVnd;
-    return this.faultReportRepository.save(report);
+    const saved = await this.faultReportRepository.save(report);
+
+    // The eSIM reads "Hoàn tiền" from now on, and an order whose every eSIM
+    // was refunded reads "Hoàn tiền" too (doitac-1410 #039).
+    await this.dataSource.query(
+      `UPDATE esim SET status = 'refunded' WHERE iccid = $1`,
+      [report.iccid],
+    );
+    await this.dataSource.query(
+      `UPDATE "order" o SET status = 'refunded'
+        WHERE o.id = $1
+          AND EXISTS (SELECT 1 FROM esim e JOIN order_item oi ON oi.id = e."orderItemId"
+                       WHERE oi."orderId" = o.id)
+          AND NOT EXISTS (SELECT 1 FROM esim e JOIN order_item oi ON oi.id = e."orderItemId"
+                           WHERE oi."orderId" = o.id AND e.status <> 'refunded')`,
+      [report.orderId],
+    );
+    return saved;
   }
 
   /** Giá vốn một eSIM của một đơn, theo sổ ví chia cho số eSIM đã cấp. */

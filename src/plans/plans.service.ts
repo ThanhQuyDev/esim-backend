@@ -366,7 +366,7 @@ export class PlansService {
    * table. Before, the CMS only showed the esimaccess switch, so a plan whose APN
    * works with TikTok still read "Không" there.
    */
-  private async withAppSupport(plans: Plan[]): Promise<Plan[]> {
+  async withAppSupport(plans: Plan[]): Promise<Plan[]> {
     if (!plans.length || !this.apnSupportService?.capabilityMap) return plans;
     try {
       const capabilities = await this.apnSupportService.capabilityMap();

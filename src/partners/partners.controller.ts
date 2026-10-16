@@ -569,6 +569,8 @@ export class PartnersController {
       orderNumber: dto.orderNumber,
       iccid: dto.iccid,
       reason: dto.reason,
+      kind: dto.kind ?? 'fault',
+      attachments: dto.attachments ?? [],
     });
   }
 

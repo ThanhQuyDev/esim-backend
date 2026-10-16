@@ -66,6 +66,12 @@ describe('PartnersService.getMyEsims (#046)', () => {
         createdAt: '2026-09-18T03:00:00.000Z',
         planType: null,
         topUp: false,
+        // doitac-1410 #038
+        durationDays: null,
+        hasCallSms: false,
+        tiktokAi: false,
+        refundable: true,
+        openReport: null,
       },
     ]);
   });
@@ -270,5 +276,123 @@ describe('PartnersService.getMyEsims filters (doitac-1410 #037)', () => {
     expect(params[5]).toBe(true);
     expect((params[6] as Date).toISOString()).toBe('2026-10-13T17:00:00.000Z');
     expect((params[7] as Date).toISOString()).toBe('2026-10-14T17:00:00.000Z');
+  });
+});
+
+describe('PartnersService — eSIM reports become tickets (doitac-1410 #039)', () => {
+  function build(row: Record<string, unknown> | null) {
+    const created: unknown[] = [];
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    const ticketCreate = jest.fn().mockResolvedValue({ id: 42 });
+    Object.assign(service, {
+      logger: { error: jest.fn(), warn: jest.fn() },
+      getPartnerOrThrowById: jest.fn().mockResolvedValue({
+        id: 8,
+        userId: 100,
+        contactEmail: 'shop@example.com',
+      }),
+      dataSource: { query: jest.fn().mockResolvedValue(row ? [row] : []) },
+      faultReportRepository: {
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn((v) => v),
+        save: jest.fn((v) => {
+          created.push({ ...v });
+          return Promise.resolve(v);
+        }),
+      },
+      ticketsService: { create: ticketCreate },
+    });
+    return { service, ticketCreate, created };
+  }
+  const ROW = {
+    orderId: 7,
+    esimStatus: 'sold',
+    provider: 'esimaccess',
+    planName: 'Nhật 5GB',
+    operatorName: null,
+  };
+
+  it('should open a ticket with the prefilled subject, order and ICCID', async () => {
+    const { service, ticketCreate } = build(ROW);
+
+    const report = await service.reportFaultyEsim(8, {
+      orderNumber: 'PTN-1',
+      iccid: '8984',
+      reason: 'Không kích hoạt được',
+      kind: 'refund',
+      attachments: ['https://cdn/x.png'],
+    });
+
+    const ticket = ticketCreate.mock.calls[0][0];
+    expect(ticket.subject).toBe('Hoàn tiền đơn hàng / eSIM lỗi');
+    expect(ticket.orderId).toBe('PTN-1');
+    expect(ticket.iccid).toBe('8984');
+    expect(ticket.attachments).toEqual(['https://cdn/x.png']);
+    expect(report.ticketId).toBe(42);
+    expect(report.kind).toBe('refund');
+  });
+
+  it('should use the fault subject for "Báo lỗi"', async () => {
+    const { service, ticketCreate } = build(ROW);
+    await service.reportFaultyEsim(8, {
+      orderNumber: 'PTN-1',
+      iccid: '8984',
+      reason: 'Lỗi QR quét',
+    });
+    expect(ticketCreate.mock.calls[0][0].subject).toBe(
+      'eSIM lỗi hoặc không kích hoạt được',
+    );
+  });
+
+  it('should refuse a refund request for a plan that does not refund', async () => {
+    const { service, ticketCreate } = build({
+      ...ROW,
+      provider: 'viettel',
+      planName: 'Viettel 5GB',
+    });
+    await expect(
+      service.reportFaultyEsim(8, {
+        orderNumber: 'PTN-1',
+        iccid: '8984',
+        reason: 'Hoàn giúp',
+        kind: 'refund',
+      }),
+    ).rejects.toThrow('không hỗ trợ hoàn tiền');
+    expect(ticketCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('PartnersService.reviewEsimFaultReport — approval (doitac-1410 #039)', () => {
+  it('should refund the wallet and mark the eSIM, then the whole order, refunded', async () => {
+    const query = jest.fn().mockResolvedValue([]);
+    const refund = jest.fn().mockResolvedValue(undefined);
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    Object.assign(service, {
+      dataSource: { query },
+      faultReportRepository: {
+        findOne: jest.fn().mockResolvedValue({
+          id: 3,
+          partnerId: 8,
+          orderId: 7,
+          orderNumber: 'PTN-1',
+          iccid: '8984',
+          status: 'pending',
+        }),
+        save: jest.fn((v) => Promise.resolve(v)),
+      },
+      refundWalletForPurchase: refund,
+    });
+
+    const report = await service.reviewEsimFaultReport(3, 1, {
+      approve: true,
+      refundVnd: 36000,
+    });
+
+    expect(report.status).toBe('approved');
+    expect(refund.mock.calls[0][1].amountVnd).toBe(36000);
+    const sql = query.mock.calls.map((c) => String(c[0]));
+    expect(sql[0]).toContain(`UPDATE esim SET status = 'refunded'`);
+    expect(sql[1]).toContain(`UPDATE "order" o SET status = 'refunded'`);
+    expect(query.mock.calls[1][1]).toEqual([7]);
   });
 });

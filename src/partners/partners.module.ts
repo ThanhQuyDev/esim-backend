@@ -29,6 +29,7 @@ import { PartnerNotificationReadEntity } from './infrastructure/persistence/rela
 import { PartnerEsimFaultReportEntity } from './infrastructure/persistence/relational/entities/partner-esim-fault-report.entity';
 import { MailModule } from '../mail/mail.module';
 import { PlansModule } from '../plans/plans.module';
+import { TicketsModule } from '../tickets/tickets.module';
 
 @Module({
   imports: [
@@ -37,6 +38,8 @@ import { PlansModule } from '../plans/plans.module';
     // The distribution price list filters exactly as the admin's plan list
     // does (doitac-1410 #033).
     PlansModule,
+    // An eSIM report opens a support ticket (doitac-1410 #039).
+    TicketsModule,
     TypeOrmModule.forFeature([
       UserEntity,
       PartnerEntity,
