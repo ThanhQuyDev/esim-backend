@@ -1,8 +1,13 @@
+import {
+  AIRALO_REFUND_REASONS,
+  AiraloRefundReason,
+} from '../../esim-providers/airalo/airalo-refund';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayNotEmpty,
   IsArray,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -112,4 +117,13 @@ export class RefundOrderDto {
   @IsInt({ each: true })
   @Type(() => Number)
   esimIds?: number[];
+
+  /**
+   * Also ask Airalo to refund the Airalo eSIMs being refunded, for this
+   * reason (doitac-1410 #079). Omit to refund the customer only.
+   */
+  @ApiPropertyOptional({ enum: AIRALO_REFUND_REASONS })
+  @IsOptional()
+  @IsIn(AIRALO_REFUND_REASONS as unknown as string[])
+  airaloRefundReason?: AiraloRefundReason;
 }

@@ -1,3 +1,10 @@
+import {
+  AiraloRefundRequest,
+  AiraloRefundResult,
+  airaloRefundBody,
+  chunkIccids,
+  parseAiraloRefundResponse,
+} from './airalo-refund';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -463,6 +470,60 @@ export class AiraloService {
     );
 
     return data?.data;
+  }
+
+  /**
+   * Ask Airalo to refund these eSIMs (doitac-1410 #079), 5 ICCIDs per
+   * request. Airalo reviews each request by hand and pays approved ones in
+   * Airalo credit. Throws with Airalo's reason when a request is not taken.
+   */
+  async requestRefund(
+    params: Omit<AiraloRefundRequest, 'iccids'> & { iccids: string[] },
+  ): Promise<AiraloRefundResult[]> {
+    const chunks = chunkIccids(params.iccids);
+    if (!chunks.length) return [];
+    const token = await this.authenticate();
+    const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
+      infer: true,
+    });
+
+    const results: AiraloRefundResult[] = [];
+    for (const iccids of chunks) {
+      this.logger.log(
+        `Requesting Airalo refund: reason=${params.reason}, iccids=${iccids.join(',')}`,
+      );
+      let body: unknown;
+      try {
+        ({ data: body } = await firstValueFrom(
+          this.httpService.post(
+            `${baseUrl}/v2/refund`,
+            airaloRefundBody({ ...params, iccids }),
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json',
+              },
+            },
+          ),
+        ));
+      } catch (err) {
+        const res = (err as { response?: { status?: number; data?: any } })
+          .response;
+        const message =
+          res?.data?.meta?.message ??
+          res?.data?.message ??
+          (err as Error).message;
+        throw new Error(
+          `Airalo refund request failed${res?.status ? ` (${res.status})` : ''}: ${message}`,
+        );
+      }
+      const result = parseAiraloRefundResponse(body, iccids);
+      this.logger.log(
+        `Airalo refund request taken: refund_id=${result.refundId}`,
+      );
+      results.push(result);
+    }
+    return results;
   }
 
   async getDataUsage(iccid: string): Promise<AiraloUsageResponse['data']> {

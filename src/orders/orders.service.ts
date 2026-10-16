@@ -1,3 +1,4 @@
+import { AiraloRefundReason } from '../esim-providers/airalo/airalo-refund';
 import { Esim } from '../esims/domain/esim';
 import {
   allocateDiscount,
@@ -2673,8 +2674,26 @@ export class OrdersService {
         : [];
     if (selectedEsims.length) {
       supplierWarnings.push(
-        ...(await this.cancelEsimsWithSuppliers(selectedEsims, orderItems)),
+        ...(await this.cancelEsimsWithSuppliers(
+          selectedEsims,
+          orderItems,
+          !!dto.airaloRefundReason,
+        )),
       );
+    }
+
+    // Airalo has no cancel, but takes refund requests (doitac-1410 #079).
+    const supplierRequests: string[] = [];
+    if (dto.airaloRefundReason) {
+      const airalo = await this.requestAiraloRefunds(order, dto, {
+        isPartial,
+        selectedItemIds,
+        selectedEsims,
+        orderItems,
+        adminId,
+      });
+      supplierRequests.push(...airalo.requests);
+      supplierWarnings.push(...airalo.warnings);
     }
 
     const refund = await this.walletsService.refundOrder(order, dto, adminId);
@@ -2766,7 +2785,98 @@ export class OrdersService {
       }
     }
 
-    return { ...refund, supplierWarnings };
+    return { ...refund, supplierWarnings, supplierRequests };
+  }
+
+  /**
+   * Ask Airalo to refund the Airalo eSIMs of this refund (doitac-1410 #079):
+   * whole lines refunded and single eSIMs picked. Airalo reviews each request
+   * by hand and pays in Airalo credit, so what was sent is kept as an order
+   * note for the admin to follow up. Never stops the customer's refund.
+   */
+  private async requestAiraloRefunds(
+    order: Order,
+    dto: RefundOrderDto,
+    ctx: {
+      isPartial: boolean;
+      selectedItemIds: number[];
+      selectedEsims: Esim[];
+      orderItems: OrderItem[];
+      adminId: number;
+    },
+  ): Promise<{ requests: string[]; warnings: string[] }> {
+    const requests: string[] = [];
+    const warnings: string[] = [];
+    let iccids: string[] = [];
+    try {
+      const items = ctx.orderItems.length
+        ? ctx.orderItems
+        : await this.orderItemsService.findByOrderId(order.id);
+      const airaloItemIds = new Set<number>();
+      for (const item of items) {
+        const plan = await this.plansService.findById(item.planId);
+        if (plan?.provider === 'airalo') airaloItemIds.add(Number(item.id));
+      }
+      if (!airaloItemIds.size) return { requests, warnings };
+
+      const wholeLines = (
+        ctx.isPartial ? ctx.selectedItemIds : [...airaloItemIds]
+      ).filter((id) => airaloItemIds.has(Number(id)));
+      const lineEsims = wholeLines.length
+        ? await this.esimsService.findByOrderItemIds(wholeLines)
+        : [];
+      iccids = [
+        ...lineEsims.filter((e) => e.status !== 'refunded'),
+        ...ctx.selectedEsims.filter((e) =>
+          airaloItemIds.has(Number(e.orderItemId)),
+        ),
+      ]
+        .map((e) => e.iccid)
+        .filter(Boolean);
+    } catch (err) {
+      warnings.push(
+        `Airalo: không xác định được eSIM cần hoàn — ${(err as Error).message}`,
+      );
+      return { requests, warnings };
+    }
+    if (!iccids.length) return { requests, warnings };
+
+    const reason = dto.airaloRefundReason as AiraloRefundReason;
+    const notes =
+      [dto.reason, `Order ${order.orderNumber ?? order.id}`]
+        .filter(Boolean)
+        .join(' — ') || undefined;
+    try {
+      const results = await this.airaloService.requestRefund({
+        iccids,
+        reason,
+        notes,
+      });
+      for (const r of results) {
+        requests.push(
+          `Airalo: đã gửi yêu cầu hoàn tiền #${r.refundId} cho ICCID ${r.iccids.join(', ')} (lý do ${reason}) — Airalo duyệt thủ công, hoàn bằng credit.`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `refundOrder: Airalo refund request for order ${order.id} failed: ${(err as Error).message}`,
+      );
+      warnings.push(
+        `Airalo: chưa gửi được yêu cầu hoàn tiền cho ICCID ${iccids.join(', ')} — ${(err as Error).message}`,
+      );
+    }
+
+    // On the order, so the follow-up with Airalo is not lost.
+    for (const line of [...requests, ...warnings]) {
+      try {
+        await this.addOrderNote(order.id, line, ctx.adminId);
+      } catch (err) {
+        this.logger.error(
+          `refundOrder: failed to note the Airalo request on order ${order.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return { requests, warnings };
   }
 
   /**
@@ -2848,6 +2958,7 @@ export class OrdersService {
   private async cancelEsimsWithSuppliers(
     esims: Esim[],
     orderItems: OrderItem[],
+    airaloRequested = false,
   ): Promise<string[]> {
     const warnings: string[] = [];
     const itemById = new Map(orderItems.map((i) => [Number(i.id), i]));
@@ -2874,6 +2985,9 @@ export class OrdersService {
             orderItemId: null,
             status: 'refunded',
           });
+        } else if (plan.provider === 'airalo' && airaloRequested) {
+          // No cancel; a refund request goes out instead when the admin asks
+          // for one (doitac-1410 #079).
         } else {
           warnings.push(
             `${label}: nhà cung cấp không hủy được riêng 1 eSIM — cần liên hệ nhà cung cấp để hoàn eSIM này`,
