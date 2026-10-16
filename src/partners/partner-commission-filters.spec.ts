@@ -125,3 +125,89 @@ describe('PartnersService.adminListCommissions — filters (#064)', () => {
     expect(sql).not.toContain(':from');
   });
 });
+
+describe('PartnersService.adminListCommissions — per-order table (doitac-1410 #056)', () => {
+  it('should cut the reconciliation period on a Vietnamese month', async () => {
+    const { service, qb } = buildService();
+    await service.adminListCommissions({ period: '2026-10' });
+    const call = (
+      qb.andWhere.mock.calls as [string, Record<string, Date>][]
+    ).find(([sql]) => sql.includes(':periodStart'))!;
+    // 01/10 00:00 → 01/11 00:00 in Vietnam (UTC+7).
+    expect(call[1].periodStart.toISOString()).toBe('2026-09-30T17:00:00.000Z');
+    expect(call[1].periodEnd.toISOString()).toBe('2026-10-31T17:00:00.000Z');
+  });
+
+  it('should search a company by its own name too', async () => {
+    const { service, qb } = buildService();
+    await service.adminListCommissions({ search: 'ETELECOM' });
+    expect(clauses(qb).join(' ')).toContain('p."companyName" ILIKE :search');
+  });
+
+  it('should give each commission its partner, order, period and source', async () => {
+    const { service, qb } = buildService();
+    qb.getManyAndCount.mockResolvedValue([
+      [
+        {
+          id: 7,
+          partnerId: 9,
+          orderId: 70,
+          status: 'credited',
+          createdAt: '2026-10-15T03:00:00Z',
+        },
+        {
+          id: 8,
+          partnerId: 10,
+          orderId: 80,
+          status: 'pending',
+          createdAt: '2026-10-01T03:00:00Z',
+        },
+      ],
+      2,
+    ]);
+    Object.assign(service, {
+      dataSource: {
+        query: jest.fn().mockResolvedValue([
+          {
+            id: 7,
+            legalType: 'company',
+            companyName: 'Công ty TNHH ETELECOM',
+            contactName: 'Nguyễn A',
+            orderNumber: 'ORD-70',
+            orderAt: '2026-09-30T18:00:00Z',
+            orderRevenueVnd: '500000',
+            couponCode: 'GIAM10',
+            linkCode: null,
+            attributionWarning: null,
+          },
+          {
+            id: 8,
+            legalType: 'individual',
+            companyName: null,
+            contactName: 'Trần B',
+            orderNumber: 'ORD-80',
+            orderAt: '2026-10-01T03:00:00Z',
+            orderRevenueVnd: '300000',
+            couponCode: null,
+            linkCode: 'VANA2026',
+            attributionWarning: 'partner_ip',
+          },
+        ]),
+      },
+    });
+    const { data } = await service.adminListCommissions({});
+    expect(data[0]).toMatchObject({
+      partnerName: 'Công ty TNHH ETELECOM',
+      orderNumber: 'ORD-70',
+      orderRevenueVnd: 500000,
+      // 30/09 18:00 UTC is already 01/10 in Vietnam.
+      period: '10/2026',
+      source: { type: 'coupon', code: 'GIAM10' },
+    });
+    expect(data[1]).toMatchObject({
+      partnerName: 'Trần B',
+      source: { type: 'link', code: 'VANA2026' },
+      attributionWarning: 'partner_ip',
+    });
+  });
+});

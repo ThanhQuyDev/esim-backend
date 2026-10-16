@@ -211,3 +211,31 @@ describe('PartnersService.adminSetReconciliationStatus (#065)', () => {
     expect(save).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('adminListReconciliations — company name and Vietnamese month (doitac-1410 #056)', () => {
+  it('should show a company by its own name and cut the month in Vietnam', async () => {
+    const { service, query } = buildService([
+      {
+        partnerId: 9,
+        contactName: 'Nguyễn A',
+        partnerName: 'Công ty TNHH ETELECOM',
+        contactEmail: 'a@x.vn',
+        validOrders: '4',
+        esimsSold: '4',
+        viaCouponOrders: '1',
+        revenueVnd: '800000',
+        commissionVnd: '60000',
+        storedStatus: null,
+        note: null,
+      },
+    ]);
+    const result = await service.adminListReconciliations({
+      period: '2026-10',
+    });
+    expect(result.rows[0].partnerName).toBe('Công ty TNHH ETELECOM');
+    const [sql, params] = query.mock.calls[0] as [string, Date[]];
+    expect(sql).toContain('p."companyName" ILIKE');
+    expect(params[0].toISOString()).toBe('2026-09-30T17:00:00.000Z');
+    expect(params[1].toISOString()).toBe('2026-10-31T17:00:00.000Z');
+  });
+});

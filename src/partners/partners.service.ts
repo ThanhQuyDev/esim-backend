@@ -3623,6 +3623,8 @@ export class PartnersService {
     rows: {
       partnerId: number;
       contactName: string | null;
+      /** A company by its own name (doitac-1410 #056). */
+      partnerName: string | null;
       contactEmail: string | null;
       validOrders: number;
       esimsSold: number;
@@ -3633,12 +3635,19 @@ export class PartnersService {
       note: string | null;
     }[];
   }> {
+    // The current month and its bounds in Vietnam, not on the server's UTC
+    // clock (doitac-1410 #056).
     const period = /^\d{4}-\d{2}$/.test(query.period ?? '')
       ? (query.period as string)
-      : new Date().toISOString().slice(0, 7);
+      : new Date()
+          .toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
+          .slice(0, 7);
     const [year, month] = period.split('-').map(Number);
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 1);
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const { from: start, to: end } = resolveSummaryRange({
+      from: `${period}-01`,
+      to: `${period}-${String(lastDay).padStart(2, '0')}`,
+    });
 
     const search = query.search?.trim() || null;
     const asId = Number((query.search ?? '').trim().replace(/^#/, ''));
@@ -3647,6 +3656,8 @@ export class PartnersService {
     const rows = await this.dataSource.query(
       `SELECT p.id AS "partnerId",
               p."contactName",
+              CASE WHEN p."legalType" = 'company' AND p."companyName" IS NOT NULL
+                   THEN p."companyName" ELSE p."contactName" END AS "partnerName",
               p."contactEmail",
               agg."validOrders",
               agg."esimsSold",
@@ -3687,6 +3698,7 @@ export class PartnersService {
          AND agg."validOrders" > 0
          AND ($4::text IS NULL
               OR p."contactName" ILIKE '%' || $4 || '%'
+              OR p."companyName" ILIKE '%' || $4 || '%'
               OR p."contactEmail" ILIKE '%' || $4 || '%'
               OR p."contactPhone" ILIKE '%' || $4 || '%'
               OR ($5::int IS NOT NULL AND p.id = $5))
@@ -3705,6 +3717,7 @@ export class PartnersService {
           return {
             partnerId: Number(row.partnerId),
             contactName: row.contactName ?? null,
+            partnerName: row.partnerName ?? row.contactName ?? null,
             contactEmail: row.contactEmail ?? null,
             validOrders,
             esimsSold: Number(row.esimsSold ?? 0),
@@ -3803,7 +3816,7 @@ export class PartnersService {
     for (const row of rows) {
       sheet.addRow({
         id: row.partnerId,
-        name: row.contactName ?? '',
+        name: row.partnerName ?? row.contactName ?? '',
         email: row.contactEmail ?? '',
         period,
         orders: row.validOrders,
@@ -4916,7 +4929,7 @@ export class PartnersService {
       const asId = Number(query.search.trim().replace(/^#/, ''));
       const looksLikeId = Number.isInteger(asId) && asId > 0;
       qb.andWhere(
-        `(p."contactName" ILIKE :search OR p."contactEmail" ILIKE :search OR p."contactPhone" ILIKE :search${
+        `(p."contactName" ILIKE :search OR p."companyName" ILIKE :search OR p."contactEmail" ILIKE :search OR p."contactPhone" ILIKE :search${
           looksLikeId ? ' OR p.id = :id' : ''
         })`,
         looksLikeId ? { search, id: asId } : { search },
@@ -4928,8 +4941,13 @@ export class PartnersService {
     if (query.period?.trim()) {
       const [year, month] = query.period.trim().split('-').map(Number);
       if (Number.isInteger(year) && Number.isInteger(month)) {
-        const start = new Date(year, month - 1, 1);
-        const end = new Date(year, month, 1);
+        // A Vietnamese month, not the server's UTC one (doitac-1410 #056).
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+        const { from: start, to: end } = resolveSummaryRange({
+          from: `${year}-${pad(month)}-01`,
+          to: `${year}-${pad(month)}-${pad(last)}`,
+        });
         qb.andWhere(
           'c."createdAt" >= :periodStart AND c."createdAt" < :periodEnd',
           {
@@ -4955,7 +4973,65 @@ export class PartnersService {
       .take(limit)
       .getManyAndCount();
 
-    return { data, totalCount: count };
+    // What the "Hoa hồng theo đơn" table shows beside each commission
+    // (doitac-1410 #056): whose it is (a company by its own name), the order,
+    // what it was worth, where the attribution came from and what the system
+    // flagged.
+    const ids = data.map((c) => Number(c.id));
+    const extra = new Map<number, Record<string, any>>();
+    if (ids.length) {
+      const rows = await this.dataSource.query(
+        `SELECT c.id, p."contactName", p."companyName", p."legalType",
+                o."orderNumber", o."createdAt" AS "orderAt", o.status AS "orderStatus",
+                ${ORDER_REVENUE_SQL} AS "orderRevenueVnd",
+                o."attributionWarning", o."couponCode", l.code AS "linkCode"
+           FROM order_partner_commission c
+           LEFT JOIN partner p ON p.id = c."partnerId"
+           LEFT JOIN "order" o ON o.id = c."orderId"
+           LEFT JOIN partner_link l ON l.id = c."linkId"
+          WHERE c.id = ANY($1)`,
+        [ids],
+      );
+      for (const r of rows as Record<string, any>[]) extra.set(Number(r.id), r);
+    }
+    const vnMonth = (value: unknown) => {
+      if (!value) return null;
+      const [, month, year] = new Date(value as string)
+        .toLocaleDateString('vi-VN', {
+          timeZone: 'Asia/Ho_Chi_Minh',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        })
+        .split('/');
+      return `${month}/${year}`;
+    };
+
+    return {
+      data: data.map((c) => {
+        const x = extra.get(Number(c.id)) ?? {};
+        return {
+          ...c,
+          partnerName:
+            (x.legalType === 'company' && x.companyName) ||
+            x.contactName ||
+            x.companyName ||
+            null,
+          orderNumber: x.orderNumber ?? null,
+          orderAt: x.orderAt ?? null,
+          orderStatus: x.orderStatus ?? null,
+          orderRevenueVnd: Number(x.orderRevenueVnd ?? 0),
+          period: vnMonth(x.orderAt ?? c.createdAt),
+          source: x.linkCode
+            ? { type: 'link' as const, code: String(x.linkCode) }
+            : x.couponCode
+              ? { type: 'coupon' as const, code: String(x.couponCode) }
+              : { type: 'member' as const, code: null },
+          attributionWarning: x.attributionWarning ?? null,
+        };
+      }),
+      totalCount: count,
+    };
   }
 
   /**
