@@ -1,6 +1,7 @@
 import { vnFold, vnFoldSql } from '../utils/vn-fold';
 import { partnerCommissionAmount } from './partner-commission-amount';
 import {
+  Optional,
   BadRequestException,
   ForbiddenException,
   HttpStatus,
@@ -48,6 +49,7 @@ import {
 } from './purchase-delivery-workbook';
 import { PartnerEsimFaultReportEntity } from './infrastructure/persistence/relational/entities/partner-esim-fault-report.entity';
 import * as ExcelJS from 'exceljs';
+import { PlansService } from '../plans/plans.service';
 import {
   LEDGER_KIND_LABEL,
   LEDGER_TYPES,
@@ -562,6 +564,8 @@ export class PartnersService {
      * cycle back through OrdersModule.
      */
     private readonly onepayService: OnepayService,
+    /** The admin's plan filters, reused for the price list (doitac-1410 #033). */
+    @Optional() private readonly plansService?: PlansService,
   ) {}
 
   /**
@@ -6358,7 +6362,22 @@ export class PartnersService {
    */
   async getPurchaseCatalogue(
     partnerId: number,
-    filters: { search?: string; destinationId?: number; limit?: number } = {},
+    filters: {
+      search?: string;
+      /** `d:<destinationId>` or `r:<regionId>`, as the admin list sends them. */
+      location?: string;
+      destinationId?: number;
+      duration?: number;
+      data?: string;
+      type?: string;
+      topUp?: boolean;
+      hasCallSms?: boolean;
+      /** "Tiktok & AI" (doitac-1410 #033). */
+      tiktokAi?: boolean;
+      isCheapest?: boolean;
+      page?: number;
+      limit?: number;
+    } = {},
   ): Promise<{
     plans: {
       id: number;
@@ -6367,6 +6386,10 @@ export class PartnersService {
       destinationName: string | null;
       durationDays: number;
       dataMb: number;
+      type: string | null;
+      topUp: boolean;
+      hasCallSms: boolean;
+      tiktokAi: boolean;
       /** Giá niêm yết esim.vn — "Doanh thu bán ra" của đối tác. */
       listPriceVnd: number;
       /** Giá đối tác phải trả: giá vốn + markup hạng. */
@@ -6375,60 +6398,123 @@ export class PartnersService {
       marginVnd: number;
       purchasable: boolean;
     }[];
+    totalCount: number;
   }> {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const markupPercent = await this.purchaseMarkupPercentFor(partner);
     const limit = Math.min(Math.max(filters.limit ?? 100, 1), 500);
+    const page = Math.max(filters.page ?? 1, 1);
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
-    const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
+    const search = filters.search?.trim().replace(/^#+\s*/, '') || undefined;
+    const [kind, rawId] = (filters.location ?? '').split(':');
+    const locationId = Number(rawId);
 
-    const rows = await this.dataSource.query(
-      `SELECT p.id,
-              p.name,
-              p.slug,
-              d.name AS "destinationName",
-              p."durationDays",
-              p."dataMb",
-              p."vndPrice",
-              p."vndCostPrice"
-         FROM plan p
-         LEFT JOIN destination d ON d.id = p."destinationId"
-        WHERE p."isActive" = true
-          AND p."deletedAt" IS NULL
-          AND ($1::int IS NULL OR p."destinationId" = $1)
-          AND (
-            $2::text IS NULL
-            OR p.name ILIKE '%' || $2 || '%'
-            OR d.name ILIKE '%' || $2 || '%'
-          )
-        ORDER BY d.name NULLS LAST, p."vndPrice" ASC
-        LIMIT $3`,
-      [filters.destinationId ?? null, search, limit],
-    );
+    if (!this.plansService) {
+      throw new Error('PlansService is required for the price list');
+    }
+    // Exactly the admin's filters, always on plans that can be bought now, and
+    // never the domestic eSIMs — those are not the partner's to resell
+    // (doitac-1410 #033). Viettel travel eSIMs are not domestic and stay.
+    const [rows, totalCount] = await this.plansService.findManyWithPagination({
+      filterOptions: {
+        isActive: true,
+        isDomesticEsim: false,
+        ...(search ? { search } : {}),
+        ...(kind === 'd' && locationId ? { destinationId: locationId } : {}),
+        ...(kind === 'r' && locationId ? { regionId: locationId } : {}),
+        ...(filters.destinationId
+          ? { destinationId: filters.destinationId }
+          : {}),
+        ...(filters.duration ? { duration: filters.duration } : {}),
+        ...(filters.data?.trim() ? { data: filters.data.trim() } : {}),
+        ...(filters.type ? { type: filters.type } : {}),
+        ...(filters.topUp !== undefined ? { topUp: filters.topUp } : {}),
+        ...(filters.hasCallSms !== undefined
+          ? { hasCallSms: filters.hasCallSms }
+          : {}),
+        ...(filters.tiktokAi !== undefined
+          ? { isNonHkIp: filters.tiktokAi }
+          : {}),
+        ...(filters.isCheapest !== undefined
+          ? { isCheapest: filters.isCheapest }
+          : {}),
+      },
+      sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
+      paginationOptions: { page, limit },
+    });
 
     // The markup itself is not sent: it is a trade secret, and the partner
     // reads only the price they pay (doitac-1410 #006).
     return {
-      plans: (rows as Record<string, any>[]).map((row) => {
-        const listPriceVnd = Number(row.vndPrice ?? 0);
+      plans: rows.map((plan) => {
+        const listPriceVnd = Number(plan.vndPrice ?? 0);
         const unitPriceVnd = partnerPurchaseUnitPriceVnd(
-          Number(row.vndCostPrice ?? 0),
+          Number(plan.vndCostPrice ?? 0),
           markupPercent,
         );
+        const destination = plan.destination as
+          | { name?: string; titleVi?: string | null }
+          | undefined;
+        const region = plan.region as
+          | { name?: string; titleVi?: string | null }
+          | undefined;
         return {
-          id: Number(row.id),
-          name: String(row.name),
-          slug: String(row.slug),
-          destinationName: row.destinationName ?? null,
-          durationDays: Number(row.durationDays ?? 0),
-          dataMb: Number(row.dataMb ?? 0),
+          id: Number(plan.id),
+          name: String(plan.name),
+          slug: String(plan.slug),
+          destinationName:
+            destination?.titleVi ||
+            destination?.name ||
+            region?.titleVi ||
+            region?.name ||
+            null,
+          durationDays: Number(plan.durationDays ?? 0),
+          dataMb: Number(plan.dataMb ?? 0),
+          type: plan.type ?? null,
+          topUp: Boolean(plan.topUp),
+          hasCallSms: Number(plan.sms ?? 0) > 0 || Number(plan.call ?? 0) > 0,
+          tiktokAi: Boolean(
+            plan.appSupport?.tiktokAllDevices && plan.appSupport?.chatGpt,
+          ),
           listPriceVnd,
           unitPriceVnd,
           marginVnd: listPriceVnd - unitPriceVnd,
           purchasable: unitPriceVnd > 0,
         };
       }),
+      totalCount,
     };
+  }
+
+  /**
+   * The places the price list has plans for, for its "Điểm đến" box
+   * (doitac-1410 #033): only those with a plan the partner can buy.
+   */
+  async getCatalogueLocations(): Promise<{ value: string; label: string }[]> {
+    const rows: { value: string; label: string; region: boolean }[] =
+      await this.dataSource.query(
+        `SELECT DISTINCT 'r:' || r.id AS value,
+                COALESCE(NULLIF(r."titleVi", ''), r.name) AS label, true AS region
+           FROM plan p JOIN region r ON r.id = p."regionId"
+          WHERE p."isActive" AND p."deletedAt" IS NULL
+            AND NOT COALESCE(p."isDomesticEsim", false)
+         UNION
+         SELECT DISTINCT 'd:' || d.id AS value,
+                COALESCE(NULLIF(d."titleVi", ''), d.name) AS label, false AS region
+           FROM plan p JOIN destination d ON d.id = p."destinationId"
+          WHERE p."isActive" AND p."deletedAt" IS NULL
+            AND NOT COALESCE(p."isDomesticEsim", false)`,
+      );
+    return rows
+      .sort(
+        (a, b) =>
+          Number(b.region) - Number(a.region) ||
+          a.label.localeCompare(b.label, 'vi'),
+      )
+      .map((r) => ({
+        value: r.value,
+        label: r.region ? `Khu vực: ${r.label}` : r.label,
+      }));
   }
 
   /**

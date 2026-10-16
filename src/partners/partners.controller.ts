@@ -418,16 +418,38 @@ export class PartnersController {
   async getMyCatalogue(
     @Request() req: { user: { id: number } },
     @Query()
-    query: { search?: string; destinationId?: string; limit?: string },
+    query: Record<string, string | undefined>,
   ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    // "true"/"false" from the query string; anything else means "any".
+    const flag = (value?: string) =>
+      value === 'true' ? true : value === 'false' ? false : undefined;
+    const num = (value?: string) =>
+      value && Number(value) > 0 ? Number(value) : undefined;
     return this.partnersService.getPurchaseCatalogue(partner.id, {
       search: query.search,
-      destinationId: query.destinationId
-        ? Number(query.destinationId)
-        : undefined,
-      limit: query.limit ? Number(query.limit) : undefined,
+      location: query.location,
+      destinationId: num(query.destinationId),
+      duration: num(query.duration),
+      data: query.data,
+      type: query.type,
+      topUp: flag(query.topUp),
+      hasCallSms: flag(query.hasCallSms),
+      tiktokAi: flag(query.tiktokAi),
+      isCheapest: flag(query.isCheapest),
+      page: num(query.page),
+      limit: num(query.limit),
     });
+  }
+
+  /** The "Điểm đến" options of the price list (doitac-1410 #033). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/catalogue/locations')
+  @HttpCode(HttpStatus.OK)
+  getMyCatalogueLocations() {
+    return this.partnersService.getCatalogueLocations();
   }
 
   /** Số tiền sẽ bị trừ, tính trước khi đối tác bấm mua (#046). */

@@ -28,11 +28,15 @@ import { PartnerNotificationEntity } from './infrastructure/persistence/relation
 import { PartnerNotificationReadEntity } from './infrastructure/persistence/relational/entities/partner-notification-read.entity';
 import { PartnerEsimFaultReportEntity } from './infrastructure/persistence/relational/entities/partner-esim-fault-report.entity';
 import { MailModule } from '../mail/mail.module';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
     // Approval and rejection are told to the applicant by email (#095).
     MailModule,
+    // The distribution price list filters exactly as the admin's plan list
+    // does (doitac-1410 #033).
+    PlansModule,
     TypeOrmModule.forFeature([
       UserEntity,
       PartnerEntity,
