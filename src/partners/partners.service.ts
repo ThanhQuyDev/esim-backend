@@ -6146,6 +6146,8 @@ export class PartnersService {
       /** Created from–to, in Vietnamese days. */
       from?: string;
       to?: string;
+      /** The Excel export takes every row, not one screen (doitac-1410 #040). */
+      unbounded?: boolean;
     } = {},
   ): Promise<
     {
@@ -6172,7 +6174,10 @@ export class PartnersService {
     }[]
   > {
     const partner = await this.getPartnerOrThrowById(partnerId);
-    const limit = Math.min(Math.max(filters.limit ?? 100, 1), 500);
+    const limit = Math.min(
+      Math.max(filters.limit ?? 100, 1),
+      filters.unbounded ? 50_000 : 500,
+    );
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
     const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
     const status = filters.status?.trim() || null;
@@ -6301,6 +6306,166 @@ export class PartnersService {
       }),
       openReport: (row.openReport as 'fault' | 'refund' | null) ?? null,
     }));
+  }
+
+  /**
+   * "Xuất file" on Quản lý eSIM (doitac-1410 #040): every eSIM matching the
+   * list's filters, with everything the detail page shows — install codes and
+   * links included, so the partner can hand them to customers from the file.
+   */
+  async exportMyEsimsToExcel(
+    partnerId: number,
+    filters: Omit<Parameters<PartnersService['getMyEsims']>[1], 'limit'> = {},
+  ): Promise<Buffer> {
+    const esims = await this.getMyEsims(partnerId, {
+      ...filters,
+      limit: 50_000,
+      unbounded: true,
+    });
+    const iccids = esims.map((e) => e.iccid).filter(Boolean) as string[];
+    const extra = new Map<string, Record<string, any>>();
+    if (iccids.length) {
+      const rows = await this.dataSource.query(
+        `SELECT e.iccid, e."apnValue" AS apn, e."smdpAddress",
+                e."activationCode", e.lpa, e."directAppleInstallationUrl",
+                e."updatedAt", p.slug AS "planCode", p."dataMb", p.call, p.sms,
+                p."operatorName", p.speed
+           FROM esim e
+           LEFT JOIN order_item oi ON oi.id = e."orderItemId"
+           LEFT JOIN plan p ON p.id = oi."planId"
+          WHERE e.iccid = ANY($1) AND e."deletedAt" IS NULL`,
+        [iccids],
+      );
+      for (const row of rows as Record<string, any>[]) {
+        extra.set(String(row.iccid), row);
+      }
+    }
+
+    const yes = (v: boolean | undefined) => (v ? 'Có' : 'Không');
+    const typeLabel: Record<string, string> = {
+      fixed: 'Cố định',
+      daily: 'Theo ngày',
+      unlimited: 'Không giới hạn',
+      'unlimited-reduce': 'Không giới hạn giảm tốc',
+    };
+    const statusLabel: Record<string, string> = {
+      available: 'Chưa kích hoạt',
+      sold: 'Chưa kích hoạt',
+      active: 'Đang dùng',
+      expired: 'Đã hết hạn',
+      deactivated: 'Đã ngừng',
+      refunded: 'Đã hoàn tiền',
+    };
+    const mbText = (mb: number | null | undefined) =>
+      mb == null
+        ? ''
+        : mb >= 1024
+          ? `${Math.round((mb / 1024) * 100) / 100} GB`
+          : `${Math.round(mb)} MB`;
+    const vnTime = (value: unknown) => {
+      if (!value) return '';
+      const date = new Date(value as string);
+      return Number.isNaN(date.getTime())
+        ? ''
+        : date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    };
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Danh sách eSIM');
+    const money = '#,##0';
+    sheet.columns = [
+      { header: 'ICCID', key: 'iccid', width: 24 },
+      { header: 'Trạng thái', key: 'status', width: 16 },
+      { header: 'Mã đơn hàng', key: 'orderNumber', width: 30 },
+      { header: 'Tên gói', key: 'planName', width: 36 },
+      { header: 'Mã gói cước', key: 'planCode', width: 32 },
+      { header: 'Điểm đến', key: 'destination', width: 18 },
+      { header: 'Loại gói', key: 'type', width: 22 },
+      { header: 'Dung lượng', key: 'data', width: 12 },
+      { header: 'Dữ liệu đã dùng', key: 'used', width: 16 },
+      { header: 'Số ngày dùng', key: 'days', width: 12 },
+      { header: 'Gọi / SMS', key: 'callSms', width: 22 },
+      { header: 'Nhà mạng', key: 'operator', width: 18 },
+      { header: 'Tốc độ', key: 'speed', width: 10 },
+      { header: 'Topup', key: 'topUp', width: 8 },
+      { header: 'Tiktok & AI', key: 'tiktok', width: 11 },
+      { header: 'Hoàn tiền', key: 'refund', width: 10 },
+      {
+        header: 'Giá đại lý (VND)',
+        key: 'agent',
+        width: 16,
+        style: { numFmt: money },
+      },
+      {
+        header: 'Giá bán lẻ đề xuất (VND)',
+        key: 'retail',
+        width: 22,
+        style: { numFmt: money },
+      },
+      { header: 'APN', key: 'apn', width: 16 },
+      { header: 'SM-DP+ Address', key: 'smdp', width: 26 },
+      { header: 'Activation Code', key: 'activationCode', width: 34 },
+      { header: 'LPA', key: 'lpa', width: 50 },
+      { header: 'Link cài đặt iPhone', key: 'apple', width: 60 },
+      { header: 'Link cài đặt Android', key: 'android', width: 60 },
+      { header: 'Thời gian tạo', key: 'createdAt', width: 20 },
+      { header: 'Kích hoạt', key: 'activatedAt', width: 20 },
+      { header: 'Hết hạn', key: 'expiresAt', width: 20 },
+      { header: 'Cập nhật', key: 'updatedAt', width: 20 },
+    ];
+    for (const e of esims) {
+      const x = extra.get(String(e.iccid)) ?? {};
+      const lpa: string | null = x.lpa ?? null;
+      const call = Number(x.call ?? 0);
+      const sms = Number(x.sms ?? 0);
+      sheet.addRow({
+        iccid: e.iccid ?? '',
+        status: statusLabel[e.status ?? ''] ?? e.status ?? '',
+        orderNumber: e.orderNumber ?? '',
+        planName: e.planName ?? '',
+        planCode: x.planCode ?? '',
+        destination: e.destination ?? '',
+        type: typeLabel[e.planType ?? ''] ?? e.planType ?? '',
+        data:
+          x.dataMb == null
+            ? mbText(e.dataTotal)
+            : Number(x.dataMb) <= 0
+              ? 'Không giới hạn'
+              : mbText(Number(x.dataMb)),
+        used: e.dataUsed == null ? '' : mbText(e.dataUsed),
+        days: e.durationDays ?? '',
+        callSms:
+          call > 0 || sms > 0 ? `Gọi ${call} phút · SMS ${sms}` : 'Không',
+        operator: x.operatorName ?? '',
+        speed: x.speed ?? '',
+        topUp: yes(e.topUp),
+        tiktok: yes(e.tiktokAi),
+        refund: yes(e.refundable),
+        agent: e.costVnd,
+        retail: partnerSuggestedRetailVnd(e.costVnd),
+        apn: x.apn ?? '',
+        smdp: x.smdpAddress ?? '',
+        activationCode: x.activationCode ?? '',
+        lpa: lpa ?? '',
+        apple:
+          x.directAppleInstallationUrl ||
+          (lpa
+            ? `https://esimsetup.apple.com/esim_qrcode_provisioning?carddata=${lpa}`
+            : ''),
+        android: lpa
+          ? `https://esimsetup.android.com/esim_qrcode_provisioning?carddata=${lpa}`
+          : '',
+        createdAt: vnTime(e.createdAt),
+        activatedAt: vnTime(e.activatedAt),
+        expiresAt: vnTime(e.expiresAt),
+        updatedAt: vnTime(x.updatedAt),
+      });
+    }
+    sheet.getRow(1).font = { bold: true };
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   /**

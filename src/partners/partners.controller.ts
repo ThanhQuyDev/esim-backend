@@ -396,6 +396,44 @@ export class PartnersController {
     });
   }
 
+  /**
+   * "Xuất file" on Quản lý eSIM (doitac-1410 #040), with the list's filters.
+   * Declared before `me/esims/:iccid` so "export" is not read as an ICCID.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/esims/export')
+  @HttpCode(HttpStatus.OK)
+  async exportMyEsims(
+    @Request() req: { user: { id: number } },
+    @Res() res: Response,
+    @Query() query: Record<string, string | undefined>,
+  ): Promise<void> {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    const buffer = await this.partnersService.exportMyEsimsToExcel(partner.id, {
+      search: query.search,
+      status: query.status,
+      planType: query.planType,
+      topUp:
+        query.topUp === 'true'
+          ? true
+          : query.topUp === 'false'
+            ? false
+            : undefined,
+      from: query.from,
+      to: query.to,
+    });
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      // Danh-sach-eSIM_13-10-2026_01-18-29.xlsx, as the brief names it.
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-eSIM')}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   /** "Chi tiết eSIM" of one eSIM the partner bought (doitac-1410 #039). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

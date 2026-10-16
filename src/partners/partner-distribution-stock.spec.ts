@@ -1,4 +1,5 @@
 import { PartnersService } from './partners.service';
+import * as ExcelJS from 'exceljs';
 
 /**
  * A distribution partner's stock and their own orders (#046).
@@ -503,5 +504,78 @@ describe('PartnersService.getMyEsimDetail (doitac-1410 #039)', () => {
     });
     // No supplier name leaves the server.
     expect(detail).not.toHaveProperty('provider');
+  });
+});
+
+describe('PartnersService.exportMyEsimsToExcel (doitac-1410 #040)', () => {
+  it('should export every filtered eSIM with its install codes and partner prices', async () => {
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    const getMyEsims = jest.fn().mockResolvedValue([
+      {
+        iccid: '8900000633806287368',
+        status: 'sold',
+        planName: 'Thailand 3GB / 30day',
+        destination: 'Thailand',
+        orderNumber: 'PTN-1',
+        costVnd: 36000,
+        dataUsed: null,
+        dataTotal: null,
+        activatedAt: null,
+        expiresAt: null,
+        createdAt: '2026-10-14T03:13:06.000Z',
+        planType: 'fixed',
+        topUp: true,
+        durationDays: 30,
+        hasCallSms: false,
+        tiktokAi: true,
+        refundable: true,
+        openReport: null,
+      },
+    ]);
+    const query = jest.fn().mockResolvedValue([
+      {
+        iccid: '8900000633806287368',
+        apn: 'globaldata',
+        smdpAddress: 'lpa.airalo.com',
+        activationCode: 'ABC',
+        lpa: 'LPA:1$lpa.airalo.com$ABC',
+        directAppleInstallationUrl: null,
+        updatedAt: '2026-10-14T03:13:06.000Z',
+        planCode: 'thailand-3gb',
+        dataMb: 3072,
+        call: null,
+        sms: null,
+        operatorName: 'AIS',
+        speed: '5G',
+      },
+    ]);
+    Object.assign(service, { getMyEsims, dataSource: { query } });
+
+    const buffer = await service.exportMyEsimsToExcel(11, { status: 'sold' });
+
+    // The list's filters, without the screen's 500-row cap.
+    expect(getMyEsims).toHaveBeenCalledWith(
+      11,
+      expect.objectContaining({ status: 'sold', unbounded: true }),
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as never);
+    const sheet = workbook.getWorksheet('Danh sách eSIM')!;
+    const header = (sheet.getRow(1).values as unknown[]).slice(1);
+    const row = (sheet.getRow(2).values as unknown[]).slice(1);
+    const cell = (name: string) => row[header.indexOf(name)];
+    expect(cell('ICCID')).toBe('8900000633806287368');
+    expect(cell('Trạng thái')).toBe('Chưa kích hoạt');
+    expect(cell('Mã gói cước')).toBe('thailand-3gb');
+    expect(cell('Dung lượng')).toBe('3 GB');
+    expect(cell('Giá đại lý (VND)')).toBe(36000);
+    expect(cell('Giá bán lẻ đề xuất (VND)')).toBe(60000);
+    expect(cell('LPA')).toBe('LPA:1$lpa.airalo.com$ABC');
+    expect(cell('Link cài đặt Android')).toBe(
+      'https://esimsetup.android.com/esim_qrcode_provisioning?carddata=LPA:1$lpa.airalo.com$ABC',
+    );
+    // VN time, not the UTC wall time stored in the database.
+    expect(String(cell('Thời gian tạo'))).toContain('10:13:06');
+    expect(sheet.rowCount).toBe(2);
   });
 });
