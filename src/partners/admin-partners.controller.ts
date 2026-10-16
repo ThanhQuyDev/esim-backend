@@ -59,6 +59,7 @@ import {
   UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerStatusDto,
   AdminRefundPartnerPurchaseDto,
+  RejectDepositRequestDto,
 } from './dto/admin-partner.dto';
 import {
   CreatePartnerTierDto,
@@ -235,8 +236,25 @@ export class AdminPartnersController {
   @HttpCode(HttpStatus.OK)
   listDepositRequests(
     @Query('status') status?: PartnerDepositRequestStatusEnum,
+    @Query('search') search?: string,
   ) {
-    return this.partnersService.adminListDepositRequests(status);
+    // Searchable, with the partner by name (doitac-1410 #063).
+    return this.partnersService.adminListDepositRequests({ status, search });
+  }
+
+  /** "Từ chối", with the reason the partner reads (doitac-1410 #063). */
+  @Post('deposit-requests/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  rejectDepositRequest(
+    @Param('id') id: number,
+    @Body() dto: RejectDepositRequestDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.rejectDepositRequest(
+      Number(id),
+      dto.reason,
+      req.user.id,
+    );
   }
 
   @Post('deposit-requests/:id/confirm')

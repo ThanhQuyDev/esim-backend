@@ -51,6 +51,8 @@ export enum PartnerDepositRequestStatusEnum {
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
   CANCELLED = 'cancelled',
+  /** Refused by an admin, with a reason the partner reads (doitac-1410 #063). */
+  REJECTED = 'rejected',
 }
 
 export enum PartnerLinkStatusEnum {

@@ -75,6 +75,16 @@ export class PartnerDepositRequestEntity extends EntityRelationalHelper {
   @Column({ type: Number, nullable: true })
   walletTransactionId?: number | null;
 
+  /** Why an admin refused it — shown in the partner's history (#063). */
+  @Column({ type: String, length: 500, nullable: true })
+  rejectionReason?: string | null;
+
+  @Column({ type: Number, nullable: true })
+  rejectedByAdminId?: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rejectedAt?: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

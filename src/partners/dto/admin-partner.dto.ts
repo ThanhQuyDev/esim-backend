@@ -192,6 +192,17 @@ export class AdminRefundPartnerPurchaseDto {
   reason!: string;
 }
 
+/** "Từ chối" a deposit request (doitac-1410 #063). */
+export class RejectDepositRequestDto {
+  @ApiProperty({ example: 'Không nhận được tiền chuyển khoản với mã này' })
+  @IsString()
+  @MinLength(5, {
+    message: 'Vui lòng nhập lý do từ chối (ít nhất 5 ký tự) để đối tác biết.',
+  })
+  @MaxLength(500)
+  reason!: string;
+}
+
 /** "Duyệt chi" or "Từ chối" for the rows an admin ticked (#069). */
 export class BulkPayoutDecisionDto {
   @ApiProperty({ type: [Number], example: [4, 7] })

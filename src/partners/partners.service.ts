@@ -1481,6 +1481,7 @@ export class PartnersService {
       pending: 'Chờ thanh toán',
       confirmed: 'Đã xác nhận',
       cancelled: 'Đã huỷ',
+      rejected: 'Từ chối', // doitac-1410 #063
     };
     for (const d of deposits) {
       dep.addRow({
@@ -1490,7 +1491,10 @@ export class PartnersService {
         fee: Number(d.feeVnd ?? 0),
         credited: Number(d.creditedVnd ?? d.amountVnd),
         code: d.bankTransferCode,
-        status: depositStatus[d.status] ?? d.status,
+        status:
+          d.status === 'rejected' && d.rejectionReason
+            ? `Từ chối: ${d.rejectionReason}`
+            : (depositStatus[d.status] ?? d.status),
       });
     }
 
@@ -4997,12 +5001,78 @@ export class PartnersService {
     );
   }
 
-  async adminListDepositRequests(status?: PartnerDepositRequestStatusEnum) {
-    return this.depositRequestRepository.find({
-      where: status ? { status } : {},
-      order: { createdAt: 'DESC' },
-      take: 200,
-    });
+  /**
+   * "Yêu cầu nạp ký quỹ" as a list (doitac-1410 #063): who asked (a company
+   * by its own name), how much, the fee, what reaches the wallet, how, and
+   * where it stands — searchable by partner name / ID / email or the code.
+   */
+  async adminListDepositRequests(
+    query: { status?: string; search?: string; limit?: number | string } = {},
+  ): Promise<Record<string, unknown>[]> {
+    const status =
+      query.status && query.status !== 'all' ? String(query.status) : null;
+    const raw = String(query.search ?? '').trim();
+    // A short number is a partner ID; "9" is in every phone and code (#057).
+    const idOnly = /^#?\d{1,5}$/.test(raw);
+    const search = raw && !idOnly ? raw : null;
+    const partnerId = idOnly ? Number(raw.replace(/^#/, '')) : null;
+    const limit = Math.min(Math.max(Number(query.limit) || 200, 1), 500);
+
+    const rows: Record<string, any>[] = await this.dataSource.query(
+      `SELECT r.*,
+              CASE WHEN p."legalType" = 'company' AND p."companyName" IS NOT NULL
+                   THEN p."companyName" ELSE p."contactName" END AS "partnerName",
+              p."contactName", p."contactEmail", p."partnerType"
+         FROM partner_deposit_request r
+         JOIN partner p ON p.id = r."partnerId"
+        WHERE ($1::text IS NULL OR r.status = $1)
+          AND ($2::int IS NULL OR r."partnerId" = $2)
+          AND ($3::text IS NULL
+               OR p."contactName" ILIKE '%' || $3 || '%'
+               OR p."companyName" ILIKE '%' || $3 || '%'
+               OR p."contactEmail" ILIKE '%' || $3 || '%'
+               OR r."bankTransferCode" ILIKE '%' || $3 || '%')
+        ORDER BY (r.status = 'pending') DESC, r."createdAt" DESC
+        LIMIT $4`,
+      [status, partnerId, search, limit],
+    );
+    return rows.map((row) => ({
+      ...row,
+      id: Number(row.id),
+      partnerId: Number(row.partnerId),
+      amountVnd: Number(row.amountVnd ?? 0),
+      feeVnd: Number(row.feeVnd ?? 0),
+      // What reaches the wallet; older rows had no fee.
+      creditedVnd: Number(row.creditedVnd ?? row.amountVnd ?? 0),
+      partnerName: row.partnerName ?? row.contactName ?? null,
+    }));
+  }
+
+  /**
+   * "Từ chối" a deposit request (doitac-1410 #063): nothing reaches the
+   * wallet, the reason goes into the partner's deposit history, and like a
+   * confirmation it cannot be undone.
+   */
+  async rejectDepositRequest(
+    id: number,
+    reason: string,
+    adminId: number,
+  ): Promise<PartnerDepositRequestEntity> {
+    const text = String(reason ?? '').trim();
+    if (text.length < 5) {
+      throw new BadRequestException(
+        'Vui lòng nhập lý do từ chối (ít nhất 5 ký tự) để đối tác biết.',
+      );
+    }
+    const request = await this.getDepositRequestOrThrow(id);
+    if (request.status !== PartnerDepositRequestStatusEnum.PENDING) {
+      throw new BadRequestException('Yêu cầu nạp tiền này đã được xử lý.');
+    }
+    request.status = PartnerDepositRequestStatusEnum.REJECTED;
+    request.rejectionReason = text.slice(0, 500);
+    request.rejectedByAdminId = adminId;
+    request.rejectedAt = new Date();
+    return this.depositRequestRepository.save(request);
   }
 
   /**
