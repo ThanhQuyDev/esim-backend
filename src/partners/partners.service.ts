@@ -7801,6 +7801,9 @@ export class PartnersService {
         operatorName: (row.operatorName as string) ?? null,
         speed: (row.speed as string) ?? null,
         topUp: Boolean(row.topUp),
+        // Billion: whether THIS eSIM takes a topup is known only from its
+        // recharge products (F052), so the screen asks for them (#064).
+        topUpPerEsim: row.provider === 'billion',
       },
       openReport: (row.openReport as 'fault' | 'refund' | null) ?? null,
       topups: (topups as Record<string, any>[]).map((t) => ({

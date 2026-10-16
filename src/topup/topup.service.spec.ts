@@ -155,3 +155,103 @@ describe('TopupService â€” DB-catalogued package identity', () => {
     });
   });
 });
+
+describe('TopupService — Billion recharge products (doitac-1410 #064)', () => {
+  const OFFER = {
+    providerPlanId: '501:7',
+    copies: 7,
+    durationDays: 7,
+    cost: 78,
+    costUsd: 9.98,
+    type: 'daily',
+    dataMb: 3072,
+    fupSpeed: null,
+    name: 'China Mainland(Multi)-3GB/Natural day - 7 days',
+  };
+  const billionEsim = {
+    findByIccid: jest.fn().mockResolvedValue({
+      id: 2,
+      provider: 'billion',
+      planId: 900,
+    }),
+  };
+
+  it('should list only what this eSIM may recharge with, at our margin', async () => {
+    const billionService = {
+      listTopupOffers: jest.fn().mockResolvedValue([OFFER]),
+    };
+    const { service, deps } = buildService({
+      esimsService: billionEsim,
+      billionService,
+      profitMarginsService: {
+        calculateRetailVndFromCostUsd: jest.fn().mockResolvedValue(349000),
+      },
+      configService: { get: jest.fn() },
+    });
+    jest
+      .spyOn(service as never, 'fetchVndRate' as never)
+      .mockResolvedValue(25000 as never);
+
+    const { provider, packages } = await service.listPackages('8985');
+
+    expect(provider).toBe(TopupProvider.BILLION);
+    expect(billionService.listTopupOffers).toHaveBeenCalledWith('8985');
+    // Never the eSIM products of our plan table.
+    expect(deps.plansService.findManyWithPagination).not.toHaveBeenCalled();
+    expect(packages).toEqual([
+      expect.objectContaining({
+        packageId: 'billion:501:7',
+        providerPackageId: '501:7',
+        durationDays: 7,
+        price: 9.98,
+        vndPrice: 349000,
+      }),
+    ]);
+  });
+
+  it('should list nothing for an eSIM Billion gives no recharge product', async () => {
+    const { service } = buildService({
+      esimsService: billionEsim,
+      billionService: { listTopupOffers: jest.fn().mockResolvedValue([]) },
+    });
+    jest
+      .spyOn(service as never, 'fetchVndRate' as never)
+      .mockResolvedValue(25000 as never);
+
+    const { packages } = await service.listPackages('8985');
+
+    expect(packages).toEqual([]);
+  });
+
+  it('should recharge with the skuId and copies of the chosen product', async () => {
+    const order = {
+      id: 8,
+      orderNumber: 'TOPUP-2-XYZ',
+      orderType: OrderType.TOPUP,
+      status: TOPUP_ORDER_STATUS.PAID,
+      topupProvider: TopupProvider.BILLION,
+      topupPackageId: 'billion:501:7',
+      targetIccid: '8985',
+    };
+    const orderRepository = {
+      findByOrderNumber: jest.fn().mockResolvedValue(order),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const billionService = {
+      submitTopup: jest.fn().mockResolvedValue(undefined),
+    };
+    const { service, deps } = buildService({
+      orderRepository,
+      esimsService: billionEsim,
+      billionService,
+    });
+
+    await service.executeTopup('TOPUP-2-XYZ');
+
+    expect(billionService.submitTopup).toHaveBeenCalledWith(
+      expect.objectContaining({ iccid: '8985', skuId: '501', copies: 7 }),
+    );
+    // A numeric-looking sku is never read as one of our plan ids.
+    expect(deps.plansService.findById).not.toHaveBeenCalled();
+  });
+});

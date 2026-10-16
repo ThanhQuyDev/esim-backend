@@ -15,7 +15,10 @@ import { PlansService } from '../plans/plans.service';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
-import { BillionService } from '../esim-providers/billion/billion.service';
+import {
+  BillionService,
+  BillionTopupOffer,
+} from '../esim-providers/billion/billion.service';
 import { parseBillionPlanId } from '../esim-providers/billion/billion-catalogue';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { AiraloTopupPackage } from '../esim-providers/airalo/airalo-api.types';
@@ -93,6 +96,9 @@ const TOPUP_DB_CATALOGUE_PROVIDERS: ReadonlySet<TopupProvider> = new Set([
   TopupProvider.BILLION,
   TopupProvider.MICRO_ESIM,
 ]);
+
+/** Package ids of Billion recharge products from F052 (doitac-1410 #064). */
+const BILLION_TOPUP_PACKAGE_PREFIX = 'billion:';
 
 function roundVndToThousands(amount: number): number {
   return Math.round(amount / VND_ROUNDING_UNIT) * VND_ROUNDING_UNIT;
@@ -327,10 +333,20 @@ export class TopupService {
       packages = await Promise.all(
         list.map((p) => this.mapEsimAccessPackage(p, vndRate)),
       );
+    } else if (provider === TopupProvider.BILLION) {
+      // Only the recharge products F052 allows for this very eSIM
+      // (doitac-1410 #064) — none means this eSIM takes no topup. Our `plan`
+      // table holds Billion's eSIM products, which are new eSIMs, not data.
+      const offers = await this.callProvider(provider, iccid, () =>
+        this.billionService.listTopupOffers(iccid),
+      );
+      packages = await Promise.all(
+        offers.map((offer) => this.mapBillionOffer(offer, vndRate)),
+      );
     } else {
-      // GADGET_KOREA / BILLION / MICRO_ESIM — these providers have no
-      // "topups eligible for this SIM" API, so we offer topup plans from our
-      // own `plan` table, matched to the source SIM's country/region/type.
+      // GADGET_KOREA / MICRO_ESIM — these providers have no "topups eligible
+      // for this SIM" API, so we offer topup plans from our own `plan` table,
+      // matched to the source SIM's country/region/type.
       const sourcePlan = esim.planId
         ? await this.plansService.findById(esim.planId)
         : null;
@@ -829,6 +845,10 @@ export class TopupService {
     provider: TopupProvider,
     packageId: string,
   ): Promise<string> {
+    // A Billion recharge product straight from F052 (doitac-1410 #064).
+    if (packageId.startsWith(BILLION_TOPUP_PACKAGE_PREFIX)) {
+      return packageId.slice(BILLION_TOPUP_PACKAGE_PREFIX.length);
+    }
     if (!TOPUP_DB_CATALOGUE_PROVIDERS.has(provider)) return packageId;
     if (!/^\d+$/.test(packageId)) return packageId;
 
@@ -907,6 +927,40 @@ export class TopupService {
       isUnlimited: pkg.is_unlimited,
       price: costPriceUsd,
       retailPrice: retailPriceUsd,
+      vndPrice,
+    };
+  }
+
+  /**
+   * A Billion recharge product as a package (doitac-1410 #064), priced with
+   * our profit tiers on its cost like every other provider's topup.
+   */
+  private async mapBillionOffer(
+    offer: BillionTopupOffer,
+    vndRate: number | null,
+  ): Promise<TopupPackageDto> {
+    const isUnlimited = offer.type === 'unlimited' || offer.dataMb <= 0;
+    const dataAmountBytes = offer.dataMb * 1024 * 1024;
+    const rate = vndRate ?? FALLBACK_USD_VND_RATE;
+    const vndPrice =
+      await this.profitMarginsService.calculateRetailVndFromCostUsd(
+        offer.costUsd,
+        rate,
+      );
+    return {
+      provider: TopupProvider.BILLION,
+      // Prefixed: a numeric skuId must not be read as one of our plan ids.
+      packageId: `${BILLION_TOPUP_PACKAGE_PREFIX}${offer.providerPlanId}`,
+      providerPackageId: offer.providerPlanId,
+      name: offer.name,
+      dataAmountBytes,
+      dataAmountText: isUnlimited
+        ? 'Unlimited'
+        : formatDataLabel(dataAmountBytes),
+      durationDays: offer.durationDays,
+      isUnlimited,
+      price: offer.costUsd,
+      retailPrice: Math.round((vndPrice / rate) * 100) / 100,
       vndPrice,
     };
   }

@@ -42,6 +42,26 @@ const PROVIDER = 'billion';
 const ESIM_TYPES = new Set(['230', '3105', '3106']);
 
 /**
+ * A recharge ("gói cước để topup") product: not one of the eSIM types and no
+ * "eSIM" in its name (doitac-1410 #064). It cannot be bought on its own — it
+ * only adds data to an eSIM that F052 says may take it.
+ */
+export function isBillionRechargeProduct(product: {
+  type: string;
+  name: string;
+}): boolean {
+  return !ESIM_TYPES.has(product.type) && !/esim/i.test(product.name ?? '');
+}
+
+/** One topup an eSIM may take, priced in USD (doitac-1410 #064). */
+export interface BillionTopupOffer extends BillionPlanVariant {
+  costUsd: number;
+}
+
+/** The recharge catalogue changes rarely; one fetch serves an hour. */
+const RECHARGE_CATALOGUE_TTL_MS = 60 * 60 * 1000;
+
+/**
  * BILLION quotes in Hong Kong dollars (HKD).
  *
  * F003 carries no currency field at all — `{skuId, price:[{copies, days,
@@ -92,6 +112,11 @@ export class BillionService {
     /** HKD→USD for the catalogue — Billion quotes Hong Kong dollars. */
     private readonly exchangeRateService: ExchangeRateService,
   ) {}
+
+  private rechargeCatalogue: {
+    at: number;
+    bySku: Map<string, { product: BillionProduct; price?: BillionPrice }>;
+  } | null = null;
 
   // ─── Auth / transport ──────────────────────────────────────────────────────
 
@@ -609,6 +634,74 @@ export class BillionService {
       return result.flatMap((r) => r?.skuId ?? []);
     }
     return result?.skuId ?? [];
+  }
+
+  /**
+   * The recharge products of the catalogue — F002 + F003 like the eSIM sync,
+   * keeping only what is not an eSIM (doitac-1410 #064). Cached for an hour.
+   */
+  private async getRechargeCatalogue(): Promise<
+    Map<string, { product: BillionProduct; price?: BillionPrice }>
+  > {
+    const cached = this.rechargeCatalogue;
+    if (cached && Date.now() - cached.at < RECHARGE_CATALOGUE_TTL_MS) {
+      return cached.bySku;
+    }
+    const [products, prices] = await Promise.all([
+      this.invoke<BillionProduct[]>('F002', {
+        salesMethod: '1',
+        language: '2',
+      }),
+      this.invoke<BillionPrice[]>('F003', { salesMethod: '1' }),
+    ]);
+    const priceBySku = new Map<string, BillionPrice>();
+    for (const p of prices ?? []) priceBySku.set(p.skuId, p);
+    const bySku = new Map<
+      string,
+      { product: BillionProduct; price?: BillionPrice }
+    >();
+    for (const product of products ?? []) {
+      if (!isBillionRechargeProduct(product)) continue;
+      bySku.set(product.skuId, {
+        product,
+        price: priceBySku.get(product.skuId),
+      });
+    }
+    this.rechargeCatalogue = { at: Date.now(), bySku };
+    return bySku;
+  }
+
+  /**
+   * The topups this eSIM can actually take (doitac-1410 #064).
+   *
+   * Not every Billion eSIM can be recharged, and the ones that can only take
+   * their own recharge products: F052 names those skuIds for the ICCID, and
+   * the recharge catalogue gives each its data, days and price. An eSIM F052
+   * names nothing for gets no topup at all — never an eSIM product, which
+   * would be a new eSIM, not more data.
+   */
+  async listTopupOffers(iccid: string): Promise<BillionTopupOffer[]> {
+    const skuIds = await this.listRechargeSkuIds(iccid);
+    if (skuIds.length === 0) return [];
+    const catalogue = await this.getRechargeCatalogue();
+    const hkdToUsd = await this.exchangeRateService.getHkdToUsdRate();
+    const offers: BillionTopupOffer[] = [];
+    for (const skuId of new Set(skuIds)) {
+      const entry = catalogue.get(skuId);
+      if (!entry) {
+        this.logger.warn(
+          `Billion recharge sku ${skuId} for ${iccid} is not in the recharge catalogue`,
+        );
+        continue;
+      }
+      for (const variant of billionPlanVariants(entry.product, entry.price)) {
+        offers.push({
+          ...variant,
+          costUsd: Math.round(variant.cost * hkdToUsd * 10000) / 10000,
+        });
+      }
+    }
+    return offers;
   }
 
   /**
