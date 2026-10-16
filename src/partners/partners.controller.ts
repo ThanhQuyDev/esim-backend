@@ -174,6 +174,57 @@ export class PartnersController {
     return this.partnersService.getWalletSummaryForPartner(partner.id);
   }
 
+  /** "Lịch sử giao dịch" with filters (doitac-1410 #031). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/wallet/ledger')
+  @HttpCode(HttpStatus.OK)
+  async getMyLedger(
+    @Request() req: { user: { id: number } },
+    @Query('code') code?: string,
+    @Query('kind') kind?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyLedger(partner.id, {
+      code,
+      kind,
+      from,
+      to,
+    });
+  }
+
+  /** The ledger, deposits and withdrawals in one file (doitac-1410 #031). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/wallet/ledger/export')
+  @HttpCode(HttpStatus.OK)
+  async exportMyLedger(
+    @Request() req: { user: { id: number } },
+    @Res() res: Response,
+    @Query('code') code?: string,
+    @Query('kind') kind?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<void> {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    const buffer = await this.partnersService.exportMyLedgerToExcel(
+      partner.id,
+      { code, kind, from, to },
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      // Lich-su-giao-dich_13-10-2026_01-18-29.xlsx, as the brief names it.
+      'Content-Disposition': `attachment; filename="${downloadFilename('Lich-su-giao-dich')}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)

@@ -48,6 +48,14 @@ import {
 } from './purchase-delivery-workbook';
 import { PartnerEsimFaultReportEntity } from './infrastructure/persistence/relational/entities/partner-esim-fault-report.entity';
 import * as ExcelJS from 'exceljs';
+import {
+  LEDGER_KIND_LABEL,
+  LEDGER_TYPES,
+  type LedgerKind,
+  ledgerCode,
+  ledgerDescription,
+  ledgerKindOf,
+} from './partner-ledger';
 import { In, DataSource, EntityManager, MoreThan, Repository } from 'typeorm';
 import { AllConfigType } from '../config/config.type';
 import { MailService } from '../mail/mail.service';
@@ -1195,11 +1203,230 @@ export class PartnersService {
     });
   }
 
-  async getMyDepositRequests(partnerId: number) {
+  /**
+   * "Lịch sử giao dịch" with its filters (doitac-1410 #031): by code (order
+   * number, WD-… withdrawal, transfer reference), by kind, and by a from–to
+   * range in Vietnamese days. Each line carries its kind, code and a sentence
+   * that says what happened.
+   */
+  async getMyLedger(
+    partnerId: number,
+    filters: {
+      code?: string;
+      kind?: string;
+      from?: string;
+      to?: string;
+      limit?: number;
+    } = {},
+  ) {
+    const kind =
+      (filters.kind ?? '') in LEDGER_TYPES
+        ? (filters.kind as LedgerKind)
+        : null;
+    const types = kind ? LEDGER_TYPES[kind] : null;
+    const range =
+      filters.from || filters.to
+        ? resolveSummaryRange({
+            from: filters.from || filters.to,
+            to: filters.to || filters.from,
+          })
+        : null;
+    const code = filters.code?.trim().replace(/^#+/, '') || null;
+    const limit = Math.min(Math.max(Number(filters.limit) || 200, 1), 5000);
+
+    const rows: Array<Record<string, unknown>> = await this.dataSource.query(
+      `SELECT t.id, t.type, t."amountVnd", t."balanceAfterVnd", t.reason,
+              t."createdAt",
+              o."orderNumber",
+              (
+                SELECT string_agg(p.name || ' x' || oi.quantity, ', ' ORDER BY oi.id)
+                FROM order_item oi JOIN plan p ON p.id = oi."planId"
+                WHERE oi."orderId" = o.id
+              ) AS items,
+              po.id AS "payoutId",
+              dr."bankTransferCode" AS "depositCode",
+              dr.method AS "depositMethod"
+       FROM partner_wallet_transaction t
+       LEFT JOIN "order" o ON o.id = t."orderId"
+       LEFT JOIN partner_payout po
+         ON t."sourceType" = 'partner_payout' AND po.id::text = t."sourceId"
+       LEFT JOIN partner_deposit_request dr
+         ON t."sourceType" = 'partner_deposit_request' AND dr.id::text = t."sourceId"
+       WHERE t."partnerId" = $1
+         AND ($2::text[] IS NULL OR t.type = ANY($2))
+         AND ($3::timestamptz IS NULL OR t."createdAt" >= $3)
+         AND ($4::timestamptz IS NULL OR t."createdAt" < $4)
+         AND ($5::text IS NULL
+              OR o."orderNumber" ILIKE '%' || $5 || '%'
+              OR dr."bankTransferCode" ILIKE '%' || $5 || '%'
+              OR ('WD-' || lpad(po.id::text, 6, '0')) ILIKE '%' || $5 || '%')
+       ORDER BY t."createdAt" DESC, t.id DESC
+       LIMIT $6`,
+      [partnerId, types, range?.from ?? null, range?.to ?? null, code, limit],
+    );
+
+    return rows.map((r) => {
+      const source = {
+        type: String(r.type),
+        reason: (r.reason as string | null) ?? null,
+        orderNumber: (r.orderNumber as string | null) ?? null,
+        items: (r.items as string | null) ?? null,
+        payoutId: r.payoutId == null ? null : Number(r.payoutId),
+        depositCode: (r.depositCode as string | null) ?? null,
+        depositMethod: (r.depositMethod as string | null) ?? null,
+      };
+      const rowKind = ledgerKindOf(source.type);
+      return {
+        id: Number(r.id),
+        createdAt: r.createdAt as Date,
+        type: source.type,
+        kind: rowKind,
+        kindLabel: LEDGER_KIND_LABEL[rowKind],
+        code: ledgerCode(source),
+        description: ledgerDescription(source),
+        amountVnd: Number(r.amountVnd),
+        balanceAfterVnd: Number(r.balanceAfterVnd),
+      };
+    });
+  }
+
+  /**
+   * One file with everything (doitac-1410 #031): the filtered ledger, and the
+   * deposit and withdrawal histories on their own sheets.
+   */
+  async exportMyLedgerToExcel(
+    partnerId: number,
+    filters: { code?: string; kind?: string; from?: string; to?: string } = {},
+  ): Promise<Buffer> {
+    const [ledger, deposits, payouts] = await Promise.all([
+      this.getMyLedger(partnerId, { ...filters, limit: 5000 }),
+      this.getMyDepositRequests(partnerId, 5000),
+      this.getMyPayouts(partnerId, 5000),
+    ]);
+    const vnTime = (value: Date | string | null | undefined) => {
+      if (!value) return '';
+      const d = new Date(new Date(value).getTime() + 7 * 60 * 60 * 1000);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} ${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+    };
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+
+    const money = '#,##0';
+    const tx = workbook.addWorksheet('Lịch sử giao dịch');
+    tx.columns = [
+      { header: 'Thời điểm', key: 'at', width: 22 },
+      { header: 'Loại giao dịch', key: 'kind', width: 16 },
+      { header: 'Mã giao dịch', key: 'code', width: 30 },
+      { header: 'Nội dung', key: 'description', width: 60 },
+      {
+        header: 'Số tiền biến động (VND)',
+        key: 'amount',
+        width: 22,
+        style: { numFmt: money },
+      },
+      {
+        header: 'Số dư sau giao dịch (VND)',
+        key: 'balance',
+        width: 24,
+        style: { numFmt: money },
+      },
+    ];
+    for (const r of ledger) {
+      tx.addRow({
+        at: vnTime(r.createdAt),
+        kind: r.kindLabel,
+        code: r.code ?? '',
+        description: r.description,
+        amount: r.amountVnd,
+        balance: r.balanceAfterVnd,
+      });
+    }
+
+    const dep = workbook.addWorksheet('Lịch sử nạp tiền');
+    dep.columns = [
+      { header: 'Ngày tạo', key: 'at', width: 22 },
+      { header: 'Hình thức', key: 'method', width: 16 },
+      {
+        header: 'Số tiền (VND)',
+        key: 'amount',
+        width: 16,
+        style: { numFmt: money },
+      },
+      { header: 'Phí (VND)', key: 'fee', width: 12, style: { numFmt: money } },
+      {
+        header: 'Cộng vào ví (VND)',
+        key: 'credited',
+        width: 18,
+        style: { numFmt: money },
+      },
+      { header: 'Mã đối chiếu', key: 'code', width: 24 },
+      { header: 'Trạng thái', key: 'status', width: 16 },
+    ];
+    const depositStatus: Record<string, string> = {
+      pending: 'Chờ thanh toán',
+      confirmed: 'Đã xác nhận',
+      cancelled: 'Đã huỷ',
+    };
+    for (const d of deposits) {
+      dep.addRow({
+        at: vnTime(d.createdAt),
+        method: d.method === 'card' ? 'Thẻ tín dụng' : 'Chuyển khoản',
+        amount: Number(d.amountVnd),
+        fee: Number(d.feeVnd ?? 0),
+        credited: Number(d.creditedVnd ?? d.amountVnd),
+        code: d.bankTransferCode,
+        status: depositStatus[d.status] ?? d.status,
+      });
+    }
+
+    const wd = workbook.addWorksheet('Lịch sử rút tiền');
+    wd.columns = [
+      { header: 'Mã yêu cầu', key: 'code', width: 14 },
+      { header: 'Ngày tạo', key: 'at', width: 22 },
+      {
+        header: 'Số tiền (VND)',
+        key: 'amount',
+        width: 16,
+        style: { numFmt: money },
+      },
+      { header: 'Tài khoản nhận', key: 'bank', width: 40 },
+      { header: 'Trạng thái', key: 'status', width: 14 },
+      { header: 'Ngày xử lý', key: 'processed', width: 22 },
+      { header: 'Ghi chú', key: 'note', width: 40 },
+    ];
+    const payoutStatus: Record<string, string> = {
+      pending: 'Chờ duyệt',
+      approved: 'Đã duyệt',
+      paid: 'Đã chuyển',
+      rejected: 'Bị từ chối',
+    };
+    for (const p of payouts) {
+      wd.addRow({
+        code: `WD-${String(p.id).padStart(6, '0')}`,
+        at: vnTime(p.createdAt),
+        amount: Number(p.amountVnd),
+        bank: p.bankAccountInfo ?? '',
+        status: payoutStatus[p.status] ?? p.status,
+        processed: vnTime(p.processedAt),
+        note: p.adminNote ?? '',
+      });
+    }
+
+    for (const sheet of [tx, dep, wd]) {
+      sheet.getRow(1).font = { bold: true };
+      sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    }
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  async getMyDepositRequests(partnerId: number, take = 100) {
     return this.depositRequestRepository.find({
       where: { partnerId },
       order: { createdAt: 'DESC' },
-      take: 100,
+      take,
     });
   }
 
@@ -2088,11 +2315,11 @@ export class PartnersService {
     );
   }
 
-  async getMyPayouts(partnerId: number) {
+  async getMyPayouts(partnerId: number, take = 100) {
     return this.payoutRepository.find({
       where: { partnerId },
       order: { createdAt: 'DESC' },
-      take: 100,
+      take,
     });
   }
 
