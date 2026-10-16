@@ -1,9 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
 import { PartnerStatusEnum, PartnerTypeEnum } from '../partners.enum';
 
 export class QueryPartnerDto {
+  /**
+   * `newest` lists by registration date only — the approvals screen, where
+   * the latest application goes on top (doitac-1410 #049). Default: revenue.
+   */
+  @ApiPropertyOptional({ enum: ['revenue', 'newest'] })
+  @IsOptional()
+  @IsIn(['revenue', 'newest'])
+  sort?: 'revenue' | 'newest';
+
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(({ value }) => (value ? Number(value) : 1))

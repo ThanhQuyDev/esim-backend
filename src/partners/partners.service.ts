@@ -2419,17 +2419,24 @@ export class PartnersService {
       qb.addSelect('CASE WHEN partner.id = :id THEN 0 ELSE 1 END', 'id_first');
       qb.orderBy('id_first', 'ASC');
     }
-    qb.addSelect(
-      `(SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) FROM "order" o
-        WHERE o."attributedPartnerId" = partner.id
-          AND o."deletedAt" IS NULL
-          AND o.status IN ('paid', 'completed'))`,
-      'revenue_sort',
-    )
-      .addOrderBy('revenue_sort', 'DESC')
-      .addOrderBy('partner.createdAt', 'DESC')
-      .offset((page - 1) * limit)
-      .limit(limit);
+    if (query.sort === 'newest') {
+      // The approvals screen: the latest application first (doitac-1410 #049).
+      qb.addOrderBy('partner.createdAt', 'DESC').addOrderBy(
+        'partner.id',
+        'DESC',
+      );
+    } else {
+      qb.addSelect(
+        `(SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) FROM "order" o
+          WHERE o."attributedPartnerId" = partner.id
+            AND o."deletedAt" IS NULL
+            AND o.status IN ('paid', 'completed'))`,
+        'revenue_sort',
+      )
+        .addOrderBy('revenue_sort', 'DESC')
+        .addOrderBy('partner.createdAt', 'DESC');
+    }
+    qb.offset((page - 1) * limit).limit(limit);
     const data = await qb.getMany();
 
     // The list is an operations screen: 30-day value, money held and last

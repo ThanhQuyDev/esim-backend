@@ -193,3 +193,28 @@ describe('PartnersService.setAdminNote (#056)', () => {
     );
   });
 });
+
+describe('PartnersService.adminList — newest application first (doitac-1410 #049)', () => {
+  it('should order by registration date only when asked for the newest', async () => {
+    const { service, qb } = buildListService();
+
+    await service.adminList({ sort: 'newest' });
+
+    const orders = (qb.addOrderBy.mock.calls as [string, string][]).map(
+      ([column, dir]) => `${column} ${dir}`,
+    );
+    expect(orders[0]).toBe('partner.createdAt DESC');
+    expect(orders).not.toContain('revenue_sort DESC');
+  });
+
+  it('should keep ordering the partner list by revenue by default', async () => {
+    const { service, qb } = buildListService();
+
+    await service.adminList({});
+
+    const orders = (qb.addOrderBy.mock.calls as [string, string][]).map(
+      ([column, dir]) => `${column} ${dir}`,
+    );
+    expect(orders[0]).toBe('revenue_sort DESC');
+  });
+});
