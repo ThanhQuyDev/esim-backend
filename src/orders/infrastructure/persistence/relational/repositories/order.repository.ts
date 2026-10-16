@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  FindOptionsWhere,
+  In,
+  IsNull,
+  Not,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 import { OrderEntity } from '../entities/order.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterOrderDto, SortOrderDto } from '../../../../dto/query-order.dto';
@@ -24,6 +31,22 @@ export function withSuccessfulTopups(status: string | string[]): string[] {
   return statuses.includes('paid') && !statuses.includes('completed')
     ? [...statuses, 'completed']
     : statuses;
+}
+
+/** How a distribution partner pays for their own purchase (#046). */
+const PARTNER_WALLET_METHOD = 'partner_wallet';
+
+/**
+ * The admin's order list and its export leave a distribution partner's own
+ * purchases out — they belong to "Đơn hàng đối tác" (doitac-1410 #036). A
+ * customer's own list (`userId`) and an explicit lookup keep them.
+ */
+export function hidesPartnerOrders(
+  filterOptions?: FilterOrderDto | null,
+): boolean {
+  if (filterOptions?.userId) return false;
+  const flag = filterOptions?.includePartnerOrders as unknown;
+  return !(flag === true || flag === 'true');
 }
 
 @Injectable()
@@ -80,10 +103,21 @@ export class OrdersRelationalRepository implements OrderRepository {
       where.userId = filterOptions.userId;
     }
 
+    // Partner purchases stay out of the admin's list (doitac-1410 #036); a
+    // NULL payment method is an ordinary order, so it is kept explicitly.
+    const whereList: FindOptionsWhere<OrderEntity>[] = hidesPartnerOrders(
+      filterOptions,
+    )
+      ? [
+          { ...where, paymentMethod: IsNull() },
+          { ...where, paymentMethod: Not(PARTNER_WALLET_METHOD) },
+        ]
+      : [where];
+
     const [entities, count] = await this.ordersRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
-      where: where,
+      where: whereList,
       relations: ['user'],
       order: sortOptions?.length
         ? sortOptions.reduce(
@@ -120,6 +154,14 @@ export class OrdersRelationalRepository implements OrderRepository {
       qb.andWhere('"order"."userId" = :userId', {
         userId: filterOptions.userId,
       });
+    }
+
+    // Partner purchases live in "Đơn hàng đối tác" (doitac-1410 #036).
+    if (hidesPartnerOrders(filterOptions)) {
+      qb.andWhere(
+        '("order"."paymentMethod" IS NULL OR "order"."paymentMethod" <> :partnerWallet)',
+        { partnerWallet: PARTNER_WALLET_METHOD },
+      );
     }
 
     // #017 — kind of order. The three are mutually exclusive: an ordinary eSIM

@@ -34,6 +34,15 @@ export class FilterOrderDto {
   @IsNumber()
   userId?: number;
 
+  /**
+   * A distribution partner's own purchases (paid from their deposit wallet)
+   * live in "Đơn hàng đối tác", not in the admin's order list
+   * (doitac-1410 #036). Set to look one up by its code anyway.
+   */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  includePartnerOrders?: boolean;
+
   @ApiPropertyOptional({
     type: String,
     description:
