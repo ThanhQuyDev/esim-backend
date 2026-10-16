@@ -203,6 +203,20 @@ export function localEsimExpiry(
   return { expiresAt: new Date(soldAt.getTime() + days * 24 * 60 * 60 * 1000) };
 }
 
+/**
+ * The address the buyer typed for their eSIM at checkout (doitac-1410 #066),
+ * cleaned up; null when none was given or it is not an email, so the eSIM
+ * falls back to the account's own address.
+ */
+export function checkoutDeliveryEmail(
+  email: string | null | undefined,
+): string | null {
+  const value = String(email ?? '')
+    .trim()
+    .toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : null;
+}
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -521,6 +535,9 @@ export class OrdersService {
       // `totalAmount` is always dollars (#017): a VND plan's currency here
       // labelled a dollar figure as đồng on manual / partner orders.
       currency: 'USD',
+      // "Email nhận eSIM" typed at checkout (doitac-1410 #066): the QR codes
+      // go there rather than to the account that is signed in.
+      deliveryEmail: checkoutDeliveryEmail(dto.email),
       paymentMethod: dto.paymentMethod ?? null,
       paymentId: dto.paymentId ?? null,
       couponCode: pricing.couponCode,
@@ -848,6 +865,9 @@ export class OrdersService {
       // `totalAmount` is always dollars (#017): a VND plan's currency here
       // labelled a dollar figure as đồng on manual / partner orders.
       currency: 'USD',
+      // "Email nhận eSIM" typed at checkout (doitac-1410 #066): the QR codes
+      // go there rather than to the account that is signed in.
+      deliveryEmail: checkoutDeliveryEmail(dto.email),
       paymentMethod: null,
       paymentId: null,
       couponCode: pricing.couponCode,
