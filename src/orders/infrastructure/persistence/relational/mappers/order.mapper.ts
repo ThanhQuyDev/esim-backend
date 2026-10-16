@@ -41,6 +41,7 @@ export class OrderMapper {
     domainEntity.buyerIpHash = raw.buyerIpHash ?? null;
     domainEntity.buyerVisitorId = raw.buyerVisitorId ?? null;
     domainEntity.attributionWarning = raw.attributionWarning ?? null;
+    domainEntity.deliveryEmail = raw.deliveryEmail ?? null;
     domainEntity.referralDiscountVndAmount = Number(
       raw.referralDiscountVndAmount,
     );
@@ -122,6 +123,7 @@ export class OrderMapper {
     persistenceEntity.buyerIpHash = domainEntity.buyerIpHash;
     persistenceEntity.buyerVisitorId = domainEntity.buyerVisitorId;
     persistenceEntity.attributionWarning = domainEntity.attributionWarning;
+    persistenceEntity.deliveryEmail = domainEntity.deliveryEmail;
     persistenceEntity.referralDiscountVndAmount =
       domainEntity.referralDiscountVndAmount ?? 0;
     persistenceEntity.walletSpentVndAmount =

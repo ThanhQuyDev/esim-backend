@@ -1682,6 +1682,8 @@ export class OrdersService {
     planId: number;
     quantity: number;
     unitPriceVnd: number;
+    /** The partner's customer the QR codes go to (doitac-1410 #034). */
+    deliveryEmail?: string | null;
     onDebit: (orderId: number, orderNumber: string) => Promise<void>;
   }): Promise<Order> {
     const plan = await this.plansService.findById(input.planId);
@@ -1725,6 +1727,9 @@ export class OrdersService {
       eligibleSpendVnd: totalVnd,
       discountAmount: 0,
       couponDiscountVndAmount: 0,
+      // Set before any eSIM exists, so every mail of it — now or by a
+      // supplier's webhook later — goes to the customer (doitac-1410 #034).
+      deliveryEmail: input.deliveryEmail ?? null,
     } as Partial<Order>);
     await this.dataSource.query(
       `UPDATE order_item SET "vndPrice" = $1 WHERE "orderId" = $2`,
@@ -1749,6 +1754,18 @@ export class OrdersService {
       this.logger.error(
         `submitPartnerPurchase: provider submission failed for ${orderNumber}: ${(err as Error).message}`,
       );
+    }
+
+    // eSIMs handed out on the spot (local stock) are mailed now; those a
+    // supplier sends by webhook are mailed when they land (doitac-1410 #034).
+    if (input.deliveryEmail) {
+      try {
+        await this.resendEsimEmail(order.id);
+      } catch (err) {
+        this.logger.error(
+          `submitPartnerPurchase: could not mail ${orderNumber}: ${(err as Error).message}`,
+        );
+      }
     }
 
     const finalOrder = await this.orderRepository.findById(order.id);

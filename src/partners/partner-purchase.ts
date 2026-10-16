@@ -24,7 +24,52 @@ export function partnerPurchaseUnitPriceVnd(
 ): number {
   const cost = Math.max(0, Number(costVnd) || 0);
   const markup = Math.max(0, Number(costMarkupPercent) || 0);
-  return Math.round(cost * (1 + markup / 100));
+  // "Giá đại lý … được làm tròn đến hàng ngàn" (doitac-1410 #034) — the
+  // price list, the quote and the wallet debit all read this one figure.
+  return roundToThousand(cost * (1 + markup / 100));
+}
+
+/** To the nearest 1.000đ. */
+export function roundToThousand(vnd: number): number {
+  return Math.round((Number(vnd) || 0) / 1000) * 1000;
+}
+
+/**
+ * "Giá bán lẻ đề xuất" = giá đại lý × 5/3, rounded to the thousand
+ * (doitac-1410 #034): 100.000đ → 166.667 → 167.000đ.
+ */
+export function partnerSuggestedRetailVnd(agentPriceVnd: number): number {
+  return roundToThousand((Math.max(0, Number(agentPriceVnd) || 0) * 5) / 3);
+}
+
+/** The suppliers inside Billion that do not refund (doitac-1410 #034). */
+const BILLION_NON_REFUNDABLE =
+  /t-?mobile|cmlink|sk\s?telecom|\bskt\b|kddi|unitel/i;
+
+/**
+ * Whether a plan's eSIM can be refunded (doitac-1410 #034):
+ *  - MicroEsim's "Local" plans: no;
+ *  - every Viettel eSIM: no;
+ *  - Billion: only Billion Connect's own eSIMs — not the T-Mobile, CMLink,
+ *    SK telecom, KDDI or Unitel ones it resells, which carry that name.
+ */
+export function planRefundSupported(plan: {
+  provider?: string | null;
+  name?: string | null;
+  operatorName?: string | null;
+}): boolean {
+  const provider = (plan.provider ?? '').toLowerCase();
+  const name = plan.name ?? '';
+  if (provider === 'viettel') return false;
+  if (provider === 'microesim' && /local/i.test(name)) return false;
+  if (
+    provider === 'billion' &&
+    (BILLION_NON_REFUNDABLE.test(name) ||
+      BILLION_NON_REFUNDABLE.test(plan.operatorName ?? ''))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export type PartnerPurchaseQuoteInput = {

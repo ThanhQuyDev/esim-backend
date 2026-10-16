@@ -47,6 +47,7 @@ export class PartnerPurchaseController {
     return this.purchaseService.purchase(partner.id, {
       planId: dto.planId,
       quantity: dto.quantity,
+      recipientEmail: dto.recipientEmail ?? null,
     });
   }
 

@@ -163,6 +163,8 @@ export class Order {
   buyerIpHash?: string | null;
   buyerVisitorId?: string | null;
   attributionWarning?: string | null;
+  /** Where a partner order's eSIM QR codes go (doitac-1410 #034). */
+  deliveryEmail?: string | null;
 
   @ApiProperty({ type: Number, example: 0 })
   referralDiscountVndAmount!: number;

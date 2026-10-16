@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { Optional, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { I18nContext } from 'nestjs-i18n';
 import { MailData } from './interfaces/mail-data.interface';
@@ -193,7 +194,42 @@ export class MailService {
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService<AllConfigType>,
     private readonly emailTemplatesService: EmailTemplatesService,
+    @Optional() private readonly dataSource?: DataSource,
   ) {}
+
+  /**
+   * Who an eSIM email of this order goes to, and whose logo it carries
+   * (doitac-1410 #034): an order a distribution partner bought goes to the
+   * customer address they gave, with the partner's own logo from "Cấu hình
+   * thương hiệu". Every other order is untouched. Best-effort.
+   */
+  private async esimMailOverrides(
+    orderNumber?: string | null,
+  ): Promise<{ to?: string; logoUrl?: string }> {
+    if (!orderNumber || !this.dataSource) return {};
+    try {
+      const [row] = await this.dataSource.query(
+        `SELECT o."deliveryEmail", pa."brandInfo"
+           FROM "order" o
+           LEFT JOIN partner pa
+             ON pa."userId" = o."userId" AND pa."partnerType" = 'distribution'
+          WHERE o."orderNumber" = $1
+          LIMIT 1`,
+        [orderNumber],
+      );
+      if (!row) return {};
+      const brand = (row.brandInfo ?? {}) as { logoUrl?: string };
+      return {
+        ...(row.deliveryEmail ? { to: String(row.deliveryEmail) } : {}),
+        ...(brand.logoUrl ? { logoUrl: brand.logoUrl } : {}),
+      };
+    } catch (err) {
+      this.logger.error(
+        `esimMailOverrides(${orderNumber}): ${(err as Error).message}`,
+      );
+      return {};
+    }
+  }
 
   /**
    * A link into the storefront. `FRONTEND_DOMAIN` may end in "/", which used
@@ -362,6 +398,7 @@ export class MailService {
   }
 
   async sendEsimPurchase(data: EsimPurchaseMailData): Promise<void> {
+    const overrides = await this.esimMailOverrides(data.orderNumber);
     const template =
       await this.emailTemplatesService.findByName('esim_purchase');
     if (!template) {
@@ -418,7 +455,7 @@ export class MailService {
       smsCount: Number(data.smsCount) > 0 ? Number(data.smsCount) : '',
       qrCodeBase64: qrCodeUrl,
       usageCheckUrl,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: overrides.logoUrl ?? BRAND_LOGO_URL,
       app_name: appName,
       subject: template.subject,
     };
@@ -429,7 +466,7 @@ export class MailService {
     })(context);
 
     await this.mailerService.sendMail({
-      to: data.to,
+      to: overrides.to ?? data.to,
       subject: subjectCompiled,
       text: `Your eSIM is ready — Order ${data.orderNumber}`,
       templatePath: '',

@@ -37,7 +37,12 @@ export class PartnerPurchaseService {
    */
   async purchase(
     partnerId: number,
-    input: { planId: number; quantity: number },
+    input: {
+      planId: number;
+      quantity: number;
+      /** The customer the QR codes are emailed to (doitac-1410 #034). */
+      recipientEmail?: string | null;
+    },
   ): Promise<{
     orderNumber: string;
     status: string;
@@ -79,6 +84,7 @@ export class PartnerPurchaseService {
       // niêm yết thì mọi báo cáo doanh thu của esim.vn sẽ cộng thêm phần tiền
       // chưa ai trả.
       unitPriceVnd: quote.unitPriceVnd,
+      deliveryEmail: input.recipientEmail?.trim().toLowerCase() || null,
       onDebit: async (orderId, orderNumber) => {
         await this.partnersService.debitWalletForPurchase(partnerId, {
           orderId,

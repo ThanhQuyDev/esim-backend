@@ -2,6 +2,8 @@ import {
   partnerPurchaseQuote,
   partnerPurchaseRejection,
   partnerPurchaseUnitPriceVnd,
+  partnerSuggestedRetailVnd,
+  planRefundSupported,
 } from './partner-purchase';
 import { PartnerStatusEnum, PartnerTypeEnum } from './partners.enum';
 
@@ -22,8 +24,9 @@ describe('partner purchase', () => {
       expect(partnerPurchaseUnitPriceVnd(100000, 0)).toBe(100000);
     });
 
-    it('should làm tròn tới đồng, không để số lẻ', () => {
-      expect(partnerPurchaseUnitPriceVnd(99999, 7.5)).toBe(107499);
+    it('should làm tròn giá đại lý đến hàng nghìn (doitac-1410 #034)', () => {
+      expect(partnerPurchaseUnitPriceVnd(99999, 7.5)).toBe(107000);
+      expect(partnerPurchaseUnitPriceVnd(100000, 8.6)).toBe(109000);
     });
 
     it('should không nhận số âm hay rác', () => {
@@ -180,5 +183,55 @@ describe('partner purchase', () => {
       });
       expect(partnerPurchaseRejection(ok, none)).toContain('từ 1 trở lên');
     });
+  });
+});
+
+describe('price list helpers (doitac-1410 #034)', () => {
+  it('should suggest a retail price of agent x 5/3, to the thousand', () => {
+    expect(partnerSuggestedRetailVnd(100000)).toBe(167000);
+    expect(partnerSuggestedRetailVnd(60000)).toBe(100000);
+    expect(partnerSuggestedRetailVnd(0)).toBe(0);
+  });
+
+  it('should say which plans can be refunded', () => {
+    expect(
+      planRefundSupported({ provider: 'viettel', name: 'Viettel 5GB' }),
+    ).toBe(false);
+    expect(
+      planRefundSupported({
+        provider: 'microesim',
+        name: 'Thailand Local 5GB',
+      }),
+    ).toBe(false);
+    expect(
+      planRefundSupported({ provider: 'microesim', name: 'Thailand 5GB' }),
+    ).toBe(true);
+    expect(
+      planRefundSupported({
+        provider: 'billion',
+        name: 'USA(T-Mobile)-6days-Unlimited-T-Mobile',
+      }),
+    ).toBe(false);
+    expect(
+      planRefundSupported({
+        provider: 'billion',
+        name: 'South Korea-SKT Local-5days-Unlimited Data-eSIM-SKT',
+      }),
+    ).toBe(false);
+    expect(
+      planRefundSupported({
+        provider: 'billion',
+        name: '[5G] Japan-KDDI Local-4 days- KDDI',
+      }),
+    ).toBe(false);
+    expect(
+      planRefundSupported({
+        provider: 'billion',
+        name: 'Kuwait-3GB/day,128kbps - 29 days',
+      }),
+    ).toBe(true);
+    expect(planRefundSupported({ provider: 'airalo', name: 'Japan 5GB' })).toBe(
+      true,
+    );
   });
 });

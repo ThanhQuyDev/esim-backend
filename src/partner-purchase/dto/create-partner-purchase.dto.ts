@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsInt, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
+import { IsEmail, IsInt, IsOptional, Min } from 'class-validator';
 
 /**
  * Một lần đối tác phân phối đặt mua (#046).
@@ -20,4 +20,16 @@ export class CreatePartnerPurchaseDto {
   @IsInt({ message: 'Số lượng phải là số nguyên.' })
   @Min(1, { message: 'Số lượng phải từ 1 trở lên.' })
   quantity!: number;
+
+  /**
+   * Where the eSIM QR codes are emailed (doitac-1410 #034) — the partner's
+   * customer. Left out, the codes stay in the order's Excel file.
+   */
+  @ApiPropertyOptional({ example: 'khach@example.com' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() || undefined : value,
+  )
+  @IsEmail({}, { message: 'Email nhận eSIM không hợp lệ.' })
+  recipientEmail?: string;
 }

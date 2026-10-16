@@ -146,6 +146,10 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   attributionWarning?: string | null;
 
+  /** Where a partner order's eSIM QR codes go (doitac-1410 #034). */
+  @Column({ type: String, nullable: true })
+  deliveryEmail?: string | null;
+
   @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
   referralDiscountVndAmount!: number;
 
