@@ -93,12 +93,22 @@ export async function compositeLogo(
 export async function renderEsimQrCode(
   lpa: string,
   size = QR_SIZE,
+  /** A distribution partner's own logo instead of esim.vn's (doitac-1410 #044). */
+  customLogo?: Buffer | null,
 ): Promise<Buffer> {
   const qrBuffer = await QRCode.toBuffer(lpa, {
     width: size,
     margin: 2,
     errorCorrectionLevel: 'H',
   });
+
+  if (customLogo) {
+    try {
+      return await compositeLogo(qrBuffer, customLogo, size);
+    } catch {
+      // An unreadable partner logo falls back to the esim.vn one below.
+    }
+  }
 
   const logoBuffer = getLogoBuffer();
   if (!logoBuffer) return qrBuffer;

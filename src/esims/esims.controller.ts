@@ -18,7 +18,12 @@ import {
   UploadedFile,
   Res,
   SerializeOptions,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
+import { AllConfigType } from '../config/config.type';
+import { loadPartnerQrLogo } from './partner-qr-logo';
 import { Response } from 'express';
 import { renderEsimQrCode } from './esim-qrcode';
 
@@ -71,7 +76,13 @@ import { esimLifecycleStatus } from './esim-lifecycle';
 @ApiTags('Esims')
 @Controller({ path: 'esims', version: '1' })
 export class EsimsPublicController {
-  constructor(private readonly esimsService: EsimsService) {}
+  constructor(
+    private readonly esimsService: EsimsService,
+    // A distribution partner's logo in the QR code (doitac-1410 #044).
+    @Optional() private readonly dataSource?: DataSource,
+    @Optional()
+    private readonly configService?: ConfigService<AllConfigType>,
+  ) {}
 
   @Get(':id/qrcode')
   @HttpCode(HttpStatus.OK)
@@ -96,8 +107,18 @@ export class EsimsPublicController {
       throw new NotFoundException('eSIM or LPA not found');
     }
 
-    // Branded QR: horizontal logo across the middle (#080).
-    const buffer = await renderEsimQrCode(esim.lpa);
+    // Branded QR: horizontal logo across the middle (#080) — the partner's
+    // own logo when a distribution partner bought it (doitac-1410 #044).
+    const partnerLogo = await loadPartnerQrLogo(this.dataSource, Number(id), {
+      backendDomain: this.configService?.get('app.backendDomain', {
+        infer: true,
+      }),
+      s3Bucket: this.configService?.get('file.awsDefaultS3Bucket', {
+        infer: true,
+      }),
+      s3Region: this.configService?.get('file.awsS3Region', { infer: true }),
+    });
+    const buffer = await renderEsimQrCode(esim.lpa, undefined, partnerLogo);
 
     res.set({
       'Content-Type': 'image/png',

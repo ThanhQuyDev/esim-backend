@@ -17,6 +17,11 @@ import { AllConfigType } from '../config/config.type';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import Handlebars from 'handlebars';
 import { createEsimLookupToken } from '../esims/esim-lookup-token';
+import {
+  DEFAULT_PRIMARY_COLOR,
+  PartnerBrand,
+  readPartnerBrand,
+} from '../partners/partner-brand';
 
 export interface EsimPurchaseMailData {
   to: string;
@@ -103,6 +108,9 @@ export const PARTNER_SUPPORT_PATH = '/dashboard/portal/support';
  * paths so a rename shows up here rather than inside a template string.
  */
 export const ESIM_LOOKUP_PATH = '/tra-cuu-esim';
+
+/** The storefront's eSIM setup guide (#065), linked from a partner's email (#044). */
+export const ESIM_INSTALL_GUIDE_PATH = '/huong-dan-cai-dat-esim';
 
 /**
  * Where a rejected applicant fills the form in again (#003). The rejection
@@ -205,7 +213,7 @@ export class MailService {
    */
   private async esimMailOverrides(
     orderNumber?: string | null,
-  ): Promise<{ to?: string; logoUrl?: string }> {
+  ): Promise<{ to?: string; logoUrl?: string; brand?: PartnerBrand }> {
     if (!orderNumber || !this.dataSource) return {};
     try {
       const [row] = await this.dataSource.query(
@@ -218,10 +226,13 @@ export class MailService {
         [orderNumber],
       );
       if (!row) return {};
-      const brand = (row.brandInfo ?? {}) as { logoUrl?: string };
+      // A distribution partner's order carries their whole brand: logo and
+      // its position, colour, footer and which blocks to show (#044).
+      const brand = row.brandInfo ? readPartnerBrand(row.brandInfo) : undefined;
       return {
         ...(row.deliveryEmail ? { to: String(row.deliveryEmail) } : {}),
-        ...(brand.logoUrl ? { logoUrl: brand.logoUrl } : {}),
+        ...(brand?.logoUrl ? { logoUrl: brand.logoUrl } : {}),
+        ...(brand ? { brand } : {}),
       };
     } catch (err) {
       this.logger.error(
@@ -229,6 +240,34 @@ export class MailService {
       );
       return {};
     }
+  }
+
+  /**
+   * The parts of the eSIM email a distribution partner customises from
+   * "Cấu hình thương hiệu" (doitac-1410 #044). Without a partner brand the
+   * email reads exactly as before: logo centred, black install button, the
+   * usage block when there is a link, no guide block, esim.vn footer.
+   */
+  private esimBrandContext(
+    brand: PartnerBrand | undefined,
+    usageCheckUrl: string,
+    frontendDomain: string,
+  ) {
+    const base = frontendDomain.replace(/\/+$/, '');
+    return {
+      logoAlign: brand?.logoPosition ?? 'center',
+      brandColor: brand?.primaryColor ?? DEFAULT_PRIMARY_COLOR,
+      usageCheckUrl: brand && !brand.showUsageCheck ? '' : usageCheckUrl,
+      installGuideUrl:
+        brand?.showInstallGuide && base
+          ? `${base}${ESIM_INSTALL_GUIDE_PATH}`
+          : '',
+      partnerFooter: brand ? 'true' : '',
+      partnerName: brand?.displayName ?? '',
+      partnerTagline: brand?.tagline ?? '',
+      partnerWebsite: brand?.website ?? '',
+      partnerSupportEmail: brand?.supportEmail ?? '',
+    };
   }
 
   /**
@@ -454,9 +493,13 @@ export class MailService {
       callMinutes: Number(data.callMinutes) > 0 ? Number(data.callMinutes) : '',
       smsCount: Number(data.smsCount) > 0 ? Number(data.smsCount) : '',
       qrCodeBase64: qrCodeUrl,
-      usageCheckUrl,
+      ...this.esimBrandContext(
+        overrides.brand,
+        usageCheckUrl,
+        frontendDomain ?? '',
+      ),
       logoUrl: overrides.logoUrl ?? BRAND_LOGO_URL,
-      app_name: appName,
+      app_name: overrides.brand?.displayName || appName,
       subject: template.subject,
     };
 

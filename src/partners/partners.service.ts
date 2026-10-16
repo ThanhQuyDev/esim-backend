@@ -46,6 +46,7 @@ import {
   partnerSuggestedRetailVnd,
   planRefundSupported,
 } from './partner-purchase';
+import { sanitizeBrandInput } from './partner-brand';
 import {
   buildPurchaseDeliveryWorkbook,
   purchaseDeliveryFilename,
@@ -752,6 +753,16 @@ export class PartnersService {
     dto: UpdatePartnerProfileDto,
   ): Promise<PartnerEntity> {
     const partner = await this.getPartnerByUserId(userId);
+    // "Cấu hình thương hiệu" is normalised before it is stored, so the eSIM
+    // email never renders a bad colour, URL or address (doitac-1410 #044).
+    let brandInfo: Record<string, unknown> | undefined;
+    if (dto.brandInfo !== undefined) {
+      try {
+        brandInfo = sanitizeBrandInput(dto.brandInfo);
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
+    }
     Object.assign(partner, {
       ...(dto.contactName !== undefined && { contactName: dto.contactName }),
       ...(dto.contactPhone !== undefined && { contactPhone: dto.contactPhone }),
@@ -761,7 +772,7 @@ export class PartnersService {
         businessAddress: dto.businessAddress,
       }),
       ...(dto.channelInfo !== undefined && { channelInfo: dto.channelInfo }),
-      ...(dto.brandInfo !== undefined && { brandInfo: dto.brandInfo }),
+      ...(brandInfo !== undefined && { brandInfo }),
     });
     // Bank details deliberately absent: they move through the emailed code
     // (#005), see requestBankAccountChange / confirmBankAccountChange.
