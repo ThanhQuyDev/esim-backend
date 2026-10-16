@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { EsimAccessService } from './esimaccess/esimaccess.service';
 import { AiraloService } from './airalo/airalo.service';
 import { SyncOrchestratorService } from './sync-orchestrator.service';
+import { FullSyncController } from './full-sync.controller';
 import { GadgetKoreaService } from './gadgetkorea/gadgetkorea.service';
 import { MicroEsimService } from './microesim/microesim.service';
 import { BillionService } from './billion/billion.service';
@@ -19,6 +20,8 @@ import { UsersModule } from '../users/users.module';
 import { OrdersModule } from '../orders/orders.module';
 
 @Module({
+  // "Cập nhật lại toàn bộ sản phẩm" (doitac-1410 #074).
+  controllers: [FullSyncController],
   imports: [
     ScheduleModule.forRoot(),
     HttpModule,
