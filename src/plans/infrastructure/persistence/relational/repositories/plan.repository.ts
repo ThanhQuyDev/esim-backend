@@ -76,18 +76,7 @@ export class PlansRelationalRepository implements PlanRepository {
         });
       }
       if (filterOptions?.type) {
-        const planTypes =
-          typeof filterOptions.type === 'string'
-            ? filterOptions.type
-                .split(',')
-                .map((t) => t.trim())
-                .filter(Boolean)
-            : Array.isArray(filterOptions.type)
-              ? filterOptions.type
-              : [filterOptions.type];
-        if (planTypes.length > 0) {
-          qb.andWhere('plan."type" IN (:...planTypes)', { planTypes });
-        }
+        this.applyPlanTypeFilter(qb, filterOptions.type);
       }
       if (filterOptions?.data) {
         const dataMb = this.parseDataToMb(filterOptions.data);
@@ -181,18 +170,7 @@ export class PlansRelationalRepository implements PlanRepository {
         });
       }
       if (filterOptions.type) {
-        const planTypes =
-          typeof filterOptions.type === 'string'
-            ? filterOptions.type
-                .split(',')
-                .map((t) => t.trim())
-                .filter(Boolean)
-            : Array.isArray(filterOptions.type)
-              ? filterOptions.type
-              : [filterOptions.type];
-        if (planTypes.length > 0) {
-          qb.andWhere('plan."type" IN (:...planTypes)', { planTypes });
-        }
+        this.applyPlanTypeFilter(qb, filterOptions.type);
       }
       if (filterOptions.data) {
         const dataMb = this.parseDataToMb(filterOptions.data);
@@ -850,6 +828,40 @@ export class PlansRelationalRepository implements PlanRepository {
     }
     if (f?.topUp !== undefined) {
       qb.andWhere('COALESCE(plan."topUp", false) = :topUp', { topUp: f.topUp });
+    }
+  }
+
+  /**
+   * "Loại gói" in the CMS (doitac-1410 #072): the data kinds (fixed, daily,
+   * unlimited…) plus "local" — an eSIM nội địa, shown in its own carrier
+   * pages and never among Vietnam's travel eSIMs. "local" reads the
+   * `isDomesticEsim` flag, so it combines with the kinds by OR.
+   */
+  private applyPlanTypeFilter(
+    qb: SelectQueryBuilder<PlanEntity>,
+    type: unknown,
+  ): void {
+    const values = (
+      typeof type === 'string'
+        ? type.split(',')
+        : Array.isArray(type)
+          ? type
+          : [type]
+    )
+      .map((t) => String(t ?? '').trim())
+      .filter(Boolean);
+    const kinds = values.filter((t) => t !== 'local');
+    const local = values.includes('local');
+    if (!kinds.length && !local) return;
+    if (kinds.length && local) {
+      qb.andWhere(
+        '(plan."type" IN (:...planTypes) OR plan."isDomesticEsim" = true)',
+        { planTypes: kinds },
+      );
+    } else if (local) {
+      qb.andWhere('plan."isDomesticEsim" = true');
+    } else {
+      qb.andWhere('plan."type" IN (:...planTypes)', { planTypes: kinds });
     }
   }
 

@@ -679,7 +679,13 @@ export class PlansService {
     }
 
     const [all] = await this.plansRepository.findManyWithPagination({
-      filterOptions: { destinationId: destination.id, isActive: true },
+      // Travel eSIMs only: a "Local" plan (eSIM nội địa) belongs on its
+      // carrier's own page, never among Vietnam's travel eSIMs (doitac-1410 #072).
+      filterOptions: {
+        destinationId: destination.id,
+        isActive: true,
+        isDomesticEsim: false,
+      },
       sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
       paginationOptions: { page: 1, limit: 1000 },
     });
@@ -694,7 +700,13 @@ export class PlansService {
     }
 
     const [all] = await this.plansRepository.findManyWithPagination({
-      filterOptions: { regionId: region.id, isActive: true },
+      // Travel eSIMs only: a "Local" plan (eSIM nội địa) belongs on its
+      // carrier's own page, never among Vietnam's travel eSIMs (doitac-1410 #072).
+      filterOptions: {
+        regionId: region.id,
+        isActive: true,
+        isDomesticEsim: false,
+      },
       sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
       paginationOptions: { page: 1, limit: 1000 },
     });
