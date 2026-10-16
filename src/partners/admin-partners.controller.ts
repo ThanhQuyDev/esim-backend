@@ -24,6 +24,7 @@ import { AdminLinkListQuery, PartnersService } from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
 import {
   CreatePartnerLinkDto,
+  AddLinkNoteDto,
   AdminRestoreLinkDto,
   BulkLinkStatusDto,
   DecideLinkRestoreDto,
@@ -289,6 +290,21 @@ export class AdminPartnersController {
     @Request() req: { user: { id: number } },
   ) {
     return this.partnersService.adminBulkLinkStatus(dto, req.user.id);
+  }
+
+  /** "Thêm ghi chú nội bộ" on a link (doitac-1410 #055). */
+  @Post('links/:linkId/notes')
+  @HttpCode(HttpStatus.CREATED)
+  addLinkNote(
+    @Param('linkId') linkId: number,
+    @Body() dto: AddLinkNoteDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.adminAddLinkNote(
+      Number(linkId),
+      dto.body,
+      req.user.id,
+    );
   }
 
   /** An admin brings back a deleted link (doitac-1410 #053, #055). */

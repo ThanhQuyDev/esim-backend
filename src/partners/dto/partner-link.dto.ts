@@ -166,6 +166,13 @@ export class BulkLinkStatusDto {
   @IsIn(['suspend', 'unsuspend', 'restore'])
   action!: 'suspend' | 'unsuspend' | 'restore';
 
+  /** "Ghi chú nội bộ" kept with each link, for admins only (doitac-1410 #055). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  internalNote?: string;
+
   @ApiProperty({
     example: 'Link dẫn tới nội dung vi phạm chính sách quảng cáo',
   })
@@ -173,6 +180,15 @@ export class BulkLinkStatusDto {
   @MinLength(5, { message: 'Vui lòng nhập lý do (ít nhất 5 ký tự).' })
   @MaxLength(500)
   reason!: string;
+}
+
+/** "Thêm ghi chú nội bộ" on a link (doitac-1410 #055). */
+export class AddLinkNoteDto {
+  @ApiProperty({ example: 'Đã gọi đối tác xác minh nguồn traffic' })
+  @IsString()
+  @MinLength(2, { message: 'Vui lòng nhập nội dung ghi chú.' })
+  @MaxLength(1000, { message: 'Ghi chú tối đa 1000 ký tự.' })
+  body!: string;
 }
 
 /** An admin brings back a deleted link (doitac-1410 #053, #055). */

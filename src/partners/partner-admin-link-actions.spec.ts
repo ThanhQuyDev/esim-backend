@@ -213,6 +213,7 @@ describe('PartnersService.adminGetLinkDetail (doitac-1410 #054)', () => {
         contactEmail: 'a@abc.vn',
       }),
       getMyLinkDetail,
+      dataSource: { query: jest.fn().mockResolvedValue([]) },
     });
     const detail = await s.adminGetLinkDetail(5, { from: '2026-10-01' });
     expect(findOne).toHaveBeenCalledWith({
@@ -224,5 +225,79 @@ describe('PartnersService.adminGetLinkDetail (doitac-1410 #054)', () => {
       id: 5,
       partner: { id: 9, name: 'Công ty ABC', email: 'a@abc.vn' },
     });
+  });
+});
+
+describe('Link internal notes (doitac-1410 #055)', () => {
+  it('should store a note for admins only, trimmed', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: 5 }])
+      .mockResolvedValueOnce([{ id: 1, linkId: 5, body: 'Đã gọi xác minh' }]);
+    const s = service({ dataSource: { query } });
+    await s.adminAddLinkNote(5, '  Đã gọi xác minh  ', 1);
+    const [sql, params] = query.mock.calls[1] as [string, unknown[]];
+    expect(sql).toContain('INSERT INTO partner_link_note');
+    expect(params).toEqual([5, 1, 'Đã gọi xác minh']);
+  });
+
+  it('should refuse an empty note', async () => {
+    const s = service({ dataSource: { query: jest.fn() } });
+    await expect(s.adminAddLinkNote(5, '   ', 1)).rejects.toThrow(
+      'Vui lòng nhập nội dung ghi chú.',
+    );
+  });
+
+  it('should keep the internal note of a status change with each link done', async () => {
+    const adminSetLinkSuspension = jest
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('Link này đang bị đình chỉ.'));
+    const adminAddLinkNote = jest.fn().mockResolvedValue({});
+    const s = service({ adminSetLinkSuspension, adminAddLinkNote });
+    await s.adminBulkLinkStatus(
+      {
+        linkIds: [3, 4],
+        action: 'suspend',
+        reason: 'Vi phạm chính sách',
+        internalNote: 'Nguồn traffic ảo',
+      },
+      1,
+    );
+    // Only the link that was actually suspended carries the note.
+    expect(adminAddLinkNote).toHaveBeenCalledTimes(1);
+    expect(adminAddLinkNote).toHaveBeenCalledWith(3, 'Nguồn traffic ảo', 1);
+  });
+
+  it('should return the internal notes with the admin detail', async () => {
+    const s = service({
+      linkRepository: {
+        findOne: jest.fn().mockResolvedValue({ id: 5, partnerId: 9 }),
+      },
+      getPartnerOrThrowById: jest
+        .fn()
+        .mockResolvedValue({ id: 9, contactName: 'A', contactEmail: 'a@x' }),
+      getMyLinkDetail: jest.fn().mockResolvedValue({ id: 5, events: [] }),
+      dataSource: {
+        query: jest.fn().mockResolvedValue([
+          {
+            id: 2,
+            body: 'Theo dõi thêm 1 tuần',
+            createdAt: '2026-10-16T04:00:00Z',
+            adminName: null,
+            adminEmail: 'local-admin@esim.test',
+          },
+        ]),
+      },
+    });
+    const detail = await s.adminGetLinkDetail(5);
+    expect(detail.internalNotes).toEqual([
+      {
+        id: 2,
+        body: 'Theo dõi thêm 1 tuần',
+        createdAt: '2026-10-16T04:00:00Z',
+        by: 'local-admin@esim.test',
+      },
+    ]);
   });
 });

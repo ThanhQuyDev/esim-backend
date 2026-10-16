@@ -1834,8 +1834,25 @@ export class PartnersService {
     if (!link) throw new NotFoundException('Không tìm thấy link.');
     const partner = await this.getPartnerOrThrowById(link.partnerId);
     const detail = await this.getMyLinkDetail(link.partnerId, linkId, range);
+    const notes = await this.dataSource.query(
+      `SELECT n.id, n.body, n."createdAt", n."adminId",
+              NULLIF(TRIM(CONCAT(u."firstName", ' ', u."lastName")), '') AS "adminName",
+              u.email AS "adminEmail"
+         FROM partner_link_note n
+         LEFT JOIN "user" u ON u.id = n."adminId"
+        WHERE n."linkId" = $1
+        ORDER BY n."createdAt" DESC, n.id DESC`,
+      [linkId],
+    );
     return {
       ...detail,
+      // Admin-only (doitac-1410 #055).
+      internalNotes: (notes as Record<string, any>[]).map((n) => ({
+        id: Number(n.id),
+        body: String(n.body),
+        createdAt: n.createdAt,
+        by: n.adminName ?? n.adminEmail ?? 'Admin',
+      })),
       partner: {
         id: partner.id,
         name:
@@ -1857,6 +1874,7 @@ export class PartnersService {
       linkIds: number[];
       action: 'suspend' | 'unsuspend' | 'restore';
       reason: string;
+      internalNote?: string;
     },
     adminId: number,
   ): Promise<{ done: number[]; skipped: { id: number; reason: string }[] }> {
@@ -1874,11 +1892,35 @@ export class PartnersService {
           );
         }
         done.push(id);
+        if (input.internalNote?.trim()) {
+          await this.adminAddLinkNote(id, input.internalNote, adminId);
+        }
       } catch (err) {
         skipped.push({ id, reason: (err as Error).message });
       }
     }
     return { done, skipped };
+  }
+
+  /**
+   * "Ghi chú nội bộ" on a link (doitac-1410 #055): for admins only, never in
+   * the history the partner reads.
+   */
+  async adminAddLinkNote(linkId: number, body: string, adminId: number) {
+    const text = String(body ?? '').trim();
+    if (!text) throw new BadRequestException('Vui lòng nhập nội dung ghi chú.');
+    const [link] = await this.dataSource.query(
+      `SELECT id FROM partner_link WHERE id = $1`,
+      [linkId],
+    );
+    if (!link) throw new NotFoundException('Không tìm thấy link.');
+    const [note] = await this.dataSource.query(
+      `INSERT INTO partner_link_note ("linkId", "adminId", body)
+       VALUES ($1, $2, $3)
+       RETURNING id, "linkId", "adminId", body, "createdAt"`,
+      [linkId, adminId, text.slice(0, 1000)],
+    );
+    return note;
   }
 
   /**
