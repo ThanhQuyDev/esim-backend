@@ -19,6 +19,13 @@ describe('Partner eSIM actions (doitac-1410 #039)', () => {
     );
     const debitWalletForPurchase = jest.fn().mockResolvedValue({});
     const partnersService = {
+      assertOwnsPurchase: jest.fn((_p: number, code: string) =>
+        Promise.resolve({
+          orderId: 77,
+          orderNumber: code,
+          orderType: code.startsWith('TOPUP') ? 'TOPUP' : 'BUY_NEW',
+        }),
+      ),
       assertOwnsEsim,
       getPartnerOrThrowById: jest
         .fn()
@@ -173,5 +180,21 @@ describe('Partner eSIM actions (doitac-1410 #039)', () => {
     expect(ordersService.resendEsimEmail).not.toHaveBeenCalled();
     expect(topupService.listPackagesWithCost).not.toHaveBeenCalled();
     expect(topupService.checkoutForPartner).not.toHaveBeenCalled();
+  });
+
+  it('should resend every eSIM of an order (doitac-1410 #042)', async () => {
+    const { service, ordersService } = build({ sent: 3 });
+    await expect(service.resendPurchaseEmail(11, 'PTN-1')).resolves.toEqual({
+      sent: 3,
+    });
+    expect(ordersService.resendEsimEmail).toHaveBeenCalledWith(77);
+  });
+
+  it('should not resend a topup order, which has no eSIM of its own', async () => {
+    const { service, ordersService } = build();
+    await expect(
+      service.resendPurchaseEmail(11, 'TOPUP-9'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(ordersService.resendEsimEmail).not.toHaveBeenCalled();
   });
 });

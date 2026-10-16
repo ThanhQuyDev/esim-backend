@@ -85,6 +85,20 @@ export class PartnerPurchaseController {
     });
   }
 
+  /** "Gửi lại email eSIM" for a whole order (doitac-1410 #042). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/purchases/:orderNumber/resend-email')
+  @HttpCode(HttpStatus.OK)
+  async resendPurchaseEmail(
+    @Request() req: { user: { id: number } },
+    @Param('orderNumber') orderNumber: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.purchaseService.resendPurchaseEmail(partner.id, orderNumber);
+  }
+
   /** "Gửi lại email eSIM" from one eSIM's page (doitac-1410 #039). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

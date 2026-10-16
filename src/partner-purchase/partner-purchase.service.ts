@@ -57,6 +57,30 @@ export class PartnerPurchaseService {
   }
 
   /**
+   * "Gửi lại email eSIM" for a whole order (doitac-1410 #042): every eSIM in
+   * it, to the delivery email the partner gave at purchase if any.
+   */
+  async resendPurchaseEmail(
+    partnerId: number,
+    orderNumber: string,
+  ): Promise<{ sent: number }> {
+    const { orderId, orderType } =
+      await this.partnersService.assertOwnsPurchase(partnerId, orderNumber);
+    if (orderType === 'TOPUP') {
+      throw new BadRequestException(
+        'Đơn topup không có eSIM mới để gửi lại. Hãy gửi lại từ trang chi tiết eSIM.',
+      );
+    }
+    const result = await this.ordersService.resendEsimEmail(orderId);
+    if (!result.sent) {
+      throw new BadRequestException(
+        'Chưa gửi được email: đơn chưa có eSIM nào được cấp.',
+      );
+    }
+    return { sent: result.sent };
+  }
+
+  /**
    * Topup packages this eSIM can take, at the partner's agent price
    * (doitac-1410 #039) — cost + tier markup, the same rule as a new eSIM.
    */

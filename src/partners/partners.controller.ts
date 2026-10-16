@@ -51,7 +51,10 @@ import {
   RequestLinkRestoreDto,
 } from './dto/partner-link.dto';
 import { PartnerOrderRowDto } from './dto/partner-order-row.dto';
-import { ReportFaultyEsimDto } from './dto/partner-esim-fault.dto';
+import {
+  PurchaseRequestDto,
+  ReportFaultyEsimDto,
+} from './dto/partner-esim-fault.dto';
 import { hashIpForFraudWatch } from '../orders/order-fraud-signals';
 import { clientIp } from '../tickets/ticket-spam-guard';
 
@@ -578,6 +581,39 @@ export class PartnersController {
       Number(query.planId),
       Number(query.quantity),
     );
+  }
+
+  /** "Chi tiết đơn hàng" of one of the partner's own orders (doitac-1410 #042). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/purchases/:orderNumber')
+  @HttpCode(HttpStatus.OK)
+  async getMyPurchaseDetail(
+    @Request() req: { user: { id: number } },
+    @Param('orderNumber') orderNumber: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyPurchaseDetail(partner.id, orderNumber);
+  }
+
+  /** "Báo lỗi" / "Yêu cầu hoàn tiền" for a whole order (doitac-1410 #042). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/purchases/:orderNumber/requests')
+  @HttpCode(HttpStatus.CREATED)
+  async requestForMyPurchase(
+    @Request() req: { user: { id: number } },
+    @Param('orderNumber') orderNumber: string,
+    @Body() dto: PurchaseRequestDto,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.requestForMyPurchase(partner.id, orderNumber, {
+      kind: dto.kind,
+      reason: dto.reason,
+      attachments: dto.attachments,
+    });
   }
 
   /**

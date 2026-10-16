@@ -51,6 +51,29 @@ export class ReportFaultyEsimDto {
   attachments?: string[];
 }
 
+/**
+ * "Báo lỗi" / "Yêu cầu hoàn tiền" for a whole order (doitac-1410 #042): the
+ * order is in the URL and there is no ICCID — one order can hold many eSIMs.
+ */
+export class PurchaseRequestDto {
+  @ApiProperty({ enum: ['fault', 'refund'] })
+  @IsIn(['fault', 'refund'])
+  kind!: 'fault' | 'refund';
+
+  @ApiProperty({ example: 'Khách quét QR báo mã đã được dùng' })
+  @IsString()
+  @MinLength(5, { message: 'Vui lòng mô tả lý do (ít nhất 5 ký tự).' })
+  @MaxLength(2000, { message: 'Mô tả tối đa 2000 ký tự.' })
+  reason!: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  attachments?: string[];
+}
+
 /** Admin duyệt hoặc từ chối một phiếu báo lỗi (#046). */
 export class ReviewEsimFaultDto {
   @ApiProperty({ example: true })

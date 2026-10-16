@@ -96,8 +96,10 @@ describe('PartnersService.getMyDistributionSummary (#043)', () => {
     const [sql] = query.mock.calls[1] as [string, unknown[]];
     expect(sql).toContain('e."activatedAt" IS NOT NULL');
     expect(sql).toContain('e."activatedAt" >= $2');
-    // One eSIM out of a line of five is worth a fifth of the line.
-    expect(sql).toContain('NULLIF(oi.quantity, 0)');
+    // A partner line stores the unit price, so each eSIM is worth exactly
+    // that — not a fifth of it (doitac-1410 #042).
+    expect(sql).toContain('SUM(oi."vndPrice")');
+    expect(sql).not.toContain('NULLIF(oi.quantity, 0)');
   });
 
   it('should read zeroes as zeroes for a partner who has bought nothing', async () => {

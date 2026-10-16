@@ -33,7 +33,7 @@ describe('PartnersService.getMyEsims (#046)', () => {
     expect(params[0]).toBe(100);
   });
 
-  it('should spread a line total over the eSIMs on that line', async () => {
+  it('should give each eSIM the unit price of its line', async () => {
     const { service } = buildService([
       {
         iccid: '8984000000000001',
@@ -174,6 +174,9 @@ describe('PartnersService.getMyPurchases (#046)', () => {
         esimCount: 5,
         createdAt: '2026-09-18T03:00:00.000Z',
         items: [{ planName: 'Nhật Bản 5GB', quantity: 5, vndPrice: 900_000 }],
+        deliveryEmail: null,
+        topupPackageName: null,
+        targetIccid: null,
       },
     ]);
   });
@@ -620,5 +623,168 @@ describe('PartnersService.getMyPurchases filters (doitac-1410 #041)', () => {
     await service.getMyPurchases(8, { orderType: 'DROP TABLE' });
     const [, params] = query.mock.calls[0] as [string, unknown[]];
     expect(params.slice(4)).toEqual([null, null, null, null, null, null, null]);
+  });
+});
+
+describe('PartnersService purchase detail and requests (doitac-1410 #042)', () => {
+  const SUMMARY = {
+    orderNumber: 'PTN-1',
+    status: 'paid',
+    orderType: 'BUY_NEW',
+    createdAt: '2026-10-14T03:13:01.000Z',
+    paidVnd: 108000,
+    refundedVnd: 0,
+    esimCount: 3,
+    deliveryEmail: 'khach@esim.test',
+    targetIccid: null,
+    topupPackageName: null,
+  };
+
+  function build(owned = true, provider = 'airalo') {
+    const query = jest.fn((sql: string) => {
+      if (sql.includes('COALESCE("orderType"')) {
+        return Promise.resolve(
+          owned ? [{ id: 77, orderNumber: 'PTN-1', orderType: 'BUY_NEW' }] : [],
+        );
+      }
+      if (sql.includes('FROM order_item oi\n         LEFT JOIN plan')) {
+        return Promise.resolve([
+          {
+            id: 5,
+            quantity: 3,
+            vndPrice: '108000',
+            planName: 'Thailand 3GB',
+            provider,
+            operatorName: provider === 'viettel' ? 'Viettel' : 'AIS',
+            dataMb: 3072,
+            call: null,
+            sms: null,
+            durationDays: 30,
+            speed: '5G',
+            type: 'fixed',
+            destination: 'Thailand',
+          },
+        ]);
+      }
+      if (sql.includes('FROM esim e')) {
+        return Promise.resolve([
+          { orderItemId: 5, iccid: '111', status: 'sold', openReport: null },
+          {
+            orderItemId: 5,
+            iccid: '222',
+            status: 'active',
+            openReport: 'fault',
+          },
+        ]);
+      }
+      return Promise.resolve([{ updatedAt: '2026-10-14T03:13:06.000Z' }]);
+    });
+    const create = jest.fn().mockResolvedValue({ id: 31 });
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    Object.assign(service, {
+      dataSource: { query },
+      getPartnerOrThrowById: jest.fn().mockResolvedValue({
+        id: 11,
+        userId: 20,
+        contactEmail: 'partner@esim.test',
+      }),
+      getMyPurchases: jest.fn().mockResolvedValue([SUMMARY]),
+      ticketsService: { create },
+    });
+    return { service, create, query };
+  }
+
+  it('should give each product its agent and suggested retail totals and its eSIMs', async () => {
+    const { service } = build();
+    const detail = await service.getMyPurchaseDetail(11, 'PTN-1');
+    expect(detail).toMatchObject({
+      orderNumber: 'PTN-1',
+      deliveryEmail: 'khach@esim.test',
+      paymentMethod: 'Ví ký quỹ',
+      // The line holds the unit price: 108.000 × 3.
+      agentTotalVnd: 324000,
+      // 108.000 × 5/3 = 180.000 a piece, × 3.
+      suggestedRetailTotalVnd: 540000,
+      topup: null,
+    });
+    expect(detail.products[0]).toMatchObject({
+      planName: 'Thailand 3GB',
+      quantity: 3,
+      refundable: true,
+      esims: [
+        { iccid: '111', status: 'sold' },
+        { iccid: '222', openReport: 'fault' },
+      ],
+    });
+    expect(detail.products[0]).not.toHaveProperty('provider');
+  });
+
+  it("should refuse another account's order", async () => {
+    const { service } = build(false);
+    await expect(service.getMyPurchaseDetail(11, 'PTN-9')).rejects.toThrow(
+      'Không tìm thấy đơn hàng',
+    );
+  });
+
+  it('should open a ticket for the whole order, with no ICCID', async () => {
+    const { service, create } = build();
+    await expect(
+      service.requestForMyPurchase(11, 'PTN-1', {
+        kind: 'refund',
+        reason: 'Khách không dùng được cả 3 eSIM',
+        attachments: ['http://x/a.png'],
+      }),
+    ).resolves.toEqual({ ticketId: 31 });
+    const ticket = create.mock.calls[0][0];
+    expect(ticket).toMatchObject({
+      customerEmail: 'partner@esim.test',
+      subject: 'Hoàn tiền đơn hàng / eSIM lỗi',
+      orderId: 'PTN-1',
+      attachments: ['http://x/a.png'],
+    });
+    expect(ticket.iccid).toBeUndefined();
+  });
+
+  it('should refuse a refund when no plan in the order is refundable', async () => {
+    const { service, create } = build(true, 'viettel');
+    await expect(
+      service.requestForMyPurchase(11, 'PTN-1', {
+        kind: 'refund',
+        reason: 'Khách không dùng được',
+      }),
+    ).rejects.toThrow('không hỗ trợ hoàn tiền');
+    expect(create).not.toHaveBeenCalled();
+    // A fault report is still allowed.
+    await expect(
+      service.requestForMyPurchase(11, 'PTN-1', {
+        kind: 'fault',
+        reason: 'Khách không kích hoạt được',
+      }),
+    ).resolves.toEqual({ ticketId: 31 });
+  });
+});
+
+describe('requestForMyPurchase sent twice (doitac-1410 #042)', () => {
+  it('should say in Vietnamese that the request is already with esim.vn', async () => {
+    const service = Object.create(PartnersService.prototype) as PartnersService;
+    Object.assign(service, {
+      getPartnerOrThrowById: jest
+        .fn()
+        .mockResolvedValue({ id: 11, contactEmail: 'p@x' }),
+      getMyPurchaseDetail: jest.fn().mockResolvedValue({
+        orderNumber: 'PTN-1',
+        status: 'paid',
+        products: [{ planName: 'A', refundable: true }],
+      }),
+      ticketsService: {
+        create: jest.fn().mockRejectedValue({ status: 409 }),
+      },
+    });
+    await expect(
+      service.requestForMyPurchase(11, 'PTN-1', {
+        kind: 'fault',
+        reason: 'Lỗi kích hoạt',
+      }),
+    ).rejects.toThrow('Bạn vừa gửi yêu cầu này cho đơn hàng');
   });
 });

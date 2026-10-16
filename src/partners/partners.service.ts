@@ -3,6 +3,7 @@ import { partnerCommissionAmount } from './partner-commission-amount';
 import {
   Optional,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpStatus,
   Injectable,
@@ -6102,7 +6103,7 @@ export class PartnersService {
       `SELECT
          COALESCE(d.name, r.name, p."countryCode", 'Không xác định') AS name,
          COALESCE(SUM(oi.quantity), 0) AS "plansPurchased",
-         COALESCE(SUM(oi."vndPrice"), 0) AS "revenueVnd"
+         COALESCE(SUM(oi."vndPrice" * oi.quantity), 0) AS "revenueVnd"
        FROM "order" o
        JOIN order_item oi ON oi."orderId" = o.id
        JOIN plan p ON p.id = oi."planId"
@@ -6200,8 +6201,10 @@ export class PartnersService {
               p.name AS "planName",
               COALESCE(d.name, r.name, p."countryCode") AS destination,
               o."orderNumber",
-              -- What this one eSIM cost: the line total spread over the line.
-              COALESCE(oi."vndPrice" / NULLIF(oi.quantity, 0), 0) AS "costVnd",
+              -- What this one eSIM cost. A partner purchase stores the unit
+              -- price on its line (submitPartnerPurchase), not the line total —
+              -- dividing by the quantity again undercounted (doitac-1410 #042).
+              COALESCE(oi."vndPrice", 0) AS "costVnd",
               e."dataUsed",
               e."dataTotal",
               e."activatedAt",
@@ -6560,7 +6563,7 @@ export class PartnersService {
               e."qrAccessToken", e."dataUsed", e."dataTotal",
               e."activatedAt", e."expiresAt", e."createdAt", e."updatedAt",
               o."orderNumber", o."deliveryEmail",
-              COALESCE(oi."vndPrice" / NULLIF(oi.quantity, 0), 0) AS "costVnd",
+              COALESCE(oi."vndPrice", 0) AS "costVnd",
               p.id AS "planId", p.name AS "planName", p.slug AS "planCode",
               p.provider, p."operatorName", p.type AS "planType",
               p."dataMb", p."durationDays", p.call, p.sms, p.speed,
@@ -6709,6 +6712,11 @@ export class PartnersService {
       esimCount: number;
       createdAt: string;
       items: { planName: string | null; quantity: number; vndPrice: number }[];
+      /** The customer the eSIM was emailed to (doitac-1410 #042). */
+      deliveryEmail: string | null;
+      /** A topup order's package and the eSIM it went to. */
+      topupPackageName: string | null;
+      targetIccid: string | null;
     }[]
   > {
     // A null partner is the admin's view of every distribution partner at once
@@ -6759,6 +6767,9 @@ export class PartnersService {
                                   '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')
               ) AS "walletCostVnd",
               o."createdAt",
+              o."deliveryEmail",
+              o."topupPackageName",
+              o."targetIccid",
               COALESCE(
                 json_agg(
                   json_build_object(
@@ -6849,7 +6860,212 @@ export class PartnersService {
         quantity: Number(item.quantity ?? 0),
         vndPrice: Number(item.vndPrice ?? 0),
       })),
+      deliveryEmail: row.deliveryEmail ?? null,
+      topupPackageName: row.topupPackageName ?? null,
+      targetIccid: row.targetIccid ?? null,
     }));
+  }
+
+  /**
+   * One of this partner's own orders, or a 404 (doitac-1410 #042) — an order
+   * code is easy to guess, so every per-order action checks this first.
+   */
+  async assertOwnsPurchase(
+    partnerId: number,
+    orderNumber: string,
+  ): Promise<{ orderId: number; orderNumber: string; orderType: string }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const rows = await this.dataSource.query(
+      `SELECT id, "orderNumber", COALESCE("orderType", 'BUY_NEW') AS "orderType"
+         FROM "order"
+        WHERE "orderNumber" = $1 AND "userId" = $2 AND "deletedAt" IS NULL`,
+      [
+        String(orderNumber ?? '')
+          .trim()
+          .replace(/^#+\s*/, ''),
+        partner.userId,
+      ],
+    );
+    if (!rows.length) {
+      throw new NotFoundException('Không tìm thấy đơn hàng này.');
+    }
+    return {
+      orderId: Number(rows[0].id),
+      orderNumber: String(rows[0].orderNumber),
+      orderType: String(rows[0].orderType),
+    };
+  }
+
+  /**
+   * "Chi tiết đơn hàng" on the partner portal (doitac-1410 #042): the admin's
+   * order page without the customer block — the order, the email the QR went
+   * to, each product with its total at the agent price and at the suggested
+   * retail price, and the eSIMs under it. No supplier or supplier cost.
+   */
+  async getMyPurchaseDetail(partnerId: number, orderNumber: string) {
+    const { orderId, orderNumber: code } = await this.assertOwnsPurchase(
+      partnerId,
+      orderNumber,
+    );
+    const [summary] = (
+      await this.getMyPurchases(partnerId, { orderNumber: code, limit: 200 })
+    ).filter((p) => p.orderNumber === code);
+
+    const [order] = await this.dataSource.query(
+      `SELECT o."updatedAt", o."topupDataText", o."topupDurationDays",
+              o."topupIsUnlimited"
+         FROM "order" o WHERE o.id = $1`,
+      [orderId],
+    );
+
+    const lines = await this.dataSource.query(
+      `SELECT oi.id, oi.quantity, oi."vndPrice", p.name AS "planName",
+              p.provider, p."operatorName", p."dataMb", p.call, p.sms,
+              p."durationDays", p.speed, p.type,
+              COALESCE(d.name, r.name, p."countryCode") AS destination
+         FROM order_item oi
+         LEFT JOIN plan p ON p.id = oi."planId"
+         LEFT JOIN destination d ON d.id = p."destinationId"
+         LEFT JOIN region r ON r.id = p."regionId"
+        WHERE oi."orderId" = $1
+        ORDER BY oi.id`,
+      [orderId],
+    );
+    const esims = await this.dataSource.query(
+      `SELECT e."orderItemId", e.iccid, e.status, e."activatedAt",
+              e."expiresAt", e."dataUsed", e."dataTotal",
+              (SELECT fr.kind FROM partner_esim_fault_report fr
+                WHERE fr.iccid = e.iccid AND fr.status = 'pending'
+                ORDER BY fr.id DESC LIMIT 1) AS "openReport"
+         FROM esim e
+         JOIN order_item oi ON oi.id = e."orderItemId"
+        WHERE oi."orderId" = $1 AND e."deletedAt" IS NULL
+        ORDER BY e.id`,
+      [orderId],
+    );
+
+    const products = (lines as Record<string, any>[]).map((line) => {
+      const quantity = Number(line.quantity ?? 0);
+      // The line stores the unit price (submitPartnerPurchase).
+      const unit = Number(line.vndPrice ?? 0);
+      const agentTotalVnd = unit * quantity;
+      return {
+        planName: (line.planName as string) ?? null,
+        quantity,
+        agentTotalVnd,
+        suggestedRetailTotalVnd: partnerSuggestedRetailVnd(unit) * quantity,
+        destination: (line.destination as string) ?? null,
+        dataMb: line.dataMb == null ? null : Number(line.dataMb),
+        call: line.call == null ? null : Number(line.call),
+        sms: line.sms == null ? null : Number(line.sms),
+        durationDays:
+          line.durationDays == null ? null : Number(line.durationDays),
+        operatorName: (line.operatorName as string) ?? null,
+        speed: (line.speed as string) ?? null,
+        type: (line.type as string) ?? null,
+        refundable: planRefundSupported({
+          provider: line.provider,
+          name: line.planName,
+          operatorName: line.operatorName,
+        }),
+        esims: (esims as Record<string, any>[])
+          .filter((e) => Number(e.orderItemId) === Number(line.id))
+          .map((e) => ({
+            iccid: String(e.iccid),
+            status: (e.status as string) ?? null,
+            activatedAt: e.activatedAt ?? null,
+            expiresAt: e.expiresAt ?? null,
+            dataUsed: e.dataUsed == null ? null : Number(e.dataUsed),
+            dataTotal: e.dataTotal == null ? null : Number(e.dataTotal),
+            openReport: (e.openReport as 'fault' | 'refund' | null) ?? null,
+          })),
+      };
+    });
+
+    return {
+      orderNumber: code,
+      status: summary?.status ?? null,
+      orderType: summary?.orderType ?? null,
+      createdAt: summary?.createdAt ?? null,
+      updatedAt: order?.updatedAt ?? null,
+      paymentMethod: 'Ví ký quỹ',
+      paidVnd: summary?.paidVnd ?? 0,
+      refundedVnd: summary?.refundedVnd ?? 0,
+      esimCount: summary?.esimCount ?? 0,
+      deliveryEmail: summary?.deliveryEmail ?? null,
+      agentTotalVnd: products.reduce((sum, p) => sum + p.agentTotalVnd, 0),
+      suggestedRetailTotalVnd: products.reduce(
+        (sum, p) => sum + p.suggestedRetailTotalVnd,
+        0,
+      ),
+      topup:
+        summary?.orderType === 'TOPUP'
+          ? {
+              iccid: summary.targetIccid,
+              packageName: summary.topupPackageName,
+              dataText: (order?.topupDataText as string) ?? null,
+              durationDays:
+                order?.topupDurationDays == null
+                  ? null
+                  : Number(order.topupDurationDays),
+              isUnlimited: Boolean(order?.topupIsUnlimited),
+            }
+          : null,
+      products,
+    };
+  }
+
+  /**
+   * "Báo lỗi" / "Yêu cầu hoàn tiền" for a whole order (doitac-1410 #042) —
+   * one order can hold many eSIMs, so there is no ICCID; it opens a support
+   * ticket for esim.vn, which decides per eSIM what to refund.
+   */
+  async requestForMyPurchase(
+    partnerId: number,
+    orderNumber: string,
+    input: { kind: 'fault' | 'refund'; reason: string; attachments?: string[] },
+  ): Promise<{ ticketId: number }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const detail = await this.getMyPurchaseDetail(partnerId, orderNumber);
+    if (detail.status === 'refunded') {
+      throw new BadRequestException('Đơn hàng này đã được hoàn tiền.');
+    }
+    if (
+      input.kind === 'refund' &&
+      detail.products.length > 0 &&
+      !detail.products.some((p) => p.refundable)
+    ) {
+      throw new BadRequestException(
+        'Các gói trong đơn này không hỗ trợ hoàn tiền.',
+      );
+    }
+    if (!this.ticketsService) {
+      throw new BadRequestException('Chưa gửi được yêu cầu, vui lòng thử lại.');
+    }
+    const subject =
+      input.kind === 'refund'
+        ? 'Hoàn tiền đơn hàng / eSIM lỗi'
+        : 'eSIM lỗi hoặc không kích hoạt được';
+    const reason = String(input.reason ?? '').trim();
+    const ticket = await this.ticketsService
+      .create({
+        customerEmail: partner.contactEmail,
+        subject,
+        description: `${subject}\nĐơn hàng: ${detail.orderNumber}\n\n${reason}`,
+        orderId: detail.orderNumber,
+        planDestination: detail.products[0]?.planName ?? undefined,
+        attachments: input.attachments ?? [],
+      } as never)
+      .catch((err: unknown) => {
+        // The tickets module refuses the same request sent twice in a row.
+        if ((err as { status?: number })?.status === 409) {
+          throw new ConflictException(
+            'Bạn vừa gửi yêu cầu này cho đơn hàng, esim.vn đang xử lý. Vui lòng chờ phản hồi.',
+          );
+        }
+        throw err;
+      });
+    return { ticketId: Number(ticket.id) };
   }
 
   /**
@@ -7833,12 +8049,9 @@ export class PartnersService {
     const [esims] = await this.dataSource.query(
       `SELECT
          COUNT(*) AS "activatedCount",
-         -- order_item."vndPrice" is the line total, so one eSIM out of a line
-         -- of five is worth a fifth of it.
-         COALESCE(
-           SUM(oi."vndPrice" / NULLIF(oi.quantity, 0)),
-           0
-         ) AS "activatedRevenueVnd"
+         -- order_item."vndPrice" is the unit price of the line (each eSIM
+         -- is worth exactly that), not the line total (doitac-1410 #042).
+         COALESCE(SUM(oi."vndPrice"), 0) AS "activatedRevenueVnd"
        FROM esim e
        JOIN order_item oi ON oi.id = e."orderItemId"
        JOIN "order" o ON o.id = oi."orderId"
@@ -8549,7 +8762,7 @@ export class PartnersService {
     const rows = await this.dataSource.query(
       `SELECT COALESCE(d.name, r.name, p."countryCode", 'Không xác định') AS name,
               COALESCE(SUM(oi.quantity), 0) AS "plansPurchased",
-              COALESCE(SUM(oi."vndPrice"), 0) AS "revenueVnd"
+              COALESCE(SUM(oi."vndPrice" * oi.quantity), 0) AS "revenueVnd"
        FROM "order" o
        JOIN order_item oi ON oi."orderId" = o.id
        JOIN plan p ON p.id = oi."planId"
