@@ -1,3 +1,4 @@
+import { downloadFilename } from '../utils/download-filename';
 import {
   Delete,
   Body,
@@ -105,11 +106,11 @@ export class AdminPartnersController {
     @Res() res: Response,
   ): Promise<void> {
     const buffer = await this.partnersService.adminExportPartnersToExcel(query);
-    const stamp = new Date().toISOString().slice(0, 10);
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="danh-sach-doi-tac-${stamp}.xlsx"`,
+      // Danh-sach-doi-tac_13-10-2026_01-18-29.xlsx, VN time (doitac-1410 #050).
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-doi-tac')}"`,
       'Content-Length': buffer.length.toString(),
     });
     res.end(buffer);
