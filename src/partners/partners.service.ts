@@ -341,6 +341,9 @@ function samePhone(a?: string | null, b?: string | null): boolean {
  */
 const ORDER_REVENUE_SQL = `COALESCE(NULLIF(o."eligibleSpendVnd", 0), NULLIF(o."payableVndPrice" + o."walletSpentVndAmount", 0), o."vndPrice")`;
 
+/** A partner who transacted in this many days counts as active (doitac-1410 #047). */
+const ACTIVE_PARTNER_DAYS = 30;
+
 /**
  * What a partner's own purchase left esim.vn with (doitac-1410 #046): the
  * order total less any eSIM refunded to their wallet after a fault report —
@@ -8796,6 +8799,8 @@ export class PartnersService {
     range: { from?: string; to?: string } = {},
   ): Promise<{
     range: { from: string; to: string };
+    /** The 30-day window "đang hoạt động" is judged on (doitac-1410 #047). */
+    activeRange: { from: string; to: string };
     orders: {
       total: number;
       byType: { partnerType: string; orders: number }[];
@@ -8834,11 +8839,17 @@ export class PartnersService {
       params,
     );
 
+    // "Đang hoạt động" = transacted in the 30 days up to the end of the period
+    // (doitac-1410 #047) — not within the period itself: picking "Hôm nay"
+    // would otherwise call everyone who did not order today inactive.
+    const activeFrom = new Date(
+      to.getTime() - ACTIVE_PARTNER_DAYS * 86_400_000,
+    );
     const activeRows = await this.dataSource.query(
       `SELECT "partnerType", COUNT(DISTINCT "partnerId") AS partners
        FROM (${PARTNER_ORDERS_SQL}) t
        GROUP BY 1`,
-      params,
+      [activeFrom, to, SETTLED_ORDER_STATUS_LIST],
     );
 
     const pendingRows = await this.dataSource.query(
@@ -8868,6 +8879,7 @@ export class PartnersService {
 
     return {
       range: { from: from.toISOString(), to: to.toISOString() },
+      activeRange: { from: activeFrom.toISOString(), to: to.toISOString() },
       orders: {
         total: sum(orderRows, 'orders'),
         byType: byType(orderRows, 'orders'),

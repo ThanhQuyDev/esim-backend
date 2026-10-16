@@ -63,6 +63,25 @@ describe('PartnersService.adminPartnerActivity (#051)', () => {
     expect(params[0]).toBeInstanceOf(Date);
   });
 
+  it('should judge "đang hoạt động" on the 30 days up to the end of the period (doitac-1410 #047)', async () => {
+    const { service, query } = buildService({});
+
+    // Picking a single day must not call everyone who did not order that day
+    // inactive.
+    const result = await service.adminPartnerActivity({
+      from: '2026-10-16',
+      to: '2026-10-16',
+    });
+
+    const [, orderParams] = query.mock.calls[0] as [string, Date[]];
+    const [, activeParams] = query.mock.calls[1] as [string, Date[]];
+    expect(activeParams[1].getTime()).toBe(orderParams[1].getTime());
+    expect(orderParams[1].getTime() - activeParams[0].getTime()).toBe(
+      30 * 86_400_000,
+    );
+    expect(result.activeRange.to).toBe(result.range.to);
+  });
+
   it('should count a partner once however the order reached them', async () => {
     // Either side of the business counts as a transaction: an order credited to
     // them, or one they placed. A distributor with the affiliate grant (#048)
