@@ -456,13 +456,21 @@ export class PartnersController {
   @HttpCode(HttpStatus.OK)
   async getMyPurchases(
     @Request() req: { user: { id: number } },
-    @Query() query: { search?: string; status?: string; limit?: string },
+    @Query() query: Record<string, string | undefined>,
   ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
     return this.partnersService.getMyPurchases(partner.id, {
       search: query.search,
       status: query.status,
       limit: query.limit ? Number(query.limit) : undefined,
+      // doitac-1410 #041
+      orderNumber: query.orderNumber,
+      planName: query.planName,
+      iccid: query.iccid,
+      email: query.email,
+      orderType: query.orderType,
+      from: query.from,
+      to: query.to,
     });
   }
 

@@ -579,3 +579,46 @@ describe('PartnersService.exportMyEsimsToExcel (doitac-1410 #040)', () => {
     expect(sheet.rowCount).toBe(2);
   });
 });
+
+describe('PartnersService.getMyPurchases filters (doitac-1410 #041)', () => {
+  it('should pass every "Đơn hàng" filter to the query', async () => {
+    const { service, query } = buildService([]);
+
+    await service.getMyPurchases(8, {
+      orderNumber: '#PTN-1',
+      planName: 'Thailand',
+      iccid: '8900',
+      email: 'khach@',
+      orderType: 'TOPUP',
+      from: '2026-10-14',
+      to: '2026-10-14',
+    });
+
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params.slice(4, 9)).toEqual([
+      'PTN-1',
+      'Thailand',
+      '8900',
+      'khach@',
+      'TOPUP',
+    ]);
+    // 14/10 in Vietnam = 13/10 17:00 UTC → 14/10 17:00 UTC.
+    expect(new Date(params[9] as string).toISOString()).toBe(
+      '2026-10-13T17:00:00.000Z',
+    );
+    expect(new Date(params[10] as string).toISOString()).toBe(
+      '2026-10-14T17:00:00.000Z',
+    );
+    // A matching product or eSIM keeps the whole order's lines.
+    expect(sql).toContain('EXISTS (SELECT 1 FROM order_item fi JOIN plan fp');
+    expect(sql).toContain('fe.iccid ILIKE');
+    expect(sql).toContain(`COALESCE(o."orderType", 'BUY_NEW') = $9`);
+  });
+
+  it('should ignore an unknown order type and leave unset filters null', async () => {
+    const { service, query } = buildService([]);
+    await service.getMyPurchases(8, { orderType: 'DROP TABLE' });
+    const [, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params.slice(4)).toEqual([null, null, null, null, null, null, null]);
+  });
+});

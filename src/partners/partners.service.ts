@@ -6674,7 +6674,22 @@ export class PartnersService {
    */
   async getMyPurchases(
     partnerId: number | null,
-    filters: { search?: string; status?: string; limit?: number } = {},
+    filters: {
+      search?: string;
+      status?: string;
+      limit?: number;
+      // The "Đơn hàng" filters (doitac-1410 #041):
+      orderNumber?: string;
+      planName?: string;
+      iccid?: string;
+      /** The customer's email the eSIM was sent to. */
+      email?: string;
+      /** BUY_NEW (a new eSIM) or TOPUP. */
+      orderType?: string;
+      /** Bought from–to, in Vietnamese days. */
+      from?: string;
+      to?: string;
+    } = {},
   ): Promise<
     {
       orderNumber: string;
@@ -6706,6 +6721,18 @@ export class PartnersService {
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
     const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
     const status = filters.status?.trim() || null;
+    const text = (value?: string) =>
+      value?.trim().replace(/^#+\s*/, '') || null;
+    const orderType = ['BUY_NEW', 'TOPUP'].includes(filters.orderType ?? '')
+      ? filters.orderType!
+      : null;
+    const range =
+      filters.from || filters.to
+        ? resolveSummaryRange({
+            from: filters.from || filters.to,
+            to: filters.to || filters.from,
+          })
+        : null;
 
     const rows = await this.dataSource.query(
       `SELECT o."orderNumber",
@@ -6762,10 +6789,41 @@ export class PartnersService {
            OR o."orderNumber" ILIKE '%' || $3 || '%'
            OR p.name ILIKE '%' || $3 || '%'
          )
+         -- doitac-1410 #041. EXISTS rather than a WHERE on the joined line,
+         -- so an order still lists all its products when one of them matches.
+         AND ($5::text IS NULL OR o."orderNumber" ILIKE '%' || $5 || '%')
+         AND (
+           $6::text IS NULL
+           OR o."topupPackageName" ILIKE '%' || $6 || '%'
+           OR EXISTS (SELECT 1 FROM order_item fi JOIN plan fp ON fp.id = fi."planId"
+                       WHERE fi."orderId" = o.id AND fp.name ILIKE '%' || $6 || '%')
+         )
+         AND (
+           $7::text IS NULL
+           OR o."targetIccid" ILIKE '%' || $7 || '%'
+           OR EXISTS (SELECT 1 FROM order_item fi JOIN esim fe ON fe."orderItemId" = fi.id
+                       WHERE fi."orderId" = o.id AND fe.iccid ILIKE '%' || $7 || '%')
+         )
+         AND ($8::text IS NULL OR o."deliveryEmail" ILIKE '%' || $8 || '%')
+         AND ($9::text IS NULL OR COALESCE(o."orderType", 'BUY_NEW') = $9)
+         AND ($10::timestamptz IS NULL OR o."createdAt" >= $10)
+         AND ($11::timestamptz IS NULL OR o."createdAt" < $11)
        GROUP BY o.id, pa.id
        ORDER BY o."createdAt" DESC
        LIMIT $4`,
-      [partner?.userId ?? null, status, search, limit],
+      [
+        partner?.userId ?? null,
+        status,
+        search,
+        limit,
+        text(filters.orderNumber),
+        text(filters.planName),
+        text(filters.iccid),
+        text(filters.email),
+        orderType,
+        range?.from ?? null,
+        range?.to ?? null,
+      ],
     );
 
     return (rows as Record<string, any>[]).map((row) => ({
