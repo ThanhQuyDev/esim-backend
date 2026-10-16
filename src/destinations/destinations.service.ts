@@ -1,3 +1,4 @@
+import { normaliseNoticeHtml } from '../utils/notice-html';
 import {
   HttpStatus,
   Injectable,
@@ -62,6 +63,8 @@ export class DestinationsService {
       descriptionVi: createDestinationDto.descriptionVi ?? null,
       title: createDestinationDto.title ?? null,
       titleVi: createDestinationDto.titleVi ?? null,
+      notice: normaliseNoticeHtml(createDestinationDto.notice) ?? null,
+      noticeVi: normaliseNoticeHtml(createDestinationDto.noticeVi) ?? null,
     });
   }
 
@@ -146,6 +149,8 @@ export class DestinationsService {
       descriptionVi: updateDestinationDto.descriptionVi,
       title: updateDestinationDto.title,
       titleVi: updateDestinationDto.titleVi,
+      notice: normaliseNoticeHtml(updateDestinationDto.notice),
+      noticeVi: normaliseNoticeHtml(updateDestinationDto.noticeVi),
     });
   }
 

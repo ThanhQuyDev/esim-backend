@@ -48,6 +48,20 @@ export class Region {
   })
   titleVi: string | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: '<p>Install the eSIM <strong>before</strong> you leave.</p>',
+    description:
+      'Note shown at the top of the website page, sanitised HTML (doitac-1410 #078).',
+  })
+  notice?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '<p>Cài eSIM <strong>trước</strong> khi khởi hành.</p>',
+  })
+  noticeVi?: string | null;
+
   @ApiPropertyOptional({ type: String })
   avatarUrl: string | null;
 

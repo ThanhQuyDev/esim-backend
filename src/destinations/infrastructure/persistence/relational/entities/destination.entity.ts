@@ -82,6 +82,13 @@ export class DestinationEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   titleVi: string | null;
 
+  /** Note at the top of the website page, sanitised HTML (doitac-1410 #078). */
+  @Column({ type: 'text', nullable: true })
+  notice: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  noticeVi: string | null;
+
   /** Units sold across this destination's plans, recounted hourly (#053). */
   @Column({ type: 'int', default: 0 })
   soldCount: number;

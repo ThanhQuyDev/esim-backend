@@ -1,3 +1,4 @@
+import { normaliseNoticeHtml } from '../utils/notice-html';
 import {
   HttpStatus,
   Injectable,
@@ -63,6 +64,8 @@ export class RegionsService {
         descriptionVi: createRegionDto.descriptionVi ?? null,
         title: createRegionDto.title ?? null,
         titleVi: createRegionDto.titleVi ?? null,
+        notice: normaliseNoticeHtml(createRegionDto.notice) ?? null,
+        noticeVi: normaliseNoticeHtml(createRegionDto.noticeVi) ?? null,
         providers: createRegionDto.providers ?? null,
         isActive: createRegionDto.isActive ?? true,
         isPopular: createRegionDto.isPopular ?? false,
@@ -143,6 +146,8 @@ export class RegionsService {
         descriptionVi: updateRegionDto.descriptionVi,
         title: updateRegionDto.title,
         titleVi: updateRegionDto.titleVi,
+        notice: normaliseNoticeHtml(updateRegionDto.notice),
+        noticeVi: normaliseNoticeHtml(updateRegionDto.noticeVi),
         providers: updateRegionDto.providers,
         isActive: updateRegionDto.isActive,
         isPopular: updateRegionDto.isPopular,

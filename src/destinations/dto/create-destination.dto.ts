@@ -99,4 +99,23 @@ export class CreateDestinationDto {
   @IsOptional()
   @IsString()
   titleVi?: string | null;
+
+  @ApiPropertyOptional({
+    example: '<p>Install the eSIM <strong>before</strong> you leave.</p>',
+    type: String,
+    description: 'Note at the top of the website page (doitac-1410 #078).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  notice?: string | null;
+
+  @ApiPropertyOptional({
+    example: '<p>Cài eSIM <strong>trước</strong> khi khởi hành.</p>',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  noticeVi?: string | null;
 }
