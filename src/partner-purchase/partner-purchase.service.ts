@@ -144,6 +144,126 @@ export class PartnerPurchaseService {
   }
 
   /**
+   * Thanh toán cả giỏ hàng trong MỘT đơn (doitac-1410 #035): trừ ví đúng tổng
+   * đã báo, rồi gửi từng dòng cho nhà cung cấp của nó. Dòng nào bị từ chối
+   * ngay (không có mã đơn nhà cung cấp, không có eSIM) được hoàn đúng phần
+   * tiền của dòng đó; cả đơn không cấp được gì thì hoàn hết.
+   */
+  async purchaseCart(
+    partnerId: number,
+    input: {
+      items: { planId: number; quantity: number }[];
+      recipientEmail?: string | null;
+    },
+  ): Promise<{
+    orderNumber: string;
+    status: string;
+    planCount: number;
+    quantity: number;
+    totalVnd: number;
+    refundedVnd: number;
+    esimCount: number;
+    pendingEsims: number;
+  }> {
+    const partner = await this.partnersService.getPartnerOrThrowById(partnerId);
+    const quote = await this.partnersService.quoteCart(partnerId, input.items);
+    if (quote.rejection) {
+      throw new BadRequestException(quote.rejection);
+    }
+
+    const order = await this.ordersService.submitPartnerPurchase({
+      buyerUserId: partner.userId,
+      planId: quote.lines[0].planId,
+      quantity: quote.lines[0].quantity,
+      unitPriceVnd: quote.lines[0].unitPriceVnd,
+      items: quote.lines.map((l) => ({
+        planId: l.planId,
+        quantity: l.quantity,
+        unitPriceVnd: l.unitPriceVnd,
+      })),
+      deliveryEmail: input.recipientEmail?.trim().toLowerCase() || null,
+      onDebit: async (orderId, orderNumber) => {
+        await this.partnersService.debitWalletForPurchase(partnerId, {
+          orderId,
+          orderNumber,
+          amountVnd: quote.totalVnd,
+          reason: `Mua ${quote.esimCount} eSIM (${quote.planCount} gói) — đơn ${orderNumber}`,
+        });
+      },
+    });
+
+    // Lines the supplier turned down on the spot.
+    const items: {
+      id: number;
+      planId: number;
+      quantity: number;
+      orderRequestId: string | null;
+      n: number;
+    }[] = await this.dataSource.query(
+      `SELECT oi.id, oi."planId", oi.quantity, oi."orderRequestId",
+              (SELECT count(*) FROM esim e WHERE e."orderItemId" = oi.id)::int AS n
+         FROM order_item oi WHERE oi."orderId" = $1`,
+      [order.id],
+    );
+    const failed = items.filter((i) => i.n === 0 && !i.orderRequestId);
+    const priceOf = new Map(quote.lines.map((l) => [l.planId, l.unitPriceVnd]));
+    const refundedVnd = failed.reduce(
+      (sum, i) =>
+        sum + (priceOf.get(Number(i.planId)) ?? 0) * Number(i.quantity),
+      0,
+    );
+    const esimCount = items.reduce((sum, i) => sum + Number(i.n), 0);
+
+    if (failed.length === items.length) {
+      await this.partnersService.refundWalletForPurchase(partnerId, {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amountVnd: quote.totalVnd,
+        suffix: 'provisioning-failed',
+        reason: `Hoàn tiền: đơn ${order.orderNumber} không cấp được eSIM nào`,
+      });
+      await this.dataSource.query(
+        `UPDATE "order" SET status = 'failed' WHERE id = $1`,
+        [order.id],
+      );
+      throw new BadRequestException(
+        'Nhà cung cấp chưa nhận đơn này. Tiền đã được hoàn lại ví, bạn có thể thử lại hoặc chọn gói khác.',
+      );
+    }
+    if (refundedVnd > 0) {
+      await this.partnersService.refundWalletForPurchase(partnerId, {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amountVnd: refundedVnd,
+        suffix: `lines-failed:${failed.map((i) => i.id).join('-')}`,
+        reason: `Hoàn tiền: ${failed.length} gói trong đơn ${order.orderNumber} không cấp được eSIM`,
+      });
+      for (const item of failed) {
+        await this.dataSource.query(
+          `UPDATE order_item SET status = 'failed' WHERE id = $1`,
+          [item.id],
+        );
+      }
+    }
+
+    return {
+      orderNumber: order.orderNumber,
+      status: order.status,
+      planCount: quote.planCount,
+      quantity: quote.esimCount,
+      totalVnd: quote.totalVnd - refundedVnd,
+      refundedVnd,
+      esimCount,
+      pendingEsims: Math.max(
+        0,
+        quote.esimCount -
+          esimCount -
+          failed.reduce((sum, i) => sum + Number(i.quantity), 0),
+      ),
+    };
+  }
+
+  /**
    * Đối tác tự huỷ đơn của mình (quyết định A5).
    *
    * Chỉ huỷ được khi **chưa có eSIM nào** được cấp: eSIM đã cấp là hàng đã

@@ -6595,6 +6595,178 @@ export class PartnersService {
   }
 
   /**
+   * Báo giá cả giỏ hàng (doitac-1410 #035): mỗi dòng theo đúng giá đại lý của
+   * `quotePurchase`, và số dư được so với TỔNG cả giỏ — từng dòng đủ tiền
+   * không có nghĩa cả giỏ đủ tiền.
+   */
+  async quoteCart(
+    partnerId: number,
+    items: { planId: number; quantity: number }[],
+  ): Promise<{
+    lines: {
+      planId: number;
+      name: string;
+      quantity: number;
+      unitPriceVnd: number;
+      totalVnd: number;
+      listTotalVnd: number;
+      rejection: string | null;
+    }[];
+    planCount: number;
+    esimCount: number;
+    totalVnd: number;
+    listTotalVnd: number;
+    balanceVnd: number;
+    rejection: string | null;
+  }> {
+    // One line per plan: the same plan twice is one line of the summed count.
+    const merged = new Map<number, number>();
+    for (const item of items ?? []) {
+      const planId = Number(item.planId);
+      const quantity = Math.trunc(Number(item.quantity) || 0);
+      if (planId > 0 && quantity > 0) {
+        merged.set(planId, (merged.get(planId) ?? 0) + quantity);
+      }
+    }
+    if (!merged.size) {
+      throw new BadRequestException('Giỏ hàng đang trống.');
+    }
+
+    const lines: Awaited<ReturnType<PartnersService['quoteCart']>>['lines'] =
+      [];
+    for (const [planId, quantity] of merged) {
+      const quote = await this.quotePurchase(partnerId, planId, quantity);
+      const [plan] = await this.dataSource.query(
+        `SELECT name FROM plan WHERE id = $1`,
+        [planId],
+      );
+      lines.push({
+        planId,
+        name: String(plan?.name ?? `Gói #${planId}`),
+        quantity: quote.quantity,
+        unitPriceVnd: quote.unitPriceVnd,
+        totalVnd: quote.totalVnd,
+        listTotalVnd: quote.listTotalVnd,
+        // The balance is judged on the whole cart below, not line by line.
+        rejection:
+          quote.rejection && !quote.rejection.startsWith('Số dư ví không đủ')
+            ? quote.rejection
+            : null,
+      });
+    }
+
+    const wallet = await this.getOrCreateWallet(partnerId);
+    const balanceVnd = Number(wallet.balanceVnd);
+    const totalVnd = lines.reduce((sum, l) => sum + l.totalVnd, 0);
+    const lineRejection = lines.find((l) => l.rejection);
+    const shortBy = totalVnd - balanceVnd;
+    return {
+      lines,
+      planCount: lines.length,
+      esimCount: lines.reduce((sum, l) => sum + l.quantity, 0),
+      totalVnd,
+      listTotalVnd: lines.reduce((sum, l) => sum + l.listTotalVnd, 0),
+      balanceVnd,
+      rejection: lineRejection
+        ? `${lineRejection.name}: ${lineRejection.rejection}`
+        : shortBy > 0
+          ? `Số dư ví không đủ: cần ${totalVnd.toLocaleString('vi-VN')}đ, còn thiếu ${shortBy.toLocaleString('vi-VN')}đ. Vui lòng nạp thêm.`
+          : null,
+    };
+  }
+
+  /**
+   * The price list as a spreadsheet (doitac-1410 #035): every plan the
+   * current filters match, with the columns of the screen.
+   */
+  async exportCatalogueToExcel(
+    partnerId: number,
+    filters: Parameters<PartnersService['getPurchaseCatalogue']>[1] = {},
+  ): Promise<Buffer> {
+    const rows: Awaited<
+      ReturnType<PartnersService['getPurchaseCatalogue']>
+    >['plans'] = [];
+    for (let page = 1; page <= 100; page += 1) {
+      const { plans, totalCount } = await this.getPurchaseCatalogue(partnerId, {
+        ...filters,
+        page,
+        limit: 500,
+      });
+      rows.push(...plans);
+      if (!plans.length || rows.length >= totalCount) break;
+    }
+
+    const yes = (v: boolean) => (v ? 'Có' : 'Không');
+    const typeLabel: Record<string, string> = {
+      fixed: 'Cố định',
+      daily: 'Theo ngày',
+      unlimited: 'Không giới hạn',
+      'unlimited-reduce': 'Không giới hạn giảm tốc',
+    };
+    const data = (mb: number) =>
+      mb <= 0
+        ? 'Không giới hạn'
+        : mb >= 1024
+          ? `${Math.round((mb / 1024) * 100) / 100} GB`
+          : `${mb} MB`;
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'esim.vn';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Danh sách sản phẩm');
+    const money = '#,##0';
+    sheet.columns = [
+      { header: 'Mã gói cước', key: 'slug', width: 34 },
+      { header: 'Tên gói', key: 'name', width: 44 },
+      { header: 'Điểm đến', key: 'destination', width: 20 },
+      { header: 'Dữ liệu', key: 'data', width: 14 },
+      { header: 'Thời hạn (ngày)', key: 'days', width: 14 },
+      { header: 'Tốc độ sau giảm tốc', key: 'throttle', width: 20 },
+      { header: 'Gọi / SMS', key: 'callSms', width: 22 },
+      { header: 'Loại gói', key: 'type', width: 22 },
+      { header: 'Topup', key: 'topUp', width: 8 },
+      { header: 'Tiktok & AI', key: 'tiktok', width: 11 },
+      { header: 'Hoàn tiền', key: 'refund', width: 10 },
+      { header: 'Rẻ nhất', key: 'cheapest', width: 9 },
+      {
+        header: 'Giá đại lý (VND)',
+        key: 'agent',
+        width: 16,
+        style: { numFmt: money },
+      },
+      {
+        header: 'Giá bán lẻ đề xuất (VND)',
+        key: 'retail',
+        width: 22,
+        style: { numFmt: money },
+      },
+    ];
+    for (const p of rows) {
+      sheet.addRow({
+        slug: p.slug,
+        name: p.name,
+        destination: p.destinationName ?? '',
+        data: data(p.dataMb),
+        days: p.durationDays,
+        throttle: p.throttleSpeed ?? '',
+        callSms: p.hasCallSms
+          ? `Có · Gọi ${p.call ?? 0} phút · SMS ${p.sms ?? 0}`
+          : 'Không',
+        type: typeLabel[p.type ?? ''] ?? p.type ?? '',
+        topUp: yes(p.topUp),
+        tiktok: yes(p.tiktokAi),
+        refund: yes(p.refundable),
+        cheapest: yes(p.isCheapest),
+        agent: p.purchasable ? p.unitPriceVnd : null,
+        retail: p.purchasable ? p.suggestedRetailVnd : null,
+      });
+    }
+    sheet.getRow(1).font = { bold: true };
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  /**
    * Trừ ví cho một đơn mua hàng, có khoá dòng ví (#046).
    *
    * Khoá bi quan là bắt buộc ở đây chứ không phải thừa: hai tab cùng bấm mua

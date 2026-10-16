@@ -442,6 +442,46 @@ export class PartnersController {
     });
   }
 
+  /** The price list as a spreadsheet, with the current filters (#035). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/catalogue/export')
+  @HttpCode(HttpStatus.OK)
+  async exportMyCatalogue(
+    @Request() req: { user: { id: number } },
+    @Res() res: Response,
+    @Query() query: Record<string, string | undefined>,
+  ): Promise<void> {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    const flag = (value?: string) =>
+      value === 'true' ? true : value === 'false' ? false : undefined;
+    const num = (value?: string) =>
+      value && Number(value) > 0 ? Number(value) : undefined;
+    const buffer = await this.partnersService.exportCatalogueToExcel(
+      partner.id,
+      {
+        search: query.search,
+        location: query.location,
+        duration: num(query.duration),
+        data: query.data,
+        type: query.type,
+        topUp: flag(query.topUp),
+        hasCallSms: flag(query.hasCallSms),
+        tiktokAi: flag(query.tiktokAi),
+        isCheapest: flag(query.isCheapest),
+      },
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      // Danh-sach-san-pham_13-10-2026_01-18-29.xlsx, as the brief names it.
+      'Content-Disposition': `attachment; filename="${downloadFilename('Danh-sach-san-pham')}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
   /** The "Điểm đến" options of the price list (doitac-1410 #033). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

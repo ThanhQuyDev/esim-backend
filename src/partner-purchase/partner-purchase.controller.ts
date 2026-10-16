@@ -15,6 +15,7 @@ import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import { CreatePartnerPurchaseDto } from './dto/create-partner-purchase.dto';
+import { CreatePartnerCartPurchaseDto } from './dto/create-partner-cart-purchase.dto';
 import { PartnerPurchaseService } from './partner-purchase.service';
 
 /**
@@ -47,6 +48,37 @@ export class PartnerPurchaseController {
     return this.purchaseService.purchase(partner.id, {
       planId: dto.planId,
       quantity: dto.quantity,
+      recipientEmail: dto.recipientEmail ?? null,
+    });
+  }
+
+  /** Báo giá cả giỏ hàng trước khi thanh toán (doitac-1410 #035). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/purchases/cart/quote')
+  @HttpCode(HttpStatus.OK)
+  async quoteCart(
+    @Request() req: { user: { id: number } },
+    @Body() dto: CreatePartnerCartPurchaseDto,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.quoteCart(partner.id, dto.items);
+  }
+
+  /** Thanh toán cả giỏ hàng trong một đơn (doitac-1410 #035). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/purchases/cart')
+  @HttpCode(HttpStatus.CREATED)
+  async purchaseCart(
+    @Request() req: { user: { id: number } },
+    @Body() dto: CreatePartnerCartPurchaseDto,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.purchaseService.purchaseCart(partner.id, {
+      items: dto.items,
       recipientEmail: dto.recipientEmail ?? null,
     });
   }

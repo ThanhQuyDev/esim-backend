@@ -1682,18 +1682,36 @@ export class OrdersService {
     planId: number;
     quantity: number;
     unitPriceVnd: number;
+    /**
+     * Several plans in one order — the partner's cart (doitac-1410 #035).
+     * When given, it replaces planId / quantity / unitPriceVnd.
+     */
+    items?: { planId: number; quantity: number; unitPriceVnd: number }[];
     /** The partner's customer the QR codes go to (doitac-1410 #034). */
     deliveryEmail?: string | null;
     onDebit: (orderId: number, orderNumber: string) => Promise<void>;
   }): Promise<Order> {
-    const plan = await this.plansService.findById(input.planId);
-    if (!plan) {
-      throw new NotFoundException(`Plan ${input.planId} not found`);
-    }
-    if (!plan.isActive) {
-      throw new BadRequestException(
-        `Plan ${input.planId} is no longer on sale`,
-      );
+    const lines = input.items?.length
+      ? input.items
+      : [
+          {
+            planId: input.planId,
+            quantity: input.quantity,
+            unitPriceVnd: input.unitPriceVnd,
+          },
+        ];
+    let plan: Plan | null = null;
+    for (const line of lines) {
+      const linePlan = await this.plansService.findById(line.planId);
+      if (!linePlan) {
+        throw new NotFoundException(`Plan ${line.planId} not found`);
+      }
+      if (!linePlan.isActive) {
+        throw new BadRequestException(
+          `Plan ${line.planId} is no longer on sale`,
+        );
+      }
+      plan ??= linePlan;
     }
 
     const vndRate = await this.exchangeRateService.getUsdToVndRate();
@@ -1704,8 +1722,8 @@ export class OrdersService {
     const order = await this.createPendingOrder(
       input.buyerUserId,
       {
-        currency: plan.currency,
-        items: [{ planId: plan.id, quantity: input.quantity }],
+        currency: plan!.currency,
+        items: lines.map((l) => ({ planId: l.planId, quantity: l.quantity })),
         paymentMethod: 'partner_wallet',
       } as SubmitOrderDto,
       orderNumber,
@@ -1715,7 +1733,10 @@ export class OrdersService {
     // Định giá lại theo giá đối tác. `createPendingOrder` tính theo giá bán lẻ
     // vì nó dùng chung với giỏ hàng của khách; ở đây số tiền thật là số tiền
     // trừ khỏi ví, nên mọi cột doanh thu của đơn phải mang đúng số đó.
-    const totalVnd = input.unitPriceVnd * input.quantity;
+    const totalVnd = lines.reduce(
+      (sum, l) => sum + l.unitPriceVnd * l.quantity,
+      0,
+    );
     await this.orderRepository.update(order.id, {
       // The dollar total follows the repriced đồng figure (#017).
       totalAmount:
@@ -1731,10 +1752,12 @@ export class OrdersService {
       // supplier's webhook later — goes to the customer (doitac-1410 #034).
       deliveryEmail: input.deliveryEmail ?? null,
     } as Partial<Order>);
-    await this.dataSource.query(
-      `UPDATE order_item SET "vndPrice" = $1 WHERE "orderId" = $2`,
-      [input.unitPriceVnd, order.id],
-    );
+    for (const line of lines) {
+      await this.dataSource.query(
+        `UPDATE order_item SET "vndPrice" = $1 WHERE "orderId" = $2 AND "planId" = $3`,
+        [line.unitPriceVnd, order.id, line.planId],
+      );
+    }
 
     // Trừ ví trước khi có bất kỳ eSIM nào tồn tại. Không bọc try/catch: ví
     // thiếu tiền thì đơn phải dừng lại ở đây, không được cấp hàng.
