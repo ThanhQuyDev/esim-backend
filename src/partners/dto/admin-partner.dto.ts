@@ -143,6 +143,12 @@ export class QueryPartnerPayoutDto {
   @IsString()
   dateTo?: string;
 
+  /** "Kỳ tài chính" as `YYYY-MM` (doitac-1410 #057). */
+  @ApiPropertyOptional({ example: '2026-10' })
+  @IsOptional()
+  @IsString()
+  period?: string;
+
   @ApiPropertyOptional({ type: Number, default: 1 })
   @IsOptional()
   @Type(() => Number)

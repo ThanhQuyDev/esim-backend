@@ -104,14 +104,85 @@ describe('PartnersService.adminListPayouts (#068, #069)', () => {
     expect((params[4] as Date).getMonth()).toBe(9);
   });
 
-  it('should treat a numeric search as an id as well as text', async () => {
+  it('should treat a short number as the partner id only (doitac-1410 #057)', async () => {
+    // "9" is in every phone number: as text it listed every request.
+    const { service, query } = buildService();
+
+    await service.adminListPayouts({ search: '9' });
+
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params[1]).toBeNull();
+    expect(params[2]).toBe(9);
+    expect(sql).toContain('($3::int IS NULL OR p.id = $3)');
+  });
+
+  it('should accept "#14" as an id', async () => {
     const { service, query } = buildService();
 
     await service.adminListPayouts({ search: '#14' });
 
     const [, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(params[1]).toBe('#14');
+    expect(params[1]).toBeNull();
     expect(params[2]).toBe(14);
+  });
+
+  it('should still search a phone number as text', async () => {
+    const { service, query } = buildService();
+
+    await service.adminListPayouts({ search: '0921408896' });
+
+    const [, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params[1]).toBe('0921408896');
+    expect(params[2]).toBeNull();
+  });
+
+  it('should search the company name too (doitac-1410 #057)', async () => {
+    const { service, query } = buildService();
+
+    await service.adminListPayouts({ search: 'ETELECOM' });
+
+    const [sql] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain(`p."companyName" ILIKE`);
+  });
+
+  it('should filter by "Kỳ tài chính" in Vietnam time (doitac-1410 #057)', async () => {
+    const { service, query } = buildService();
+
+    await service.adminListPayouts({ period: '2026-10' });
+
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params[5]).toBe('2026-10');
+    expect(sql).toContain(`AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM'`);
+    expect(sql).toContain('COALESCE(pay."reconciliationPeriod"');
+  });
+
+  it('should ignore a malformed period', async () => {
+    const { service, query } = buildService();
+
+    await service.adminListPayouts({ period: '10/2026' });
+
+    const [, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params[5]).toBeNull();
+  });
+
+  it('should name a company partner by the company (doitac-1410 #057)', async () => {
+    const { service } = buildService([
+      { ...ROW, partnerName: 'Công ty TNHH ETELECOM', period: '2026-10' },
+    ]);
+
+    const { data } = await service.adminListPayouts({});
+
+    expect(data[0].partnerName).toBe('Công ty TNHH ETELECOM');
+    expect(data[0].contactName).toBe('Nguyễn Văn A');
+    expect(data[0].period).toBe('2026-10');
+  });
+
+  it('should fall back to the contact name', async () => {
+    const { service } = buildService();
+
+    const { data } = await service.adminListPayouts({});
+
+    expect(data[0].partnerName).toBe('Nguyễn Văn A');
   });
 
   it('should read "all" as no status filter', async () => {

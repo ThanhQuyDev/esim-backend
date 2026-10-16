@@ -234,10 +234,20 @@ function formatPartnerBankAccount(partner: {
 }
 
 /** A withdrawal request with the partner and the account behind it (#069). */
+/**
+ * A payout's "Kỳ tài chính" as `YYYY-MM`: the statement month for one the
+ * system raised, otherwise the Vietnam month it was asked in (createdAt is
+ * stored as UTC wall time) — doitac-1410 #057.
+ */
+const PAYOUT_PERIOD_SQL = `COALESCE(pay."reconciliationPeriod",
+  to_char((pay."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM'))`;
+
 type AdminPayoutRow = {
   id: number;
   partnerId: number;
   contactName: string | null;
+  /** A company by its own name, a person by theirs (doitac-1410 #057). */
+  partnerName: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   partnerType: string | null;
@@ -5050,15 +5060,24 @@ export class PartnersService {
     search?: string;
     dateFrom?: string;
     dateTo?: string;
+    period?: string;
     page?: number;
     limit?: number;
   }): Promise<{ data: AdminPayoutRow[]; totalCount: number }> {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
 
-    const search = query.search?.trim() || null;
-    const asId = Number((query.search ?? '').trim().replace(/^#/, ''));
-    const searchId = Number.isInteger(asId) && asId > 0 ? asId : null;
+    // A short number is a partner ID and nothing else: "9" also sits in every
+    // phone number, so matching it as text listed every request (doitac-1410
+    // #057). A longer one is still searched as a phone.
+    const raw = (query.search ?? '').trim();
+    const idOnly = /^#?\d{1,5}$/.test(raw);
+    const search = raw && !idOnly ? raw : null;
+    const asId = Number(raw.replace(/^#/, ''));
+    const searchId = idOnly && asId > 0 ? asId : null;
+    const period = /^\d{4}-\d{2}$/.test(query.period ?? '')
+      ? query.period!
+      : null;
 
     const from = query.dateFrom ? new Date(query.dateFrom) : null;
     // An inclusive end date: "đến 30/09" means the whole of the 30th.
@@ -5070,12 +5089,14 @@ export class PartnersService {
     const where = `WHERE ($1::text IS NULL OR pay.status = $1)
          AND ($2::text IS NULL
               OR p."contactName" ILIKE '%' || $2 || '%'
+              OR p."companyName" ILIKE '%' || $2 || '%'
               OR p."contactEmail" ILIKE '%' || $2 || '%'
-              OR p."contactPhone" ILIKE '%' || $2 || '%'
-              OR ($3::int IS NOT NULL AND p.id = $3))
+              OR p."contactPhone" ILIKE '%' || $2 || '%')
+         AND ($3::int IS NULL OR p.id = $3)
          AND ($4::timestamptz IS NULL OR pay."createdAt" >= $4)
-         AND ($5::timestamptz IS NULL OR pay."createdAt" < $5)`;
-    const params = [status, search, searchId, from, to];
+         AND ($5::timestamptz IS NULL OR pay."createdAt" < $5)
+         AND ($6::text IS NULL OR ${PAYOUT_PERIOD_SQL} = $6)`;
+    const params = [status, search, searchId, from, to, period];
 
     const [[counted], rows] = await Promise.all([
       this.dataSource.query(
@@ -5095,7 +5116,10 @@ export class PartnersService {
                 pay."processedAt",
                 pay."bankAccountInfo",
                 pay."reconciliationPeriod",
+                ${PAYOUT_PERIOD_SQL} AS "period",
                 p."contactName",
+                CASE WHEN p."legalType" = 'company' AND p."companyName" IS NOT NULL
+                     THEN p."companyName" ELSE p."contactName" END AS "partnerName",
                 p."contactEmail",
                 p."contactPhone",
                 p."partnerType",
@@ -5121,6 +5145,7 @@ export class PartnersService {
           id: Number(row.id),
           partnerId: Number(row.partnerId),
           contactName: row.contactName ?? null,
+          partnerName: row.partnerName ?? row.contactName ?? null,
           contactEmail: row.contactEmail ?? null,
           contactPhone: row.contactPhone ?? null,
           partnerType: row.partnerType ?? null,
@@ -5132,7 +5157,9 @@ export class PartnersService {
           // "Kỳ tài chính" is the month the partner asked in, which is what a
           // payout run is grouped by — or, for one the system raised with a
           // statement, the month that statement closed (doitac-1410 #012).
+          // Worked out in SQL so the "Kỳ tài chính" filter agrees (#057).
           period:
+            row.period ??
             row.reconciliationPeriod ??
             `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`,
           autoRaised: Boolean(row.reconciliationPeriod),
@@ -5196,6 +5223,7 @@ export class PartnersService {
     search?: string;
     dateFrom?: string;
     dateTo?: string;
+    period?: string;
   }): Promise<Buffer> {
     const MAX_ROWS = 5_000;
     const rows: AdminPayoutRow[] = [];
@@ -5240,7 +5268,7 @@ export class PartnersService {
     for (const row of rows) {
       sheet.addRow({
         partnerId: row.partnerId,
-        name: row.contactName ?? '',
+        name: row.partnerName ?? row.contactName ?? '',
         email: row.contactEmail ?? '',
         period: row.period,
         amount: row.amountVnd,
