@@ -180,6 +180,27 @@ export class Plan {
   })
   isDomesticEsim: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    nullable: true,
+    description:
+      'Refund support set by hand; null = by the rule (doitac-1410 #080).',
+  })
+  refundableOverride?: boolean | null;
+
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'Whether its eSIMs can be refunded — the override, else the rule (doitac-1410 #080). Refundable eSIMs are the roaming ones.',
+  })
+  isRefundable?: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    description: 'What the rule alone says (doitac-1410 #080).',
+  })
+  refundableByRule?: boolean;
+
   @ApiPropertyOptional({ type: String, example: 'internet' })
   apn: string | null;
 

@@ -178,6 +178,10 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isDomesticEsim: boolean;
 
+  /** Refund support set by hand; null = by the rule (doitac-1410 #080). */
+  @Column({ type: Boolean, nullable: true })
+  refundableOverride: boolean | null;
+
   @Column({ type: 'jsonb', nullable: true })
   tags: string[] | null;
 

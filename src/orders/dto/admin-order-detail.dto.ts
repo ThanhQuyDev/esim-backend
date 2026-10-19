@@ -93,6 +93,12 @@ export class AdminOrderItemPlanDto {
   @ApiPropertyOptional({ type: () => AdminPlanLocationInfoDto })
   locationInfo?: AdminPlanLocationInfoDto | null;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Whether its eSIMs can be refunded (doitac-1410 #080).',
+  })
+  isRefundable?: boolean;
+
   /**
    * Call minutes / SMS of the plan (#019, test round 4). Without them the
    * order page could neither name a call/SMS plan as such nor show the

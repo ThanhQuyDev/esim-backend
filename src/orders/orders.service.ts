@@ -1,3 +1,4 @@
+import { isPlanRefundable } from '../plans/plan-refund-policy';
 import { AiraloRefundReason } from '../esim-providers/airalo/airalo-refund';
 import { Esim } from '../esims/domain/esim';
 import {
@@ -2429,6 +2430,8 @@ export class OrdersService {
                 call: plan.call ?? null,
                 sms: plan.sms ?? null,
                 locationInfo: this.buildLocationInfo(plan),
+                // Greys the line out of the refund picker (doitac-1410 #080).
+                isRefundable: isPlanRefundable(plan),
               }
             : null,
           orderRequestId: item.orderRequestId,
@@ -2626,6 +2629,26 @@ export class OrdersService {
         // An eSIM of a line refunded whole is already covered by that line.
         selectedEsims = picked.filter(
           (esim) => !selectedItemIds.includes(Number(esim.orderItemId)),
+        );
+      }
+
+      // Lines and eSIMs of a plan that is not refundable cannot be picked
+      // (doitac-1410 #080): the supplier does not take them back.
+      const pickedLineIds = new Set([
+        ...selectedItemIds,
+        ...selectedEsims.map((esim) => Number(esim.orderItemId)),
+      ]);
+      const blocked: string[] = [];
+      for (const item of orderItems) {
+        if (!pickedLineIds.has(Number(item.id))) continue;
+        const plan = await this.plansService.findById(item.planId);
+        if (plan && !isPlanRefundable(plan)) {
+          blocked.push(plan.name ?? `#${item.id}`);
+        }
+      }
+      if (blocked.length) {
+        throw new UnprocessableEntityException(
+          `Gói không hỗ trợ hoàn tiền: ${blocked.join(', ')}`,
         );
       }
 

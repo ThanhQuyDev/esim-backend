@@ -512,6 +512,7 @@ export class PlansService {
       isKyc: updatePlanDto.isKyc,
       isLocalInventory: updatePlanDto.isLocalInventory,
       isDomesticEsim: updatePlanDto.isDomesticEsim,
+      refundableOverride: updatePlanDto.refundableOverride,
       apn: updatePlanDto.apn,
       lastSyncedAt: updatePlanDto.lastSyncedAt,
       isActive: updatePlanDto.isActive,

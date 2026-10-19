@@ -196,6 +196,16 @@ export class CreatePlanDto {
 
   @ApiPropertyOptional({
     type: Boolean,
+    nullable: true,
+    description:
+      'Refund support set by hand; null = by the rule (doitac-1410 #080).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  refundableOverride?: boolean | null;
+
+  @ApiPropertyOptional({
+    type: Boolean,
     description:
       'Exit IP is local, not routed via Hong Kong (needed for TikTok/ChatGPT)',
   })

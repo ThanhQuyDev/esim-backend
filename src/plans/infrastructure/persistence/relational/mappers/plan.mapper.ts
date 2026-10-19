@@ -1,3 +1,7 @@
+import {
+  isPlanRefundable,
+  ruleRefundable,
+} from '../../../../plan-refund-policy';
 import { Plan } from '../../../../domain/plan';
 import { PlanEntity } from '../entities/plan.entity';
 import { DestinationMapper } from '../../../../../destinations/infrastructure/persistence/relational/mappers/destination.mapper';
@@ -53,6 +57,7 @@ export class PlanMapper {
     domainEntity.isKyc = raw.isKyc;
     domainEntity.isLocalInventory = raw.isLocalInventory;
     domainEntity.isDomesticEsim = raw.isDomesticEsim;
+    domainEntity.refundableOverride = raw.refundableOverride ?? null;
     domainEntity.tags = raw.tags ?? null;
     domainEntity.apn = raw.apn;
     domainEntity.activationValidityDays =
@@ -77,6 +82,8 @@ export class PlanMapper {
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
+    domainEntity.isRefundable = isPlanRefundable(domainEntity);
+    domainEntity.refundableByRule = ruleRefundable(domainEntity);
     return domainEntity;
   }
 
@@ -129,6 +136,9 @@ export class PlanMapper {
     persistenceEntity.isKyc = domainEntity.isKyc;
     persistenceEntity.isLocalInventory = domainEntity.isLocalInventory;
     persistenceEntity.isDomesticEsim = domainEntity.isDomesticEsim;
+    if (domainEntity.refundableOverride !== undefined) {
+      persistenceEntity.refundableOverride = domainEntity.refundableOverride;
+    }
     persistenceEntity.tags = domainEntity.tags ?? null;
     persistenceEntity.apn = domainEntity.apn;
     persistenceEntity.activationValidityDays =

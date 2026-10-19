@@ -57,6 +57,12 @@ function makeService() {
   internals.orderItemsService = orderItemsService;
   internals.walletsService = walletsService;
   internals.esimsService = esimsService;
+  // Refundable plans unless a test says otherwise (doitac-1410 #080).
+  internals.plansService = {
+    findById: jest
+      .fn()
+      .mockResolvedValue({ provider: 'esimaccess', name: 'Plan' }),
+  };
   internals.partnersService = { reverseCommissionForOrder: jest.fn() };
   internals.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
 
@@ -79,6 +85,26 @@ function makeService() {
 }
 
 describe('Per-item order refund', () => {
+  it('should refuse a line whose plan is not refundable (#080)', async () => {
+    const { service, walletsService } = makeService();
+    (
+      service as unknown as { plansService: { findById: jest.Mock } }
+    ).plansService.findById.mockResolvedValue({
+      provider: 'viettel',
+      name: 'Viettel 5GB',
+      isLocalInventory: true,
+    });
+
+    await expect(
+      service.refundOrder(
+        7 as never,
+        { mode: 'wallet', amountVnd: 250000, orderItemIds: [12] } as never,
+        1,
+      ),
+    ).rejects.toThrow('Gói không hỗ trợ hoàn tiền: Viettel 5GB');
+    expect(walletsService.refundOrder).not.toHaveBeenCalled();
+  });
+
   it('should cancel only the selected line with its supplier', async () => {
     const { service, cancelled } = makeService();
 
