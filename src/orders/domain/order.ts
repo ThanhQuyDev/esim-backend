@@ -162,6 +162,9 @@ export class Order {
   /** Fraud-watch signals for affiliate orders (#036). */
   buyerIpHash?: string | null;
   buyerVisitorId?: string | null;
+  /** The buyer's browser when the order was placed (doitac-1410 #082). */
+  userAgent?: string | null;
+  deviceType?: string | null;
   attributionWarning?: string | null;
   /** Where a partner order's eSIM QR codes go (doitac-1410 #034). */
   deliveryEmail?: string | null;

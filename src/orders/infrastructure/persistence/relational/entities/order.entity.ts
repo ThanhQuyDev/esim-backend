@@ -143,6 +143,15 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   buyerVisitorId?: string | null;
 
+  /** The buyer's browser when the order was placed (doitac-1410 #082). */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  userAgent?: string | null;
+
+  /** desktop / mobile / tablet, for the overview chart (doitac-1410 #083). */
+  @Index()
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  deviceType?: string | null;
+
   @Column({ type: String, nullable: true })
   attributionWarning?: string | null;
 

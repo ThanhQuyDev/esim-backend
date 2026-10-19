@@ -383,6 +383,20 @@ export class AdminOrderAfterRefundDto {
   commissionVnd?: number | null;
 }
 
+export class AdminOrderDeviceDto {
+  @ApiPropertyOptional({
+    enum: ['desktop', 'mobile', 'tablet'],
+    nullable: true,
+  })
+  type: 'desktop' | 'mobile' | 'tablet' | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'Chrome 141' })
+  browser: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'Windows' })
+  os: string | null;
+}
+
 export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   id: number;
@@ -427,6 +441,14 @@ export class AdminOrderDetailDto {
 
   @ApiProperty({ type: String })
   orderNumber: string;
+
+  @ApiPropertyOptional({
+    type: () => AdminOrderDeviceDto,
+    nullable: true,
+    description:
+      'Device the order was placed from; null for CMS orders and older ones (doitac-1410 #082).',
+  })
+  device?: AdminOrderDeviceDto | null;
 
   @ApiProperty({ type: String })
   status: string;

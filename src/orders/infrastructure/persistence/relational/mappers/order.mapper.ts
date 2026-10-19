@@ -40,6 +40,8 @@ export class OrderMapper {
     // (doitac-1410 #025).
     domainEntity.buyerIpHash = raw.buyerIpHash ?? null;
     domainEntity.buyerVisitorId = raw.buyerVisitorId ?? null;
+    domainEntity.userAgent = raw.userAgent ?? null;
+    domainEntity.deviceType = raw.deviceType ?? null;
     domainEntity.attributionWarning = raw.attributionWarning ?? null;
     domainEntity.deliveryEmail = raw.deliveryEmail ?? null;
     domainEntity.referralDiscountVndAmount = Number(
@@ -122,6 +124,8 @@ export class OrderMapper {
     persistenceEntity.attributedPartnerId = domainEntity.attributedPartnerId;
     persistenceEntity.buyerIpHash = domainEntity.buyerIpHash;
     persistenceEntity.buyerVisitorId = domainEntity.buyerVisitorId;
+    persistenceEntity.userAgent = domainEntity.userAgent;
+    persistenceEntity.deviceType = domainEntity.deviceType;
     persistenceEntity.attributionWarning = domainEntity.attributionWarning;
     persistenceEntity.deliveryEmail = domainEntity.deliveryEmail;
     persistenceEntity.referralDiscountVndAmount =

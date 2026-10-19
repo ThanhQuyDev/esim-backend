@@ -1,3 +1,4 @@
+import { deviceInfo, deviceType, storedUserAgent } from '../utils/device-info';
 import { isPlanRefundable } from '../plans/plan-refund-policy';
 import { AiraloRefundReason } from '../esim-providers/airalo/airalo-refund';
 import { Esim } from '../esims/domain/esim';
@@ -555,6 +556,9 @@ export class OrdersService {
       buyerIpHash: fraudSignals.ipHash,
       buyerVisitorId: fraudSignals.visitorId,
       attributionWarning: fraudSignals.warning,
+      // "Thiết bị" on the order and the overview chart (doitac-1410 #082, #083).
+      userAgent: storedUserAgent(clientUserAgent),
+      deviceType: deviceType(clientUserAgent),
       referralDiscountVndAmount: pricing.referralDiscountVndAmount,
       walletSpentVndAmount: pricing.walletSpentVndAmount,
       payableVndPrice: pricing.payableVndPrice,
@@ -885,6 +889,9 @@ export class OrdersService {
       buyerIpHash: fraudSignals.ipHash,
       buyerVisitorId: fraudSignals.visitorId,
       attributionWarning: fraudSignals.warning,
+      // "Thiết bị" on the order and the overview chart (doitac-1410 #082, #083).
+      userAgent: storedUserAgent(clientUserAgent),
+      deviceType: deviceType(clientUserAgent),
       referralDiscountVndAmount: pricing.referralDiscountVndAmount,
       walletSpentVndAmount: pricing.walletSpentVndAmount,
       payableVndPrice: pricing.payableVndPrice,
@@ -2369,6 +2376,8 @@ export class OrdersService {
           }
         : null,
       orderNumber: order.orderNumber,
+      // Desktop / mobile / tablet and the browser it was bought from (#082).
+      device: order.userAgent ? deviceInfo(order.userAgent) : null,
       status: order.status,
       orderType: order.orderType ?? 'BUY_NEW',
       topup,
