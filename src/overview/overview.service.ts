@@ -16,6 +16,7 @@ import {
   FinancialComparisonResponseDto,
   FinancialComparisonTotalsDto,
   MAX_OVERVIEW_LIMIT,
+  OrdersByDeviceResponseDto,
   OVERVIEW_PROVIDERS,
   OverviewDatePreset,
   OverviewDateRangeQueryDto,
@@ -330,6 +331,41 @@ export class OverviewService {
     return {
       providers,
       series: [...rowsByBucket.values()],
+    };
+  }
+
+  /**
+   * Successful orders by the device they were placed from (doitac-1410 #083):
+   * an order counts once, however many lines it has, when one of its lines
+   * completed. Same date / supplier filter as the other blocks.
+   */
+  async getOrdersByDevice(
+    query: OverviewProviderFilterQueryDto,
+  ): Promise<OrdersByDeviceResponseDto> {
+    const deviceExpression = `COALESCE(${ORDER_ALIAS}."deviceType", 'unknown')`;
+    const rows = await this.createCompletedItemsQuery(ORDER_ITEM_ALIAS, query)
+      .select(deviceExpression, 'deviceType')
+      .addSelect(`COUNT(DISTINCT ${ORDER_ALIAS}.id)`, 'orders')
+      .groupBy(deviceExpression)
+      .getRawMany<{ deviceType?: RawValue; orders?: RawValue }>();
+
+    const order = ['desktop', 'mobile', 'tablet', 'unknown'] as const;
+    const counts = new Map<string, number>(
+      rows.map((row) => [String(row.deviceType), this.toNumber(row.orders)]),
+    );
+    const total = [...counts.values()].reduce((sum, n) => sum + n, 0);
+    return {
+      total,
+      data: order
+        .filter((type) => (counts.get(type) ?? 0) > 0)
+        .map((type) => {
+          const orders = counts.get(type) ?? 0;
+          return {
+            deviceType: type,
+            orders,
+            percent: total ? Math.round((orders / total) * 1000) / 10 : 0,
+          };
+        }),
     };
   }
 

@@ -268,6 +268,34 @@ export class TopDestinationItemDto {
   revenue!: number;
 }
 
+/** Successful orders per kind of device (doitac-1410 #083). */
+export class OrdersByDeviceItemDto {
+  @ApiProperty({
+    enum: ['desktop', 'mobile', 'tablet', 'unknown'],
+    description:
+      '"unknown": placed in the CMS, or before devices were recorded.',
+  })
+  deviceType!: 'desktop' | 'mobile' | 'tablet' | 'unknown';
+
+  @ApiProperty({ type: Number, example: 42 })
+  orders!: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 61.8,
+    description: 'Share of total, %.',
+  })
+  percent!: number;
+}
+
+export class OrdersByDeviceResponseDto {
+  @ApiProperty({ type: [OrdersByDeviceItemDto] })
+  data!: OrdersByDeviceItemDto[];
+
+  @ApiProperty({ type: Number, example: 68 })
+  total!: number;
+}
+
 export class TopDestinationsResponseDto {
   @ApiProperty({ type: [TopDestinationItemDto] })
   data!: TopDestinationItemDto[];

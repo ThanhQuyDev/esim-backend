@@ -19,6 +19,7 @@ import { RolesGuard } from '../roles/roles.guard';
 import {
   FinancialComparisonQueryDto,
   FinancialComparisonResponseDto,
+  OrdersByDeviceResponseDto,
   OverviewProviderFilterQueryDto,
   OverviewResponseDto,
   OverviewSummaryResponseDto,
@@ -65,6 +66,19 @@ export class OverviewController {
     @Query() query: ProviderComparisonQueryDto,
   ): Promise<ProviderComparisonResponseDto> {
     return this.overviewService.getProviderComparison(query);
+  }
+
+  @ApiOperation({
+    summary:
+      'Successful orders by desktop / mobile / tablet (doitac-1410 #083)',
+  })
+  @ApiOkResponse({ type: OrdersByDeviceResponseDto })
+  @Get('orders-by-device')
+  @HttpCode(HttpStatus.OK)
+  getOrdersByDevice(
+    @Query() query: OverviewProviderFilterQueryDto,
+  ): Promise<OrdersByDeviceResponseDto> {
+    return this.overviewService.getOrdersByDevice(query);
   }
 
   @ApiOperation({ summary: 'Get top destinations by purchased plans' })
