@@ -2432,6 +2432,9 @@ export class OrdersService {
                 locationInfo: this.buildLocationInfo(plan),
                 // Greys the line out of the refund picker (doitac-1410 #080).
                 isRefundable: isPlanRefundable(plan),
+                // "Thông tin kỹ thuật" of each eSIM (doitac-1410 #081).
+                ipExport: plan.ipExport ?? null,
+                topUp: !!plan.topUp,
               }
             : null,
           orderRequestId: item.orderRequestId,

@@ -99,6 +99,12 @@ export class AdminOrderItemPlanDto {
   })
   isRefundable?: boolean;
 
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'SG' })
+  ipExport?: string | null;
+
+  @ApiPropertyOptional({ type: Boolean })
+  topUp?: boolean;
+
   /**
    * Call minutes / SMS of the plan (#019, test round 4). Without them the
    * order page could neither name a call/SMS plan as such nor show the

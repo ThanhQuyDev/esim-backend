@@ -73,3 +73,13 @@ export function networkSpeed(
     .map((g) => `${g}G`)
     .join('/');
 }
+
+/**
+ * The exit IP country a supplier writes into the plan name — Billion's
+ * "China-SGIP-1GB" goes out through Singapore (doitac-1410 #081). Null when
+ * the name does not say.
+ */
+export function exitIpFromName(name: string | null | undefined): string | null {
+  const match = /(?:^|[^A-Za-z])([A-Z]{2})IP(?:[^A-Za-z]|$)/.exec(name ?? '');
+  return match ? match[1] : null;
+}

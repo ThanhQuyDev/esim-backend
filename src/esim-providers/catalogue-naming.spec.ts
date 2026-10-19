@@ -1,4 +1,5 @@
 import {
+  exitIpFromName,
   isCountryCodeList,
   networkSpeed,
   shortRegionName,
@@ -39,5 +40,22 @@ describe('catalogue naming (#003, test round 4)', () => {
     expect(networkSpeed(['[4G;LTE]', '[5G]'])).toBe('4G/5G');
     expect(networkSpeed(['5G', '4G', '3G'])).toBe('3G/4G/5G');
     expect(networkSpeed(['', null])).toBeNull();
+  });
+});
+
+describe('exitIpFromName (doitac-1410 #081)', () => {
+  it('should read the exit IP Billion writes into the name', () => {
+    expect(exitIpFromName('China-SGIP-1GB,384kbps - 3 days')).toBe('SG');
+    expect(
+      exitIpFromName('China Hong Kong Macao-SGIP-500MB/day,384kbps - 15 days'),
+    ).toBe('SG');
+    expect(exitIpFromName('Japan-HKIP-3GB - 5 days')).toBe('HK');
+  });
+
+  it('should not invent one when the name does not say', () => {
+    expect(exitIpFromName('USA Canada-3GB,128kpbs - 20 days')).toBeNull();
+    expect(exitIpFromName('VIP Asia 5GB')).toBeNull();
+    expect(exitIpFromName('Multiple-IPs plan')).toBeNull();
+    expect(exitIpFromName(null)).toBeNull();
   });
 });

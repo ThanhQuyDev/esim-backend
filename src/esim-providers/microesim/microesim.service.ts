@@ -431,6 +431,8 @@ export class MicroEsimService {
       isAbleMultidate: false,
       isKyc,
       apn: item.apn || null,
+      // Exit IP as the catalogue states it, shown on the order (doitac-1410 #081).
+      ipExport: item.ip?.trim() || null,
       // `validity_period` is free text ("180", "180 days"), so the day count is
       // pulled out rather than trusted to be numeric (#070).
       activationValidityDays: parseValidityDays(item.validity_period),

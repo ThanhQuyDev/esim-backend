@@ -31,7 +31,12 @@ import {
   isRawBillionRegionName,
   billionActivationUntil,
 } from './billion-catalogue';
-import { networkSpeed, slugify, uniqueOperators } from '../catalogue-naming';
+import {
+  exitIpFromName,
+  networkSpeed,
+  slugify,
+  uniqueOperators,
+} from '../catalogue-naming';
 
 const PROVIDER = 'billion';
 
@@ -492,6 +497,8 @@ export class BillionService {
       isAbleMultidate: false,
       isKyc: false,
       apn,
+      // Billion states the exit IP in the name only ("China-SGIP-1GB", #081).
+      ipExport: exitIpFromName(variant.name),
       // The product's own "activate before" date, when it states one (#047).
       activationValidUntil: billionActivationUntil(
         product.validityPeriod,
