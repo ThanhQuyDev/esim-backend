@@ -89,6 +89,7 @@ function makeService(existingPlan: Record<string, unknown> | null) {
   };
   const planRepository = {
     findBySlug: jest.fn().mockResolvedValue(existingPlan),
+    slugOwner: jest.fn().mockResolvedValue(null),
     update: jest.fn(() => {
       throw new Error(
         'Plan prices must be updated through PlansService so the USD columns are converted (#009)',

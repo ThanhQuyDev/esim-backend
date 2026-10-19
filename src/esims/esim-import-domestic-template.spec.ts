@@ -132,7 +132,10 @@ function makeService(
       }),
       localRetailVnd: jest.fn((cost: number) => Promise.resolve(cost)),
     } as never,
-    { findBySlug: jest.fn().mockResolvedValue(existingPlan) } as never,
+    {
+      findBySlug: jest.fn().mockResolvedValue(existingPlan),
+      slugOwner: jest.fn().mockResolvedValue(null),
+    } as never,
     {
       findByCountryCode: jest.fn().mockResolvedValue({ id: 5 }),
       findByName: jest.fn().mockResolvedValue(null),

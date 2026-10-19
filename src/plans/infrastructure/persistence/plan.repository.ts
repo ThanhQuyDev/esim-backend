@@ -57,6 +57,9 @@ export abstract class PlanRepository {
 
   abstract markCheapestPlans(): Promise<void>;
 
+  /** Undo a soft delete, so a re-import can use the plan again. */
+  abstract restore(id: Plan['id']): Promise<void>;
+
   /**
    * Take every active plan of one supplier off sale, flagging the rows as
    * `disabledByProvider` so they can be restored later (#005). Returns the

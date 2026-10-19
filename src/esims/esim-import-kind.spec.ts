@@ -83,6 +83,7 @@ function makeService(existingPlan: Record<string, unknown> | null = null) {
     } as never,
     {
       findBySlug: jest.fn().mockResolvedValue(existingPlan),
+      slugOwner: jest.fn().mockResolvedValue(null),
       update: jest.fn(),
     } as never,
     {

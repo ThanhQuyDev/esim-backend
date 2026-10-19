@@ -273,6 +273,10 @@ export class PlansRelationalRepository implements PlanRepository {
     return entity ? PlanMapper.toDomain(entity) : null;
   }
 
+  async restore(id: Plan['id']): Promise<void> {
+    await this.plansRepository.restore(Number(id));
+  }
+
   async slugOwner(slug: string): Promise<NullableType<Plan>> {
     const entity = await this.plansRepository.findOne({
       where: { slug },

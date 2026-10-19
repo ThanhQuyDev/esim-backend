@@ -304,12 +304,31 @@ export class EsimsImportService {
           if (planCache.has(planSlug)) {
             planId = planCache.get(planSlug)!;
           } else {
-            const existingPlan = await this.planRepository.findBySlug(planSlug);
+            let existingPlan = await this.planRepository.findBySlug(planSlug);
+            // A plan deleted in the CMS still owns its slug, so creating it
+            // again failed every row with "UQ_plan_slug" and nothing could be
+            // imported for it any more. Bring the deleted plan back instead.
+            let restoredPlan = false;
+            if (!existingPlan) {
+              const owner = await this.planRepository.slugOwner(planSlug);
+              if (owner?.deletedAt) {
+                await this.planRepository.restore(owner.id);
+                existingPlan = await this.planRepository.findBySlug(planSlug);
+                restoredPlan = !!existingPlan;
+                this.logger.log(
+                  `Restored deleted plan "${planSlug}" (id=${owner.id}) for re-import`,
+                );
+              }
+            }
             if (existingPlan) {
               planId = existingPlan.id;
               planCache.set(planSlug, planId);
 
               const planPatch: Record<string, unknown> = {};
+              // Re-imported after a delete: it is on sale again.
+              if (restoredPlan && existingPlan.isActive === false) {
+                planPatch.isActive = true;
+              }
 
               // Backfill destinationId on existing plan if it was NULL
               if (!existingPlan.destinationId && destinationId) {

@@ -74,7 +74,10 @@ function makeService() {
         return Promise.resolve({ id: 7 });
       }),
     } as never,
-    { findBySlug: jest.fn().mockResolvedValue(null) } as never,
+    {
+      findBySlug: jest.fn().mockResolvedValue(null),
+      slugOwner: jest.fn().mockResolvedValue(null),
+    } as never,
     {
       findByCountryCode: jest.fn().mockResolvedValue({ id: 5 }),
       findByName: jest.fn().mockResolvedValue(null),
