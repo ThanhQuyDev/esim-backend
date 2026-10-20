@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -7,10 +8,15 @@ import {
   Param,
   Post,
   Request,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { PartnersService } from '../partners/partners.service';
 import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
@@ -19,6 +25,11 @@ import { CreatePartnerPurchaseDto } from './dto/create-partner-purchase.dto';
 import { CreatePartnerCartPurchaseDto } from './dto/create-partner-cart-purchase.dto';
 import { PartnerEsimTopupDto } from './dto/partner-esim-topup.dto';
 import { PartnerPurchaseService } from './partner-purchase.service';
+import {
+  ORDER_IMPORT_MAX_BYTES,
+  orderImportTemplate,
+} from '../utils/order-import-file';
+import { downloadFilename } from '../utils/download-filename';
 
 /**
  * Hai hành động ghi của luồng đối tác tự mua hàng (#046).
@@ -66,6 +77,45 @@ export class PartnerPurchaseController {
   ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
     return this.partnersService.quoteCart(partner.id, dto.items);
+  }
+
+  /** File mẫu đặt nhiều eSIM: mã gói, số lượng, email nhận QR (doitac-1410 #084). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/purchases/cart/import-template')
+  async cartImportTemplate(@Res() res: Response): Promise<void> {
+    const buffer = await orderImportTemplate(true);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${downloadFilename('File-mau-dat-nhieu-esim')}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
+  /** Đọc file đặt nhiều eSIM và báo giá, chưa trừ ví (doitac-1410 #084). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/purchases/cart/import-file')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: ORDER_IMPORT_MAX_BYTES } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  async previewCartFile(
+    @Request() req: { user: { id: number } },
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Chưa chọn file.');
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.previewCartFile(
+      partner.id,
+      file.buffer,
+      file.originalname,
+    );
   }
 
   /** Thanh toán cả giỏ hàng trong một đơn (doitac-1410 #035). */

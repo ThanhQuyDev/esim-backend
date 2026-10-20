@@ -65,6 +65,7 @@ import { InvoiceStatus } from '../invoices/invoices.enum';
 import { PartnersService } from '../partners/partners.service';
 import { SessionShapeEnum } from '../partners/partners.enum';
 import { generateOrderNumber } from '../utils/order-number';
+import { parseOrderImportFile } from '../utils/order-import-file';
 
 const VND_ROUNDING_UNIT = 1000;
 
@@ -1565,6 +1566,65 @@ export class OrdersService {
         `submitProviders: muted email for order ${order.orderNumber}`,
       );
     }
+  }
+
+  /**
+   * The rows of an order file for "Đặt đơn hộ khách" (doitac-1410 #084), each
+   * resolved to the plan it names — nothing is ordered here. The admin sees
+   * the plans filled into the dialog and places the order as before.
+   */
+  async previewManualOrderFile(
+    buffer: Buffer,
+    filename: string,
+  ): Promise<{
+    lines: {
+      row: number;
+      slug: string;
+      quantity: number;
+      plan: {
+        id: number;
+        slug: string;
+        packageCode: string;
+        label: string;
+      } | null;
+      error: string | null;
+    }[];
+    errorCount: number;
+  }> {
+    // One manual order takes at most 20 plans (SubmitManualOrderDto).
+    const rows = await parseOrderImportFile(buffer, filename, {
+      maxRows: 20,
+      withEmail: false,
+    });
+    const plans = new Map<
+      string,
+      Awaited<ReturnType<PlansService['findBySlug']>>
+    >();
+    for (const slug of new Set(rows.filter((r) => r.slug).map((r) => r.slug))) {
+      plans.set(slug, await this.plansService.findBySlug(slug));
+    }
+    const lines = rows.map((row) => {
+      const plan = row.slug ? plans.get(row.slug) : null;
+      let error = row.error;
+      if (!error && !plan) error = `Không thấy gói có mã "${row.slug}".`;
+      else if (!error && plan && !plan.isActive) error = 'Gói đang ngừng bán.';
+      return {
+        row: row.row,
+        slug: row.slug,
+        quantity: row.quantity,
+        plan:
+          plan && !error
+            ? {
+                id: Number(plan.id),
+                slug: plan.slug,
+                packageCode: plan.providerPlanId,
+                label: `${plan.name} · ${Number(plan.vndPrice).toLocaleString('vi-VN')}đ`,
+              }
+            : null,
+        error,
+      };
+    });
+    return { lines, errorCount: lines.filter((l) => l.error).length };
   }
 
   /**

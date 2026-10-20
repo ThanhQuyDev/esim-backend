@@ -1,17 +1,25 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseIntPipe,
   Post,
   Request,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import {
   ApiBearerAuth,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -24,6 +32,11 @@ import { RolesGuard } from '../roles/roles.guard';
 import { OrdersService } from './orders.service';
 import { Order } from './domain/order';
 import { SubmitManualOrderDto } from './dto/submit-manual-order.dto';
+import {
+  ORDER_IMPORT_MAX_BYTES,
+  orderImportTemplate,
+} from '../utils/order-import-file';
+import { downloadFilename } from '../utils/download-filename';
 
 @ApiBearerAuth()
 @ApiTags('Admin Orders')
@@ -43,6 +56,39 @@ export class AdminOrdersController {
    * is expected to use the `resend-esim-email` endpoint after verifying that
    * the offline payment landed.
    */
+  /** The order file template, "Mã gói cước" + "Số lượng" (doitac-1410 #084). */
+  @Get('import-template')
+  @ApiOperation({ summary: 'Template of the manual order file (.xlsx)' })
+  async manualOrderTemplate(@Res() res: Response): Promise<void> {
+    const buffer = await orderImportTemplate(false);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${downloadFilename('File-mau-dat-don-ho')}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
+  /**
+   * Reads an order file and resolves each row to its plan, for the dialog to
+   * fill in (doitac-1410 #084). Places nothing.
+   */
+  @Post('import-file')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: ORDER_IMPORT_MAX_BYTES } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Preview a manual order file (.xlsx / .csv)' })
+  previewManualOrderFile(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Chưa chọn file.');
+    return this.ordersService.previewManualOrderFile(
+      file.buffer,
+      file.originalname,
+    );
+  }
+
   @Post('submit-manual')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({

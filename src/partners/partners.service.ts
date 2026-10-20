@@ -1,4 +1,5 @@
 import { downloadFilename } from '../utils/download-filename';
+import { parseOrderImportFile } from '../utils/order-import-file';
 import { vnFold, vnFoldSql } from '../utils/vn-fold';
 import { sanitizeNotificationHtml } from './notification-html';
 import { partnerCommissionAmount } from './partner-commission-amount';
@@ -8789,6 +8790,133 @@ export class PartnersService {
       balanceVnd,
       rejection: lineRejection
         ? `${lineRejection.name}: ${lineRejection.rejection}`
+        : shortBy > 0
+          ? `Số dư ví không đủ: cần ${totalVnd.toLocaleString('vi-VN')}đ, còn thiếu ${shortBy.toLocaleString('vi-VN')}đ. Vui lòng nạp thêm.`
+          : null,
+    };
+  }
+
+  /**
+   * An order file for the cart (doitac-1410 #084): each row resolved to its
+   * plan and priced at this partner's agent price, grouped into one order per
+   * "Email nhận QR" (blank = the email typed in the dialog). Nothing is
+   * charged here; each group is then paid through the cart checkout, which
+   * prices it again.
+   */
+  async previewCartFile(
+    partnerId: number,
+    buffer: Buffer,
+    filename: string,
+  ): Promise<{
+    lines: {
+      row: number;
+      slug: string;
+      quantity: number;
+      email: string | null;
+      planId: number | null;
+      name: string | null;
+      destinationName: string | null;
+      unitPriceVnd: number;
+      totalVnd: number;
+      error: string | null;
+    }[];
+    orders: {
+      email: string | null;
+      planCount: number;
+      esimCount: number;
+      totalVnd: number;
+    }[];
+    totalVnd: number;
+    balanceVnd: number;
+    errorCount: number;
+    rejection: string | null;
+  }> {
+    // The cart checkout takes at most 50 plans (CreatePartnerCartPurchaseDto).
+    const rows = await parseOrderImportFile(buffer, filename, {
+      maxRows: 50,
+      withEmail: true,
+    });
+
+    const slugs = [...new Set(rows.filter((r) => r.slug).map((r) => r.slug))];
+    const found: {
+      id: number;
+      slug: string;
+      name: string;
+      destinationName: string | null;
+    }[] = slugs.length
+      ? await this.dataSource.query(
+          `SELECT p.id, p.slug, p.name,
+                  COALESCE(NULLIF(d."titleVi", ''), d.name,
+                           NULLIF(r."titleVi", ''), r.name) AS "destinationName"
+             FROM plan p
+             LEFT JOIN destination d ON d.id = p."destinationId"
+             LEFT JOIN region r ON r.id = p."regionId"
+            WHERE p.slug = ANY($1) AND p."deletedAt" IS NULL`,
+          [slugs],
+        )
+      : [];
+    const bySlug = new Map(found.map((p) => [p.slug, p]));
+
+    const lines = rows.map((row) => {
+      const plan = row.slug ? bySlug.get(row.slug) : undefined;
+      return {
+        row: row.row,
+        slug: row.slug,
+        quantity: row.quantity,
+        email: row.email,
+        planId: plan ? Number(plan.id) : null,
+        name: plan?.name ?? null,
+        destinationName: plan?.destinationName ?? null,
+        unitPriceVnd: 0,
+        totalVnd: 0,
+        error:
+          row.error ??
+          (plan ? null : `Không thấy gói có mã "${row.slug}" trong bảng giá.`),
+      };
+    });
+
+    // Priced per order, by the same quote the checkout shows.
+    const groups = new Map<string, typeof lines>();
+    for (const line of lines) {
+      if (line.error) continue;
+      const key = line.email ?? '';
+      groups.set(key, [...(groups.get(key) ?? []), line]);
+    }
+    const orders: Awaited<
+      ReturnType<PartnersService['previewCartFile']>
+    >['orders'] = [];
+    for (const [key, group] of groups) {
+      const quote = await this.quoteCart(
+        partnerId,
+        group.map((l) => ({ planId: l.planId!, quantity: l.quantity })),
+      );
+      for (const line of group) {
+        const priced = quote.lines.find((q) => q.planId === line.planId);
+        line.unitPriceVnd = priced?.unitPriceVnd ?? 0;
+        line.totalVnd = (priced?.unitPriceVnd ?? 0) * line.quantity;
+        if (priced?.rejection) line.error = priced.rejection;
+      }
+      orders.push({
+        email: key || null,
+        planCount: quote.planCount,
+        esimCount: quote.esimCount,
+        totalVnd: quote.totalVnd,
+      });
+    }
+
+    const wallet = await this.getOrCreateWallet(partnerId);
+    const balanceVnd = Number(wallet.balanceVnd);
+    const totalVnd = orders.reduce((sum, o) => sum + o.totalVnd, 0);
+    const errorCount = lines.filter((l) => l.error).length;
+    const shortBy = totalVnd - balanceVnd;
+    return {
+      lines,
+      orders,
+      totalVnd,
+      balanceVnd,
+      errorCount,
+      rejection: errorCount
+        ? `${errorCount} dòng có lỗi, hãy sửa file rồi nhập lại.`
         : shortBy > 0
           ? `Số dư ví không đủ: cần ${totalVnd.toLocaleString('vi-VN')}đ, còn thiếu ${shortBy.toLocaleString('vi-VN')}đ. Vui lòng nạp thêm.`
           : null,
