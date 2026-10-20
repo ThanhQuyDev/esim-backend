@@ -28,6 +28,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      # Partner documents (doitac-1410 #013) are stored on disk, not in the
+      # image: kept on the host so a rebuild does not delete them.
+      - ./private:/app/private
 
 volumes:
   postgres-data:
