@@ -118,9 +118,11 @@ export const ESIM_INSTALL_GUIDE_PATH = '/huong-dan-cai-dat-esim';
 
 /**
  * Where a rejected applicant fills the form in again (#003). The rejection
- * email used to say "bạn có thể nộp lại hồ sơ" without saying where.
+ * email used to say "bạn có thể nộp lại hồ sơ" without saying where. The
+ * public sign-up form on the storefront (esim.vn/dang-ky-doi-tac, #013), not
+ * the partner portal's own copy of it.
  */
-export const PARTNER_REGISTER_PATH = '/register/partner';
+export const PARTNER_REGISTER_PATH = '/dang-ky-doi-tac';
 
 /** Outcome of an affiliate application, either way (#095). */
 export interface PartnerDecisionMailData {
@@ -618,9 +620,10 @@ export class MailService {
     const context = {
       contactName: data.contactName,
       reason: data.reason ?? null,
-      // Both links live on the partner portal, not the storefront (#003, #004).
+      // Sign-in on the partner portal (#004); the sign-up form is the public
+      // one on the storefront, esim.vn/dang-ky-doi-tac.
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
-      registerUrl: this.partnerPortalUrl(PARTNER_REGISTER_PATH),
+      registerUrl: this.frontendUrl(PARTNER_REGISTER_PATH).toString(),
       app_name: appName,
       logoUrl: BRAND_LOGO_URL,
       supportEmail: SUPPORT_EMAIL,

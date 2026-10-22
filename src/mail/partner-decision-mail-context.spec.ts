@@ -73,7 +73,8 @@ describe('MailService — partner decision email contents', () => {
     const html = sendMail.mock.calls[0][0].html as string;
     // "Bạn có thể nộp lại hồ sơ" without a link was an instruction nobody
     // could follow.
-    expect(html).toContain(`href="${PORTAL}${PARTNER_REGISTER_PATH}"`);
+    expect(html).toContain(`href="${FRONTEND}${PARTNER_REGISTER_PATH}"`);
+    expect(html).toContain('href="https://esim.vn/dang-ky-doi-tac"');
   });
 
   it('should point the approval email at the partner portal sign-in (#004)', async () => {
