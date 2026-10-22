@@ -6,7 +6,11 @@ import { SyncOrchestratorService } from './sync-orchestrator.service';
  * mock.
  */
 function buildService(
-  opts: { airaloFails?: boolean; hold?: Promise<void> } = {},
+  opts: {
+    airaloFails?: boolean;
+    hold?: Promise<void>;
+    switchedOff?: string[];
+  } = {},
 ) {
   const order: string[] = [];
   const step = (name: string, fail = false) =>
@@ -26,6 +30,15 @@ function buildService(
       refreshProviders: step('refresh'),
     },
     margins: { recalculateAllPlanPrices: step('margins') },
+    // Rows of "Ngưng bán" (#005); the query asks for isEnabled = false.
+    salesStatus: {
+      find: jest.fn().mockResolvedValue(
+        (opts.switchedOff ?? []).map((provider) => ({
+          provider,
+          isEnabled: false,
+        })),
+      ),
+    },
   };
   const service = new SyncOrchestratorService(
     deps.airalo as never,
@@ -34,6 +47,7 @@ function buildService(
     deps.billion as never,
     deps.plans as never,
     deps.margins as never,
+    deps.salesStatus as never,
   );
   return { service, order, deps };
 }
@@ -60,6 +74,27 @@ describe('SyncOrchestratorService — manual full sync (doitac-1410 #074)', () =
       errors: [],
     });
     expect(service.getStatus().finishedAt).toBeInstanceOf(Date);
+  });
+
+  it('should leave a switched-off supplier alone, so its plans stay off sale (#005)', async () => {
+    const { service, order, deps } = buildService({
+      switchedOff: ['billion', 'microesim'],
+    });
+
+    await service.runFullSync('cron');
+
+    expect(deps.salesStatus.find).toHaveBeenCalledWith({
+      where: { isEnabled: false },
+    });
+    expect(order).toEqual([
+      'airalo',
+      'esimaccess',
+      'margins',
+      'vnd',
+      'cheapest',
+      'refresh',
+    ]);
+    expect(service.getStatus().errors).toEqual([]);
   });
 
   it('should carry on past a failing supplier and say which one failed', async () => {

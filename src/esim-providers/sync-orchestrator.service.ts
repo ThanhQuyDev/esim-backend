@@ -1,11 +1,14 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AiraloService } from './airalo/airalo.service';
 import { EsimAccessService } from './esimaccess/esimaccess.service';
 import { MicroEsimService } from './microesim/microesim.service';
 import { BillionService } from './billion/billion.service';
 import { PlansService } from '../plans/plans.service';
 import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
+import { ProviderSalesStatusEntity } from '../providers/infrastructure/persistence/relational/entities/provider-sales-status.entity';
 
 /** Where the full catalogue sync stands, for the CMS (doitac-1410 #074). */
 export interface FullSyncStatus {
@@ -36,6 +39,8 @@ export class SyncOrchestratorService implements OnModuleInit {
     private readonly billionService: BillionService,
     private readonly plansService: PlansService,
     private readonly profitMarginsService: ProfitMarginsService,
+    @InjectRepository(ProviderSalesStatusEntity)
+    private readonly salesStatus: Repository<ProviderSalesStatusEntity>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -89,32 +94,31 @@ export class SyncOrchestratorService implements OnModuleInit {
       'Starting full sync: Airalo → EsimAccess → Recalculate → Mark Cheapest',
     );
 
-    try {
-      await this.airaloService.syncPlans();
-    } catch (error: any) {
-      this.logger.error(`Airalo sync failed: ${error.message}`);
-      this.status.errors.push(`Airalo: ${error.message}`);
-    }
-
-    try {
-      await this.esimAccessService.syncPlans();
-    } catch (error: any) {
-      this.logger.error(`EsimAccess sync failed: ${error.message}`);
-      this.status.errors.push(`eSIM Access: ${error.message}`);
-    }
-
-    try {
-      await this.microEsimService.syncPlans();
-    } catch (error: any) {
-      this.logger.error(`MicroEsim sync failed: ${error.message}`);
-      this.status.errors.push(`MicroEsim: ${error.message}`);
-    }
-
-    try {
-      await this.billionService.syncPlans();
-    } catch (error: any) {
-      this.logger.error(`Billion sync failed: ${error.message}`);
-      this.status.errors.push(`Billion: ${error.message}`);
+    // A supplier switched off in "Ngưng bán" (#005) is not synced: its
+    // plans would come back on sale, since the switch only takes off the plans
+    // that existed when it was flipped.
+    const disabled = new Set(
+      (await this.salesStatus.find({ where: { isEnabled: false } })).map(
+        (row) => row.provider,
+      ),
+    );
+    const suppliers: [string, string, () => Promise<unknown>][] = [
+      ['airalo', 'Airalo', () => this.airaloService.syncPlans()],
+      ['esimaccess', 'eSIM Access', () => this.esimAccessService.syncPlans()],
+      ['microesim', 'MicroEsim', () => this.microEsimService.syncPlans()],
+      ['billion', 'Billion', () => this.billionService.syncPlans()],
+    ];
+    for (const [slug, label, sync] of suppliers) {
+      if (disabled.has(slug)) {
+        this.logger.log(`${label} sync skipped: supplier is switched off`);
+        continue;
+      }
+      try {
+        await sync();
+      } catch (error: any) {
+        this.logger.error(`${label} sync failed: ${error.message}`);
+        this.status.errors.push(`${label}: ${error.message}`);
+      }
     }
 
     this.logger.log('Recalculating prices by tiers...');

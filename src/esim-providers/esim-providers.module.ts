@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EsimAccessService } from './esimaccess/esimaccess.service';
 import { AiraloService } from './airalo/airalo.service';
@@ -18,6 +19,7 @@ import { EsimsModule } from '../esims/esims.module';
 import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
 import { OrdersModule } from '../orders/orders.module';
+import { ProviderSalesStatusEntity } from '../providers/infrastructure/persistence/relational/entities/provider-sales-status.entity';
 
 @Module({
   // "Cập nhật lại toàn bộ sản phẩm" (doitac-1410 #074).
@@ -25,6 +27,8 @@ import { OrdersModule } from '../orders/orders.module';
   imports: [
     ScheduleModule.forRoot(),
     HttpModule,
+    // Read by the full sync, to leave switched-off suppliers alone (#005).
+    TypeOrmModule.forFeature([ProviderSalesStatusEntity]),
     PlansModule,
     DestinationsModule,
     RegionsModule,
