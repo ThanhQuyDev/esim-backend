@@ -17,4 +17,6 @@ export default registerAs<SepayConfig>('sepay', () => ({
   accountNumber: process.env.SEPAY_ACCOUNT_NUMBER || '',
   accountName: process.env.SEPAY_ACCOUNT_NAME || '',
   bankCode: process.env.SEPAY_BANK_CODE || 'VietinBank',
+  // `??`, not `||`: an empty SEPAY_MEMO_PREFIX turns the prefix off.
+  memoPrefix: process.env.SEPAY_MEMO_PREFIX ?? 'SEVQR',
 }));

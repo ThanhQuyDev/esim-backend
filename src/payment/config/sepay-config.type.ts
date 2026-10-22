@@ -11,4 +11,10 @@ export type SepayConfig = {
    * the buyer is shown this value as the bank label.
    */
   bankCode: string;
+  /**
+   * Word put before our code in the transfer memo. SePay only picks up a
+   * transfer into a personal VietinBank account when its memo contains
+   * "SEVQR"; without it the money lands but SePay never sees it, so no webhook.
+   */
+  memoPrefix: string;
 };

@@ -75,6 +75,7 @@ import { RoleEnum } from '../roles/roles.enum';
 import { StatusEnum } from '../statuses/statuses.enum';
 import { UserEntity } from '../users/infrastructure/persistence/relational/entities/user.entity';
 import {
+  buildTransferMemo,
   buildVietQrUrl,
   generateBankTransferCode,
 } from '../payment/bank-transfer.util';
@@ -1264,16 +1265,19 @@ export class PartnersService {
       return { ...common, paymentRef, paymentUrl };
     }
 
+    const memo = buildTransferMemo(bankTransferCode, sepay.memoPrefix);
     const qrUrl = buildVietQrUrl({
       bankCode: sepay.bankCode,
       accountNumber: sepay.accountNumber,
       accountName: sepay.accountName,
       amountVnd,
-      transferCode: bankTransferCode,
+      transferCode: memo,
     });
 
     return {
       ...common,
+      // The portal shows this as the memo to type, so it is the full memo.
+      bankTransferCode: memo,
       qrUrl,
       accountNumber: sepay.accountNumber,
       accountName: sepay.accountName,

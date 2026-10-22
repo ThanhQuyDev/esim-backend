@@ -16,6 +16,7 @@ import {
 import { PartnersService } from '../partners/partners.service';
 import {
   generateBankTransferCode,
+  buildTransferMemo,
   buildVietQrUrl,
   extractBankTransferCode,
 } from './bank-transfer.util';
@@ -195,12 +196,13 @@ export class PaymentService {
       bankTransferCode,
     });
 
+    const memo = buildTransferMemo(bankTransferCode, sepay.memoPrefix);
     const qrUrl = buildVietQrUrl({
       bankCode: sepay.bankCode,
       accountNumber: sepay.accountNumber,
       accountName: sepay.accountName,
       amountVnd: order.vndPrice,
-      transferCode: bankTransferCode,
+      transferCode: memo,
     });
 
     this.logger.log(
@@ -209,7 +211,8 @@ export class PaymentService {
 
     return {
       orderNumber: order.orderNumber,
-      bankTransferCode,
+      // The storefront shows this as the memo to type, so it is the full memo.
+      bankTransferCode: memo,
       qrUrl,
       amount: order.vndPrice,
       accountNumber: sepay.accountNumber,

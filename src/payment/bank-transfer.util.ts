@@ -47,6 +47,17 @@ export function extractBankTransferCode(content: string): string | null {
 }
 
 /**
+ * What the buyer types as the transfer memo: our code, after the word SePay
+ * needs to see in it (`SEVQR` for a personal VietinBank account). The webhook
+ * still finds the code, since {@link extractBankTransferCode} searches the
+ * whole memo.
+ */
+export function buildTransferMemo(code: string, prefix: string): string {
+  const word = (prefix || '').trim();
+  return word ? `${word} ${code}` : code;
+}
+
+/**
  * Build a VietQR image URL (img.vietqr.io) encoding the account, amount and
  * transfer memo so any Vietnamese banking app can scan-to-pay with the fields
  * pre-filled.

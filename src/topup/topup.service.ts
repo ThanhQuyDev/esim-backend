@@ -26,6 +26,7 @@ import { EsimAccessPackage } from '../esim-providers/esimaccess/esimaccess-api.t
 import { OnepayService } from '../payment/onepay.service';
 import {
   generateBankTransferCode,
+  buildTransferMemo,
   buildVietQrUrl,
 } from '../payment/bank-transfer.util';
 import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
@@ -519,12 +520,13 @@ export class TopupService {
       bankTransferCode,
     });
 
+    const memo = buildTransferMemo(bankTransferCode, sepay.memoPrefix);
     const qrUrl = buildVietQrUrl({
       bankCode: sepay.bankCode,
       accountNumber: sepay.accountNumber,
       accountName: sepay.accountName,
       amountVnd: order.vndPrice,
-      transferCode: bankTransferCode,
+      transferCode: memo,
     });
 
     this.logger.log(
@@ -534,7 +536,8 @@ export class TopupService {
     return {
       success: true,
       orderId: order.orderNumber,
-      bankTransferCode,
+      // Shown to the buyer as the memo to type, so it is the full memo.
+      bankTransferCode: memo,
       qrUrl,
       amount: order.vndPrice,
       accountNumber: sepay.accountNumber,
