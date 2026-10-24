@@ -170,6 +170,12 @@ describe('Nhập eSIM: phân biệt nội địa và du lịch', () => {
         destinationId: 5,
         costPrice: 100000,
         retailPrice: 150000,
+        // Everything else the row says, already stored: nothing to refresh.
+        name: 'viettel 5GB',
+        operatorName: 'Viettel',
+        type: 'daily',
+        durationDays: 30,
+        dataMb: 5120,
       });
 
       await service.importFromExcel(

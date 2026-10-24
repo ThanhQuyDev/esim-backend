@@ -11,6 +11,10 @@ import { EsimRepository } from './infrastructure/persistence/esim.repository';
 import { PlansService } from '../plans/plans.service';
 import { PlanRepository } from '../plans/infrastructure/persistence/plan.repository';
 import { DestinationsService } from '../destinations/destinations.service';
+import {
+  domesticProviderOf,
+  esimKindFromType,
+} from '../plans/domestic-provider';
 
 export interface EsimImportResult {
   total: number;
@@ -19,6 +23,11 @@ export interface EsimImportResult {
   planCreated: number;
   /** Existing plans whose prices were refreshed from the file. */
   planUpdated: number;
+  /**
+   * eSIMs already in stock (not yet sold) that a re-upload moved to another
+   * plan — e.g. a domestic file first imported with the travel button.
+   */
+  esimMoved: number;
   errors: Array<{ row: number; iccid: string; error: string }>;
 }
 
@@ -89,13 +98,25 @@ export class EsimsImportService {
 
     // The domestic template (#066): no "Days"/"Type" columns — a plan runs for
     // a number of monthly cycles and carries minutes, first-cycle data, etc.
+    //
+    // The 2026-10 travel template (vande #001) also has "Bundle Type", but no
+    // cycle columns: reading it as domestic gave Viettel travel plans a
+    // domestic offer. The cycle columns are what make a file domestic.
     const isDomesticTemplate =
-      headerMap.has('bundle type') || headerMap.has('1st cycle data');
+      headerMap.has('1st cycle data') ||
+      headerMap.has('recurring data') ||
+      headerMap.has('no. of cycles');
+    // Both 2026-10 templates insert "eSIM Type" as the 3rd column, which
+    // shifts every fixed position of the old travel template by one — the
+    // old "Type" position now holds "Days". Positions only apply to files
+    // that still use the old layout.
+    const isNamedTemplate =
+      isDomesticTemplate ||
+      headerMap.has('esim type') ||
+      headerMap.has('bundle type');
     const col = (name: string, legacyIndex?: number) =>
       headerMap.get(name.toLowerCase()) ??
-      // Positions of the old travel template only; on the domestic template a
-      // fixed position points at a different column.
-      (isDomesticTemplate ? undefined : legacyIndex);
+      (isNamedTemplate ? undefined : legacyIndex);
     const cellAt = (row: Row, name: string, legacyIndex?: number) => {
       const c = col(name, legacyIndex);
       return c ? row.getCell(c).value : null;
@@ -107,6 +128,7 @@ export class EsimsImportService {
       skipped: 0,
       planCreated: 0,
       planUpdated: 0,
+      esimMoved: 0,
       errors: [],
     };
 
@@ -114,6 +136,8 @@ export class EsimsImportService {
     const planCache = new Map<string, number>();
     // Cache destinationId lookups by country code to avoid repeated DB calls
     const destinationCache = new Map<string, number | null>();
+    // Plans that eSIMs were moved away from (see `esimMoved`).
+    const movedFromPlans = new Set<number>();
 
     for (
       let rowNum = headerRowNum + 1;
@@ -182,9 +206,21 @@ export class EsimsImportService {
         const carrier = this.cellStr(cellAt(row, 'carrier', 9));
         const chosenCarrier =
           isDomesticTemplate && carrier ? carrier : dialogCarrier;
-        const rowProvider = this.normalizeProvider(
+        // The "eSIM Type" column (Local / Travel) of the new templates names
+        // the kind per row and wins over the button: one domestic file mixes
+        // Viettel's domestic plans with other carriers', and an admin pressing
+        // the wrong button no longer files them as travel plans (vande #001).
+        const rowKind =
+          esimKindFromType(this.cellStr(cellAt(row, 'esim type'))) ?? esimKind;
+        const rowCarrier = this.normalizeProvider(
           chosenCarrier ?? carrier ?? '',
         );
+        // A domestic plan belongs to "<carrier> nội địa", a supplier of its
+        // own, so Viettel's domestic and travel plans filter apart.
+        const rowProvider =
+          rowCarrier && rowKind === 'domestic'
+            ? domesticProviderOf(rowCarrier)
+            : rowCarrier;
         if (!rowProvider) {
           result.skipped++;
           result.errors.push({
@@ -241,9 +277,11 @@ export class EsimsImportService {
         const durationDays =
           this.cellNum(cellAt(row, 'days', 6)) ??
           (domesticOffer ? domesticOffer.cycleMonths * 30 : 0);
+        const bundleType = this.cellStr(cellAt(row, 'bundle type'));
         const type =
           this.cellStr(cellAt(row, 'type', 7)) ??
           domesticOffer?.bundleType ??
+          this.travelPlanType(bundleType) ??
           'daily';
 
         // Expired time
@@ -370,7 +408,7 @@ export class EsimsImportService {
               // Nhập lại bằng nút còn lại là cách sửa một gói đã bị phân loại
               // sai. Không chép cờ ở đây thì gói đó mắc kẹt ở tab sai và người
               // dùng không có đường nào tự sửa ngoài vào database.
-              const wantDomestic = esimKind === 'domestic';
+              const wantDomestic = rowKind === 'domestic';
               // So sánh qua `=== true` để `undefined` đọc là false. Thiếu bước
               // này thì mọi lần nhập loại 'travel' đều sinh ra một patch dù
               // chẳng có gì đổi, và "nhập lại không thay đổi" hoá ra vẫn ghi.
@@ -390,10 +428,52 @@ export class EsimsImportService {
               if (ipExport && existingPlan.ipExport !== ipExport) {
                 planPatch.ipExport = ipExport;
               }
+              // The file describes the plan, so a re-upload refreshes what it
+              // says. Only the prices and perks were refreshed before: an iTel
+              // plan first imported with a Viettel row kept the name "Viettel
+              // 5GB / Day" for good, and that name went on to the storefront,
+              // the cart and the order (vande #001). A blank cell keeps the
+              // stored value — leaving a column out must not wipe it.
+              const describe: Record<string, unknown> = {
+                name: planName || undefined,
+                operatorName: operatorName ?? undefined,
+                speed: speed ?? undefined,
+                fupSpeed: fupSpeed ?? undefined,
+                apn: apnValue ?? undefined,
+                hotSpotAllow: hotSpotAllow ?? undefined,
+              };
+              for (const [key, value] of Object.entries(describe)) {
+                if (
+                  value !== undefined &&
+                  (existingPlan as unknown as Record<string, unknown>)[key] !==
+                    value
+                ) {
+                  planPatch[key] = value;
+                }
+              }
+              // Yes/no columns: only when the column is in the file.
+              const flags: [string, string | null, boolean][] = [
+                ['topUp', topUpRaw, topUp],
+                ['isKyc', isKycRaw, isKyc],
+                ['hotSpot', hotSpotRaw, hotSpot],
+              ];
+              for (const [key, raw, value] of flags) {
+                if (
+                  raw !== null &&
+                  (existingPlan as unknown as Record<string, unknown>)[key] !==
+                    value
+                ) {
+                  planPatch[key] = value;
+                }
+              }
               // The domestic template also defines the plan's shape: a plan
               // first imported with the old template stayed "daily / 30 days"
               // even when the file said Month or 12 cycles.
-              if (domesticOffer) {
+              // The travel template's Days / Data / Type columns define the
+              // plan the same way.
+              const fileHasShape =
+                !!domesticOffer || col('days', 6) !== undefined;
+              if (fileHasShape) {
                 if (existingPlan.type !== type.toLowerCase())
                   planPatch.type = type.toLowerCase();
                 if (durationDays && existingPlan.durationDays !== durationDays)
@@ -450,7 +530,7 @@ export class EsimsImportService {
                 domesticOffer: domesticOffer ?? null,
                 isActive: true,
                 isLocalInventory: true,
-                isDomesticEsim: esimKind === 'domestic',
+                isDomesticEsim: rowKind === 'domestic',
                 vndPrice: price,
               });
               planId = newPlan.id;
@@ -458,6 +538,29 @@ export class EsimsImportService {
               result.planCreated++;
             }
           }
+        }
+
+        // An unsold eSIM filed under another plan follows its row. That is how
+        // a domestic file first imported as travel (or with the old provider
+        // "itel" instead of "itel-noidia") is put right by importing it again:
+        // before, the row stopped at "ICCID already exists" and the eSIM stayed
+        // on the wrong page with the wrong name (vande #001).
+        if (
+          alreadyInStock &&
+          planId &&
+          existing.planId !== planId &&
+          existing.status === 'available' &&
+          !existing.orderItemId
+        ) {
+          await this.esimRepository.update(existing.id, {
+            planId,
+            provider: rowProvider,
+            dataTotal: dataMb ? String(dataMb) : existing.dataTotal,
+            expiresAt: expiresAt ?? existing.expiresAt,
+          });
+          if (existing.planId) movedFromPlans.add(existing.planId);
+          result.esimMoved++;
+          continue;
         }
 
         if (alreadyInStock) {
@@ -548,6 +651,25 @@ export class EsimsImportService {
       }
     }
 
+    // A local plan whose every eSIM moved to its replacement has nothing left
+    // to sell: take it off sale rather than leave an empty card on the wrong
+    // page. Plans still holding stock are left alone.
+    for (const oldPlanId of movedFromPlans) {
+      if ([...planCache.values()].includes(oldPlanId)) continue;
+      const left = await this.esimRepository.findAvailableByPlanId(
+        oldPlanId,
+        1,
+      );
+      if (left.length > 0) continue;
+      const oldPlan = await this.planRepository.findById(oldPlanId);
+      if (oldPlan?.isLocalInventory && oldPlan.isActive) {
+        await this.plansService.update(oldPlanId, { isActive: false });
+        this.logger.log(
+          `Plan ${oldPlanId} (${oldPlan.slug}) taken off sale: its eSIMs moved to another plan`,
+        );
+      }
+    }
+
     return result;
   }
 
@@ -611,6 +733,20 @@ export class EsimsImportService {
     if (typeof value === 'string' && !value.trim()) return null;
     const n = Number(value);
     return isNaN(n) ? null : n;
+  }
+
+  /**
+   * "Bundle Type" of the 2026-10 travel template, as a plan type: Daily,
+   * Fixed, Unlimited or Unlimited Reduce. Anything else is null.
+   */
+  private travelPlanType(raw: string | null): string | null {
+    const value = (raw ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, '-');
+    return ['daily', 'fixed', 'unlimited', 'unlimited-reduce'].includes(value)
+      ? value
+      : null;
   }
 
   /** The perk columns of the domestic template (#066), as one offer. */

@@ -116,6 +116,13 @@ const EXISTING_PLAN = {
   destinationId: 5,
   costPrice: 69000,
   retailPrice: 89000,
+  // What the file's other columns say, already stored (vande #001 refreshes
+  // them on re-upload, so a mismatch here would be a real update).
+  name: 'Wintel 69K',
+  operatorName: 'wintel',
+  type: 'fixed',
+  durationDays: 30,
+  dataMb: 3072,
 };
 
 describe('Re-uploading the eSIM file with new prices', () => {

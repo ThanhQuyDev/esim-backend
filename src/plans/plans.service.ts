@@ -1,3 +1,4 @@
+import { carrierOf, domesticProviderOf } from './domestic-provider';
 import {
   HttpStatus,
   Inject,
@@ -727,9 +728,17 @@ export class PlansService {
    * nhà mạng nội địa.
    */
   async listLocalCarriers(): Promise<
-    { provider: string; fromVndPrice: number; planCount: number }[]
+    {
+      provider: string;
+      carrier: string;
+      fromVndPrice: number;
+      planCount: number;
+    }[]
   > {
-    return this.plansRepository.getLocalCarriers();
+    // `carrier` is the bare carrier ("itel") the storefront puts in the
+    // /esim-noi-dia/[carrier] URL; `provider` is the supplier ("itel-noidia").
+    const rows = await this.plansRepository.getLocalCarriers();
+    return rows.map((row) => ({ ...row, carrier: carrierOf(row.provider) }));
   }
 
   /**
@@ -737,7 +746,10 @@ export class PlansService {
    * /esim-noi-dia/[carrier]. Ném NotFound khi nhà mạng đó không có gói nội địa
    * nào — kể cả khi họ có gói du lịch, vì trang này không nói về gói du lịch.
    */
-  async findLocalPlansByCarrier(provider: string): Promise<PlanGroups> {
+  async findLocalPlansByCarrier(carrier: string): Promise<PlanGroups> {
+    // The URL names the carrier ("itel"); its domestic plans belong to the
+    // supplier "itel-noidia" (vande #001). Either spelling is accepted.
+    const provider = domesticProviderOf(carrierOf(carrier));
     const [all] = await this.plansRepository.findManyWithPagination({
       filterOptions: {
         provider: [provider],

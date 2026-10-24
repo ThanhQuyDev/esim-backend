@@ -351,7 +351,11 @@ describe('Nhập eSIM nội địa theo file mẫu mới (#066)', () => {
       undefined,
       'domestic',
     );
-    expect(planCreates.map((p) => p.provider)).toEqual(['itel', 'wintel']);
+    // Domestic plans belong to "<carrier> nội địa" (vande #001).
+    expect(planCreates.map((p) => p.provider)).toEqual([
+      'itel-noidia',
+      'wintel-noidia',
+    ]);
   });
 
   it('should refresh the perks of an existing plan on re-upload', async () => {

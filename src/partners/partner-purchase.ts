@@ -1,4 +1,5 @@
 import { PartnerStatusEnum, PartnerTypeEnum } from './partners.enum';
+import { isDomesticProvider } from '../plans/domestic-provider';
 
 /**
  * Đối tác phân phối mua hàng bằng ví ký quỹ (#046).
@@ -61,6 +62,8 @@ export function planRefundSupported(plan: {
   const provider = (plan.provider ?? '').toLowerCase();
   const name = plan.name ?? '';
   if (provider === 'viettel') return false;
+  // Domestic eSIMs are never refunded (vande #001: "itel-noidia" etc.).
+  if (isDomesticProvider(provider)) return false;
   if (provider === 'microesim' && /local/i.test(name)) return false;
   if (
     provider === 'billion' &&
