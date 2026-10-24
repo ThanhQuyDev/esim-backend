@@ -1,3 +1,4 @@
+import type { MicroEsimEvent } from '../../esims/provider-timeline';
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -598,6 +599,21 @@ export class MicroEsimService {
       '/allesim/v1/deviceDetail',
       { topup_id: topupId, device_id: deviceId },
     );
+  }
+
+  /**
+   * The eSIM's events once it reached a phone (vande #011): each carries the
+   * EID and the phone model. Read-only, same signing as the other queries.
+   */
+  async getEventDetail(
+    topupId: string,
+    deviceId: string,
+  ): Promise<MicroEsimEvent[]> {
+    const result = await this.postForm<MicroEsimEvent[] | null>(
+      '/allesim/v1/eventDetail',
+      { topup_id: topupId, device_id: deviceId },
+    );
+    return Array.isArray(result) ? result : [];
   }
 
   /**

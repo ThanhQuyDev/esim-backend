@@ -98,6 +98,19 @@ export class Esim {
   @ApiPropertyOptional()
   activatedAt: Date | null;
 
+  @ApiPropertyOptional({
+    description: 'Added to a phone (downloaded / installed) at (vande #011)',
+  })
+  installedAt?: Date | null;
+
+  @ApiPropertyOptional({ description: "The phone's EID (vande #011)" })
+  eid?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Phone model reported by the supplier (vande #011)',
+  })
+  deviceModel?: string | null;
+
   /**
    * What the admin list shows and filters by: sold / active / expired… worked
    * out from the stored status and the activation / expiry dates (#024).

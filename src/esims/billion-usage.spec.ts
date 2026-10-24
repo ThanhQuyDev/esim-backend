@@ -107,7 +107,32 @@ describe('Lấy dung lượng Billion qua EsimsService (vande #004)', () => {
       }),
     };
     const getUsage = jest.fn().mockResolvedValue({ subOrderList: [REAL_SUB] });
-    service.billionService = { getUsage };
+    // Real F042 rows for this ICCID (beta, 25/10): installed 18:41 UTC+8.
+    const getProfileStatus = jest.fn().mockResolvedValue([
+      {
+        eid: '89049032020008884800241111101363',
+        iccid: '89812003919133192668',
+        recordTime: '2026-10-19 22:37:11',
+        orderId: '2792406316509912',
+        status: 3,
+      },
+      {
+        eid: '89049032020008884800241111101363',
+        iccid: '89812003919133192668',
+        recordTime: '2026-10-19 18:42:54',
+        orderId: '2792406316509912',
+        status: 3,
+      },
+      {
+        eid: '89049032020008884800241111101363',
+        iccid: '89812003919133192668',
+        recordTime: '2026-10-19 18:41:36',
+        orderId: '2792406316509912',
+        status: 2,
+      },
+    ]);
+    service.billionService = { getUsage, getProfileStatus };
+    service.logger = { warn: jest.fn(), log: jest.fn() };
 
     const result = await service.fetchProviderUsage(esim);
 
@@ -119,5 +144,8 @@ describe('Lấy dung lượng Billion qua EsimsService (vande #004)', () => {
     expect(updates[0].activatedAt).toEqual(new Date('2026-10-19T10:44:49Z'));
     expect(updates[0].expiresAt).toEqual(new Date('2026-10-19T16:00:00Z'));
     expect(Number(updates[0].dataUsed)).toBeCloseTo(1026.98, 1);
+    // vande #011: install moment and EID from F042.
+    expect(updates[0].installedAt).toEqual(new Date('2026-10-19T10:41:36Z'));
+    expect(updates[0].eid).toBe('89049032020008884800241111101363');
   });
 });

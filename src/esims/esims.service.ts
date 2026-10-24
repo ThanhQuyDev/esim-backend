@@ -24,6 +24,13 @@ import {
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
 import { billionUsageResult } from './billion-usage';
+import {
+  billionTimeline,
+  esimAccessTimeline,
+  microEsimTimeline,
+  sizeToMb,
+  utc8ToIso,
+} from './provider-timeline';
 
 /** Airalo's voice / text counters, when its usage reply carries them (#015). */
 function minutesAndTexts(usage: {
@@ -67,6 +74,11 @@ export interface DataUsageResult {
    * hoạt" instead of showing a countdown that has not started (#062).
    */
   activatedAt?: string | null;
+  /** Added to a phone (downloaded / installed) at (vande #011). */
+  installedAt?: string | null;
+  /** The phone's EID and model, once the supplier reports them (vande #011). */
+  eid?: string | null;
+  deviceModel?: string | null;
   /** Plan length in days, so the page can draw a time bar like the data bar. */
   durationDays?: number | null;
   /**
@@ -402,6 +414,33 @@ export class EsimsService {
             usage.dataUsage > 0 || esim.activatedAt ? 'ACTIVE' : 'NOT_ACTIVE',
           lastUpdateTime: usage.lastUpdateTime,
         };
+        // Install / activation / expiry and the EID come from /esim/query,
+        // asked only while one of them is still missing (vande #011).
+        if (this.needsTimeline(esim)) {
+          try {
+            const orderNo = await this.esimsRepository.findOrderRequestId(
+              esim.id,
+            );
+            if (orderNo) {
+              const items = await this.esimAccessService.queryEsims(orderNo);
+              const facts = esimAccessTimeline(
+                items.find((i) => i.iccid === esim.iccid) ??
+                  items.find((i) => i.esimTranNo === esim.esimTranNo),
+              );
+              Object.assign(result, {
+                installedAt: facts.installedAt,
+                activatedAt: facts.activatedAt,
+                expiredAt: facts.expiredAt ?? result.expiredAt,
+                eid: facts.eid,
+              });
+              if (facts.activatedAt) result.status = 'ACTIVE';
+            }
+          } catch (err) {
+            this.logger.warn(
+              `eSIM Access timeline for eSIM ${esim.id}: ${(err as Error).message}`,
+            );
+          }
+        }
         await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
@@ -466,20 +505,40 @@ export class EsimsService {
           topupId,
           deviceId,
         );
-        const dataUsedMb = parseFloat(detail.data_usage ?? '0') || 0;
+        const dataUsedMb = sizeToMb(detail.data_usage);
+        // MicroEsim never sends the package size; the plan knows it, like
+        // Gadget Korea (#065). Its times are UTC+8 (vande #011).
+        const stored = await this.esimsRepository.findByIdWithRelations(
+          esim.id,
+        );
+        const totalMb = Number(stored?.plan?.dataMb ?? 0) || 0;
+        const activatedAt = utc8ToIso(detail.active_time);
         const result: DataUsageResult = {
-          remaining: null,
-          total: 0,
+          remaining: totalMb > 0 ? Math.max(0, totalMb - dataUsedMb) : null,
+          total: totalMb,
           dataUsed: dataUsedMb,
-          expiredAt: detail.expire_time || null,
+          expiredAt: utc8ToIso(detail.expire_time),
           isUnlimited: false,
-          status: detail.status
-            ? detail.status.toUpperCase()
-            : detail.active_time
-              ? 'ACTIVE'
-              : 'INACTIVE',
+          // A local profile never reports active_time (MicroEsim support):
+          // data used is the proof it is running.
+          status: activatedAt || dataUsedMb > 0 ? 'ACTIVE' : 'NOT_ACTIVE',
+          activatedAt,
           lastUpdateTime: null,
         };
+        if (!esim.eid || !esim.installedAt) {
+          try {
+            Object.assign(
+              result,
+              microEsimTimeline(
+                await this.microEsimService.getEventDetail(topupId, deviceId),
+              ),
+            );
+          } catch (err) {
+            this.logger.warn(
+              `MicroEsim events for eSIM ${esim.id}: ${(err as Error).message}`,
+            );
+          }
+        }
         await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
@@ -502,7 +561,24 @@ export class EsimsService {
       }
       try {
         const detail = await this.billionService.getUsage(orderId, iccid);
-        const result = billionUsageResult(detail.subOrderList?.[0]);
+        const result: DataUsageResult = billionUsageResult(
+          detail.subOrderList?.[0],
+        );
+        // F042: when the eSIM reached the phone, and the phone's EID (#011).
+        if (!esim.eid || !esim.installedAt) {
+          try {
+            Object.assign(
+              result,
+              billionTimeline(
+                await this.billionService.getProfileStatus(iccid),
+              ),
+            );
+          } catch (err) {
+            this.logger.warn(
+              `Billion F042 for eSIM ${esim.id}: ${(err as Error).message}`,
+            );
+          }
+        }
         await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
@@ -609,7 +685,12 @@ export class EsimsService {
    * Errors are swallowed per eSIM: one provider being down must not stop the
    * rest of the sweep.
    */
-  @Cron(CronExpression.EVERY_30_MINUTES)
+  // Every 5 minutes (vande #011): the customer — and the admin answering them
+  // — should see the eSIM installed, started and draining within minutes, as
+  // they do on the supplier's own portal. Each run takes the 100 eSIMs least
+  // recently refreshed; the extra timeline calls stop once the moments and the
+  // EID are known.
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async refreshActiveEsimUsage(): Promise<void> {
     const esims = await this.esimsRepository.findDueForUsageRefresh(
       EsimsService.USAGE_REFRESH_PROVIDERS,
@@ -671,7 +752,29 @@ export class EsimsService {
       patch.activatedAt = new Date();
     }
 
+    // Install moment, EID and phone model (vande #011): kept once known, never
+    // wiped by a poll that did not ask for them.
+    const installed = result.installedAt ? new Date(result.installedAt) : null;
+    if (installed && !Number.isNaN(installed.getTime()) && !esim.installedAt) {
+      patch.installedAt = installed;
+    }
+    if (result.eid && result.eid !== esim.eid) patch.eid = result.eid;
+    if (result.deviceModel && result.deviceModel !== esim.deviceModel) {
+      patch.deviceModel = result.deviceModel;
+    }
+
     await this.esimsRepository.update(esim.id, patch);
+  }
+
+  /**
+   * Whether the supplier still has something to tell us beyond usage: the
+   * install moment, the EID, activation or expiry (vande #011). The extra
+   * calls are only made while this is true.
+   */
+  private needsTimeline(esim: Esim): boolean {
+    return (
+      !esim.installedAt || !esim.eid || !esim.activatedAt || !esim.expiresAt
+    );
   }
 
   /**

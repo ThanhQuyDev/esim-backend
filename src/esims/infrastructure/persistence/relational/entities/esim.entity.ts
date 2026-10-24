@@ -88,6 +88,21 @@ export class EsimEntity extends EntityRelationalHelper {
   @Column({ type: 'timestamp', nullable: true })
   activatedAt: Date | null;
 
+  /**
+   * When the eSIM was added to a phone (downloaded / installed), before it is
+   * used — the second of the four moments of vande #011.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  installedAt: Date | null;
+
+  /** The phone's EID once the eSIM is on it (vande #011). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  eid: string | null;
+
+  /** The phone model the supplier reports, e.g. "iPhone 17 Pro Max". */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  deviceModel: string | null;
+
   @Column({ type: String, nullable: true })
   esimTranNo: string | null;
 

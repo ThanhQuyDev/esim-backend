@@ -25,6 +25,9 @@ export class EsimMapper {
     domainEntity.dataTotal = raw.dataTotal;
     domainEntity.expiresAt = raw.expiresAt;
     domainEntity.activatedAt = raw.activatedAt;
+    domainEntity.installedAt = raw.installedAt ?? null;
+    domainEntity.eid = raw.eid ?? null;
+    domainEntity.deviceModel = raw.deviceModel ?? null;
     domainEntity.esimTranNo = raw.esimTranNo;
     domainEntity.provider = raw.provider;
     domainEntity.phoneNumber = raw.phoneNumber;
@@ -64,6 +67,9 @@ export class EsimMapper {
     persistenceEntity.dataTotal = domainEntity.dataTotal;
     persistenceEntity.expiresAt = domainEntity.expiresAt;
     persistenceEntity.activatedAt = domainEntity.activatedAt;
+    persistenceEntity.installedAt = domainEntity.installedAt ?? null;
+    persistenceEntity.eid = domainEntity.eid ?? null;
+    persistenceEntity.deviceModel = domainEntity.deviceModel ?? null;
     persistenceEntity.esimTranNo = domainEntity.esimTranNo;
     persistenceEntity.provider = domainEntity.provider;
     persistenceEntity.phoneNumber = domainEntity.phoneNumber;

@@ -48,6 +48,12 @@ export interface EsimAccessQueryEsimItem {
   apn?: string;
   expiredTime?: string;
   activateTime?: string;
+  /** Added to a phone at, e.g. "2026-10-23T03:10:43+0000" (vande #011). */
+  installationTime?: string;
+  /** The phone's EID once the eSIM is on it (vande #011). */
+  eid?: string;
+  /** Bytes used so far. */
+  orderUsage?: number;
   totalVolume?: number;
   totalDuration?: number;
   durationUnit?: string;
