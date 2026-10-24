@@ -1,3 +1,4 @@
+import { esimLifecycleStatus } from '../esims/esim-lifecycle';
 import { MarginTier, multidayRetailVnd } from '../plans/multiday-price';
 import {
   AUTO_RETRY_PROVIDERS,
@@ -2602,6 +2603,15 @@ export class OrdersService {
                 // "Thông tin kỹ thuật" of each eSIM (doitac-1410 #081).
                 ipExport: plan.ipExport ?? null,
                 topUp: !!plan.topUp,
+                // The order's product block (vande #024).
+                standardName: plan.standardName ?? null,
+                providerPlanId: plan.providerPlanId,
+                type: plan.type,
+                isAddOn: !!plan.isAddOn,
+                isAbleMultidate: !!plan.isAbleMultidate,
+                isKyc: !!plan.isKyc,
+                dailyResetPolicy: plan.dailyResetPolicy ?? null,
+                dailyResetUtcOffset: plan.dailyResetUtcOffset ?? null,
               }
             : null,
           orderRequestId: item.orderRequestId,
@@ -2634,7 +2644,12 @@ export class OrdersService {
             item as PricedLine,
             shares.get(Number(item.id)) ?? 0,
           ),
-          esims: esimsByOrderItemId.get(item.id) ?? [],
+          // The same status the eSIM list shows — sent / in use / expired /
+          // refunded — not the raw supplier status (vande #024).
+          esims: (esimsByOrderItemId.get(item.id) ?? []).map((esim) => ({
+            ...esim,
+            lifecycleStatus: esimLifecycleStatus(esim, plan ?? null),
+          })),
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
         };
