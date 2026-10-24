@@ -38,6 +38,7 @@ export class PlanMapper {
     domainEntity.call = raw.call;
     domainEntity.type = raw.type;
     domainEntity.topUp = raw.topUp;
+    domainEntity.isAddOn = Boolean(raw.isAddOn);
     domainEntity.speed = raw.speed;
     domainEntity.operatorName = raw.operatorName;
     domainEntity.fupSpeed = raw.fupSpeed;
@@ -109,6 +110,9 @@ export class PlanMapper {
     persistenceEntity.call = domainEntity.call;
     persistenceEntity.type = domainEntity.type;
     persistenceEntity.topUp = domainEntity.topUp;
+    if (domainEntity.isAddOn !== undefined) {
+      persistenceEntity.isAddOn = domainEntity.isAddOn;
+    }
     persistenceEntity.speed = domainEntity.speed;
     persistenceEntity.operatorName = domainEntity.operatorName;
     persistenceEntity.fupSpeed = domainEntity.fupSpeed;

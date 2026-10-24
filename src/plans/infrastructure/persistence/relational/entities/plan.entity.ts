@@ -90,6 +90,10 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   topUp: boolean;
 
+  /** A data add-on rather than a top-up (Billion), set in the CMS (vande #019). */
+  @Column({ type: Boolean, default: false })
+  isAddOn: boolean;
+
   @Column({ type: String, nullable: true })
   speed: string | null;
 

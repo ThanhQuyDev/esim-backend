@@ -67,6 +67,12 @@ export class Plan {
   @ApiProperty({ type: Boolean, example: true })
   topUp: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'A data add-on rather than a top-up (vande #019).',
+  })
+  isAddOn?: boolean;
+
   @ApiPropertyOptional({ type: String, example: '4G,5G' })
   speed: string | null;
 

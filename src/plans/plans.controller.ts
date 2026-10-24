@@ -21,6 +21,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { BatchUpdateDiscountDto } from './dto/batch-update-discount.dto';
+import { BulkDeletePlansDto } from './dto/bulk-delete-plans.dto';
 import {
   ImportPlansExcelDto,
   PlanColumnMapping,
@@ -285,6 +286,17 @@ export class PlansController {
   async batchUpdateDiscount(@Body() dto: BatchUpdateDiscountDto) {
     await this.plansService.batchUpdateDiscount(dto.ids, dto.discount);
     return { success: true };
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('bulk-delete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: 'Delete several plans at once (vande #019)' })
+  async bulkDelete(@Body() dto: BulkDeletePlansDto) {
+    const deleted = await this.plansService.removeMany(dto.ids);
+    return { deleted };
   }
 
   @ApiOkResponse({ type: Plan })

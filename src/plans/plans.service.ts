@@ -272,6 +272,7 @@ export class PlansService {
       currency: createPlanDto.currency,
       type: createPlanDto.type ?? 'data-in-total',
       topUp: createPlanDto.topUp ?? false,
+      isAddOn: createPlanDto.isAddOn ?? false,
       speed: createPlanDto.speed ?? null,
       operatorName: createPlanDto.operatorName ?? null,
       fupSpeed: createPlanDto.fupSpeed ?? null,
@@ -524,6 +525,7 @@ export class PlansService {
       currency: updatePlanDto.currency,
       type: updatePlanDto.type,
       topUp: updatePlanDto.topUp,
+      isAddOn: updatePlanDto.isAddOn,
       speed: updatePlanDto.speed,
       operatorName: updatePlanDto.operatorName,
       fupSpeed: updatePlanDto.fupSpeed,
@@ -794,6 +796,11 @@ export class PlansService {
 
   async remove(id: Plan['id']): Promise<void> {
     await this.plansRepository.remove(id);
+  }
+
+  /** Several plans at once, from the CMS list (vande #019). Soft delete. */
+  async removeMany(ids: Plan['id'][]): Promise<number> {
+    return this.plansRepository.removeMany(ids);
   }
 
   async deactivateStaleProviderPlans(

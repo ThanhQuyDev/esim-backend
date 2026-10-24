@@ -63,7 +63,7 @@ export class PlansRelationalRepository implements PlanRepository {
 
       if (filterOptions?.search) {
         qb.where(
-          '(plan.name ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
+          '(plan.name ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
           { search: `%${filterOptions.search}%` },
         );
       }
@@ -153,6 +153,8 @@ export class PlansRelationalRepository implements PlanRepository {
       filterOptions?.data ||
       filterOptions?.tags?.length ||
       filterOptions?.country ||
+      filterOptions?.locations?.length ||
+      filterOptions?.topUpKind?.length ||
       filterOptions?.planCode ||
       filterOptions?.hasCallSms !== undefined
     ) {
@@ -599,6 +601,12 @@ export class PlansRelationalRepository implements PlanRepository {
     await this.plansRepository.softDelete(id);
   }
 
+  async removeMany(ids: Plan['id'][]): Promise<number> {
+    if (!ids.length) return 0;
+    const result = await this.plansRepository.softDelete(ids);
+    return result.affected ?? 0;
+  }
+
   async getDistinctApns(): Promise<string[]> {
     const rows: { apn: string }[] = await this.plansRepository.query(
       `SELECT DISTINCT "apn" FROM "plan"
@@ -706,7 +714,7 @@ export class PlansRelationalRepository implements PlanRepository {
 
     if (filterOptions?.search) {
       qb.where(
-        '(plan.name ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
+        '(plan.name ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
         { search: `%${filterOptions.search}%` },
       );
     }
@@ -737,6 +745,7 @@ export class PlansRelationalRepository implements PlanRepository {
       });
     }
     this.applyLocationAndCallSmsFilters(qb, filterOptions);
+    this.applyLocationsFilter(qb, filterOptions?.locations);
     if (filterOptions?.duration !== undefined) {
       qb.andWhere('plan."durationDays" = :duration', {
         duration: filterOptions.duration,
@@ -829,6 +838,47 @@ export class PlansRelationalRepository implements PlanRepository {
     if (f?.topUp !== undefined) {
       qb.andWhere('COALESCE(plan."topUp", false) = :topUp', { topUp: f.topUp });
     }
+    // Top-Up column, three values (vande #019): an add-on is its own value,
+    // whatever its top-up flag says.
+    if (f?.topUpKind?.length) {
+      const kinds: Record<string, string> = {
+        addon: 'COALESCE(plan."isAddOn", false) = true',
+        topup:
+          '(COALESCE(plan."isAddOn", false) = false AND COALESCE(plan."topUp", false) = true)',
+        none: '(COALESCE(plan."isAddOn", false) = false AND COALESCE(plan."topUp", false) = false)',
+      };
+      const parts = f.topUpKind.map((k) => kinds[k]).filter(Boolean);
+      if (parts.length) qb.andWhere(`(${parts.join(' OR ')})`);
+    }
+    this.applyLocationsFilter(qb, f?.locations);
+  }
+
+  /**
+   * Destinations and regions picked in the CMS, any of them (vande #019):
+   * with one id per request, picking China + Hong Kong + Macao regions together
+   * filtered nothing at all.
+   */
+  private applyLocationsFilter(
+    qb: SelectQueryBuilder<PlanEntity>,
+    locations?: string[] | null,
+  ): void {
+    const ids = (kind: string) =>
+      (locations ?? [])
+        .map((value) => String(value).split(':'))
+        .filter(([k]) => k === kind)
+        .map(([, id]) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+    const destinationIds = ids('d');
+    const regionIds = ids('r');
+    const parts = [
+      destinationIds.length ? 'plan."destinationId" IN (:...locDestIds)' : null,
+      regionIds.length ? 'plan."regionId" IN (:...locRegionIds)' : null,
+    ].filter(Boolean);
+    if (!parts.length) return;
+    qb.andWhere(`(${parts.join(' OR ')})`, {
+      locDestIds: destinationIds,
+      locRegionIds: regionIds,
+    });
   }
 
   /**

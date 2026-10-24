@@ -89,6 +89,8 @@ export abstract class PlanRepository {
 
   abstract remove(id: Plan['id']): Promise<void>;
 
+  abstract removeMany(ids: Plan['id'][]): Promise<number>;
+
   /** Distinct non-empty APN values, to populate the CMS filter (#010). */
   abstract getDistinctApns(): Promise<string[]>;
 

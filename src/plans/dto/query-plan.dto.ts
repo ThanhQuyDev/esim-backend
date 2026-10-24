@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -115,6 +116,24 @@ export class FilterPlanDto {
   @IsOptional()
   @IsBoolean()
   topUp?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Top-Up column values, any of: "none", "topup", "addon" (vande #019).',
+  })
+  @IsOptional()
+  @IsIn(['none', 'topup', 'addon'], { each: true })
+  topUpKind?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Destinations / regions picked in the CMS, "d:<id>" or "r:<id>"; any of them matches (vande #019).',
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  locations?: string[];
 
   @ApiPropertyOptional({
     type: Number,

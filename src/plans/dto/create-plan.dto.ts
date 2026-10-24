@@ -136,6 +136,15 @@ export class CreatePlanDto {
   @IsBoolean()
   topUp?: boolean;
 
+  @ApiPropertyOptional({
+    example: false,
+    type: Boolean,
+    description: 'A data add-on rather than a top-up (vande #019).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isAddOn?: boolean;
+
   @ApiPropertyOptional({ example: true, type: Boolean })
   @IsOptional()
   @IsBoolean()
