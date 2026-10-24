@@ -194,14 +194,17 @@ export function topupFromPackageCode(code: string): {
 /**
  * Expiry of a local eSIM from the day it is sold (#024, test round 4): a
  * Viettel travel eSIM of 15 days runs 15 days from the purchase — no
- * Vietnamese carrier reports activation, so buying it is starting it. A
- * domestic eSIM has no end ("Vô thời hạn"), so its expiry is cleared.
+ * Vietnamese carrier reports activation, so buying it is starting it.
+ *
+ * A domestic eSIM does expire, just much later (vande #002): its date is the
+ * "Expried Time" column of the import file, already stored on the eSIM, so a
+ * sale leaves it as it is. It used to be cleared here as "Vô thời hạn".
  */
 export function localEsimExpiry(
   plan: { isDomesticEsim?: boolean | null; durationDays?: number | null },
   soldAt: Date = new Date(),
 ): { expiresAt: Date | null } | Record<string, never> {
-  if (plan.isDomesticEsim) return { expiresAt: null };
+  if (plan.isDomesticEsim) return {};
   const days = Number(plan.durationDays ?? 0);
   if (!(days > 0)) return {};
   return { expiresAt: new Date(soldAt.getTime() + days * 24 * 60 * 60 * 1000) };

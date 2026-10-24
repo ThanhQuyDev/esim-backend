@@ -33,7 +33,7 @@ describe('eSIM lifecycle status (#024, test round 4)', () => {
     );
   });
 
-  it('should treat a sold local eSIM as in use, and a domestic one as never expiring', () => {
+  it('should treat a sold local eSIM as in use until its date, domestic too (vande #002)', () => {
     expect(esimLifecycleStatus({ status: 'available' }, viettel, NOW)).toBe(
       'available',
     );
@@ -45,17 +45,18 @@ describe('eSIM lifecycle status (#024, test round 4)', () => {
     ).toBe('expired');
     expect(
       esimLifecycleStatus({ status: 'sold', expiresAt: past }, domestic, NOW),
+    ).toBe('expired');
+    expect(
+      esimLifecycleStatus({ status: 'sold', expiresAt: future }, domestic, NOW),
     ).toBe('active');
   });
 
-  it('should start a Viettel eSIM expiry from the sale, and clear a domestic one', () => {
+  it('should start a Viettel eSIM expiry from the sale, and keep the imported date of a domestic one', () => {
     expect(localEsimExpiry({ durationDays: 15 }, NOW)).toEqual({
       expiresAt: new Date('2026-10-25T00:00:00Z'),
     });
     expect(
       localEsimExpiry({ isDomesticEsim: true, durationDays: 30 }, NOW),
-    ).toEqual({
-      expiresAt: null,
-    });
+    ).toEqual({});
   });
 });

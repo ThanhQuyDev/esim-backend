@@ -213,6 +213,17 @@ describe('eSIM nội địa — file mẫu 2026-10 (vande #001)', () => {
     });
   });
 
+  it('should end an imported eSIM at the end of its Expried Time day in Vietnam (vande #002)', async () => {
+    const { service, esimCreates } = makeService({});
+
+    await service.importFromExcel(await buildTravelFile([VIETTEL_ROW]));
+
+    // "25/12/2026" → still usable all of 25/12 in Vietnam.
+    expect(esimCreates[0].expiresAt).toEqual(
+      new Date('2026-12-25T16:59:59.999Z'),
+    );
+  });
+
   it('should rename a plan whose stored name is stale', async () => {
     const { service, planUpdates } = makeService({
       existingPlan: {

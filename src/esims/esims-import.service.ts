@@ -16,6 +16,9 @@ import {
   esimKindFromType,
 } from '../plans/domestic-provider';
 
+/** From midnight UTC of a day to 23:59:59.999 of that day in Vietnam (+07). */
+const END_OF_VN_DAY_OFFSET_MS = (24 - 7) * 60 * 60 * 1000 - 1;
+
 export interface EsimImportResult {
   total: number;
   created: number;
@@ -790,7 +793,27 @@ export class EsimsImportService {
     return match[2] === 'gb' ? Math.round(num * 1024) : Math.round(num);
   }
 
+  /**
+   * The "Expried Time" cell as the END of that day in Vietnam (vande #002):
+   * "31/12/2026" means the eSIM still works on 31/12, so it expires at
+   * 23:59:59 +07:00. Read as midnight UTC it showed as "07:00 31/12" and
+   * would have ended the eSIM 17 hours early. A cell carrying a real time of
+   * day keeps it.
+   */
   private parseDate(value: any): Date | null {
+    const date = this.parseDateCell(value);
+    if (!date) return null;
+    const isBareDay =
+      date.getUTCHours() === 0 &&
+      date.getUTCMinutes() === 0 &&
+      date.getUTCSeconds() === 0 &&
+      date.getUTCMilliseconds() === 0;
+    return isBareDay
+      ? new Date(date.getTime() + END_OF_VN_DAY_OFFSET_MS)
+      : date;
+  }
+
+  private parseDateCell(value: any): Date | null {
     if (value === null || value === undefined) return null;
     // ExcelJS may return a Date object directly
     if (value instanceof Date) return value;

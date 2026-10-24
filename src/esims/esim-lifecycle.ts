@@ -52,8 +52,8 @@ export function esimLifecycleStatus(
   if (status === 'expired') return 'expired';
 
   const expires = esim.expiresAt ? new Date(esim.expiresAt) : null;
+  // Domestic eSIMs expire too, on their imported date (vande #002).
   if (
-    !plan?.isDomesticEsim &&
     expires &&
     !Number.isNaN(expires.getTime()) &&
     expires.getTime() < now.getTime()
@@ -74,9 +74,7 @@ export const ESIM_LIFECYCLE_SQL = `(CASE
   WHEN lower(esim.status) IN ('deactivated','cancelled','canceled','revoked') THEN 'deactivated'
   WHEN lower(esim.status) = 'available' THEN 'available'
   WHEN lower(esim.status) = 'expired' THEN 'expired'
-  WHEN esim."expiresAt" IS NOT NULL AND esim."expiresAt" < now()
-       AND NOT COALESCE((SELECT lp."isDomesticEsim" FROM "plan" lp WHERE lp.id = esim."planId"), false)
-    THEN 'expired'
+  WHEN esim."expiresAt" IS NOT NULL AND esim."expiresAt" < now() THEN 'expired'
   WHEN COALESCE((SELECT lp."isLocalInventory" FROM "plan" lp WHERE lp.id = esim."planId"), false) THEN 'active'
   WHEN esim."activatedAt" IS NOT NULL OR lower(esim.status) = 'active' THEN 'active'
   ELSE 'sold'
