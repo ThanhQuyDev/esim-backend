@@ -74,6 +74,55 @@ export function itemNetRevenueSql(
 
   return `CASE WHEN ${subtotal} > 0 AND ${countedSubtotal} > 0 THEN GREATEST(${itemAlias}."vndPrice" - ${discounts} * ${itemAlias}."vndPrice" / ${countedSubtotal}, 0) ELSE ${itemAlias}."vndPrice" END`;
 }
+/** Commission esim.vn still owes on an order (vande #016). */
+export const OWED_COMMISSION_STATUSES = ['pending', 'credited'] as const;
+
+const OWED_COMMISSION_SQL = OWED_COMMISSION_STATUSES.map((s) => `'${s}'`).join(
+  ', ',
+);
+
+/**
+ * The part of an order's partner commission that one delivered line carries
+ * (vande #016).
+ *
+ * Profit on Tổng quan was revenue − cost, as if esim.vn kept 100% of every
+ * sale; on an order a partner brought in, the partner's commission is ours to
+ * pay. Only commission still owed counts — `pending` and `credited` — whose
+ * `commissionVnd` is already reduced for partial refunds (#018); `reversed`
+ * and `rejected` cost nothing. It is spread over the delivered lines like the
+ * discount in {@link itemNetRevenueSql}, so the lines add up to the order's
+ * whole commission.
+ */
+export function itemPartnerCommissionSql(
+  orderAlias: string,
+  itemAlias: string,
+): string {
+  const statuses = COMPLETED_ORDER_ITEM_STATUSES.map((s) => `'${s}'`).join(
+    ', ',
+  );
+  const commission = `(SELECT COALESCE(SUM(c."commissionVnd"), 0) FROM "order_partner_commission" c WHERE c."orderId" = ${orderAlias}.id AND c.status IN (${OWED_COMMISSION_SQL}))`;
+  const countedSubtotal = `(SELECT COALESCE(SUM(counted."vndPrice"), 0) FROM "order_item" counted WHERE counted."orderId" = ${orderAlias}.id AND counted.status IN (${statuses}))`;
+  const countedLines = `(SELECT COUNT(*) FROM "order_item" counted WHERE counted."orderId" = ${orderAlias}.id AND counted.status IN (${statuses}))`;
+
+  return `CASE WHEN ${countedSubtotal} > 0 THEN ${commission} * ${itemAlias}."vndPrice" / ${countedSubtotal} ELSE ${commission} / GREATEST(${countedLines}, 1) END`;
+}
+
+/**
+ * Where an order came from, for "Lợi nhuận theo loại đơn" (vande #016): a
+ * partner buying from their wallet at the partner price, a customer a partner
+ * referred (we owe commission), or a customer buying direct.
+ */
+export function orderSourceSql(orderAlias: string): string {
+  return `CASE WHEN ${orderAlias}."paymentMethod" = 'partner_wallet' THEN 'partner_purchase' WHEN EXISTS (SELECT 1 FROM "order_partner_commission" c WHERE c."orderId" = ${orderAlias}.id AND c.status IN (${OWED_COMMISSION_SQL})) THEN 'partner_referral' ELSE 'direct' END`;
+}
+
+/** Fixed order of the order-source groups, every one listed even at zero. */
+export const ORDER_SOURCES = [
+  'direct',
+  'partner_referral',
+  'partner_purchase',
+] as const;
+
 const UNKNOWN_GROUP = 'Unknown';
 
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -145,6 +194,9 @@ interface ProviderSeriesRow {
 interface FinancialValue {
   costPrice: number;
   totalRevenue: number;
+  /** Partner commission still owed on these sales (vande #016). */
+  partnerCommission: number;
+  /** Revenue − cost − partner commission. */
   profit: number;
   profitMarginPercent: number;
   /** Plans delivered (sum of item quantity) behind these figures. */
@@ -153,6 +205,8 @@ interface FinancialValue {
 
 interface FinancialGroupValue extends FinancialValue {
   group: string;
+  /** Orders behind the figures; groupBy=orderSource only. */
+  orders?: number;
 }
 
 interface FinancialSeriesValue extends FinancialValue {
@@ -575,6 +629,7 @@ export class OverviewService {
         `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
         'totalRevenue',
       )
+      .addSelect(this.partnerCommissionSumExpression(), 'partnerCommission')
       .addSelect(`COALESCE(SUM(${ORDER_ITEM_ALIAS}.quantity), 0)`, 'plansSold')
       .groupBy('bucket')
       .orderBy('bucket', 'ASC')
@@ -582,6 +637,7 @@ export class OverviewService {
         bucket: RawValue;
         costPrice: RawValue;
         totalRevenue: RawValue;
+        partnerCommission: RawValue;
         plansSold: RawValue;
       }>();
 
@@ -591,6 +647,7 @@ export class OverviewService {
         row.costPrice,
         row.totalRevenue,
         row.plansSold,
+        row.partnerCommission,
       ),
     }));
   }
@@ -600,6 +657,50 @@ export class OverviewService {
     groupBy: Exclude<FinancialComparisonGroupBy, PeriodGroupBy>,
   ): Promise<FinancialGroupValue[]> {
     const qb = this.createCompletedItemsQuery(ORDER_ITEM_ALIAS, query);
+
+    if (groupBy === 'orderSource') {
+      const sourceExpression = orderSourceSql(ORDER_ALIAS);
+      const rows = await qb
+        .select(sourceExpression, 'group')
+        .addSelect(
+          `COALESCE(SUM(${ORDER_ITEM_ALIAS}."vndCostPrice"), 0)`,
+          'costPrice',
+        )
+        .addSelect(
+          `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
+          'totalRevenue',
+        )
+        .addSelect(this.partnerCommissionSumExpression(), 'partnerCommission')
+        .addSelect(
+          `COALESCE(SUM(${ORDER_ITEM_ALIAS}.quantity), 0)`,
+          'plansSold',
+        )
+        .addSelect(`COUNT(DISTINCT ${ORDER_ALIAS}.id)`, 'orders')
+        .groupBy(sourceExpression)
+        .getRawMany<{
+          group: string;
+          costPrice: RawValue;
+          totalRevenue: RawValue;
+          partnerCommission: RawValue;
+          plansSold: RawValue;
+          orders: RawValue;
+        }>();
+
+      const bySource = new Map(rows.map((row) => [row.group, row]));
+      return ORDER_SOURCES.map((source) => {
+        const row = bySource.get(source);
+        return {
+          group: source,
+          orders: this.toNumber(row?.orders),
+          ...this.createFinancialValue(
+            row?.costPrice,
+            row?.totalRevenue,
+            row?.plansSold,
+            row?.partnerCommission,
+          ),
+        };
+      });
+    }
 
     if (groupBy === 'provider') {
       const rows = await qb
@@ -612,6 +713,7 @@ export class OverviewService {
           `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
           'totalRevenue',
         )
+        .addSelect(this.partnerCommissionSumExpression(), 'partnerCommission')
         .addSelect(
           `COALESCE(SUM(${ORDER_ITEM_ALIAS}.quantity), 0)`,
           'plansSold',
@@ -622,6 +724,7 @@ export class OverviewService {
           group: string;
           costPrice: RawValue;
           totalRevenue: RawValue;
+          partnerCommission: RawValue;
           plansSold: RawValue;
         }>();
 
@@ -634,6 +737,7 @@ export class OverviewService {
               row.costPrice,
               row.totalRevenue,
               row.plansSold,
+              row.partnerCommission,
             ),
           },
         ]),
@@ -666,6 +770,7 @@ export class OverviewService {
         `COALESCE(SUM(${this.itemNetRevenueExpression()}), 0)`,
         'totalRevenue',
       )
+      .addSelect(this.partnerCommissionSumExpression(), 'partnerCommission')
       .addSelect(`COALESCE(SUM(${ORDER_ITEM_ALIAS}.quantity), 0)`, 'plansSold')
       .groupBy(destinationGroupExpression)
       .addGroupBy(destinationNameExpression)
@@ -675,6 +780,7 @@ export class OverviewService {
         group: string;
         costPrice: RawValue;
         totalRevenue: RawValue;
+        partnerCommission: RawValue;
         plansSold: RawValue;
       }>();
 
@@ -684,6 +790,7 @@ export class OverviewService {
         row.costPrice,
         row.totalRevenue,
         row.plansSold,
+        row.partnerCommission,
       ),
     }));
   }
@@ -817,6 +924,10 @@ export class OverviewService {
     return itemNetRevenueSql(ORDER_ALIAS, ORDER_ITEM_ALIAS);
   }
 
+  private partnerCommissionSumExpression(): string {
+    return `COALESCE(SUM(${itemPartnerCommissionSql(ORDER_ALIAS, ORDER_ITEM_ALIAS)}), 0)`;
+  }
+
   private getDateBucketExpression(groupBy: PeriodGroupBy): string {
     // Shift the naive UTC timestamp into Vietnam wall-clock time before grouping.
     const vnCreatedAt = `(${ORDER_ALIAS}."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE '${VN_TIMEZONE}')`;
@@ -931,27 +1042,46 @@ export class OverviewService {
 
   private calculateFinancialTotals(
     rows: Array<
-      Pick<FinancialValue, 'costPrice' | 'totalRevenue' | 'plansSold'>
+      Pick<
+        FinancialValue,
+        'costPrice' | 'totalRevenue' | 'plansSold' | 'partnerCommission'
+      >
     >,
   ): FinancialComparisonTotalsDto {
     const costPrice = rows.reduce((sum, row) => sum + row.costPrice, 0);
     const totalRevenue = rows.reduce((sum, row) => sum + row.totalRevenue, 0);
     const plansSold = rows.reduce((sum, row) => sum + row.plansSold, 0);
-    return this.createFinancialValue(costPrice, totalRevenue, plansSold);
+    const partnerCommission = rows.reduce(
+      (sum, row) => sum + row.partnerCommission,
+      0,
+    );
+    return this.createFinancialValue(
+      costPrice,
+      totalRevenue,
+      plansSold,
+      partnerCommission,
+    );
   }
 
+  /**
+   * Profit is what esim.vn keeps: revenue less the supplier cost AND the
+   * partner commission owed on referred orders (vande #016).
+   */
   private createFinancialValue(
     costPriceValue: RawValue,
     totalRevenueValue: RawValue,
     plansSoldValue: RawValue = 0,
+    partnerCommissionValue: RawValue = 0,
   ): FinancialComparisonTotalsDto {
     const costPrice = this.toNumber(costPriceValue);
     const totalRevenue = this.toNumber(totalRevenueValue);
-    const profit = totalRevenue - costPrice;
+    const partnerCommission = this.toNumber(partnerCommissionValue);
+    const profit = totalRevenue - costPrice - partnerCommission;
 
     return {
       costPrice: this.roundMoney(costPrice),
       totalRevenue: this.roundMoney(totalRevenue),
+      partnerCommission: this.roundMoney(partnerCommission),
       profit: this.roundMoney(profit),
       profitMarginPercent:
         totalRevenue > 0 ? this.roundMoney((profit / totalRevenue) * 100) : 0,

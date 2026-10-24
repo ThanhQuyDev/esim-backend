@@ -66,6 +66,8 @@ export const FINANCIAL_COMPARISON_GROUP_BY = [
   'year',
   'provider',
   'destination',
+  /** Direct / partner-referred / partner wallet orders (vande #016). */
+  'orderSource',
 ] as const;
 
 export type FinancialComparisonGroupBy =
@@ -308,10 +310,21 @@ export class FinancialComparisonTotalsDto {
   @ApiProperty({ type: Number, example: 90000000 })
   totalRevenue!: number;
 
-  @ApiProperty({ type: Number, example: 30000000 })
+  @ApiProperty({
+    type: Number,
+    example: 2000000,
+    description: 'Partner commission still owed on these sales (vande #016).',
+  })
+  partnerCommission!: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 28000000,
+    description: 'Revenue − cost − partner commission.',
+  })
   profit!: number;
 
-  @ApiProperty({ type: Number, example: 33.33 })
+  @ApiProperty({ type: Number, example: 31.11 })
   profitMarginPercent!: number;
 
   @ApiProperty({
@@ -332,7 +345,10 @@ export class FinancialComparisonSeriesItemDto {
   @ApiProperty({ type: Number, example: 9000000 })
   totalRevenue!: number;
 
-  @ApiProperty({ type: Number, example: 3000000 })
+  @ApiProperty({ type: Number, example: 200000 })
+  partnerCommission!: number;
+
+  @ApiProperty({ type: Number, example: 2800000 })
   profit!: number;
 
   @ApiProperty({ type: Number, example: 12 })
@@ -343,13 +359,23 @@ export class FinancialComparisonGroupItemDto {
   @ApiProperty({ type: String, example: 'airalo' })
   group!: string;
 
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Orders behind the figures; groupBy=orderSource only.',
+  })
+  orders?: number;
+
   @ApiProperty({ type: Number, example: 6000000 })
   costPrice!: number;
 
   @ApiProperty({ type: Number, example: 9000000 })
   totalRevenue!: number;
 
-  @ApiProperty({ type: Number, example: 3000000 })
+  @ApiProperty({ type: Number, example: 200000 })
+  partnerCommission!: number;
+
+  @ApiProperty({ type: Number, example: 2800000 })
   profit!: number;
 
   @ApiProperty({ type: Number, example: 33.33 })

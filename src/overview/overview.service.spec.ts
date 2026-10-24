@@ -1,5 +1,6 @@
 import {
   itemNetRevenueSql,
+  itemPartnerCommissionSql,
   orderNetRevenueSql,
   OverviewService,
   vietnamBoundaryFromInput,
@@ -254,5 +255,110 @@ describe('Partial refunds on the overview (#009)', () => {
     expect(byProvider.get('airalo')?.plansSold).toBe(3);
     // Providers with nothing sold are still listed, at zero.
     expect(byProvider.get('viettel')?.plansSold).toBe(0);
+  });
+});
+
+/**
+ * vande #016 — "trang tổng quan vẫn đang thể hiện mình được cả 100% giá trị lợi
+ * nhuận": on an order a partner referred, the partner's commission is ours to
+ * pay, so profit is revenue − cost − commission.
+ */
+describe('Partner commission on the overview (vande #016)', () => {
+  function fakeItemsQuery(rawMany: unknown[] = []) {
+    const selects: string[] = [];
+    const qb: Record<string, jest.Mock> = {};
+    const chain =
+      (fn?: (...args: unknown[]) => void) =>
+      (...args: unknown[]) => {
+        fn?.(...args);
+        return qb;
+      };
+    for (const m of [
+      'innerJoin',
+      'leftJoin',
+      'where',
+      'andWhere',
+      'groupBy',
+      'addGroupBy',
+      'orderBy',
+      'limit',
+      'setParameters',
+    ]) {
+      qb[m] = jest.fn(chain());
+    }
+    qb.select = jest.fn(chain((sql) => selects.push(String(sql))));
+    qb.addSelect = jest.fn(chain((sql) => selects.push(String(sql))));
+    qb.getRawMany = jest.fn().mockResolvedValue(rawMany);
+
+    const service = new OverviewService(
+      {} as never,
+      { createQueryBuilder: () => qb } as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, selects };
+  }
+
+  it('should only count commission still owed, spread over delivered lines', () => {
+    const sql = itemPartnerCommissionSql('purchase_order', 'order_item');
+    expect(sql).toContain('"order_partner_commission"');
+    expect(sql).toContain(`c.status IN ('pending', 'credited')`);
+    expect(sql).not.toContain("'reversed'");
+    expect(sql).toContain('order_item."vndPrice" / ');
+  });
+
+  it('should take the commission out of profit and margin', async () => {
+    const { service, selects } = fakeItemsQuery([
+      {
+        bucket: '2026-10-01',
+        costPrice: '600000',
+        totalRevenue: '1000000',
+        partnerCommission: '100000',
+        plansSold: '2',
+      },
+    ]);
+
+    const result = await service.getFinancialComparison({
+      groupBy: 'day',
+    } as never);
+
+    expect(selects.join(' ')).toContain('order_partner_commission');
+    expect(result.series![0]).toMatchObject({
+      partnerCommission: 100000,
+      profit: 300000,
+    });
+    expect(result.totals).toMatchObject({
+      partnerCommission: 100000,
+      profit: 300000,
+      profitMarginPercent: 30,
+    });
+  });
+
+  it('should split profit by order source, listing every source', async () => {
+    const { service, selects } = fakeItemsQuery([
+      {
+        group: 'partner_referral',
+        costPrice: '500',
+        totalRevenue: '1000',
+        partnerCommission: '100',
+        plansSold: '1',
+        orders: '1',
+      },
+    ]);
+
+    const result = await service.getFinancialComparison({
+      groupBy: 'orderSource',
+    } as never);
+
+    expect(selects.join(' ')).toContain(
+      `'partner_wallet' THEN 'partner_purchase'`,
+    );
+    expect(result.data!.map((row) => row.group)).toEqual([
+      'direct',
+      'partner_referral',
+      'partner_purchase',
+    ]);
+    expect(result.data![1]).toMatchObject({ orders: 1, profit: 400 });
+    expect(result.data![0]).toMatchObject({ orders: 0, profit: 0 });
   });
 });
