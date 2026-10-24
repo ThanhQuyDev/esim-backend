@@ -1,5 +1,8 @@
 import { PartnerStatusEnum, PartnerTypeEnum } from './partners.enum';
-import { isDomesticProvider } from '../plans/domestic-provider';
+import {
+  isPlanRefundable,
+  RefundPolicyPlan,
+} from '../plans/plan-refund-policy';
 
 /**
  * Đối tác phân phối mua hàng bằng ví ký quỹ (#046).
@@ -43,36 +46,14 @@ export function partnerSuggestedRetailVnd(agentPriceVnd: number): number {
   return roundToThousand((Math.max(0, Number(agentPriceVnd) || 0) * 5) / 3);
 }
 
-/** The suppliers inside Billion that do not refund (doitac-1410 #034). */
-const BILLION_NON_REFUNDABLE =
-  /t-?mobile|cmlink|sk\s?telecom|\bskt\b|kddi|unitel/i;
-
 /**
- * Whether a plan's eSIM can be refunded (doitac-1410 #034):
- *  - MicroEsim's "Local" plans: no;
- *  - every Viettel eSIM: no;
- *  - Billion: only Billion Connect's own eSIMs — not the T-Mobile, CMLink,
- *    SK telecom, KDDI or Unitel ones it resells, which carry that name.
+ * Whether a plan's eSIM can be refunded (doitac-1410 #034) — the same rule the
+ * CMS and the refund screen use (`isPlanRefundable`), so the partner's price
+ * list and the admin cannot disagree (vande #010: they each had a copy, and
+ * both missed LocalIIJ, CMLink "CO …", Orange, Telus and SoftBank Local).
  */
-export function planRefundSupported(plan: {
-  provider?: string | null;
-  name?: string | null;
-  operatorName?: string | null;
-}): boolean {
-  const provider = (plan.provider ?? '').toLowerCase();
-  const name = plan.name ?? '';
-  if (provider === 'viettel') return false;
-  // Domestic eSIMs are never refunded (vande #001: "itel-noidia" etc.).
-  if (isDomesticProvider(provider)) return false;
-  if (provider === 'microesim' && /local/i.test(name)) return false;
-  if (
-    provider === 'billion' &&
-    (BILLION_NON_REFUNDABLE.test(name) ||
-      BILLION_NON_REFUNDABLE.test(plan.operatorName ?? ''))
-  ) {
-    return false;
-  }
-  return true;
+export function planRefundSupported(plan: RefundPolicyPlan): boolean {
+  return isPlanRefundable(plan);
 }
 
 export type PartnerPurchaseQuoteInput = {
