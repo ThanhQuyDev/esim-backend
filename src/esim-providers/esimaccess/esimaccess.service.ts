@@ -54,12 +54,15 @@ export class EsimAccessService {
 
     try {
       const packages = await this.fetchPackages();
-      const filteredPackages = this.filterPreferNonhkip(packages);
+      const filteredPackages = pairNonhkipVariants(packages);
+      this.logger.log(
+        `Filtered packages: ${packages.length} -> ${filteredPackages.length} (regular + nonhkip kept)`,
+      );
       let itemsSynced = 0;
 
-      for (const pkg of filteredPackages) {
+      for (const { pkg, slugSuffix } of filteredPackages) {
         try {
-          await this.processPackage(pkg);
+          await this.processPackage(pkg, slugSuffix);
           itemsSynced++;
         } catch (error: any) {
           this.logger.error(
@@ -141,16 +144,25 @@ export class EsimAccessService {
     return data.obj.packageList;
   }
 
-  private async processPackage(pkg: EsimAccessPackage): Promise<void> {
+  private async processPackage(
+    pkg: EsimAccessPackage,
+    slugSuffix = '',
+  ): Promise<void> {
     const locationCodes = pkg.location.split(',').map((s) => s.trim());
     const isRegionPackage = locationCodes.length > 1;
 
     if (isRegionPackage) {
       const region = await this.resolveRegion(pkg, locationCodes);
-      await this.upsertPlan(pkg, null, region.id, region.name ?? null);
+      await this.upsertPlan(
+        pkg,
+        null,
+        region.id,
+        region.name ?? null,
+        slugSuffix,
+      );
     } else {
       const destination = await this.resolveDestination(pkg);
-      await this.upsertPlan(pkg, destination.id, null);
+      await this.upsertPlan(pkg, destination.id, null, null, slugSuffix);
     }
   }
 
@@ -319,6 +331,8 @@ export class EsimAccessService {
     regionId: number | null,
     /** Region display name, for regional packages only. */
     regionName: string | null = null,
+    /** Set on the regular twin of a "(nonhkip)" package (vande #017). */
+    slugSuffix = '',
   ) {
     const dataTypeMap: Record<number, string> = {
       1: 'fixed',
@@ -354,14 +368,15 @@ export class EsimAccessService {
       planType = dataTypeMap[pkg.dataType] ?? 'fixed';
     }
 
-    const slug = this.buildPlanSlug(
-      locationName,
-      dataMb,
-      pkg.duration,
-      'esimaccess',
-      planType,
-      pkg,
-    );
+    const slug =
+      this.buildPlanSlug(
+        locationName,
+        dataMb,
+        pkg.duration,
+        'esimaccess',
+        planType,
+        pkg,
+      ) + slugSuffix;
     const existing = await this.plansService.findBySlug(slug);
 
     const planName = this.buildPlanName(
@@ -737,59 +752,6 @@ export class EsimAccessService {
     return data.obj ?? {};
   }
 
-  /**
-   * Filters duplicate packages preferring nonhkip variants.
-   * When two packages share the same specs (location, volume, duration, dataType)
-   * but one has "nonhkip" in its name/slug, prefer that one and discard the other.
-   */
-  private filterPreferNonhkip(
-    packages: EsimAccessPackage[],
-  ): EsimAccessPackage[] {
-    const normalizeFupPolicy = (fupPolicy: string): string => {
-      const lower = fupPolicy.toLowerCase().trim();
-
-      // 1 Mbps trở lên → giữ nguyên, coi là type riêng
-      const mbpsMatch = lower.match(/^([\d.]+)\s*mbps$/);
-      if (mbpsMatch && parseFloat(mbpsMatch[1]) >= 1) {
-        return fupPolicy;
-      }
-
-      // Dưới 1 Mbps (512 Kbps, 384 Kbps, ...) → gom chung 1 nhóm
-      return 'sub1mbps';
-    };
-
-    const groupKey = (pkg: EsimAccessPackage) =>
-      `${pkg.locationCode}_${pkg.volume}_${pkg.duration}_${pkg.dataType}_${normalizeFupPolicy(pkg.fupPolicy)}`;
-
-    const grouped = new Map<string, EsimAccessPackage[]>();
-    for (const pkg of packages) {
-      const key = groupKey(pkg);
-      if (!grouped.has(key)) {
-        grouped.set(key, []);
-      }
-      grouped.get(key)!.push(pkg);
-    }
-
-    const result: EsimAccessPackage[] = [];
-    for (const [, group] of grouped) {
-      if (group.length === 1) {
-        result.push(group[0]);
-      } else {
-        const nonhkip = group.find(
-          (p) =>
-            p.name.toLowerCase().includes('nonhkip') ||
-            (p.slug && p.slug.toLowerCase().includes('nonhkip')),
-        );
-        result.push(nonhkip || group[0]);
-      }
-    }
-
-    this.logger.log(
-      `Filtered packages: ${packages.length} -> ${result.length} (nonhkip preference applied)`,
-    );
-    return result;
-  }
-
   private buildPlanSlug(
     locationName: string,
     dataMb: number,
@@ -855,6 +817,63 @@ export class EsimAccessService {
   }
 }
 
+/** Slug ending of the regular twin of a "(nonhkip)" package (vande #017). */
+export const HK_TWIN_SLUG_SUFFIX = '-hkip';
+
+function isNonhkipNamed(pkg: { name?: string | null; slug?: string | null }) {
+  return /nonhkip/i.test(`${pkg.name ?? ''} ${pkg.slug ?? ''}`);
+}
+
+function fupGroup(fupPolicy: string | null | undefined): string {
+  const lower = (fupPolicy ?? '').toLowerCase().trim();
+  // 1 Mbps and up is its own kind of plan; anything slower is one group.
+  const mbpsMatch = lower.match(/^([\d.]+)\s*mbps$/);
+  if (mbpsMatch && parseFloat(mbpsMatch[1]) >= 1) return fupPolicy ?? '';
+  return 'sub1mbps';
+}
+
+/**
+ * Which esimaccess packages to sync (vande #017).
+ *
+ * esimaccess sells many offers twice: a regular package (e.g. China 1GB/Day,
+ * PVG1G9ZU2, $0.80) and a "(nonhkip)" one that exits outside Hong Kong so
+ * TikTok and ChatGPT work (P03XQE2SQ, $0.92). Sync used to keep ONLY the
+ * nonhkip one, so the cheaper regular price never reached the price comparison
+ * and most esimaccess offers lost to other suppliers. Now both are kept: the
+ * regular one competes on price for every customer, the nonhkip one is what
+ * the "TikTok & AI" filter offers.
+ *
+ * The nonhkip package keeps the slug it always had (links and existing plans
+ * stay put); its regular twin gets {@link HK_TWIN_SLUG_SUFFIX}, since both
+ * would otherwise build the same slug. Other duplicates with the same specs
+ * are still dropped, keeping the first as before.
+ */
+export function pairNonhkipVariants(
+  packages: EsimAccessPackage[],
+): { pkg: EsimAccessPackage; slugSuffix: string }[] {
+  const grouped = new Map<string, EsimAccessPackage[]>();
+  for (const pkg of packages) {
+    const key = `${pkg.locationCode}_${pkg.volume}_${pkg.duration}_${pkg.dataType}_${fupGroup(pkg.fupPolicy)}`;
+    const group = grouped.get(key) ?? [];
+    group.push(pkg);
+    grouped.set(key, group);
+  }
+
+  const result: { pkg: EsimAccessPackage; slugSuffix: string }[] = [];
+  for (const group of grouped.values()) {
+    const nonhkip = group.find(isNonhkipNamed);
+    const regular = group.find((p) => !isNonhkipNamed(p));
+    if (nonhkip) result.push({ pkg: nonhkip, slugSuffix: '' });
+    if (regular) {
+      result.push({
+        pkg: regular,
+        slugSuffix: nonhkip ? HK_TWIN_SLUG_SUFFIX : '',
+      });
+    }
+  }
+  return result;
+}
+
 /**
  * Whether an esimaccess package's traffic leaves outside Hong Kong (#043, test
  * round 4). `ipExport` is "SG", "FR/NL/UK", "HK"…; HK anywhere in it means
@@ -870,5 +889,5 @@ export function isNonHkExit(pkg: {
   if (ip) {
     return !ip.split(/[\/,\s]+/).some((part) => part.toUpperCase() === 'HK');
   }
-  return /nonhkip/i.test(`${pkg.name ?? ''} ${pkg.slug ?? ''}`);
+  return isNonhkipNamed(pkg);
 }
