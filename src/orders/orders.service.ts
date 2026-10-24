@@ -3204,11 +3204,11 @@ export class OrdersService {
             );
           }
         } else if (plan.isLocalInventory) {
-          await this.esimsService.update(esim.id, {
-            userId: null,
-            orderItemId: null,
-            status: 'refunded',
-          });
+          // Marked refunded but left on its order line, like every other
+          // supplier's eSIM: cutting it loose made it vanish from the order and
+          // from the refund picker, which then could not show it greyed out
+          // (vande #026).
+          await this.esimsService.update(esim.id, { status: 'refunded' });
         } else if (plan.provider === 'airalo' && airaloRequested) {
           // No cancel; a refund request goes out instead when the admin asks
           // for one (doitac-1410 #079).
@@ -3283,14 +3283,11 @@ export class OrdersService {
             await this.billionService.cancelOrder(item.orderRequestId);
           }
         } else if (item.plan.isLocalInventory) {
-          // Viettel (local): mark esim as refunded
+          // Viettel (local): mark esim as refunded, still on its order line
+          // (vande #026).
           const esims = await this.esimsService.findByOrderItemIds([item.id]);
           for (const esim of esims) {
-            await this.esimsService.update(esim.id, {
-              userId: null,
-              orderItemId: null,
-              status: 'refunded',
-            });
+            await this.esimsService.update(esim.id, { status: 'refunded' });
           }
         }
         // Airalo: skip — no cancel API
