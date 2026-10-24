@@ -224,6 +224,17 @@ export class PlansController {
   }
 
   /**
+   * The margin tiers, so the storefront prices a multi-day pass exactly as
+   * checkout does: the margin once on the whole cost (vande #014). Public, like
+   * the plans themselves, which already carry their cost.
+   */
+  @Get('multiday-pricing')
+  @HttpCode(HttpStatus.OK)
+  multidayPricing() {
+    return this.plansService.marginTiers();
+  }
+
+  /**
    * Grouped plans for one domestic carrier (e.g. wintel / itel / vnsky),
    * for the /esim-noi-dia/[carrier] detail page. Public.
    */

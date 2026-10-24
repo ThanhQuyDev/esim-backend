@@ -3,6 +3,7 @@ import { parseOrderImportFile } from '../utils/order-import-file';
 import { vnFold, vnFoldSql } from '../utils/vn-fold';
 import { sanitizeNotificationHtml } from './notification-html';
 import { partnerCommissionAmount } from './partner-commission-amount';
+import { multidayRetailVnd } from '../plans/multiday-price';
 import {
   Optional,
   BadRequestException,
@@ -48,6 +49,7 @@ import {
   partnerPurchaseUnitPriceVnd,
   partnerSuggestedRetailVnd,
   planRefundSupported,
+  partnerLineDays,
 } from './partner-purchase';
 import { sanitizeBrandInput } from './partner-brand';
 import {
@@ -8523,6 +8525,8 @@ export class PartnersService {
       sms: number | null;
       call: number | null;
       refundable: boolean;
+      /** A day pass: the partner picks 1–365 days (vande #014). */
+      isAbleMultidate: boolean;
       isCheapest: boolean;
       /** Giá đại lý × 5/3, làm tròn nghìn. */
       suggestedRetailVnd: number;
@@ -8623,6 +8627,7 @@ export class PartnersService {
           sms: plan.sms ?? null,
           call: plan.call ?? null,
           refundable: planRefundSupported(plan),
+          isAbleMultidate: Boolean(plan.isAbleMultidate),
           isCheapest: Boolean(plan.isCheapest),
           suggestedRetailVnd: partnerSuggestedRetailVnd(unitPriceVnd),
           apn: plan.apn ?? null,
@@ -8686,10 +8691,12 @@ export class PartnersService {
     partnerId: number,
     planId: number,
     quantity: number,
+    /** Days of a day pass (vande #014). */
+    periodNum?: number | null,
   ): Promise<PartnerPurchaseQuote & { rejection: string | null }> {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const plan = await this.dataSource.query(
-      `SELECT "vndPrice", "vndCostPrice" FROM plan
+      `SELECT "vndPrice", "vndCostPrice", "isAbleMultidate" FROM plan
         WHERE id = $1 AND "isActive" = true AND "deletedAt" IS NULL`,
       [planId],
     );
@@ -8697,11 +8704,25 @@ export class PartnersService {
       throw new NotFoundException('Không tìm thấy gói này.');
     }
 
+    // A day pass bought for N days costs N days of cost; the partner's markup
+    // applies to that, like to any plan (vande #014).
+    const days = partnerLineDays(plan[0], periodNum);
     const wallet = await this.getOrCreateWallet(partnerId);
     const quote = partnerPurchaseQuote({
-      unitCostVnd: Number(plan[0].vndCostPrice ?? 0),
+      unitCostVnd: Number(plan[0].vndCostPrice ?? 0) * days,
       costMarkupPercent: await this.purchaseMarkupPercentFor(partner),
-      listPriceVnd: Number(plan[0].vndPrice ?? 0),
+      listPriceVnd:
+        days > 1
+          ? multidayRetailVnd(
+              {
+                isAbleMultidate: true,
+                vndCostPrice: plan[0].vndCostPrice,
+                vndPrice: plan[0].vndPrice,
+              },
+              days,
+              (await this.plansService?.marginTiers()) ?? null,
+            )
+          : Number(plan[0].vndPrice ?? 0),
       quantity,
     });
 
@@ -8726,10 +8747,12 @@ export class PartnersService {
    */
   async quoteCart(
     partnerId: number,
-    items: { planId: number; quantity: number }[],
+    items: { planId: number; quantity: number; periodNum?: number | null }[],
   ): Promise<{
     lines: {
       planId: number;
+      /** Days of a day pass; null for a fixed plan (vande #014). */
+      periodNum: number | null;
       name: string;
       quantity: number;
       unitPriceVnd: number;
@@ -8744,13 +8767,25 @@ export class PartnersService {
     balanceVnd: number;
     rejection: string | null;
   }> {
-    // One line per plan: the same plan twice is one line of the summed count.
-    const merged = new Map<number, number>();
+    // One line per plan and number of days: the same plan twice is one line
+    // of the summed count; a day pass for 7 and for 10 days are two (#014).
+    const merged = new Map<
+      string,
+      { planId: number; periodNum: number | null; quantity: number }
+    >();
     for (const item of items ?? []) {
       const planId = Number(item.planId);
       const quantity = Math.trunc(Number(item.quantity) || 0);
+      const days = Math.trunc(Number(item.periodNum) || 0);
+      const periodNum = days > 1 ? Math.min(days, 365) : null;
       if (planId > 0 && quantity > 0) {
-        merged.set(planId, (merged.get(planId) ?? 0) + quantity);
+        const key = `${planId}:${periodNum ?? ''}`;
+        const prev = merged.get(key);
+        merged.set(key, {
+          planId,
+          periodNum,
+          quantity: (prev?.quantity ?? 0) + quantity,
+        });
       }
     }
     if (!merged.size) {
@@ -8759,15 +8794,19 @@ export class PartnersService {
 
     const lines: Awaited<ReturnType<PartnersService['quoteCart']>>['lines'] =
       [];
-    for (const [planId, quantity] of merged) {
-      const quote = await this.quotePurchase(partnerId, planId, quantity);
+    for (const { planId, periodNum: wanted, quantity } of merged.values()) {
       const [plan] = await this.dataSource.query(
-        `SELECT name FROM plan WHERE id = $1`,
+        `SELECT name, "isAbleMultidate" FROM plan WHERE id = $1`,
         [planId],
       );
+      const days = plan?.isAbleMultidate && wanted ? wanted : null;
+      const quote = await this.quotePurchase(partnerId, planId, quantity, days);
       lines.push({
         planId,
-        name: String(plan?.name ?? `Gói #${planId}`),
+        periodNum: days,
+        name: days
+          ? `${String(plan?.name ?? `Gói #${planId}`)} — ${days} ngày`
+          : String(plan?.name ?? `Gói #${planId}`),
         quantity: quote.quantity,
         unitPriceVnd: quote.unitPriceVnd,
         totalVnd: quote.totalVnd,

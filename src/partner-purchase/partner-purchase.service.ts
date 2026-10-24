@@ -268,7 +268,7 @@ export class PartnerPurchaseService {
   async purchaseCart(
     partnerId: number,
     input: {
-      items: { planId: number; quantity: number }[];
+      items: { planId: number; quantity: number; periodNum?: number | null }[];
       recipientEmail?: string | null;
     },
   ): Promise<{
@@ -296,6 +296,7 @@ export class PartnerPurchaseService {
         planId: l.planId,
         quantity: l.quantity,
         unitPriceVnd: l.unitPriceVnd,
+        periodNum: l.periodNum,
       })),
       deliveryEmail: input.recipientEmail?.trim().toLowerCase() || null,
       onDebit: async (orderId, orderNumber) => {
@@ -314,18 +315,26 @@ export class PartnerPurchaseService {
       planId: number;
       quantity: number;
       orderRequestId: string | null;
+      periodNum: number | null;
       n: number;
     }[] = await this.dataSource.query(
-      `SELECT oi.id, oi."planId", oi.quantity, oi."orderRequestId",
+      `SELECT oi.id, oi."planId", oi.quantity, oi."orderRequestId", oi."periodNum",
               (SELECT count(*) FROM esim e WHERE e."orderItemId" = oi.id)::int AS n
          FROM order_item oi WHERE oi."orderId" = $1`,
       [order.id],
     );
     const failed = items.filter((i) => i.n === 0 && !i.orderRequestId);
-    const priceOf = new Map(quote.lines.map((l) => [l.planId, l.unitPriceVnd]));
+    // Keyed by plan and days: a day pass for 7 and for 10 days cost differently.
+    const lineKey = (planId: number, days: number | null | undefined) =>
+      `${planId}:${days && days > 1 ? days : ''}`;
+    const priceOf = new Map(
+      quote.lines.map((l) => [lineKey(l.planId, l.periodNum), l.unitPriceVnd]),
+    );
     const refundedVnd = failed.reduce(
       (sum, i) =>
-        sum + (priceOf.get(Number(i.planId)) ?? 0) * Number(i.quantity),
+        sum +
+        (priceOf.get(lineKey(Number(i.planId), i.periodNum)) ?? 0) *
+          Number(i.quantity),
       0,
     );
     const esimCount = items.reduce((sum, i) => sum + Number(i.n), 0);

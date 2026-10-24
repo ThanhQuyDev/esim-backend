@@ -1,3 +1,4 @@
+import { MarginTier, multidayRetailVnd } from '../plans/multiday-price';
 import {
   AUTO_RETRY_PROVIDERS,
   AUTO_RETRY_WINDOW_HOURS,
@@ -130,9 +131,11 @@ function getPlanPeriodMultiplier(
 export function getDiscountedVndPrice(
   plan: Plan,
   periodNum?: number | null,
+  /** Margin tiers: a day pass is priced on its whole cost (vande #014). */
+  tiers?: MarginTier[] | null,
 ): number {
   const multiplier = getPlanPeriodMultiplier(plan, periodNum);
-  const vndPrice = (plan.vndPrice ?? 0) * multiplier;
+  const vndPrice = multidayRetailVnd(plan, multiplier, tiers);
   if (!plan.discount || plan.discount <= 0) return vndPrice;
   return roundVndToThousands(vndPrice * (1 - plan.discount / 100));
 }
@@ -148,10 +151,20 @@ export function getDiscountedVndPrice(
  * Falls back to 0 rather than to `price` for local plans: a missing dollar
  * figure is obvious, a VND number labelled USD is not.
  */
-export function getPlanUsdPrice(plan: Plan, periodNum?: number | null): number {
+export function getPlanUsdPrice(
+  plan: Plan,
+  periodNum?: number | null,
+  tiers?: MarginTier[] | null,
+): number {
   const multiplier = getPlanPeriodMultiplier(plan, periodNum);
   const usd = Number(plan.usdPrice ?? 0);
 
+  // A multi-day pass in dollars at the same ratio as its đồng price (#014).
+  const perDayVnd = Number(plan.vndPrice ?? 0);
+  if (usd > 0 && multiplier > 1 && tiers?.length && perDayVnd > 0) {
+    const totalVnd = multidayRetailVnd(plan, multiplier, tiers);
+    return Math.round(((usd * totalVnd) / perDayVnd) * 100) / 100;
+  }
   if (usd > 0) return usd * multiplier;
   if (plan.isLocalInventory) return 0;
 
@@ -940,6 +953,8 @@ export class OrdersService {
       );
     }
 
+    // The same tiers the pricing used, for each line's price (vande #014).
+    const tiers = await this.plansService.marginTiers();
     for (const item of planDetails) {
       const unitCostPrice = getPlanCostPrice(item.plan, item.periodNum);
       const itemVndCostPrice = item.plan.isLocalInventory
@@ -960,10 +975,10 @@ export class OrdersService {
             planId: item.planId,
             orderRequestId: null,
             status: 'pending',
-            price: getPlanUsdPrice(item.plan, item.periodNum),
+            price: getPlanUsdPrice(item.plan, item.periodNum, tiers),
             currency: 'USD',
             quantity: 1,
-            vndPrice: getDiscountedVndPrice(item.plan, item.periodNum),
+            vndPrice: getDiscountedVndPrice(item.plan, item.periodNum, tiers),
             vndCostPrice: vndRate ? Math.round(unitCostPrice * vndRate) : 0,
             periodNum: item.periodNum ?? null,
           });
@@ -976,12 +991,13 @@ export class OrdersService {
         planId: item.planId,
         orderRequestId: null,
         status: 'pending',
-        price: getPlanUsdPrice(item.plan, item.periodNum),
+        price: getPlanUsdPrice(item.plan, item.periodNum, tiers),
         // `price` is dollars for every plan, local ones included (#017).
         currency: 'USD',
         quantity: item.quantity,
         vndPrice:
-          getDiscountedVndPrice(item.plan, item.periodNum) * item.quantity,
+          getDiscountedVndPrice(item.plan, item.periodNum, tiers) *
+          item.quantity,
         vndCostPrice: itemVndCostPrice,
         periodNum: item.periodNum ?? null,
       });
@@ -998,18 +1014,21 @@ export class OrdersService {
     dto: SubmitOrderDto,
     planDetails: OrderPlanDetail[],
   ): Promise<OrderPricing> {
+    // Day passes are priced on their whole cost (vande #014).
+    const tiers = await this.plansService.marginTiers();
     // totalAmount in USD, local inventory included (#017, test round 4): its
     // dollar price comes from `usdPrice`, which the exchange-rate job keeps up
     // for every plan. Leaving those lines out put a Viettel-only order at $0
     // and short-changed the total of every mixed order.
     const totalAmount = planDetails.reduce(
       (sum, item) =>
-        sum + getPlanUsdPrice(item.plan, item.periodNum) * item.quantity,
+        sum + getPlanUsdPrice(item.plan, item.periodNum, tiers) * item.quantity,
       0,
     );
     const subtotalVndPrice = planDetails.reduce(
       (sum, item) =>
-        sum + getDiscountedVndPrice(item.plan, item.periodNum) * item.quantity,
+        sum +
+        getDiscountedVndPrice(item.plan, item.periodNum, tiers) * item.quantity,
       0,
     );
 
@@ -1665,7 +1684,13 @@ export class OrdersService {
       quantity?: number;
       customerName?: string | null;
       /** Several plans at once (#031, test round 4). */
-      items?: { packageCode: string; slug: string; quantity: number }[];
+      items?: {
+        packageCode: string;
+        slug: string;
+        quantity: number;
+        /** Days of a day pass (vande #014). */
+        periodNum?: number;
+      }[];
     },
   ): Promise<Order> {
     // 1. Resolve every plan by slug (primary) and verify its packageCode.
@@ -1687,8 +1712,17 @@ export class OrdersService {
     if (lines.length === 0) {
       throw new BadRequestException('Chưa chọn gói eSIM nào cho đơn.');
     }
-    const resolved: { plan: Plan; quantity: number }[] = [];
-    for (const line of lines) {
+    const resolved: {
+      plan: Plan;
+      quantity: number;
+      periodNum: number | null;
+    }[] = [];
+    for (const line of lines as {
+      slug: string;
+      packageCode: string;
+      quantity: number;
+      periodNum?: number;
+    }[]) {
       const plan = await this.plansService.findBySlug(line.slug);
       if (!plan) {
         throw new NotFoundException(`Plan slug ${line.slug} not found`);
@@ -1698,7 +1732,12 @@ export class OrdersService {
           `Plan slug ${line.slug} does not match packageCode ${line.packageCode} (expected ${plan.providerPlanId})`,
         );
       }
-      resolved.push({ plan, quantity: line.quantity });
+      // Days only mean something on a day pass (vande #014).
+      const periodNum =
+        plan.isAbleMultidate && line.periodNum && line.periodNum > 1
+          ? Math.min(365, Math.round(line.periodNum))
+          : null;
+      resolved.push({ plan, quantity: line.quantity, periodNum });
     }
     const plan = resolved[0].plan;
 
@@ -1718,13 +1757,26 @@ export class OrdersService {
     // 3. Build a SubmitOrderDto-compatible payload (no coupon/wallet/referral for manual orders)
     const submitDto: SubmitOrderDto = {
       currency: plan.currency,
-      // One line per plan picked (#031); repeating a plan adds up its quantity.
+      // One line per plan and number of days (#031, vande #014); repeating
+      // both adds up the quantity.
       items: [
-        ...resolved.reduce((acc, line) => {
-          acc.set(line.plan.id, (acc.get(line.plan.id) ?? 0) + line.quantity);
-          return acc;
-        }, new Map<number, number>()),
-      ].map(([planId, quantity]) => ({ planId, quantity })),
+        ...resolved
+          .reduce((acc, line) => {
+            const key = `${line.plan.id}:${line.periodNum ?? ''}`;
+            const prev = acc.get(key);
+            acc.set(key, {
+              planId: line.plan.id,
+              periodNum: line.periodNum,
+              quantity: (prev?.quantity ?? 0) + line.quantity,
+            });
+            return acc;
+          }, new Map<string, { planId: number; periodNum: number | null; quantity: number }>())
+          .values(),
+      ].map(({ planId, quantity, periodNum }) => ({
+        planId,
+        quantity,
+        ...(periodNum ? { periodNum } : {}),
+      })),
       paymentMethod: 'admin_manual',
     };
 
@@ -1798,7 +1850,13 @@ export class OrdersService {
      * Several plans in one order — the partner's cart (doitac-1410 #035).
      * When given, it replaces planId / quantity / unitPriceVnd.
      */
-    items?: { planId: number; quantity: number; unitPriceVnd: number }[];
+    items?: {
+      planId: number;
+      quantity: number;
+      unitPriceVnd: number;
+      /** Days of a day pass (vande #014). */
+      periodNum?: number | null;
+    }[];
     /** The partner's customer the QR codes go to (doitac-1410 #034). */
     deliveryEmail?: string | null;
     onDebit: (orderId: number, orderNumber: string) => Promise<void>;
@@ -1835,7 +1893,13 @@ export class OrdersService {
       input.buyerUserId,
       {
         currency: plan!.currency,
-        items: lines.map((l) => ({ planId: l.planId, quantity: l.quantity })),
+        items: lines.map((l) => ({
+          planId: l.planId,
+          quantity: l.quantity,
+          ...('periodNum' in l && l.periodNum
+            ? { periodNum: l.periodNum }
+            : {}),
+        })),
         paymentMethod: 'partner_wallet',
       } as SubmitOrderDto,
       orderNumber,
@@ -1865,9 +1929,14 @@ export class OrdersService {
       deliveryEmail: input.deliveryEmail ?? null,
     } as Partial<Order>);
     for (const line of lines) {
+      // Matched on the days too: one plan can be two lines (#014).
+      const days =
+        'periodNum' in line && line.periodNum ? line.periodNum : null;
       await this.dataSource.query(
-        `UPDATE order_item SET "vndPrice" = $1 WHERE "orderId" = $2 AND "planId" = $3`,
-        [line.unitPriceVnd, order.id, line.planId],
+        `UPDATE order_item SET "vndPrice" = $1
+          WHERE "orderId" = $2 AND "planId" = $3
+            AND "periodNum" IS NOT DISTINCT FROM $4`,
+        [line.unitPriceVnd, order.id, line.planId, days],
       );
     }
 

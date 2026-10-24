@@ -33,6 +33,19 @@ export function partnerPurchaseUnitPriceVnd(
   return roundToThousand(cost * (1 + markup / 100));
 }
 
+/**
+ * Days a partner's cart line buys: the chosen days for a day pass (eSIM
+ * Access, 1–365), 1 for anything else (vande #014).
+ */
+export function partnerLineDays(
+  plan: { isAbleMultidate?: boolean | null },
+  periodNum?: number | null,
+): number {
+  if (!plan?.isAbleMultidate) return 1;
+  const days = Math.trunc(Number(periodNum) || 1);
+  return Math.min(365, Math.max(1, days));
+}
+
 /** To the nearest 1.000đ. */
 export function roundToThousand(vnd: number): number {
   return Math.round((Number(vnd) || 0) / 1000) * 1000;

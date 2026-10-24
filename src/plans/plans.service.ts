@@ -1,4 +1,5 @@
 import { carrierOf, domesticProviderOf } from './domestic-provider';
+import { MarginTier } from './multiday-price';
 import {
   HttpStatus,
   Inject,
@@ -311,6 +312,17 @@ export class PlansService {
    * tier applied — the same price {@link create} gives a brand-new plan. Used
    * when an eSIM re-upload changes the cost of a plan that already exists.
    */
+  /** The margin tiers, for pricing day passes on their whole cost (#014). */
+  async marginTiers(): Promise<MarginTier[]> {
+    const tiers = await this.profitMarginsService.findAllTiers();
+    return tiers.map((t) => ({
+      minVnd: Number(t.minVnd),
+      maxVnd: Number(t.maxVnd),
+      percentage: Number(t.percentage),
+      fixedAmountVnd: Number(t.fixedAmountVnd) || 0,
+    }));
+  }
+
   localRetailVnd(costVnd: number): Promise<number> {
     return this.profitMarginsService.calculateRetailVndFromLocalCost(costVnd);
   }

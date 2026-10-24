@@ -8,6 +8,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -37,6 +38,17 @@ export class SubmitManualOrderItemDto {
   @IsInt()
   @Min(1)
   quantity: number;
+
+  /**
+   * Days for a day pass (eSIM Access sells 1–365): without it a manual order
+   * could only buy one day (vande #014). Ignored for fixed plans.
+   */
+  @ApiPropertyOptional({ example: 10, minimum: 1, maximum: 365 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  periodNum?: number;
 }
 
 export class SubmitManualOrderDto {
