@@ -167,6 +167,16 @@ export class EsimsRelationalRepository implements EsimRepository {
     return entity ? EsimMapper.toDomain(entity) : null;
   }
 
+  async findOrderRequestId(id: Esim['id']): Promise<string | null> {
+    const row = await this.esimsRepository
+      .createQueryBuilder('esim')
+      .innerJoin('esim.orderItem', 'oi')
+      .select('oi."orderRequestId"', 'orderRequestId')
+      .where('esim.id = :id', { id: Number(id) })
+      .getRawOne<{ orderRequestId: string | null }>();
+    return row?.orderRequestId ?? null;
+  }
+
   async findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {
     const entity = await this.esimsRepository.findOne({
       where: { iccid },

@@ -43,6 +43,11 @@ function makeService(opts: {
       plan:
         opts.planDataMb === null ? null : { dataMb: opts.planDataMb ?? 3072 },
     }),
+    findOrderRequestId: jest
+      .fn()
+      .mockResolvedValue(
+        opts.orderRequestId === undefined ? 'topup-1' : opts.orderRequestId,
+      ),
     update: jest.fn((_id: unknown, patch: Record<string, unknown>) => {
       updates.push(patch);
       return Promise.resolve(esim);

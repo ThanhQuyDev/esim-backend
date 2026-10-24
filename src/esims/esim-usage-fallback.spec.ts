@@ -19,6 +19,7 @@ function makeService(esim: Record<string, unknown>) {
       orderItem: null,
       plan: { dataMb: 5120, durationDays: 15 },
     }),
+    findOrderRequestId: jest.fn().mockResolvedValue(null),
     update: jest.fn().mockResolvedValue(esim),
   };
 

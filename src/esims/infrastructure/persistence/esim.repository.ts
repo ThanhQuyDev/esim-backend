@@ -53,6 +53,12 @@ export abstract class EsimRepository {
    * unassigned and NOT past their expiry (#021). FEFO order, so the stock closest
    * to expiring is sold first.
    */
+  /**
+   * The supplier's order id of the line this eSIM was sold on — what the
+   * Billion / MicroEsim / Gadget Korea usage APIs are keyed on (vande #004).
+   */
+  abstract findOrderRequestId(id: Esim['id']): Promise<string | null>;
+
   abstract findAvailableByPlanId(
     planId: number,
     limit: number,

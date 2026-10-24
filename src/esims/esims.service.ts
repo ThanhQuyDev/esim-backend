@@ -23,6 +23,7 @@ import {
 } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
+import { billionUsageResult } from './billion-usage';
 
 /** Airalo's voice / text counters, when its usage reply carries them (#015). */
 function minutesAndTexts(usage: {
@@ -414,7 +415,7 @@ export class EsimsService {
       // The webhook now also records the topupId on the eSIM itself, so an eSIM
       // whose order item link is missing can still be looked up (#028).
       const orderRequestId =
-        (esimWithRelations as any)?.orderItem?.orderRequestId ??
+        (await this.esimsRepository.findOrderRequestId(esim.id)) ??
         esim.esimTranNo ??
         null;
       if (!orderRequestId) {
@@ -453,10 +454,7 @@ export class EsimsService {
     if (esim.provider === 'microesim') {
       // MicroEsim needs both topup_id (order-item.orderRequestId) and
       // device_id (stored on esim.esimTranNo) to query device detail.
-      const esimWithRelations =
-        await this.esimsRepository.findByIdWithRelations(esim.id);
-      const topupId =
-        (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
+      const topupId = await this.esimsRepository.findOrderRequestId(esim.id);
       const deviceId = esim.esimTranNo;
       if (!topupId || !deviceId) {
         return this.fallbackFromDb(esim);
@@ -491,41 +489,18 @@ export class EsimsService {
       // BILLION F046 needs the main orderId (order-item.orderRequestId) and the
       // iccid. Usage is reported per sub-order: usageInfoList[].usageAmt in KB,
       // total quota in totalTraffic KB ('-1' = unlimited).
-      const esimWithRelations =
-        await this.esimsRepository.findByIdWithRelations(esim.id);
-      const orderId =
-        (esimWithRelations as any)?.orderItem?.orderRequestId ?? null;
+      // The relation loader never fetched `orderItem`, so this id was always
+      // empty and Billion was never asked: usage, activation and expiry stayed
+      // at their purchase-time values (vande #004, same for MicroEsim and
+      // Gadget Korea).
+      const orderId = await this.esimsRepository.findOrderRequestId(esim.id);
       const iccid = esim.iccid;
       if (!orderId || !iccid) {
         return this.fallbackFromDb(esim);
       }
       try {
         const detail = await this.billionService.getUsage(orderId, iccid);
-        const sub = detail.subOrderList?.[0];
-        const usedKb = (sub?.usageInfoList ?? []).reduce(
-          (sum, u) => sum + (parseFloat(u.usageAmt ?? u.useageAmt ?? '0') || 0),
-          0,
-        );
-        const totalKb = parseFloat(sub?.totalTraffic ?? '0');
-        const isUnlimited = totalKb === -1;
-        const totalMb =
-          isUnlimited || !Number.isFinite(totalKb) ? 0 : totalKb / 1024;
-        const dataUsedMb = usedKb / 1024;
-        const planStatusMap: Record<string, string> = {
-          '0': 'INACTIVE',
-          '1': 'ACTIVE',
-          '2': 'FINISHED',
-          '3': 'CANCELLED',
-        };
-        const result: DataUsageResult = {
-          remaining: isUnlimited ? null : Math.max(totalMb - dataUsedMb, 0),
-          total: totalMb,
-          dataUsed: dataUsedMb,
-          expiredAt: sub?.planEndTime || null,
-          isUnlimited,
-          status: planStatusMap[sub?.planStatus ?? ''] ?? 'UNKNOWN',
-          lastUpdateTime: null,
-        };
+        const result = billionUsageResult(detail.subOrderList?.[0]);
         await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {
