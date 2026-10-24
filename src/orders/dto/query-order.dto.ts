@@ -77,6 +77,15 @@ export class FilterOrderDto {
   orderNumber?: string;
 
   @ApiPropertyOptional({
+    type: String,
+    description:
+      'One search box (vande #021): order number, buyer email, ICCID or plan name, partial match.',
+  })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({
     type: Boolean,
     description:
       'true = orders with a VAT invoice request, false = orders without one (#051)',

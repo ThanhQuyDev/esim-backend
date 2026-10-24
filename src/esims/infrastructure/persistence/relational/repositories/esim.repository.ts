@@ -97,6 +97,21 @@ export class EsimsRelationalRepository implements EsimRepository {
         { search: `%${filterOptions.search}%` },
       );
     }
+    if (filterOptions?.q?.trim()) {
+      // One box for order number, buyer email, ICCID and plan name (vande
+      // #021), instead of a separate input per field.
+      qb.andWhere(
+        `(esim.iccid ILIKE :q OR esim."esimTranNo" ILIKE :q
+          OR plan.name ILIKE :q OR plan."standardName" ILIKE :q
+          OR EXISTS (SELECT 1 FROM "user" u WHERE u.id = esim."userId" AND u.email ILIKE :q)
+          OR EXISTS (SELECT 1 FROM "order_item" qoi
+                       JOIN "order" qo ON qo.id = qoi."orderId"
+                       LEFT JOIN "user" qu ON qu.id = qo."userId"
+                      WHERE qoi.id = esim."orderItemId"
+                        AND (qo."orderNumber" ILIKE :q OR qu.email ILIKE :q)))`,
+        { q: `%${filterOptions.q.trim()}%` },
+      );
+    }
     if (filterOptions?.planName) {
       qb.andWhere('plan.name ILIKE :planName', {
         planName: `%${filterOptions.planName}%`,

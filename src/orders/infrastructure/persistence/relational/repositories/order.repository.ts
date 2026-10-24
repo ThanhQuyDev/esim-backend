@@ -79,6 +79,7 @@ export class OrdersRelationalRepository implements OrderRepository {
       filterOptions?.planName ||
       filterOptions?.userEmail ||
       filterOptions?.orderNumber ||
+      filterOptions?.q?.trim() ||
       filterOptions?.hasInvoice !== undefined ||
       filterOptions?.invoiceStatus ||
       // #017 — kind and the created-date range need SQL of their own.
@@ -232,6 +233,25 @@ export class OrdersRelationalRepository implements OrderRepository {
           WHERE "u"."email" ILIKE :userEmail
         )`,
         { userEmail: `%${filterOptions.userEmail}%` },
+      );
+    }
+
+    // One search box for order number, buyer email, ICCID and plan name
+    // (vande #021) instead of four inputs side by side.
+    if (filterOptions.q?.trim()) {
+      qb.andWhere(
+        `(
+          "order"."orderNumber" ILIKE :q
+          OR "order"."targetIccid" ILIKE :q
+          OR "order"."userId" IN (SELECT "u"."id" FROM "user" "u" WHERE "u"."email" ILIKE :q)
+          OR "order"."id" IN (
+            SELECT "oi"."orderId" FROM "order_item" "oi"
+            LEFT JOIN "plan" "p" ON "p"."id" = "oi"."planId"
+            LEFT JOIN "esim" "e" ON "e"."orderItemId" = "oi"."id"
+            WHERE "p"."name" ILIKE :q OR "p"."standardName" ILIKE :q OR "e"."iccid" ILIKE :q
+          )
+        )`,
+        { q: `%${filterOptions.q.trim()}%` },
       );
     }
 

@@ -18,7 +18,7 @@ export const EXPORT_PLAN_TYPE_LABELS: Record<string, string> = {
 
 export const EXPORT_SALE_STATUS_LABELS: Record<string, string> = {
   available: 'Chưa bán',
-  sold: 'Đã bán',
+  sold: 'Đã gửi eSIM', // vande #021
   active: 'Đang dùng',
   expired: 'Hết hạn',
   deactivated: 'Đã huỷ kích hoạt',

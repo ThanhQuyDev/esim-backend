@@ -17,6 +17,15 @@ export class FilterEsimDto {
   search?: string;
 
   @ApiPropertyOptional({
+    type: String,
+    description:
+      'One search box for the CMS list (vande #021): order number, buyer email, ICCID or plan name.',
+  })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({
     oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
     description:
       'One status or several (any of them). With includeAll (the admin list) it is the eSIM lifecycle status — sold / active / expired… worked out from activation and expiry (#024).',

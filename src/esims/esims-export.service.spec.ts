@@ -116,7 +116,7 @@ describe('eSIM export columns (#011)', () => {
       'Tên gói': 'Japan 10GB',
       'Thời hạn (ngày)': 7,
       'Loại gói': 'Cố định',
-      'Trạng thái bán': 'Đã bán',
+      'Trạng thái bán': 'Đã gửi eSIM',
     });
   });
 
