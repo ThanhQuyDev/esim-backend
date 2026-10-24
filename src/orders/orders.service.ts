@@ -2089,7 +2089,7 @@ export class OrdersService {
           smdpAddress: esim.smdpAddress,
           apn: esim.apnValue,
           phoneNumber: esim.phoneNumber,
-          planName: plan?.name ?? '',
+          planName: plan?.standardName || plan?.name || '',
           callMinutes: plan?.call ?? null,
           smsCount: plan?.sms ?? null,
           planData: plan ?? null,
@@ -2115,6 +2115,8 @@ export class OrdersService {
       planId: number;
       plan: {
         name: string;
+        /** The name under the one naming rule (vande #020). */
+        standardName?: string | null;
         call?: number | null;
         sms?: number | null;
         dataMb?: number | null;
@@ -2143,7 +2145,7 @@ export class OrdersService {
           smdpAddress: esim.smdpAddress,
           apn: esim.apnValue,
           phoneNumber: esim.phoneNumber,
-          planName: plan?.plan.name ?? '',
+          planName: plan?.plan.standardName || plan?.plan.name || '',
           callMinutes: plan?.plan.call ?? null,
           smsCount: plan?.plan.sms ?? null,
           planData: plan?.plan ?? null,

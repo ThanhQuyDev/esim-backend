@@ -170,7 +170,7 @@ export class EsimsPublicController {
 
     return {
       iccidMasked: maskIccid(esim.iccid),
-      planName: esim.plan?.name ?? null,
+      planName: esim.plan?.standardName || esim.plan?.name || null,
       status: usage.status || esim.status,
       isUnlimited: usage.isUnlimited,
       totalMb: usage.total,

@@ -94,6 +94,10 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isAddOn: boolean;
 
+  /** The name under the one naming rule (vande #020); `name` is the supplier's. */
+  @Column({ type: String, nullable: true })
+  standardName: string | null;
+
   @Column({ type: String, nullable: true })
   speed: string | null;
 

@@ -28,6 +28,7 @@ function buildService(
       updateVndPrices: step('vnd'),
       markCheapestPlans: step('cheapest'),
       refreshProviders: step('refresh'),
+      refreshStandardNames: step('names'),
     },
     margins: { recalculateAllPlanPrices: step('margins') },
     // Rows of "Ngưng bán" (#005); the query asks for isEnabled = false.
@@ -67,6 +68,7 @@ describe('SyncOrchestratorService — manual full sync (doitac-1410 #074)', () =
       'vnd',
       'cheapest',
       'refresh',
+      'names',
     ]);
     expect(service.getStatus()).toMatchObject({
       running: false,
@@ -93,6 +95,7 @@ describe('SyncOrchestratorService — manual full sync (doitac-1410 #074)', () =
       'vnd',
       'cheapest',
       'refresh',
+      'names',
     ]);
     expect(service.getStatus().errors).toEqual([]);
   });

@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  OnApplicationBootstrap,
   NotFoundException,
   UnprocessableEntityException,
   forwardRef,
@@ -172,7 +173,7 @@ function groupPlansBySimType(plans: Plan[]): PlanGroups {
 }
 
 @Injectable()
-export class PlansService {
+export class PlansService implements OnApplicationBootstrap {
   private readonly logger = new Logger(PlansService.name);
 
   constructor(
@@ -184,6 +185,39 @@ export class PlansService {
     private readonly exchangeRateService: ExchangeRateService,
     private readonly apnSupportService: ApnSupportService,
   ) {}
+
+  /**
+   * Plans written before the standard name existed (vande #020) get one on
+   * start; in the background, so it never holds up the boot.
+   */
+  onApplicationBootstrap(): void {
+    void this.refreshStandardNames({ onlyMissing: true })
+      .then((changed) => {
+        if (changed.size) {
+          this.logger.log(
+            `Standard plan names filled for ${changed.size} plans`,
+          );
+        }
+      })
+      .catch((err: Error) =>
+        this.logger.warn(`Standard plan names not filled: ${err.message}`),
+      );
+  }
+
+  /** Recompute standard names (vande #020); every plan when no ids are given. */
+  refreshStandardNames(
+    opts: { ids?: Plan['id'][]; onlyMissing?: boolean } = {},
+  ): Promise<Map<number, string>> {
+    return this.plansRepository.refreshStandardNames(opts);
+  }
+
+  /** The standard name follows the plan's data, days and location (vande #020). */
+  private async withStandardName<T extends Plan | null>(plan: T): Promise<T> {
+    if (!plan) return plan;
+    const changed = await this.refreshStandardNames({ ids: [plan.id] });
+    const name = changed.get(Number(plan.id));
+    return name ? { ...plan, standardName: name } : plan;
+  }
 
   /**
    * Cost / price / retail in BOTH currencies for one plan (#009).
@@ -256,7 +290,7 @@ export class PlansService {
       retailPrice: localRetailVnd ?? createPlanDto.retailPrice,
     });
 
-    return this.plansRepository.create({
+    const created = await this.plansRepository.create({
       provider: createPlanDto.provider,
       providerPlanId: createPlanDto.providerPlanId,
       name: createPlanDto.name,
@@ -313,6 +347,7 @@ export class PlansService {
       sms: createPlanDto.sms ?? null,
       call: createPlanDto.call ?? null,
     });
+    return this.withStandardName(created);
   }
 
   /**
@@ -509,7 +544,7 @@ export class PlansService {
         })
       : null;
 
-    return this.plansRepository.update(id, {
+    const updated = await this.plansRepository.update(id, {
       provider: updatePlanDto.provider,
       providerPlanId: updatePlanDto.providerPlanId,
       name: updatePlanDto.name,
@@ -569,6 +604,7 @@ export class PlansService {
           }
         : {}),
     });
+    return this.withStandardName(updated);
   }
 
   /** Distinct APN values, for the CMS filter's select box (#010). */

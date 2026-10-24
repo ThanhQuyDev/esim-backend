@@ -134,6 +134,10 @@ export class SyncOrchestratorService implements OnModuleInit {
     this.logger.log('Refreshing providers on destinations and regions...');
     await this.plansService.refreshProviders();
 
+    // Standard names follow data, days and location names (vande #020).
+    this.logger.log('Refreshing standard plan names...');
+    await this.plansService.refreshStandardNames();
+
     this.logger.log('Full sync completed.');
   }
 }

@@ -39,6 +39,7 @@ export class PlanMapper {
     domainEntity.type = raw.type;
     domainEntity.topUp = raw.topUp;
     domainEntity.isAddOn = Boolean(raw.isAddOn);
+    domainEntity.standardName = raw.standardName ?? null;
     domainEntity.speed = raw.speed;
     domainEntity.operatorName = raw.operatorName;
     domainEntity.fupSpeed = raw.fupSpeed;

@@ -922,7 +922,7 @@ export class MicroEsimService {
             smdpAddress: esim.smdpAddress ?? '',
             apn: plan?.apn ?? '',
             phoneNumber: esim.phoneNumber ?? null,
-            planName: plan?.name ?? '',
+            planName: plan?.standardName || plan?.name || '',
             callMinutes: plan?.call ?? null,
             smsCount: plan?.sms ?? null,
             planData: plan ?? null,

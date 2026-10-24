@@ -91,6 +91,16 @@ export abstract class PlanRepository {
 
   abstract removeMany(ids: Plan['id'][]): Promise<number>;
 
+  /**
+   * Recompute the standard name (vande #020) of the given plans, of the plans
+   * that have none yet (`onlyMissing`), or of every plan. Returns how many
+   * changed.
+   */
+  abstract refreshStandardNames(opts?: {
+    ids?: Plan['id'][];
+    onlyMissing?: boolean;
+  }): Promise<Map<number, string>>;
+
   /** Distinct non-empty APN values, to populate the CMS filter (#010). */
   abstract getDistinctApns(): Promise<string[]>;
 

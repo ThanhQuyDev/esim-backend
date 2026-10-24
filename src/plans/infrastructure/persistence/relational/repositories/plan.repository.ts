@@ -1,3 +1,7 @@
+import {
+  standardPlanName,
+  StandardNameInput,
+} from '../../../../standard-plan-name';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
@@ -599,6 +603,52 @@ export class PlansRelationalRepository implements PlanRepository {
 
   async remove(id: Plan['id']): Promise<void> {
     await this.plansRepository.softDelete(id);
+  }
+
+  async refreshStandardNames(
+    opts: { ids?: Plan['id'][]; onlyMissing?: boolean } = {},
+  ): Promise<Map<number, string>> {
+    const conditions = ['p."deletedAt" IS NULL'];
+    const params: unknown[] = [];
+    if (opts.ids?.length) {
+      params.push(opts.ids.map(Number));
+      conditions.push(`p.id = ANY($${params.length}::int[])`);
+    }
+    if (opts.onlyMissing) conditions.push('p."standardName" IS NULL');
+
+    const rows: (StandardNameInput & {
+      id: number;
+      standardName: string | null;
+      location: string | null;
+    })[] = await this.plansRepository.query(
+      `SELECT p.id, p.type, p."dataMb", p."durationDays", p."fupSpeed",
+              p.call, p.sms, p.name, p."isLocalInventory", p."isAbleMultidate",
+              p."standardName",
+              COALESCE(d.name, r.name) AS location
+         FROM "plan" p
+         LEFT JOIN "destination" d ON d.id = p."destinationId"
+         LEFT JOIN "region" r ON r.id = p."regionId"
+        WHERE ${conditions.join(' AND ')}`,
+      params,
+    );
+
+    const changed = new Map<number, string>();
+    for (const row of rows) {
+      const next = standardPlanName(row, row.location);
+      if (next !== row.standardName) changed.set(Number(row.id), next);
+    }
+    // In chunks: one statement for the whole catalogue stays small enough.
+    const entries = [...changed.entries()];
+    for (let i = 0; i < entries.length; i += 1000) {
+      const chunk = entries.slice(i, i + 1000);
+      await this.plansRepository.query(
+        `UPDATE "plan" p SET "standardName" = v.name
+           FROM unnest($1::int[], $2::text[]) AS v(id, name)
+          WHERE p.id = v.id`,
+        [chunk.map(([id]) => id), chunk.map(([, name]) => name)],
+      );
+    }
+    return changed;
   }
 
   async removeMany(ids: Plan['id'][]): Promise<number> {

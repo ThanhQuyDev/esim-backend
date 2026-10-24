@@ -19,6 +19,14 @@ export class Plan {
   @ApiProperty({ type: String, example: 'Spain 3GB 30Days' })
   name: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    example: 'Vietnam - Total 5 GB - 7 days',
+    description:
+      'The name under the one naming rule (vande #020); `name` is the supplier’s.',
+  })
+  standardName?: string | null;
+
   @ApiProperty({ type: String, example: 'esimaccess-CKH002' })
   slug: string;
 

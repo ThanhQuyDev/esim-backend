@@ -73,6 +73,7 @@ describe('plan daily reset', () => {
       const created: Record<string, unknown>[] = [];
       const plansRepository = {
         findBySlug: jest.fn().mockResolvedValue(null),
+        refreshStandardNames: jest.fn().mockResolvedValue(new Map()),
         create: jest
           .fn()
           .mockImplementation((data: Record<string, unknown>) => {

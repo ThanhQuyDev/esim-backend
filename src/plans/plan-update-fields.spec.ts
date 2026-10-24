@@ -19,7 +19,9 @@ describe('PlansService.update forwards every plan field (#043)', () => {
     const service = readFileSync(join(__dirname, 'plans.service.ts'), 'utf8');
 
     const fields = [...dto.matchAll(/^\s{2}(\w+)\??:\s/gm)].map((m) => m[1]);
-    const start = service.indexOf('return this.plansRepository.update(id, {');
+    const start = service.indexOf(
+      'const updated = await this.plansRepository.update(id, {',
+    );
     const end = service.indexOf('/** Distinct APN values', start);
     const block = service.slice(start, end);
 
