@@ -27,9 +27,16 @@ export function shortRegionName(packageName: string): string {
   return (packageName ?? '').split('-')[0].replace(/\s+/g, ' ').trim();
 }
 
-/** A region name a sync generated from the raw country-code list. */
+/**
+ * A region name a sync generated from the raw country-code list. Subdivision
+ * codes count too ("PT-20", "US-HI"): with them the list was not recognised,
+ * so "UK+EU45 Local" and "Global 108 Regions" kept a 140- and 326-character
+ * code list as their name in the destination column (vande #012).
+ */
 export function isCountryCodeList(name: string): boolean {
-  return /^[A-Z]{2}(?:\s*,\s*[A-Z]{2})+$/.test((name ?? '').trim());
+  return /^[A-Z]{2}(?:-[A-Z0-9]{1,3})?(?:\s*,\s*[A-Z]{2}(?:-[A-Z0-9]{1,3})?)+$/.test(
+    (name ?? '').trim(),
+  );
 }
 
 /**

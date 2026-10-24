@@ -1,4 +1,5 @@
 import type { MicroEsimEvent } from '../../esims/provider-timeline';
+import { MicroEsimAllowance, microEsimAllowance } from './microesim-plan-type';
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -371,7 +372,7 @@ export class MicroEsimService {
     hkdToUsd: number,
   ) {
     const regionId = region?.id ?? null;
-    const { type, dataMb } = this.parseDataAndType(item);
+    const { type, dataMb, fupSpeed } = this.parseDataAndType(item);
     const days = item.day;
 
     const locationCode = (item.code ?? '').split(',')[0]?.trim() || item.code;
@@ -428,7 +429,8 @@ export class MicroEsimService {
       slug,
       speed: networkSpeed(this.networkSegments(item.networks)),
       operatorName: uniqueOperators(this.parseOperators(item.networks)),
-      fupSpeed: item.rule_desc || null,
+      // "128kbps" / "Terminate" rather than the raw "unlimited 128kbps".
+      fupSpeed,
       isAbleMultidate: false,
       isKyc,
       apn: item.apn || null,
@@ -450,32 +452,9 @@ export class MicroEsimService {
     return this.plansService.create(planData);
   }
 
-  /**
-   * Derive the plan `type` and `dataMb` from the loosely-typed catalogue fields.
-   * Unlimited plans report `data: 'unlimited'`; a throttled rule (<1 Mbps in
-   * `rule_desc`) maps to `unlimited-reduce`. Fixed-quota plans encode the size
-   * in `data` (e.g. '1GB') or, failing that, in the plan name.
-   */
-  private parseDataAndType(item: MicroEsimDataplan): {
-    type: string;
-    dataMb: number;
-  } {
-    const data = (item.data ?? '').trim().toLowerCase();
-
-    if (data.includes('unlimited')) {
-      const rule = (item.rule_desc ?? '').toLowerCase();
-      const mbpsMatch = rule.match(/([\d.]+)\s*mbps/);
-      const kbpsMatch = rule.match(/([\d.]+)\s*kbps/);
-      const throttled =
-        (kbpsMatch && parseFloat(kbpsMatch[1]) > 0) ||
-        (mbpsMatch && parseFloat(mbpsMatch[1]) < 1);
-      return { type: throttled ? 'unlimited-reduce' : 'unlimited', dataMb: 0 };
-    }
-
-    const dataMb =
-      this.parseDataMb(item.data) ||
-      this.parseDataMb(item.channel_dataplan_name);
-    return { type: 'fixed', dataMb };
+  /** Type, data and after-quota speed of a plan (vande #012). */
+  private parseDataAndType(item: MicroEsimDataplan): MicroEsimAllowance {
+    return microEsimAllowance(item);
   }
 
   /** Parse a data allowance like '1GB', '500MB', 'Total1GB' → MB. */
