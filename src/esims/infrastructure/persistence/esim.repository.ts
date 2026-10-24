@@ -59,6 +59,9 @@ export abstract class EsimRepository {
    */
   abstract findOrderRequestId(id: Esim['id']): Promise<string | null>;
 
+  /** Days the customer picked for this eSIM's day pass (vande #006). */
+  abstract findChosenDays(id: Esim['id']): Promise<number | null>;
+
   abstract findAvailableByPlanId(
     planId: number,
     limit: number,

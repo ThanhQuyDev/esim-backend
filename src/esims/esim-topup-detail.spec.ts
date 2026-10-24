@@ -29,6 +29,7 @@ describe('Topup packages on the eSIM detail (#026)', () => {
   ) {
     const esimsRepository = {
       findByIdWithRelations: jest.fn().mockResolvedValue(esim),
+      findChosenDays: jest.fn().mockResolvedValue(30),
       findOrderNumbersByOrderItemIds: jest.fn().mockResolvedValue(new Map()),
       countTopupsByIccids: jest
         .fn()
@@ -95,5 +96,27 @@ describe('Topup packages on the eSIM detail (#026)', () => {
     await service.findByIdWithRelations(1);
 
     expect(esimsRepository.findTopupsByIccid).toHaveBeenCalledWith('AAA');
+  });
+});
+
+describe('Số ngày khách chọn trên chi tiết eSIM (vande #006)', () => {
+  it('should carry the days picked for a day pass', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { EsimsService } = require('./esims.service');
+    const service = Object.create(EsimsService.prototype);
+    service.esimsRepository = {
+      findByIdWithRelations: jest
+        .fn()
+        .mockResolvedValue({ id: 586, iccid: '8948010010047313209' }),
+      findTopupsByIccid: jest.fn().mockResolvedValue([]),
+      findChosenDays: jest.fn().mockResolvedValue(30),
+    };
+    service.attachTopupInfo = jest.fn((rows: unknown[]) =>
+      Promise.resolve(rows),
+    );
+
+    const esim = await service.findByIdWithRelations(586);
+
+    expect(esim.chosenDays).toBe(30);
   });
 });

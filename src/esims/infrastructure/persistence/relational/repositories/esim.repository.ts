@@ -177,6 +177,17 @@ export class EsimsRelationalRepository implements EsimRepository {
     return row?.orderRequestId ?? null;
   }
 
+  async findChosenDays(id: Esim['id']): Promise<number | null> {
+    const row = await this.esimsRepository
+      .createQueryBuilder('esim')
+      .innerJoin('esim.orderItem', 'oi')
+      .select('oi."periodNum"', 'periodNum')
+      .where('esim.id = :id', { id: Number(id) })
+      .getRawOne<{ periodNum: number | null }>();
+    const days = Number(row?.periodNum);
+    return Number.isFinite(days) && days > 0 ? days : null;
+  }
+
   async findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {
     const entity = await this.esimsRepository.findOne({
       where: { iccid },

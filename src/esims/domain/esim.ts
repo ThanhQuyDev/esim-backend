@@ -151,6 +151,14 @@ export class Esim {
   @ApiPropertyOptional({ type: () => [EsimTopupDto] })
   topups?: EsimTopupDto[];
 
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Days the customer picked for a day pass; null for fixed plans (vande #006)',
+  })
+  chosenDays?: number | null;
+
   @ApiProperty()
   createdAt: Date;
 

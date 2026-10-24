@@ -2547,6 +2547,9 @@ export class OrdersService {
           price: item.price,
           currency: item.currency,
           quantity: item.quantity,
+          // Days the customer picked for a day pass (vande #006): the plan's
+          // own durationDays is 1, so the admin read "1 ngày" for a 30-day buy.
+          periodNum: item.periodNum ?? null,
           vndPrice: item.vndPrice,
           vndCostPrice: item.vndCostPrice,
           discountShareVnd: shares.get(Number(item.id)) ?? 0,

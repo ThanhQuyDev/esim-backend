@@ -250,7 +250,9 @@ export class EsimsService {
     // The detail also lists WHICH packages were applied and at what price (#026);
     // the list view only needs the count.
     const topups = await this.esimsRepository.findTopupsByIccid(esim.iccid);
-    return { ...withTopup, topups };
+    // A day pass sold for N days: the plan says 1 day (vande #006).
+    const chosenDays = await this.esimsRepository.findChosenDays(esim.id);
+    return { ...withTopup, topups, chosenDays };
   }
 
   findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {

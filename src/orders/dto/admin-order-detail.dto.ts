@@ -161,6 +161,10 @@ export class AdminOrderItemDto {
   @ApiProperty({ type: Number })
   quantity: number;
 
+  /** Days the customer picked for a day pass; null for fixed plans (vande #006). */
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  periodNum?: number | null;
+
   @ApiProperty({ type: Number })
   vndPrice: number;
 
