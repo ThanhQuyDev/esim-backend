@@ -1,6 +1,8 @@
+import { PlansService } from '../plans/plans.service';
 import {
   HttpStatus,
   Inject,
+  Optional,
   Injectable,
   Logger,
   UnprocessableEntityException,
@@ -102,6 +104,7 @@ export class EsimsService {
     private readonly microEsimService: MicroEsimService,
     @Inject(forwardRef(() => BillionService))
     private readonly billionService: BillionService,
+    @Optional() private readonly plansService?: PlansService,
   ) {}
 
   /**
@@ -264,7 +267,13 @@ export class EsimsService {
     const topups = await this.esimsRepository.findTopupsByIccid(esim.iccid);
     // A day pass sold for N days: the plan says 1 day (vande #006).
     const chosenDays = await this.esimsRepository.findChosenDays(esim.id);
-    return { ...withTopup, topups, chosenDays };
+    // TikTok & AI support of its plan, as the plan list judges it (vande #022).
+    const plan =
+      withTopup.plan && this.plansService
+        ? ((await this.plansService.withAppSupport([withTopup.plan]))[0] ??
+          withTopup.plan)
+        : withTopup.plan;
+    return { ...withTopup, plan, topups, chosenDays };
   }
 
   findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {
