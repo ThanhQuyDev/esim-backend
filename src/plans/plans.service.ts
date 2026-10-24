@@ -68,8 +68,12 @@ function isSmsCallEsimPlan(plan: Plan): boolean {
  * - `isLocalInventory` = hàng mình giữ, giá niêm yết VND. Cả hai loại đều có.
  * - `isDomesticEsim`   = SIM data dùng trong nước, thuộc tab eSIM nội địa.
  *
- * Nên gói Viettel (`isLocalInventory = true`, `isDomesticEsim = false`) đi vào
- * `standardPlans` và hiện ở nhóm du lịch đúng theo `type` của nó.
+ * Gói eSIM du lịch của nhà mạng Việt Nam (Viettel: `isLocalInventory = true`,
+ * `isDomesticEsim = false`) có nhóm riêng `localEsim`, hiện trên đầu trang Việt
+ * Nam, trên nhóm gói cố định (vande #015). Để trong `standardPlans` thì gói
+ * 5GB/ngày 7–15–30 ngày lẫn vào "Gói theo ngày"; chọn số ngày khác trên lịch
+ * làm phần chọn gói nháy liên tục vì nhóm đó coi chúng là gói mua theo ngày.
+ * Trên trang /esim-noi-dia/[carrier], `localEsim` là các gói nội địa như cũ.
  */
 /** Works with TikTok on every device and with ChatGPT — what the filter shows. */
 function worksWithTiktokAndChatGpt(plan: Plan): boolean {
@@ -138,8 +142,11 @@ export function tiktokReplacements(plans: Plan[]): Plan[] {
 }
 
 function groupPlansBySimType(plans: Plan[]): PlanGroups {
+  // Our own stock: domestic eSIMs, and the travel eSIMs of a Vietnamese
+  // carrier (vande #015) — shown as their own block, never mixed in.
+  const isOwnStock = (p: Plan) => !!p.isDomesticEsim || !!p.isLocalInventory;
   const standardPlans = plans.filter(
-    (p) => !p.isDomesticEsim && !isSmsCallEsimPlan(p),
+    (p) => !isOwnStock(p) && !isSmsCallEsimPlan(p),
   );
 
   return {
@@ -155,8 +162,8 @@ function groupPlansBySimType(plans: Plan[]): PlanGroups {
     dailyUnlimited: standardPlans.filter(
       (p) => p.type === 'unlimited' && p.isCheapest,
     ),
-    localEsim: plans.filter((p) => p.isDomesticEsim),
-    SmsCallEsim: plans.filter((p) => !p.isDomesticEsim && isSmsCallEsimPlan(p)),
+    localEsim: plans.filter(isOwnStock),
+    SmsCallEsim: plans.filter((p) => !isOwnStock(p) && isSmsCallEsimPlan(p)),
     // Any de-duplicated group can hide a TikTok-capable plan behind a cheaper
     // one; the cheapest capable plan of such a group is handed back for the
     // TikTok filter (#045, test round 4).

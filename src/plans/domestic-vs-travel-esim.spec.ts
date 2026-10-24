@@ -39,11 +39,13 @@ describe('eSIM nội địa vs eSIM du lịch nhà mạng trong nước', () => 
   };
 
   describe('gói du lịch của nhà mạng trong nước (Viettel)', () => {
-    it('should list a Viettel travel plan under the travel groups, not the domestic tab', async () => {
-      // Viettel giữ isLocalInventory (giá VND, hàng mình giữ) nhưng KHÔNG phải
-      // eSIM nội địa — nó là gói du lịch ở Quốc gia → Việt Nam.
+    it('should give Viettel travel plans their own block, not "Gói theo ngày" (vande #015)', async () => {
+      // Viettel giữ isLocalInventory (giá VND, hàng mình giữ), không phải eSIM
+      // nội địa. Trên trang Việt Nam nó là khối riêng ở đầu trang (localEsim),
+      // không lẫn vào nhóm gói theo ngày — ở đó chọn số ngày trên lịch làm
+      // phần chọn gói nháy liên tục.
       const viettel = plan({
-        name: 'Viettel 5GB / Day - 7Days',
+        name: 'Viettel - Daily 5 GB/day - 7 days',
         type: 'daily',
         isLocalInventory: true,
         isDomesticEsim: false,
@@ -52,22 +54,20 @@ describe('eSIM nội địa vs eSIM du lịch nhà mạng trong nước', () => 
       const service = group([viettel]);
       const groups = await service.findLocalPlansByCarrier('viettel');
 
-      expect(groups.slowUnlimited).toHaveLength(1);
-      expect(groups.localEsim).toHaveLength(0);
+      expect(groups.localEsim).toHaveLength(1);
+      expect(groups.slowUnlimited).toHaveLength(0);
     });
 
-    it('should keep isLocalInventory out of the grouping decision entirely', async () => {
-      // Một gói giá VND nhưng không phải nội địa vẫn phải vào nhóm du lịch
-      // theo đúng `type` của nó.
+    it('should keep our own stock out of every travel group, whatever its type', async () => {
       const service = group([
         plan({ type: 'fixed', isCheapest: true, isLocalInventory: true }),
         plan({ type: 'unlimited', isLocalInventory: true }),
       ]);
       const groups = await service.findLocalPlansByCarrier('viettel');
 
-      expect(groups.dataPlans).toHaveLength(1);
-      expect(groups.dailyUnlimited).toHaveLength(1);
-      expect(groups.localEsim).toHaveLength(0);
+      expect(groups.dataPlans).toHaveLength(0);
+      expect(groups.dailyUnlimited).toHaveLength(0);
+      expect(groups.localEsim).toHaveLength(2);
     });
   });
 
@@ -116,11 +116,16 @@ describe('eSIM nội địa vs eSIM du lịch nhà mạng trong nước', () => 
       ]);
       const groups = await service.findLocalPlansByCarrier('any');
 
-      // Viettel + Airalo là hàng du lịch; chỉ Wintel vào tab nội địa.
-      expect(groups.slowUnlimited).toHaveLength(1);
+      // Airalo vào nhóm du lịch; hàng mình giữ (Viettel, Wintel) vào khối
+      // riêng. Tab "eSIM nội địa" thì vẫn chỉ có Wintel: nó truy vấn theo
+      // isDomesticEsim (xem "trang chi tiết từng nhà mạng" bên dưới), và trang
+      // Việt Nam không bao giờ nạp gói nội địa (vande #015).
+      expect(groups.slowUnlimited).toHaveLength(0);
       expect(groups.dataPlans).toHaveLength(1);
-      expect(groups.localEsim).toHaveLength(1);
-      expect(groups.localEsim[0].provider).toBe('wintel');
+      expect(groups.localEsim.map((p) => p.provider).sort()).toEqual([
+        'viettel',
+        'wintel',
+      ]);
     });
   });
 
