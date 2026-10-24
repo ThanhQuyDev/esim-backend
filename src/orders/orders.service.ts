@@ -103,15 +103,17 @@ export function commissionShareOfOrder(
   },
   percentSnapshot?: number | null,
 ): number {
+  // Four decimals, never one (vande #007): "18.1%" of 2 121 000 is 383 901,
+  // 299đ short of the 384 200 actually paid; 18.1141% is the exact share.
   if (percentSnapshot != null && Number(percentSnapshot) > 0) {
-    return Math.round(Number(percentSnapshot) * 10) / 10;
+    return Math.round(Number(percentSnapshot) * 10_000) / 10_000;
   }
   const paid =
     Number(order.payableVndPrice ?? order.vndPrice ?? 0) +
     Number(order.walletSpentVndAmount ?? 0);
   const base = paid > 0 ? paid : Number(order.subtotalVndPrice ?? 0);
   if (!(base > 0) || !(earnedCommissionVnd > 0)) return 0;
-  return Math.round((earnedCommissionVnd / base) * 1000) / 10;
+  return Math.round((earnedCommissionVnd / base) * 1_000_000) / 10_000;
 }
 function roundVndToThousands(amount: number): number {
   return Math.round(amount / VND_ROUNDING_UNIT) * VND_ROUNDING_UNIT;

@@ -132,3 +132,14 @@ describe('affiliate commission rate shown on an order (#014)', () => {
     expect(commissionShareOfOrder(1, { vndPrice: 999 }, 7)).toBe(7);
   });
 });
+
+describe('Tỷ lệ trên giá trị đơn hiển thị 4 chữ số lẻ (vande #007)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { commissionShareOfOrder } = require('./orders.service');
+
+  it('should show the stored rate to four decimals, not one', () => {
+    expect(commissionShareOfOrder(384200, { vndPrice: 2081000 }, 18.1141)).toBe(
+      18.1141,
+    );
+  });
+});

@@ -61,7 +61,7 @@ export class OrderPartnerCommissionEntity extends EntityRelationalHelper {
    * edited, and a partner who changed tier mid-period needs to see the rate that
    * applied to each order rather than the one on the tier today.
    */
-  @Column({ type: 'decimal', precision: 6, scale: 3, nullable: true })
+  @Column({ type: 'decimal', precision: 8, scale: 4, nullable: true })
   commissionPercentSnapshot!: number | null;
 
   @Index()

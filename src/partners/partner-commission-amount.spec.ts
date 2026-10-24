@@ -86,3 +86,28 @@ describe('the order anh Thọ tested (doitac-1410 #009)', () => {
     );
   });
 });
+
+describe('Tỷ lệ hoa hồng 4 chữ số lẻ (vande #007)', () => {
+  it('should keep the rate exact enough to give back the commission paid', () => {
+    // ORD-261018145723495-B2WFGZ: 20% partner, own code took 40 000 off
+    // 2 121 000 → paid 384 200, i.e. 18.1141% of the order value.
+    const { commissionVnd, effectivePercent } = partnerCommissionAmount({
+      orderValueVnd: 2_081_000,
+      commissionPercent: 20,
+      ownCouponDiscountVnd: 40_000,
+    });
+    expect(commissionVnd).toBe(384_200);
+    expect(effectivePercent).toBe(18.1141);
+    expect(Math.round((2_121_000 * effectivePercent) / 100)).toBe(384_200);
+  });
+
+  it('should match the worked example of HÌNH 6 (7%, 10 000 off 642 000)', () => {
+    const { commissionVnd, effectivePercent } = partnerCommissionAmount({
+      orderValueVnd: 632_000,
+      commissionPercent: 7,
+      ownCouponDiscountVnd: 10_000,
+    });
+    expect(commissionVnd).toBe(34_940);
+    expect(effectivePercent).toBe(5.4424);
+  });
+});

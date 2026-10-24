@@ -6118,7 +6118,7 @@ export class PartnersService {
                   WHEN c."commissionVnd" IS NOT NULL
                    AND ${ORDER_REVENUE_SQL} - COALESCE(o."refundedAmountVnd", 0) > 0
                   THEN ROUND(c."commissionVnd" * 100.0
-                             / (${ORDER_REVENUE_SQL} - COALESCE(o."refundedAmountVnd", 0)), 1)
+                             / (${ORDER_REVENUE_SQL} - COALESCE(o."refundedAmountVnd", 0)), 4)
                 END
               ) AS "commissionPercent",
               -- Which of the partner's discount codes brought the order, when

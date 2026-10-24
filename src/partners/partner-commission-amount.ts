@@ -31,9 +31,12 @@ export function partnerCommissionAmount(params: {
   const beforeDiscount = value + ownDiscount;
   const budget = (beforeDiscount * rate) / 100;
   const commissionVnd = Math.max(0, Math.round(budget - ownDiscount));
+  // Four decimals (vande #007): at two, 384 200 / 2 121 000 was kept as
+  // 18.11% and 18.11% x 2 121 000 = 384 107 — not the commission paid, which
+  // a partner checking the sum will notice.
   const effectivePercent =
     beforeDiscount > 0
-      ? Math.round((commissionVnd * 10000) / beforeDiscount) / 100
+      ? Math.round((commissionVnd * 1_000_000) / beforeDiscount) / 10_000
       : 0;
   return { commissionVnd, effectivePercent };
 }
