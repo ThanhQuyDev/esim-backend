@@ -6,6 +6,7 @@ import { parseDailyResetPolicy } from './plan-daily-reset';
 import { DestinationsService } from '../destinations/destinations.service';
 import { RegionsService } from '../regions/regions.service';
 import { ImportResult } from './plans-import.service';
+import { isNonHkExit } from '../esim-providers/esimaccess/esimaccess.service';
 
 const SHEET_TYPE_MAP: Record<string, string> = {
   'Daily Unlimited': 'daily',
@@ -13,7 +14,8 @@ const SHEET_TYPE_MAP: Record<string, string> = {
   'Real Unlimited': 'unlimited',
 };
 
-// Column indices (1-based) matching the gadget-korea.xlsx header:
+// Column indices (1-based) of the ORIGINAL gadget-korea.xlsx header — the
+// fallback when a sheet's header cannot be read (see resolveGadgetColumns):
 // 1:SIM Type | 2:Plan | 3:Day | 4:Data | 5:Option Name | 6:Carrier | 7:Network |
 // 8:Access Type | 9:QOS | 10:Validity | 11:APN | 12:PreInstallation |
 // 13:Top-up | 14:KYC | 15:Hot-Spot | 16:Hot-Spot Allow | 17:Initialize policy |
@@ -41,6 +43,87 @@ const COL = {
   MIN_SELL_PRICE: 20,
   B2B_PRICE: 21, // cost_price
 };
+
+type GadgetColumns = typeof COL & {
+  /** Exit IP ("HK"…), added by the 20/10/2026 price file (vande #018). */
+  IP: number | null;
+};
+
+/** Header text → column key; matched with case, spaces and dots ignored. */
+const HEADER_KEYS: Record<string, keyof typeof COL | 'IP'> = {
+  simtype: 'SIM_TYPE',
+  plan: 'PLAN',
+  day: 'DAY',
+  data: 'DATA',
+  optionname: 'OPTION_NAME',
+  carrier: 'CARRIER',
+  network: 'NETWORK',
+  accesstype: 'ACCESS_TYPE',
+  ip: 'IP',
+  qos: 'QOS',
+  validity: 'VALIDITY',
+  apn: 'APN',
+  preinstallation: 'PRE_INSTALLATION',
+  topup: 'TOP_UP',
+  kyc: 'KYC',
+  hotspot: 'HOT_SPOT',
+  hotspotallow: 'HOT_SPOT_ALLOW',
+  initializepolicy: 'INITIALIZE_POLICY',
+  optionidforapi: 'OPTION_ID',
+  optionid: 'OPTION_ID',
+  normalprice: 'NORMAL_PRICE',
+  minsellprice: 'MIN_SELL_PRICE',
+  b2bprice: 'B2B_PRICE',
+};
+
+/**
+ * Where each column is, read from the sheet's header row (vande #018).
+ *
+ * The 20/10/2026 price file put a new "IP" column in the middle, shifting
+ * every column after it by one; with fixed positions the import read the
+ * Initialize-policy text as the Option ID and refused every row. Columns are
+ * now found by their header text, so both the old and the new file import.
+ * A header that does not carry the columns the import needs falls back to the
+ * original positions.
+ */
+export function resolveGadgetColumns(
+  header: (string | null | undefined)[],
+): GadgetColumns {
+  const found: Partial<Record<keyof typeof COL | 'IP', number>> = {};
+  header.forEach((text, index) => {
+    const key =
+      HEADER_KEYS[
+        String(text ?? '')
+          .toLowerCase()
+          .replace(/[\s.()_-]/g, '')
+      ];
+    if (key && found[key] === undefined) found[key] = index + 1;
+  });
+
+  const required: (keyof typeof COL)[] = [
+    'PLAN',
+    'DAY',
+    'OPTION_ID',
+    'B2B_PRICE',
+  ];
+  if (required.some((key) => found[key] === undefined)) {
+    return { ...COL, IP: null };
+  }
+  return { ...COL, ...found, IP: found.IP ?? null } as GadgetColumns;
+}
+
+/**
+ * The APN column as one tidy list: "cmlink / internet.proximus.be  / cmhk "
+ * becomes "cmlink / internet.proximus.be / cmhk" (vande #018).
+ */
+export function cleanGadgetApn(raw: string | null): string | null {
+  if (!raw) return null;
+  const parts = raw
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length ? parts.join(' / ') : null;
+}
 
 const PROVIDER = 'gadgetkorea';
 
@@ -119,6 +202,11 @@ export class PlansGadgetkoreaImportService {
     for (const ws of targetSheets) {
       const planType = SHEET_TYPE_MAP[ws.name];
       this.logger.log(`Importing sheet "${ws.name}" as type "${planType}"`);
+      const header: (string | null)[] = [];
+      ws.getRow(1).eachCell({ includeEmpty: true }, (cell, col) => {
+        header[col - 1] = this.getString(cell.value);
+      });
+      const COL = resolveGadgetColumns(header);
 
       for (let rowNum = 2; rowNum <= ws.rowCount; rowNum++) {
         const row = ws.getRow(rowNum);
@@ -181,7 +269,14 @@ export class PlansGadgetkoreaImportService {
           const isKyc = this.parseOX(
             this.getString(row.getCell(COL.KYC).value),
           );
-          const apn = this.getString(row.getCell(COL.APN).value) || null;
+          const apn = cleanGadgetApn(
+            this.getString(row.getCell(COL.APN).value),
+          );
+          // Exit IP, when the file has the column (vande #018). Older files
+          // leave whatever the plan already had.
+          const ipExport = COL.IP
+            ? this.getString(row.getCell(COL.IP).value)?.trim() || null
+            : undefined;
 
           // Hot-Spot field
           const hotSpotRaw = this.getString(row.getCell(COL.HOT_SPOT).value);
@@ -240,6 +335,14 @@ export class PlansGadgetkoreaImportService {
             operatorName,
             isKyc,
             apn,
+            ...(ipExport !== undefined
+              ? {
+                  ipExport,
+                  // Same rule as esimaccess (#043): TikTok & ChatGPT work
+                  // unless traffic exits via Hong Kong.
+                  isNonHkIp: ipExport ? isNonHkExit({ ipExport }) : false,
+                }
+              : {}),
             // The Validity column is the activation window, not the usage
             // period — currently 180 days for every GadgetKorea row (#070). The
             // column was already mapped but never read until now.
@@ -361,6 +464,12 @@ export class PlansGadgetkoreaImportService {
 
   private getString(value: any): string | null {
     if (value === null || value === undefined) return null;
+    // A cell with mixed formatting comes as rich text: its runs joined are
+    // the text (vande #018 — 21 APN cells read "[object Object]").
+    if (typeof value === 'object' && Array.isArray(value.richText))
+      return value.richText
+        .map((run: { text?: string }) => run.text ?? '')
+        .join('');
     if (typeof value === 'object' && 'result' in value)
       return String(value.result);
     if (typeof value === 'object' && 'text' in value) return value.text;
