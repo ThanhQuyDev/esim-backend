@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsDateString,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -84,6 +85,16 @@ export class FilterOrderDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description:
+      'Orders an affiliate partner earned commission on (vande #023).',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  affiliatePartnerId?: number;
 
   @ApiPropertyOptional({
     type: Boolean,

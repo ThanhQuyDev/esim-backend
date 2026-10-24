@@ -1,3 +1,4 @@
+import { EXU_WALLET_PAYMENT_METHOD } from '../topup/dto/topup-checkout.dto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnepayService } from './onepay.service';
@@ -80,7 +81,8 @@ export class PaymentService {
     // If eXU wallet covers the entire amount, skip OnePay and finalize immediately
     if (order.vndPrice <= 0) {
       await this.ordersService.finalizePaidOrder(order.id, {
-        paymentMethod: 'wallet',
+        // Same name as a topup paid from the wallet (vande #023).
+        paymentMethod: EXU_WALLET_PAYMENT_METHOD,
         paymentId: null,
       });
       await this.ordersService.submitProviders(order.id);
@@ -159,7 +161,8 @@ export class PaymentService {
     // Wallet covers the whole amount — nothing to transfer, finalize now.
     if (order.vndPrice <= 0) {
       await this.ordersService.finalizePaidOrder(order.id, {
-        paymentMethod: 'wallet',
+        // Same name as a topup paid from the wallet (vande #023).
+        paymentMethod: EXU_WALLET_PAYMENT_METHOD,
         paymentId: null,
       });
       await this.ordersService.submitProviders(order.id);

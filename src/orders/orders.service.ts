@@ -2191,9 +2191,13 @@ export class OrdersService {
       const invoiceSet = new Set(invoiceOrderIds);
       for (const order of orders) {
         order.isInvoice = invoiceSet.has(order.id);
-        order.itemCount = itemCounts.get(order.id) ?? 0;
+        // A topup order has no order lines: it is one package put on one
+        // eSIM, so it counts as 1, not 0 (vande #023).
+        const isTopup = order.orderType === 'TOPUP';
+        order.itemCount = itemCounts.get(order.id) || (isTopup ? 1 : 0);
         // What the customer counts: eSIMs, not order lines (#064).
-        order.productQuantity = productQuantities.get(order.id) ?? 0;
+        order.productQuantity =
+          productQuantities.get(order.id) || (isTopup ? 1 : 0);
 
         const commission = commissions.get(order.id);
         order.partnerCommission = commission

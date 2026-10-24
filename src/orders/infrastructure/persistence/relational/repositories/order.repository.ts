@@ -80,6 +80,7 @@ export class OrdersRelationalRepository implements OrderRepository {
       filterOptions?.userEmail ||
       filterOptions?.orderNumber ||
       filterOptions?.q?.trim() ||
+      filterOptions?.affiliatePartnerId ||
       filterOptions?.hasInvoice !== undefined ||
       filterOptions?.invoiceStatus ||
       // #017 — kind and the created-date range need SQL of their own.
@@ -233,6 +234,15 @@ export class OrdersRelationalRepository implements OrderRepository {
           WHERE "u"."email" ILIKE :userEmail
         )`,
         { userEmail: `%${filterOptions.userEmail}%` },
+      );
+    }
+
+    // One affiliate partner's orders (vande #023): the ones it earned
+    // commission on, whatever became of the commission later.
+    if (filterOptions.affiliatePartnerId) {
+      qb.andWhere(
+        `"order"."id" IN (SELECT "apc"."orderId" FROM "order_partner_commission" "apc" WHERE "apc"."partnerId" = :affiliatePartnerId)`,
+        { affiliatePartnerId: filterOptions.affiliatePartnerId },
       );
     }
 
