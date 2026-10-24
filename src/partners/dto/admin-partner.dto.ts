@@ -1,8 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  PARTNER_DEPOSIT_MAX_VND,
-  PARTNER_DEPOSIT_MIN_VND,
-} from '../partners.constants';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -442,10 +438,17 @@ export class ProcessPartnerPayoutDto {
 }
 
 export class CreateDepositRequestDto {
+  /**
+   * Only "a positive whole number" here (vande #008). The limits that apply
+   * are the partner's own or the programme's, checked in
+   * `createDepositRequest` against `depositLimitsFor` — a fixed 100.000đ –
+   * 10 triệu on the DTO turned away a 10.000đ top-up the admin had allowed
+   * ("amountVnd must not be less than 100000"), and would refuse a ceiling
+   * raised above 10 triệu the same way.
+   */
   @ApiProperty({ type: Number, example: 5000000 })
   @IsInt()
-  @Min(PARTNER_DEPOSIT_MIN_VND)
-  @Max(PARTNER_DEPOSIT_MAX_VND)
+  @Min(1)
   amountVnd!: number;
 
   @ApiPropertyOptional({
