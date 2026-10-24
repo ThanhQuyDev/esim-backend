@@ -37,6 +37,17 @@ export abstract class OrderItemRepository {
 
   abstract findPendingByProvider(provider: string): Promise<OrderItem[]>;
 
+  /**
+   * Lines of paid orders that a supplier never took (no request id, no eSIM),
+   * for the automatic retry (vande #003). Only orders created after `since`
+   * and lines asked fewer than `maxAttempts` times.
+   */
+  abstract findUnplacedForRetry(params: {
+    providers: string[];
+    since: Date;
+    maxAttempts: number;
+  }): Promise<(OrderItem & { provider: string })[]>;
+
   abstract update(
     id: OrderItem['id'],
     payload: DeepPartial<OrderItem>,

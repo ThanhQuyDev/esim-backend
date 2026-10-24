@@ -54,6 +54,22 @@ export class OrderItem {
   })
   periodNum: number | null;
 
+  @ApiProperty({
+    type: Number,
+    description: 'Times the supplier was asked to take this line (vande #003)',
+  })
+  provisionAttempts?: number;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The supplier's last refusal; null once it takes the line",
+  })
+  lastProvisionError?: string | null;
+
+  @ApiProperty({ type: Date, nullable: true })
+  lastProvisionAttemptAt?: Date | null;
+
   @ApiProperty()
   createdAt: Date;
 

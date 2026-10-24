@@ -68,6 +68,14 @@ export class OrderItemsService {
     return this.orderItemsRepository.findByOrderRequestId(orderRequestId);
   }
 
+  findUnplacedForRetry(params: {
+    providers: string[];
+    since: Date;
+    maxAttempts: number;
+  }): Promise<(OrderItem & { provider: string })[]> {
+    return this.orderItemsRepository.findUnplacedForRetry(params);
+  }
+
   findPendingByProvider(provider: string): Promise<OrderItem[]> {
     return this.orderItemsRepository.findPendingByProvider(provider);
   }
@@ -87,6 +95,17 @@ export class OrderItemsService {
       currency: updateOrderItemDto.currency,
       quantity: updateOrderItemDto.quantity,
     });
+  }
+
+  /** The supplier's answer to one try at ordering this line (vande #003). */
+  recordProvision(
+    id: OrderItem['id'],
+    fields: Pick<
+      OrderItem,
+      'provisionAttempts' | 'lastProvisionError' | 'lastProvisionAttemptAt'
+    >,
+  ): Promise<OrderItem | null> {
+    return this.orderItemsRepository.update(id, fields);
   }
 
   async remove(id: OrderItem['id']): Promise<void> {

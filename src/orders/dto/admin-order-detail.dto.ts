@@ -136,6 +136,19 @@ export class AdminOrderItemDto {
   @ApiPropertyOptional({ type: String })
   providerOrderCode: string | null;
 
+  /**
+   * The supplier has not taken this line yet (vande #003): how many times it
+   * was asked, its last answer, and when the next automatic try is due (null
+   * when no more automatic tries will happen).
+   */
+  @ApiPropertyOptional()
+  provisioning?: {
+    attempts: number;
+    lastError: string | null;
+    lastAttemptAt: Date | null;
+    nextAutoRetryAt: Date | null;
+  } | null;
+
   @ApiProperty({ type: String })
   status: string;
 

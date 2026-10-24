@@ -64,6 +64,17 @@ export class OrderItemEntity extends EntityRelationalHelper {
   @Column({ type: 'int', nullable: true, default: null })
   periodNum: number | null;
 
+  /** Times the supplier was asked to take this line (vande #003). */
+  @Column({ type: 'int', default: 0 })
+  provisionAttempts: number;
+
+  /** The supplier's last refusal, cleared once it takes the line. */
+  @Column({ type: 'varchar', length: 500, nullable: true, default: null })
+  lastProvisionError: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true, default: null })
+  lastProvisionAttemptAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

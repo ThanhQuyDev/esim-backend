@@ -21,6 +21,9 @@ export class OrderItemMapper {
     domainEntity.vndPrice = Number(raw.vndPrice);
     domainEntity.vndCostPrice = Number(raw.vndCostPrice);
     domainEntity.periodNum = raw.periodNum;
+    domainEntity.provisionAttempts = raw.provisionAttempts ?? 0;
+    domainEntity.lastProvisionError = raw.lastProvisionError ?? null;
+    domainEntity.lastProvisionAttemptAt = raw.lastProvisionAttemptAt ?? null;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     return domainEntity;
@@ -43,6 +46,11 @@ export class OrderItemMapper {
     persistenceEntity.vndPrice = domainEntity.vndPrice ?? 0;
     persistenceEntity.vndCostPrice = domainEntity.vndCostPrice ?? 0;
     persistenceEntity.periodNum = domainEntity.periodNum ?? null;
+    persistenceEntity.provisionAttempts = domainEntity.provisionAttempts ?? 0;
+    persistenceEntity.lastProvisionError =
+      domainEntity.lastProvisionError ?? null;
+    persistenceEntity.lastProvisionAttemptAt =
+      domainEntity.lastProvisionAttemptAt ?? null;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     return persistenceEntity;

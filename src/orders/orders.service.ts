@@ -1,3 +1,10 @@
+import {
+  AUTO_RETRY_PROVIDERS,
+  AUTO_RETRY_WINDOW_HOURS,
+  MAX_PROVISION_ATTEMPTS,
+  nextAutoRetryAt,
+  provisionErrorText,
+} from './provision-retry';
 import { deviceInfo, deviceType, storedUserAgent } from '../utils/device-info';
 import { isPlanRefundable } from '../plans/plan-refund-policy';
 import { AiraloRefundReason } from '../esim-providers/airalo/airalo-refund';
@@ -1370,10 +1377,12 @@ export class OrdersService {
         await this.orderItemsService.update(item.id, {
           orderRequestId: result.request_id ?? null,
         });
+        await this.recordProvisionAttempt([item], null);
       } catch (err) {
         this.logger.error(
           `Airalo order failed for plan ${item.planId}: ${(err as Error).message}`,
         );
+        await this.recordProvisionAttempt([item], err);
       }
     }
 
@@ -1395,8 +1404,11 @@ export class OrdersService {
             orderRequestId: result.orderNo ?? null,
           });
         }
+        await this.recordProvisionAttempt(esimAccessItems, null);
       } catch (err) {
         this.logger.error(`EsimAccess order failed: ${(err as Error).message}`);
+        // Kept on the line and retried by retryUnplacedProviderItems (#003).
+        await this.recordProvisionAttempt(esimAccessItems, err);
       }
     }
 
@@ -1430,6 +1442,7 @@ export class OrdersService {
         this.logger.error(
           `Gadget Korea order failed: ${(err as Error).message}`,
         );
+        await this.recordProvisionAttempt(gadgetKoreaItems, err);
       }
 
       for (const item of gadgetKoreaItems) {
@@ -1440,6 +1453,7 @@ export class OrdersService {
           await this.orderItemsService.update(item.id, {
             orderRequestId: topupId,
           });
+          await this.recordProvisionAttempt([item], null);
         }
       }
     }
@@ -1465,11 +1479,13 @@ export class OrdersService {
           await this.orderItemsService.update(item.id, {
             orderRequestId: topupId,
           });
+          await this.recordProvisionAttempt([item], null);
           topupIds.push(topupId);
         } catch (err) {
           this.logger.error(
             `MicroEsim order failed for plan ${item.planId}: ${(err as Error).message}`,
           );
+          await this.recordProvisionAttempt([item], err);
         }
       }
 
@@ -1512,11 +1528,13 @@ export class OrdersService {
             orderRequestId: result.orderId,
           });
         }
+        await this.recordProvisionAttempt(billionItems, null);
         this.billionService.scheduleCallbackAfterSubmit([result.orderId]);
       } catch (err) {
         this.logger.error(
           `BILLION order failed for order ${order.orderNumber}: ${(err as Error).message}`,
         );
+        await this.recordProvisionAttempt(billionItems, err);
       }
     }
 
@@ -2512,6 +2530,19 @@ export class OrdersService {
           orderRequestId: item.orderRequestId,
           providerOrderId: item.providerOrderId,
           providerOrderCode: item.providerOrderCode,
+          // Why the supplier has not taken this line yet (vande #003).
+          provisioning: item.lastProvisionError
+            ? {
+                attempts: item.provisionAttempts ?? 0,
+                lastError: item.lastProvisionError,
+                lastAttemptAt: item.lastProvisionAttemptAt ?? null,
+                nextAutoRetryAt: nextAutoRetryAt(
+                  order,
+                  item,
+                  plans[idx]?.provider ?? null,
+                ),
+              }
+            : null,
           status: item.status,
           price: item.price,
           currency: item.currency,
@@ -3294,6 +3325,83 @@ export class OrdersService {
   async clearCartForUser(userId: number): Promise<void> {
     await this.cartsService.clearCart(userId);
   }
+
+  /**
+   * Keep the supplier's answer on each line (vande #003): a refusal is shown in
+   * the order and drives the automatic retry; a success clears it. Never lets
+   * a bookkeeping failure break the order flow.
+   */
+  private async recordProvisionAttempt(
+    items: {
+      id: number;
+      provisionAttempts?: number | null;
+    }[],
+    err: unknown,
+  ): Promise<void> {
+    const now = new Date();
+    for (const item of items) {
+      try {
+        await this.orderItemsService.recordProvision(item.id, {
+          provisionAttempts: (item.provisionAttempts ?? 0) + 1,
+          lastProvisionAttemptAt: now,
+          lastProvisionError: err ? provisionErrorText(err) : null,
+        });
+      } catch (e) {
+        this.logger.error(
+          `recordProvisionAttempt: line ${item.id}: ${(e as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Ask the supplier again for paid lines it refused (vande #003) — what the
+   * KDDI integration used to do. Runs every 5 minutes, waits longer after each
+   * try (5, 15, 30, 60 min), gives up after {@link MAX_PROVISION_ATTEMPTS}
+   * tries or once the order is a day old; the refusal stays on the order for
+   * the admin either way.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async retryUnplacedProviderItems(now: Date = new Date()): Promise<void> {
+    if (this.provisionRetryRunning) return;
+    this.provisionRetryRunning = true;
+    try {
+      const since = new Date(
+        now.getTime() - AUTO_RETRY_WINDOW_HOURS * 3600_000,
+      );
+      const lines = await this.orderItemsService.findUnplacedForRetry({
+        providers: AUTO_RETRY_PROVIDERS,
+        since,
+        maxAttempts: MAX_PROVISION_ATTEMPTS,
+      });
+      const dueByOrder = new Map<number, number[]>();
+      for (const line of lines) {
+        const order = await this.orderRepository.findById(line.orderId);
+        if (!order) continue;
+        const due = nextAutoRetryAt(order, line, line.provider, now);
+        if (!due || due.getTime() > now.getTime()) continue;
+        const ids = dueByOrder.get(order.id) ?? [];
+        ids.push(Number(line.id));
+        dueByOrder.set(order.id, ids);
+      }
+      for (const [orderId, itemIds] of dueByOrder) {
+        this.logger.log(
+          `retryUnplacedProviderItems: order ${orderId}, lines ${itemIds.join(', ')}`,
+        );
+        try {
+          await this.submitProviders(orderId, { onlyItemIds: itemIds });
+        } catch (err) {
+          this.logger.error(
+            `retryUnplacedProviderItems: order ${orderId}: ${(err as Error).message}`,
+          );
+        }
+      }
+    } finally {
+      this.provisionRetryRunning = false;
+    }
+  }
+
+  private provisionRetryRunning = false;
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async failExpiredPendingOrders(): Promise<void> {

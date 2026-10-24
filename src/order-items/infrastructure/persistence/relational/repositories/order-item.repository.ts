@@ -160,6 +160,37 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
     return entities.map((e) => OrderItemMapper.toDomain(e));
   }
 
+  async findUnplacedForRetry(params: {
+    providers: string[];
+    since: Date;
+    maxAttempts: number;
+  }): Promise<(OrderItem & { provider: string })[]> {
+    const rows = await this.orderItemsRepository
+      .createQueryBuilder('oi')
+      .innerJoin('order', 'o', 'o.id = oi."orderId"')
+      .innerJoinAndSelect('oi.plan', 'plan')
+      .where('o.status = :paid', { paid: 'paid' })
+      .andWhere('o."deletedAt" IS NULL')
+      .andWhere('o."createdAt" >= :since', { since: params.since })
+      .andWhere('oi."orderRequestId" IS NULL')
+      .andWhere('oi.status = :pending', { pending: 'pending' })
+      .andWhere('oi."provisionAttempts" < :max', {
+        max: params.maxAttempts,
+      })
+      .andWhere('lower(plan.provider) IN (:...providers)', {
+        providers: params.providers,
+      })
+      .andWhere(
+        'NOT EXISTS (SELECT 1 FROM esim e WHERE e."orderItemId" = oi.id)',
+      )
+      .orderBy('oi.id', 'ASC')
+      .getMany();
+    return rows.map((e) => ({
+      ...OrderItemMapper.toDomain(e),
+      provider: (e.plan?.provider ?? '').toLowerCase(),
+    }));
+  }
+
   async findPendingByProvider(provider: string): Promise<OrderItem[]> {
     const entities = await this.orderItemsRepository
       .createQueryBuilder('orderItem')
