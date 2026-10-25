@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { createdAtInVnDays } from '../../../../../utils/created-range';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, ILike, FindOptionsWhere } from 'typeorm';
 import { FaqEntity } from '../entities/faq.entity';
@@ -44,6 +45,12 @@ export class FaqRelationalRepository implements FaqRepository {
     if (filterOptions?.pageUrl?.trim()) {
       baseWhere.url = ILike(`%${filterOptions.pageUrl.trim()}%`);
     }
+    // Thời gian tạo Từ – Đến (vande #041).
+    const created = createdAtInVnDays(
+      filterOptions?.createdFrom,
+      filterOptions?.createdTo,
+    );
+    if (created) baseWhere.createdAt = created;
 
     let where: FindOptionsWhere<FaqEntity> | FindOptionsWhere<FaqEntity>[] =
       baseWhere;

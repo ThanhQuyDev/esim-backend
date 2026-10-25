@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { createdAtInVnDays } from '../../../../../utils/created-range';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, ILike, In, IsNull, Not, Repository } from 'typeorm';
 import { SeoConfigEntity } from '../entities/seo-config.entity';
@@ -73,6 +74,11 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
     if (filterOptions?.planId !== undefined) {
       baseWhere.planId = filterOptions.planId;
     }
+    const created = createdAtInVnDays(
+      filterOptions?.createdFrom,
+      filterOptions?.createdTo,
+    );
+    if (created) baseWhere.createdAt = created;
 
     // Meta copy filters (#048), deliberately separate from `search`: they are
     // what an admin uses to find "which pages say X", while `search` answers

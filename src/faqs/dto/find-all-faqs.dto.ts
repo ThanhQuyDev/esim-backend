@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsDateString,
   IsNumber,
   IsOptional,
   IsString,
@@ -29,6 +30,18 @@ export class FilterFaqDto {
   @IsOptional()
   @IsString()
   pageUrl?: string;
+
+  /** Created on or after this day, Vietnam time (vande #041). */
+  @ApiPropertyOptional({ type: String, format: 'date' })
+  @IsOptional()
+  @IsDateString()
+  createdFrom?: string;
+
+  /** Created on or before this day, the whole day counted (vande #041). */
+  @ApiPropertyOptional({ type: String, format: 'date' })
+  @IsOptional()
+  @IsDateString()
+  createdTo?: string;
 }
 
 export class FindAllFaqsDto {
