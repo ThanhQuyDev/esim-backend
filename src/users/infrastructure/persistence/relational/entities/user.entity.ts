@@ -82,6 +82,13 @@ export class UserEntity extends EntityRelationalHelper {
   })
   role?: RoleEntity | null;
 
+  /**
+   * Roles ticked on top of the main one (vande #071) — e.g. an admin who also
+   * writes articles. Only user and author; see `EXTRA_ROLE_IDS`.
+   */
+  @Column({ type: 'int', array: true, default: () => "'{}'" })
+  extraRoleIds: number[];
+
   @ManyToOne(() => StatusEntity, {
     eager: true,
   })

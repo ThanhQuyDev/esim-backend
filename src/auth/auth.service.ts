@@ -175,6 +175,7 @@ export class AuthService {
     const { token, refreshToken, tokenExpires } = await this.getTokensData({
       id: user.id,
       role: user.role,
+      extraRoleIds: user.extraRoleIds,
       sessionId: session.id,
       hash,
     });
@@ -262,6 +263,7 @@ export class AuthService {
     } = await this.getTokensData({
       id: user.id,
       role: user.role,
+      extraRoleIds: user.extraRoleIds,
       sessionId: session.id,
       hash,
     });
@@ -660,6 +662,7 @@ export class AuthService {
       role: {
         id: user.role.id,
       },
+      extraRoleIds: user.extraRoleIds,
       sessionId: session.id,
       hash,
     });
@@ -790,6 +793,7 @@ export class AuthService {
     const { token, refreshToken, tokenExpires } = await this.getTokensData({
       id: user.id,
       role: user.role,
+      extraRoleIds: user.extraRoleIds,
       sessionId: session.id,
       hash,
     });
@@ -805,6 +809,8 @@ export class AuthService {
   private async getTokensData(data: {
     id: User['id'];
     role: User['role'];
+    /** Roles on top of the main one (vande #071) — what the CMS shows. */
+    extraRoleIds?: User['extraRoleIds'];
     sessionId: Session['id'];
     hash: Session['hash'];
   }) {
@@ -819,6 +825,11 @@ export class AuthService {
         {
           id: data.id,
           role: data.role,
+          // Only the CMS reads these, to know what to show; the API checks
+          // the saved roles on each request (RolesGuard, vande #071).
+          ...(data.extraRoleIds?.length
+            ? { extraRoleIds: data.extraRoleIds }
+            : {}),
           sessionId: data.sessionId,
         },
         {

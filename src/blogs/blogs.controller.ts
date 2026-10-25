@@ -35,6 +35,7 @@ import { FilterBlogDto, QueryBlogDto } from './dto/find-all-blogs.dto';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
+import { allRoleIds } from '../roles/extra-roles';
 import { RolesGuard } from '../roles/roles.guard';
 import { AuthorsService } from '../authors/authors.service';
 
@@ -244,10 +245,11 @@ export class BlogsController {
     @Request() request: { user?: EditorUser },
   ) {
     const blog = await this.blogsService.findById(id);
-    // A draft opens in the CMS editor (admin / author), not for the public.
-    const roleId = Number(request.user?.role?.id);
+    // A draft opens in the CMS editor (admin / author — main role or one
+    // ticked on top, vande #071), not for the public.
+    const roleIds = request.user ? allRoleIds(request.user) : [];
     const canSeeDrafts =
-      roleId === RoleEnum.admin || roleId === RoleEnum.author;
+      roleIds.includes(RoleEnum.admin) || roleIds.includes(RoleEnum.author);
     if (!blog || (!blog.isPublished && !canSeeDrafts)) {
       throw new NotFoundException();
     }
@@ -288,7 +290,11 @@ export class BlogsController {
   }
 }
 
-type EditorUser = { id: number | string; role?: { id?: number | string } };
+type EditorUser = {
+  id: number | string;
+  role?: { id?: number | string };
+  extraRoleIds?: number[];
+};
 
 function toEditor(user: EditorUser): BlogEditor {
   return { id: Number(user.id), roleId: user.role?.id ?? null };

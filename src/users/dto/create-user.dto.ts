@@ -6,7 +6,10 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   // decorators here
+  ArrayMaxSize,
+  IsArray,
   IsEmail,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   MinLength,
@@ -59,6 +62,14 @@ export class CreateUserDto {
   @IsOptional()
   @Type(() => RoleDto)
   role?: RoleDto | null;
+
+  /** Roles on top of the main one: 2 = user, 3 = author (vande #071). */
+  @ApiPropertyOptional({ type: [Number], example: [3] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @IsInt({ each: true })
+  extraRoleIds?: number[];
 
   @ApiPropertyOptional({ type: StatusDto })
   @IsOptional()

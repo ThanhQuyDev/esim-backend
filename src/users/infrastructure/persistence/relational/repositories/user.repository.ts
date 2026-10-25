@@ -5,6 +5,7 @@ import {
   FindOptionsWhere,
   Repository,
   In,
+  ArrayOverlap,
   ILike,
   IsNull,
   Between,
@@ -89,11 +90,12 @@ export class UsersRelationalRepository implements UserRepository {
     paginationOptions: IPaginationOptions;
   }): Promise<[User[], number]> {
     const baseWhere: FindOptionsWhere<UserEntity> = {};
-    if (filterOptions?.roles?.length) {
-      baseWhere.role = {
-        id: In(filterOptions.roles.map((role) => Number(role.id))),
-      };
-    }
+    // A tab of the user list holds everyone with that role, main or ticked on
+    // top (vande #071): an admin who also writes is under "Tác giả" too.
+    const roleIds = (filterOptions?.roles ?? []).map((role) => Number(role.id));
+    const rolePredicates: FindOptionsWhere<UserEntity>[] = roleIds.length
+      ? [{ role: { id: In(roleIds) } }, { extraRoleIds: ArrayOverlap(roleIds) }]
+      : [{}];
     if (filterOptions?.statusIds?.length) {
       baseWhere.status = { id: In(filterOptions.statusIds) };
     }
@@ -124,7 +126,14 @@ export class UsersRelationalRepository implements UserRepository {
     // ≤5), and everything in `baseWhere` is a plain AND repeated in each branch.
     const where: FindOptionsWhere<UserEntity>[] = searchPredicates.flatMap(
       (search) =>
-        tierPredicates.map((tier) => ({ ...baseWhere, ...search, ...tier })),
+        tierPredicates.flatMap((tier) =>
+          rolePredicates.map((rolePart) => ({
+            ...baseWhere,
+            ...search,
+            ...tier,
+            ...rolePart,
+          })),
+        ),
     );
 
     const [entities, count] = await this.usersRepository.findAndCount({

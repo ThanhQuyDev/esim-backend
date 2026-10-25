@@ -3,8 +3,11 @@ import { CreateUserDto } from './create-user.dto';
 
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEmail,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
@@ -83,6 +86,14 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @Type(() => RoleDto)
   role?: RoleDto | null;
+
+  /** Roles on top of the main one: 2 = user, 3 = author (vande #071). */
+  @ApiPropertyOptional({ type: [Number], example: [3] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @IsInt({ each: true })
+  extraRoleIds?: number[];
 
   @ApiPropertyOptional({ type: () => StatusDto })
   @IsOptional()

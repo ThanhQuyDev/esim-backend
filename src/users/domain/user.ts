@@ -162,6 +162,10 @@ export class User {
   })
   role?: Role | null;
 
+  /** Roles ticked on top of the main one (vande #071). */
+  @ApiPropertyOptional({ type: [Number], example: [3] })
+  extraRoleIds?: number[];
+
   @ApiProperty({
     type: () => Status,
   })

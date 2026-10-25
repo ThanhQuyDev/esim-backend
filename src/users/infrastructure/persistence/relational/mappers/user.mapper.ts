@@ -39,6 +39,7 @@ export class UserMapper {
       ? AuthorProfileMapper.toDomain(raw.authorProfile)
       : null;
     domainEntity.role = raw.role;
+    domainEntity.extraRoleIds = raw.extraRoleIds ?? [];
     domainEntity.status = raw.status;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
@@ -90,6 +91,7 @@ export class UserMapper {
       domainEntity.tierOverrideReason ?? null;
     persistenceEntity.photo = photo;
     persistenceEntity.role = role;
+    persistenceEntity.extraRoleIds = domainEntity.extraRoleIds ?? [];
     persistenceEntity.status = status;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;

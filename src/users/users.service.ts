@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs';
 import { AuthProvidersEnum } from '../auth/auth-providers.enum';
 import { FilesService } from '../files/files.service';
 import { RoleEnum } from '../roles/roles.enum';
+import { cleanExtraRoleIds } from '../roles/extra-roles';
 import { StatusEnum } from '../statuses/statuses.enum';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { FileType } from '../files/domain/file';
@@ -116,7 +117,16 @@ export class UsersService {
       };
     }
 
-    if (Number(role?.id) === RoleEnum.author && !createUserDto.authorProfile) {
+    // An author — by main role or one ticked on top (vande #071) — needs the
+    // profile their articles are signed with.
+    const extraRoleIds = cleanExtraRoleIds(
+      createUserDto.extraRoleIds,
+      role?.id,
+    );
+    const writes =
+      Number(role?.id) === RoleEnum.author ||
+      extraRoleIds.includes(RoleEnum.author);
+    if (writes && !createUserDto.authorProfile) {
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         errors: { authorProfile: 'authorProfileRequired' },
@@ -136,6 +146,7 @@ export class UsersService {
       password: password,
       photo: photo,
       role: role,
+      extraRoleIds,
       status: status,
       provider: createUserDto.provider ?? AuthProvidersEnum.email,
       socialId: createUserDto.socialId,
@@ -295,8 +306,15 @@ export class UsersService {
 
     const currentUser = await this.usersRepository.findById(id);
     const resultingRoleId = Number(role?.id ?? currentUser?.role?.id);
+    // The extra roles as they will be: the ones sent, or the saved ones, minus
+    // whatever has just become the main role (vande #071).
+    const extraRoleIds = cleanExtraRoleIds(
+      updateUserDto.extraRoleIds ?? currentUser?.extraRoleIds,
+      resultingRoleId,
+    );
     if (
-      resultingRoleId === RoleEnum.author &&
+      (resultingRoleId === RoleEnum.author ||
+        extraRoleIds.includes(RoleEnum.author)) &&
       !updateUserDto.authorProfile &&
       !currentUser?.authorProfile
     ) {
@@ -341,6 +359,7 @@ export class UsersService {
       password,
       photo,
       role,
+      extraRoleIds,
       status,
       provider: updateUserDto.provider,
       socialId: updateUserDto.socialId,
