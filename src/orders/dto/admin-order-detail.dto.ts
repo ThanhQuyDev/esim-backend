@@ -418,6 +418,28 @@ export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   id: number;
 
+  /** The buyer's tier and cashback rate when they ordered (vande #065). */
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'gold' })
+  membershipTierSnapshot?: string | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 3 })
+  cashbackPercentSnapshot?: number | null;
+
+  /** The referrer's reward on this order, if a referral code was used. */
+  @ApiPropertyOptional({
+    nullable: true,
+    example: {
+      rewardVnd: 10000,
+      status: 'credited',
+      referrerTierSnapshot: 'traveler',
+    },
+  })
+  referralReward?: {
+    rewardVnd: number;
+    status: string;
+    referrerTierSnapshot: string | null;
+  } | null;
+
   /** "Vị trí & IP" of the buyer (vande #058). */
   @ApiPropertyOptional({
     type: String,

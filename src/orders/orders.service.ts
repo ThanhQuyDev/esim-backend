@@ -2713,6 +2713,18 @@ export class OrdersService {
     const order = await this.orderRepository.findById(id);
     if (!order) return null;
 
+    // What a refund claws back, as it was fixed when the order was placed
+    // (vande #065): the referrer's reward and their tier at that moment.
+    const [referral] = (await this.dataSource.query(
+      `SELECT "rewardVnd", status, "membershipTierSnapshot"
+         FROM order_referral WHERE "orderId" = $1`,
+      [order.id],
+    )) as {
+      rewardVnd: string;
+      status: string;
+      membershipTierSnapshot: string;
+    }[];
+
     const orderItems = await this.orderItemsService.findByOrderId(order.id);
 
     const [esims, plans, user, coupon, invoice, partnerCommission] =
@@ -2791,6 +2803,19 @@ export class OrdersService {
 
     return {
       id: order.id,
+      // The buyer's tier and cashback rate when they ordered (vande #065).
+      membershipTierSnapshot: order.membershipTierSnapshot ?? null,
+      cashbackPercentSnapshot:
+        order.cashbackPercentSnapshot == null
+          ? null
+          : Number(order.cashbackPercentSnapshot),
+      referralReward: referral
+        ? {
+            rewardVnd: Number(referral.rewardVnd ?? 0),
+            status: referral.status,
+            referrerTierSnapshot: referral.membershipTierSnapshot ?? null,
+          }
+        : null,
       // "Vị trí & IP" (vande #058).
       buyerIp: order.buyerIp ?? null,
       buyerLocation: order.buyerLocation ?? null,
