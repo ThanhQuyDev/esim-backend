@@ -23,8 +23,7 @@ describe('ManufacturerNotesService', () => {
     const noteRepository = {
       create: jest.fn(),
       findAllWithPagination: jest.fn(),
-      findActiveByLanguage: jest.fn().mockResolvedValue(notes),
-      findByBrandAndLanguage: jest.fn().mockResolvedValue(null),
+      findActive: jest.fn().mockResolvedValue(notes),
       findById: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
@@ -36,7 +35,7 @@ describe('ManufacturerNotesService', () => {
   };
 
   describe('findActiveMap', () => {
-    it('should key a note by its brand', async () => {
+    it('should key notes by their brand', async () => {
       const { service } = makeService([
         note({ manufacturer: 'iPhone', note: 'Lưu ý iPhone' }),
         note({ manufacturer: 'Samsung', note: 'Lưu ý Samsung' }),
@@ -44,8 +43,22 @@ describe('ManufacturerNotesService', () => {
 
       const map = await service.findActiveMap('vi');
 
-      expect(map.get('iphone')).toBe('Lưu ý iPhone');
-      expect(map.get('samsung')).toBe('Lưu ý Samsung');
+      expect(map.get('iphone')).toEqual(['Lưu ý iPhone']);
+      expect(map.get('samsung')).toEqual(['Lưu ý Samsung']);
+    });
+
+    it('should keep several notes for one brand, in order (vande #042)', async () => {
+      const { service } = makeService([
+        note({ manufacturer: 'iPhone', note: 'Bản Trung Quốc không có eSIM' }),
+        note({ manufacturer: 'iPhone', note: 'iPhone 14 Mỹ chỉ có eSIM' }),
+      ]);
+
+      const map = await service.findActiveMap('vi');
+
+      expect(map.get('iphone')).toEqual([
+        'Bản Trung Quốc không có eSIM',
+        'iPhone 14 Mỹ chỉ có eSIM',
+      ]);
     });
 
     it('should match a brand however it was typed', async () => {
@@ -57,32 +70,31 @@ describe('ManufacturerNotesService', () => {
 
       const map = await service.findActiveMap('vi');
 
-      expect(map.get('iphone')).toBe('Lưu ý');
+      expect(map.get('iphone')).toEqual(['Lưu ý']);
     });
 
-    it('should ask for one language only', async () => {
-      // A Vietnamese note must never appear on the English page.
-      const { service, noteRepository } = makeService([]);
+    it("should prefer the page's language and borrow the other's only when a brand has none", async () => {
+      const { service } = makeService([
+        note({ manufacturer: 'iPhone', language: 'vi', note: 'VI' }),
+        note({ manufacturer: 'iPhone', language: 'en', note: 'EN' }),
+        note({ manufacturer: 'Samsung', language: 'vi', note: 'Chỉ VI' }),
+      ]);
 
-      await service.findActiveMap('en');
+      const map = await service.findActiveMap('en');
 
-      expect(noteRepository.findActiveByLanguage).toHaveBeenCalledWith('en');
+      expect(map.get('iphone')).toEqual(['EN']);
+      expect(map.get('samsung')).toEqual(['Chỉ VI']);
     });
 
-    it('should fall back to Vietnamese when no language is given', async () => {
-      const { service, noteRepository } = makeService([]);
+    it('should read Vietnamese as the default language', async () => {
+      const { service } = makeService([
+        note({ language: 'vi', note: 'VI' }),
+        note({ language: 'en', note: 'EN' }),
+      ]);
 
-      await service.findActiveMap(undefined);
-      await service.findActiveMap('');
-
-      expect(noteRepository.findActiveByLanguage).toHaveBeenNthCalledWith(
-        1,
-        'vi',
-      );
-      expect(noteRepository.findActiveByLanguage).toHaveBeenNthCalledWith(
-        2,
-        'vi',
-      );
+      expect((await service.findActiveMap(undefined)).get('iphone')).toEqual([
+        'VI',
+      ]);
     });
 
     it('should be empty when nothing is configured', async () => {

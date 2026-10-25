@@ -8,6 +8,7 @@ export class ManufacturerNoteMapper {
     domainEntity.language = raw.language;
     domainEntity.note = raw.note;
     domainEntity.isActive = !!raw.isActive;
+    domainEntity.sortOrder = Number(raw.sortOrder ?? 0);
     domainEntity.id = raw.id;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
@@ -20,6 +21,7 @@ export class ManufacturerNoteMapper {
     persistenceEntity.language = domainEntity.language;
     persistenceEntity.note = domainEntity.note;
     persistenceEntity.isActive = domainEntity.isActive ?? true;
+    persistenceEntity.sortOrder = domainEntity.sortOrder ?? 0;
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;
     }

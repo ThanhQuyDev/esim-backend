@@ -137,10 +137,16 @@ export class SupportedDevicesService {
         ([manufacturer, devs]) => ({
           manufacturer,
           devices: devs,
-          // Only present when the brand has a note, so the storefront can simply
-          // check for it rather than knowing which brands have one.
+          // Only present when the brand has notes, so the storefront can simply
+          // check for them rather than knowing which brands have one. `notes`
+          // holds each one (vande #042); `note` stays for older storefronts.
           ...(notes.has(manufacturer.trim().toLowerCase())
-            ? { note: notes.get(manufacturer.trim().toLowerCase()) }
+            ? {
+                notes: notes.get(manufacturer.trim().toLowerCase()),
+                note: notes
+                  .get(manufacturer.trim().toLowerCase())!
+                  .join('\n\n'),
+              }
             : {}),
         }),
       ),

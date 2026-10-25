@@ -4,7 +4,6 @@ import {
   Entity,
   Index,
   PrimaryGeneratedColumn,
-  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
@@ -21,8 +20,9 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
  * belongs to a brand, not to each of its ~340 models, and unlike a device name it
  * has to exist in both languages.
  */
+// Several notes per brand and language (vande #042): one caveat per box reads
+// better than one long note holding them all.
 @Entity({ name: 'manufacturer_note' })
-@Unique('UQ_manufacturer_note_brand_language', ['manufacturer', 'language'])
 export class ManufacturerNoteEntity extends EntityRelationalHelper {
   /** Brand name, matching `supported_device.manufacturer` exactly. */
   @Index()
@@ -41,6 +41,10 @@ export class ManufacturerNoteEntity extends EntityRelationalHelper {
   @Index()
   @Column({ nullable: false, type: Boolean, default: true })
   isActive: boolean;
+
+  /** Order of a brand's notes on the page, lowest first (vande #042). */
+  @Column({ nullable: false, type: 'int', default: 0 })
+  sortOrder: number;
 
   @PrimaryGeneratedColumn('uuid')
   id: string;

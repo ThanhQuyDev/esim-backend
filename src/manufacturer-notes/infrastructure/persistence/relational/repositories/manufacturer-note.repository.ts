@@ -31,7 +31,12 @@ export class ManufacturerNoteRelationalRepository implements ManufacturerNoteRep
     const [entities, count] = await this.noteRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
-      order: { manufacturer: 'ASC', language: 'ASC' },
+      order: {
+        manufacturer: 'ASC',
+        language: 'ASC',
+        sortOrder: 'ASC',
+        createdAt: 'ASC',
+      },
     });
 
     return [
@@ -40,27 +45,13 @@ export class ManufacturerNoteRelationalRepository implements ManufacturerNoteRep
     ];
   }
 
-  async findActiveByLanguage(language: string): Promise<ManufacturerNote[]> {
+  async findActive(): Promise<ManufacturerNote[]> {
     const entities = await this.noteRepository.find({
-      where: { isActive: true, language },
-      order: { manufacturer: 'ASC' },
+      where: { isActive: true },
+      order: { manufacturer: 'ASC', sortOrder: 'ASC', createdAt: 'ASC' },
     });
 
     return entities.map((entity) => ManufacturerNoteMapper.toDomain(entity));
-  }
-
-  async findByBrandAndLanguage(
-    manufacturer: string,
-    language: string,
-  ): Promise<NullableType<ManufacturerNote>> {
-    const entity = await this.noteRepository
-      .createQueryBuilder('note')
-      .where('LOWER(TRIM(note.manufacturer)) = LOWER(TRIM(:manufacturer))', {
-        manufacturer,
-      })
-      .andWhere('note.language = :language', { language })
-      .getOne();
-    return entity ? ManufacturerNoteMapper.toDomain(entity) : null;
   }
 
   async findById(
@@ -80,11 +71,17 @@ export class ManufacturerNoteRelationalRepository implements ManufacturerNoteRep
       throw new Error('Record not found');
     }
 
+    // A key left undefined means "not changing it": spread as-is, an edit that
+    // did not send isActive switched a hidden note back on (vande #042).
+    const changes = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== undefined),
+    ) as Partial<ManufacturerNote>;
+
     const updatedEntity = await this.noteRepository.save(
       this.noteRepository.create(
         ManufacturerNoteMapper.toPersistence({
           ...ManufacturerNoteMapper.toDomain(entity),
-          ...payload,
+          ...changes,
         }),
       ),
     );

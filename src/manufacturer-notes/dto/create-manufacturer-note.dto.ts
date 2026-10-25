@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsInt,
   IsIn,
   IsOptional,
   IsString,
@@ -40,4 +41,10 @@ export class CreateManufacturerNoteDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** Order of a brand's notes on the page, lowest first (vande #042). */
+  @ApiPropertyOptional({ type: () => Number, example: 0 })
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 }

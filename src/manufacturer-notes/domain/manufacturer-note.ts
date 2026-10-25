@@ -13,6 +13,10 @@ export class ManufacturerNote {
   @ApiProperty({ type: () => Boolean, example: true })
   isActive: boolean;
 
+  /** Order of a brand's notes on the page, lowest first (vande #042). */
+  @ApiProperty({ type: () => Number, example: 0 })
+  sortOrder: number;
+
   @ApiProperty({ type: String })
   id: string;
 

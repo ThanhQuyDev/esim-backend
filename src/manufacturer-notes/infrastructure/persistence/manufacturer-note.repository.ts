@@ -15,14 +15,10 @@ export abstract class ManufacturerNoteRepository {
   }): Promise<[ManufacturerNote[], number]>;
 
   /** Active notes for one language, for the supported-devices page. */
-  abstract findActiveByLanguage(language: string): Promise<ManufacturerNote[]>;
+  /** Every active note, in page order (vande #042). */
+  abstract findActive(): Promise<ManufacturerNote[]>;
 
   /** The note for a brand in a language, brand compared case-insensitively. */
-  abstract findByBrandAndLanguage(
-    manufacturer: string,
-    language: string,
-  ): Promise<NullableType<ManufacturerNote>>;
-
   abstract findById(
     id: ManufacturerNote['id'],
   ): Promise<NullableType<ManufacturerNote>>;
