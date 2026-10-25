@@ -23,6 +23,15 @@ import {
  * Entirely off unless `mail.inbound.host` is configured, so an environment that
  * has not been given the mailbox keeps working exactly as before.
  */
+/**
+ * The longest one pass may take (vande #048). A connection that stalls — the
+ * mail server stops answering mid-session — used to hold the pass open for
+ * good, and every later tick then skipped with "previous poll still running",
+ * so no reply was filed again until the API restarted.
+ */
+export const INBOX_POLL_DEADLINE_MS = 90_000;
+const LOGOUT_TIMEOUT_MS = 5_000;
+
 @Injectable()
 export class TicketInboundMailService implements OnModuleDestroy {
   private readonly logger = new Logger(TicketInboundMailService.name);
@@ -81,6 +90,21 @@ export class TicketInboundMailService implements OnModuleDestroy {
 
     let processed = 0;
     let skipped = 0;
+
+    // Past the deadline the socket is dropped: whatever the pass was waiting
+    // on fails, the finally below runs, and the next tick starts afresh.
+    let timedOut = false;
+    const deadline = setTimeout(() => {
+      timedOut = true;
+      this.logger.warn(
+        `Inbox poll still running after ${INBOX_POLL_DEADLINE_MS / 1000}s — dropping the connection`,
+      );
+      try {
+        client.close();
+      } catch {
+        // Already closed.
+      }
+    }, INBOX_POLL_DEADLINE_MS);
 
     try {
       await client.connect();
@@ -169,10 +193,22 @@ export class TicketInboundMailService implements OnModuleDestroy {
         `Could not poll the support mailbox — ${(err as Error).message}`,
       );
     } finally {
+      clearTimeout(deadline);
+      if (!timedOut) {
+        // A logout that never answers must not keep the pass open either.
+        try {
+          await Promise.race([
+            client.logout(),
+            new Promise((resolve) => setTimeout(resolve, LOGOUT_TIMEOUT_MS)),
+          ]);
+        } catch {
+          // Already disconnected; nothing to do.
+        }
+      }
       try {
-        await client.logout();
+        client.close();
       } catch {
-        // Already disconnected; nothing to do.
+        // Already closed.
       }
       this.running = false;
     }
