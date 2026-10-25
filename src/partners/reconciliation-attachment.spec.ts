@@ -91,6 +91,8 @@ describe('email đối soát kèm file', () => {
         }),
       },
       partnerRepository: {
+        // No-deposit partners (vande #056): none here.
+        find: jest.fn().mockResolvedValue([]),
         findOne: jest
           .fn()
           .mockResolvedValue(

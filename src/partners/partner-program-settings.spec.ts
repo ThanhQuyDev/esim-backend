@@ -29,6 +29,11 @@ function buildService(
 
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
+    // No-deposit partners (vande #056): none here.
+    partnerRepository: {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+    },
     programSettingRepository: { findOne, save, create: (row: unknown) => row },
   });
   return { service, save, findOne };
@@ -159,6 +164,11 @@ describe('PartnersService.sendScheduledReconciliationEmails (#076)', () => {
     });
 
     Object.assign(service, {
+      // No-deposit partners (vande #056): none here.
+      partnerRepository: {
+        find: jest.fn().mockResolvedValue([]),
+        findOne: jest.fn().mockResolvedValue(null),
+      },
       logger: { log: jest.fn(), error: jest.fn() },
       programSettingRepository: {
         findOne: jest.fn().mockResolvedValue({ ...DEFAULTS, ...settings }),

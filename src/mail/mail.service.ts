@@ -183,6 +183,22 @@ export interface PartnerNotificationMailData {
 }
 
 /** One partner's monthly statement, as the email shows it (#076). */
+/** What a no-deposit partner owes for a month (vande #056). */
+export interface PartnerCreditStatementMailData {
+  to: string;
+  contactName: string;
+  /** "Tháng 10/2026". */
+  periodLabel: string;
+  creditLimitVnd: number;
+  orderCount: number;
+  esimCount: number;
+  purchasedVnd: number;
+  refundedVnd: number;
+  amountDueVnd: number;
+  /** "Chi tiết giao dịch" .xlsx; the email still goes without it. */
+  attachment?: { filename: string; content: Buffer };
+}
+
 export interface PartnerReconciliationMailData {
   to: string;
   contactName: string;
@@ -963,6 +979,65 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
       commissionVnd: vnd(data.commissionVnd),
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       app_name: appName,
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail: SUPPORT_EMAIL,
+      subject: template.subject,
+    };
+
+    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const htmlCompiled = Handlebars.compile(template.htmlBody, {
+      strict: false,
+    })(context);
+
+    await this.mailerService.sendMail({
+      transportName: 'otp',
+      to: data.to,
+      subject: subjectCompiled,
+      text: subjectCompiled,
+      templatePath: '',
+      context: {},
+      html: htmlCompiled,
+      ...(data.attachment
+        ? {
+            attachments: [
+              {
+                filename: data.attachment.filename,
+                content: data.attachment.content,
+                contentType:
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              },
+            ],
+          }
+        : {}),
+    });
+  }
+
+  /** A no-deposit partner's monthly statement of what to pay (vande #056). */
+  async sendPartnerCreditStatement(
+    data: PartnerCreditStatementMailData,
+  ): Promise<void> {
+    const template = await this.emailTemplatesService.findByName(
+      'partner_credit_statement',
+    );
+    if (!template) {
+      this.logger.error(
+        'Email template "partner_credit_statement" not found — no statement was sent',
+      );
+      return;
+    }
+
+    const vnd = (value: number) => value.toLocaleString('vi-VN');
+    const context = {
+      contactName: data.contactName,
+      periodLabel: data.periodLabel,
+      creditLimitVnd: vnd(data.creditLimitVnd),
+      orderCount: vnd(data.orderCount),
+      esimCount: vnd(data.esimCount),
+      purchasedVnd: vnd(data.purchasedVnd),
+      refundedVnd: vnd(data.refundedVnd),
+      amountDueVnd: vnd(data.amountDueVnd),
+      portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
+      app_name: BRAND_NAME,
       logoUrl: BRAND_LOGO_URL,
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,

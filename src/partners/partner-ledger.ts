@@ -30,7 +30,7 @@ export const LEDGER_TYPES: Record<LedgerKind, string[]> = {
   refund: ['order_purchase_reversal'],
   deposit: ['deposit', 'deposit_bonus'],
   payout: ['payout', 'payout_rejected'],
-  adjustment: ['manual_credit', 'manual_debit'],
+  adjustment: ['manual_credit', 'manual_debit', 'credit_limit_reset'],
   commission: ['commission_earned', 'commission_reversed'],
 };
 
@@ -83,6 +83,8 @@ export function ledgerDescription(row: LedgerRowSource): string {
       return reason ? `Admin cộng tiền: ${reason}` : 'Admin cộng tiền';
     case 'manual_debit':
       return reason ? `Admin trừ tiền: ${reason}` : 'Admin trừ tiền';
+    case 'credit_limit_reset':
+      return reason ?? 'Đặt lại hạn mức giao dịch';
     case 'commission_earned':
       return reason ?? 'Hoa hồng được duyệt';
     case 'commission_reversed':

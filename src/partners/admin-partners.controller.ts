@@ -1,5 +1,6 @@
 import { downloadFilename } from '../utils/download-filename';
 import {
+  BadRequestException,
   Delete,
   Body,
   Controller,
@@ -24,6 +25,7 @@ import {
   AdminLinkListQuery,
   AdminPartnerOrderQuery,
   PartnersService,
+  vnMonth,
 } from './partners.service';
 import { AdminCreatePartnerDto } from './dto/partner-apply.dto';
 import {
@@ -57,6 +59,7 @@ import {
   BulkPayoutDecisionDto,
   UpdatePartnerAffiliateGrantDto,
   UpdatePartnerLinkCodePermissionDto,
+  UpdatePartnerCreditLimitDto,
   UpdatePartnerStatusDto,
   AdminRefundPartnerPurchaseDto,
   RejectDepositRequestDto,
@@ -66,6 +69,13 @@ import {
   UpdatePartnerTierDto,
 } from './dto/partner-tier.dto';
 import { PartnerDepositRequestStatusEnum } from './partners.enum';
+
+/** `YYYY-MM` from the query, last Vietnamese month when absent (vande #056). */
+function creditPeriod(period?: string): string {
+  if (period && /^\d{4}-(0[1-9]|1[0-2])$/.test(period)) return period;
+  if (period) throw new BadRequestException('period phải có dạng YYYY-MM.');
+  return vnMonth(-1);
+}
 
 @ApiTags('Admin Partners')
 @ApiBearerAuth()
@@ -725,6 +735,64 @@ export class AdminPartnersController {
       dto,
       req.user.id,
       dto.reason,
+    );
+  }
+
+  /** "Không cần ký quỹ" + "Hạn mức giao dịch" (vande #056). */
+  @Patch(':id/credit-limit')
+  @HttpCode(HttpStatus.OK)
+  setCreditLimit(
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerCreditLimitDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    return this.partnersService.setCreditLimit(Number(id), dto, req.user.id);
+  }
+
+  /**
+   * What a no-deposit partner owes for a month, `period` = YYYY-MM
+   * (default: last month) — the figures of the emailed statement (vande #056).
+   */
+  @Get(':id/credit-statement')
+  @HttpCode(HttpStatus.OK)
+  creditStatement(@Param('id') id: number, @Query('period') period?: string) {
+    return this.partnersService.creditStatement(
+      Number(id),
+      creditPeriod(period),
+    );
+  }
+
+  /** The same statement as the .xlsx the email carries (vande #056). */
+  @Get(':id/credit-statement/export-excel')
+  @HttpCode(HttpStatus.OK)
+  async exportCreditStatement(
+    @Param('id') id: number,
+    @Query('period') period: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const file = await this.partnersService.creditStatementWorkbook(
+      Number(id),
+      creditPeriod(period),
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${file.filename}"`,
+      'Content-Length': file.content.length.toString(),
+    });
+    res.end(file.content);
+  }
+
+  /** Email the statement to this partner now (vande #056). */
+  @Post(':id/credit-statement/send')
+  @HttpCode(HttpStatus.OK)
+  sendCreditStatement(
+    @Param('id') id: number,
+    @Query('period') period?: string,
+  ) {
+    return this.partnersService.sendCreditStatements(
+      creditPeriod(period),
+      Number(id),
     );
   }
 

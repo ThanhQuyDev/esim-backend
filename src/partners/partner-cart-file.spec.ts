@@ -45,6 +45,8 @@ describe('PartnersService.previewCartFile (doitac-1410 #084)', () => {
       dataSource: { query },
       quoteCart,
       getOrCreateWallet: jest.fn().mockResolvedValue({ balanceVnd }),
+      // A deposit, not credit: "Vui lòng nạp thêm" (vande #056).
+      partnerRepository: { findOne: jest.fn().mockResolvedValue(null) },
     });
     return { service, quoteCart, query };
   }

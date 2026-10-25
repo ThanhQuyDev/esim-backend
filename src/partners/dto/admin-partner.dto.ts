@@ -41,6 +41,21 @@ export class AssignPartnerTierDto {
   tierCode!: string;
 }
 
+/** "Không cần ký quỹ" + "Hạn mức giao dịch" for one partner (vande #056). */
+export class UpdatePartnerCreditLimitDto {
+  @ApiProperty({ type: Boolean })
+  @IsBoolean()
+  noDepositRequired!: boolean;
+
+  @ApiPropertyOptional({ example: 100000000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(100_000_000_000)
+  creditLimitVnd?: number;
+}
+
 /** Admin ticks who may name their own marketing link (#014). */
 export class UpdatePartnerLinkCodePermissionDto {
   @ApiProperty({ type: Boolean })

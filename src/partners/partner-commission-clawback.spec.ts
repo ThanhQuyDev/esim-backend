@@ -27,6 +27,11 @@ function buildService(
 
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, {
+    // No-deposit partners (vande #056): none here.
+    partnerRepository: {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+    },
     logger: { warn: jest.fn(), error: jest.fn() },
     // The programme's thresholds now live in a settings row (#075).
     programSettingRepository: {
@@ -159,6 +164,11 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
   function buildSummaryService(balanceVnd: number) {
     const service = Object.create(PartnersService.prototype) as PartnersService;
     Object.assign(service, {
+      // No-deposit partners (vande #056): none here.
+      partnerRepository: {
+        find: jest.fn().mockResolvedValue([]),
+        findOne: jest.fn().mockResolvedValue(null),
+      },
       // The programme's thresholds now live in a settings row (#075).
       programSettingRepository: {
         findOne: jest.fn().mockResolvedValue({
@@ -205,6 +215,11 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
   it('should refuse a withdrawal while the balance is negative', async () => {
     const service = buildSummaryService(-50000);
     Object.assign(service, {
+      // No-deposit partners (vande #056): none here.
+      partnerRepository: {
+        find: jest.fn().mockResolvedValue([]),
+        findOne: jest.fn().mockResolvedValue(null),
+      },
       // A marketing partner, so the affiliate grant never comes into it (#048).
       getPartnerOrThrowById: jest
         .fn()
@@ -229,6 +244,11 @@ describe('PartnersService — the debt is visible and blocks withdrawal (#007)',
   it('should refuse a withdrawal while the admin has frozen the wallet (doitac-1410 #004)', async () => {
     const service = buildSummaryService(500000);
     Object.assign(service, {
+      // No-deposit partners (vande #056): none here.
+      partnerRepository: {
+        find: jest.fn().mockResolvedValue([]),
+        findOne: jest.fn().mockResolvedValue(null),
+      },
       getPartnerOrThrowById: jest
         .fn()
         .mockResolvedValue({ id: 5, partnerType: 'kol', status: 'active' }),

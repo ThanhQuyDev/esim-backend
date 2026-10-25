@@ -180,6 +180,19 @@ export class PartnerEntity extends EntityRelationalHelper {
   tierEffectiveFrom?: Date | null;
 
   /**
+   * "Không cần ký quỹ" (vande #056): the partner buys on credit instead of
+   * from a deposit. Their wallet is topped back up to `creditLimitVnd` at 0h
+   * on the 1st of each month, and what they spent in the month before is
+   * emailed to them as a statement to pay.
+   */
+  @Column({ type: Boolean, default: false })
+  noDepositRequired!: boolean;
+
+  /** "Hạn mức giao dịch" — how much a no-deposit partner may spend a month. */
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  creditLimitVnd!: number;
+
+  /**
    * Branding for this partner's own portal page.
    * Shape: `{ displayName?, logoUrl?, tagline? }`.
    */

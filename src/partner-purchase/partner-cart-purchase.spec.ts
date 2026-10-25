@@ -138,6 +138,8 @@ describe('PartnersService.quoteCart (doitac-1410 #035)', () => {
       ),
       dataSource: { query: jest.fn().mockResolvedValue([{ name: 'Gói' }]) },
       getOrCreateWallet: jest.fn().mockResolvedValue({ balanceVnd: balance }),
+      // A deposit, not credit (vande #056).
+      partnerRepository: { findOne: jest.fn().mockResolvedValue(null) },
     });
     return s;
   }

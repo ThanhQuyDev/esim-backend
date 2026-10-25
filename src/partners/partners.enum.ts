@@ -33,6 +33,11 @@ export enum PartnerWalletTransactionTypeEnum {
   PAYOUT_REJECTED = 'payout_rejected',
   /** The extra a deposit promotion adds to a top-up (doitac-1410 #015). */
   DEPOSIT_BONUS = 'deposit_bonus',
+  /**
+   * A no-deposit partner's wallet brought back to their credit limit — on the
+   * 1st of each month, or when an admin sets or changes the limit (vande #056).
+   */
+  CREDIT_LIMIT_RESET = 'credit_limit_reset',
 }
 
 /**

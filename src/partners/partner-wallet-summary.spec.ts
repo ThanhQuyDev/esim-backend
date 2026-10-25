@@ -47,6 +47,11 @@ describe('PartnersService — partner wallet summary', () => {
 
     const service = Object.create(PartnersService.prototype) as PartnersService;
     Object.assign(service, {
+      // No-deposit partners (vande #056): none here.
+      partnerRepository: {
+        find: jest.fn().mockResolvedValue([]),
+        findOne: jest.fn().mockResolvedValue(null),
+      },
       // The programme's thresholds now live in a settings row (#075).
       programSettingRepository: {
         findOne: jest.fn().mockResolvedValue({

@@ -112,6 +112,10 @@ import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
 import { RequestBankAccountChangeDto } from './dto/partner-bank-account.dto';
 import {
+  buildCreditStatementWorkbook,
+  CreditStatementLine,
+} from './credit-statement-workbook';
+import {
   buildReconciliationWorkbook,
   ReconciliationTransaction,
 } from './reconciliation-workbook';
@@ -477,6 +481,21 @@ const VN_MONTH_START_SQL =
   "(date_trunc('month', now() AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh')";
 const VN_PREV_MONTH_START_SQL =
   "(date_trunc('month', (now() AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '1 month') AT TIME ZONE 'Asia/Ho_Chi_Minh')";
+
+/**
+ * "Số dư ví không đủ…" and what to do about it — topping up for a deposit,
+ * waiting for the 1st or asking for more on credit (vande #056).
+ */
+function shortfallMessage(
+  needVnd: number,
+  shortVnd: number,
+  onCredit: boolean,
+): string {
+  const head = `Số dư ví không đủ: cần ${needVnd.toLocaleString('vi-VN')}đ, còn thiếu ${shortVnd.toLocaleString('vi-VN')}đ.`;
+  return onCredit
+    ? `${head} Hạn mức giao dịch tháng này còn không đủ — hạn mức được đặt lại lúc 0h ngày 1 tháng sau, hoặc liên hệ esim.vn để nâng hạn mức.`
+    : `${head} Vui lòng nạp thêm.`;
+}
 
 /**
  * `YYYY-MM` of the Vietnamese month `offset` months from now — 0 this month,
@@ -1070,8 +1089,25 @@ export class PartnersService {
 
     const balanceVnd = Number(wallet.balanceVnd);
     const pendingPayoutVnd = Number(pendingPayouts?.sum ?? 0);
+    const partner = await this.partnerRepository.findOne({
+      where: { id: partnerId },
+    });
+    const creditLimitVnd = partner?.noDepositRequired
+      ? Number(partner.creditLimitVnd ?? 0)
+      : 0;
 
     return {
+      /**
+       * "Không cần ký quỹ" (vande #056): the balance is what is left of this
+       * month's limit, filled back up at 0h on the 1st.
+       */
+      creditLimit: partner?.noDepositRequired
+        ? {
+            limitVnd: creditLimitVnd,
+            usedVnd: Math.max(0, creditLimitVnd - balanceVnd),
+            remainingVnd: balanceVnd,
+          }
+        : null,
       balanceVnd,
       availableBalanceVnd: Math.max(0, balanceVnd - pendingPayoutVnd),
       /**
@@ -1221,6 +1257,13 @@ export class PartnersService {
     if (partner.partnerType === PartnerTypeEnum.KOL) {
       throw new BadRequestException(
         'Đối tác tiếp thị không dùng ví ký quỹ. Thu nhập của bạn là hoa hồng, rút ở mục Rút tiền.',
+      );
+    }
+    // Buying on credit (vande #056): a deposit would be mixed into the
+    // monthly limit and billed back; the month is settled by the statement.
+    if (partner.noDepositRequired) {
+      throw new BadRequestException(
+        'Tài khoản của bạn dùng hạn mức giao dịch (không cần ký quỹ) nên không nạp ký quỹ. Tiền hàng được đối soát và thanh toán vào tháng sau.',
       );
     }
 
@@ -2848,6 +2891,14 @@ export class PartnersService {
     if (requester.status !== PartnerStatusEnum.ACTIVE) {
       throw new BadRequestException(
         'Tài khoản đang bị tạm khóa, số tiền hoa hồng đang bị đóng băng nên chưa thể tạo yêu cầu rút tiền. Vui lòng liên hệ admin.',
+      );
+    }
+
+    // On credit the wallet holds esim.vn's money, not the partner's: nothing
+    // in it can be withdrawn (vande #056).
+    if (requester.noDepositRequired) {
+      throw new BadRequestException(
+        'Tài khoản dùng hạn mức giao dịch (không cần ký quỹ): số dư trên ví là hạn mức esim.vn cấp, không rút được.',
       );
     }
 
@@ -4951,6 +5002,13 @@ export class PartnersService {
     canAffiliate: boolean,
   ): Promise<PartnerEntity> {
     const partner = await this.adminFindById(id);
+    // The monthly credit refill would swallow commission paid into the
+    // wallet (vande #056).
+    if (canAffiliate && partner.noDepositRequired) {
+      throw new BadRequestException(
+        'Đối tác đang dùng hạn mức giao dịch (không cần ký quỹ). Tắt "Không cần ký quỹ" trước khi bật phân quyền affiliate.',
+      );
+    }
     partner.canAffiliate = canAffiliate;
     return this.partnerRepository.save(partner);
   }
@@ -6960,6 +7018,356 @@ export class PartnersService {
     this.logger.log(
       `Reconciliation emails for ${period}: ${sent}/${rows.length} sent`,
     );
+
+    // Partners buying on credit get what they owe for the month on the same
+    // day (vande #056).
+    const credit = await this.sendCreditStatements(period);
+    this.logger.log(
+      `Credit statements for ${period}: ${credit.sent}/${credit.partners} sent`,
+    );
+  }
+
+  // ─────────────── "Không cần ký quỹ" — buying on credit (vande #056) ───────────────
+
+  /**
+   * Tick "Không cần ký quỹ" and set the "Hạn mức giao dịch" (vande #056).
+   *
+   * The wallet IS the credit line: switching it on fills the wallet to the
+   * limit, a change of limit moves the wallet by the difference (what was
+   * already spent this month stays spent), and switching it off takes back
+   * whatever credit is left. The 1st of each month fills it to the limit again.
+   *
+   * A partner still holding their own deposit cannot be switched on: that
+   * money would be mixed into the credit and billed back to them. The admin
+   * pays it out or settles it first.
+   */
+  async setCreditLimit(
+    id: number,
+    dto: { noDepositRequired: boolean; creditLimitVnd?: number },
+    adminId: number,
+  ): Promise<PartnerEntity> {
+    const partner = await this.adminFindById(id);
+    if (partner.partnerType === PartnerTypeEnum.KOL) {
+      throw new BadRequestException(
+        'Đối tác tiếp thị không mua hàng bằng ví, không áp dụng hạn mức giao dịch.',
+      );
+    }
+    const limit = Math.round(Number(dto.creditLimitVnd ?? 0));
+    // Commission is credited to the same wallet, so the monthly refill would
+    // swallow it, and the credit itself would read as withdrawable.
+    if (dto.noDepositRequired && partner.canAffiliate) {
+      throw new BadRequestException(
+        'Đối tác đang được phân quyền affiliate (hoa hồng cộng vào ví). Tắt "Được phân quyền affiliate" trước khi chuyển sang "Không cần ký quỹ".',
+      );
+    }
+    if (dto.noDepositRequired && !(limit > 0)) {
+      throw new BadRequestException('Nhập hạn mức giao dịch lớn hơn 0.');
+    }
+
+    const wasOn = Boolean(partner.noDepositRequired);
+    const oldLimit = wasOn ? Number(partner.creditLimitVnd ?? 0) : 0;
+    const newLimit = dto.noDepositRequired ? limit : 0;
+
+    await this.dataSource.transaction(async (manager) => {
+      const balance = await this.lockedWalletBalance(partner.id, manager);
+      if (!wasOn && dto.noDepositRequired && balance > 0) {
+        throw new BadRequestException(
+          `Đối tác còn ${balance.toLocaleString('vi-VN')}đ ký quỹ. Hoàn hoặc trừ số dư này về 0 trước khi chuyển sang "Không cần ký quỹ", để tiền ký quỹ không bị tính chung vào hạn mức.`,
+        );
+      }
+
+      // Switching off: only the unspent credit goes; the month's spending is
+      // still owed and still on the statement.
+      const delta = dto.noDepositRequired
+        ? newLimit - oldLimit
+        : -Math.max(0, balance);
+      if (delta === 0 && wasOn && !dto.noDepositRequired) {
+        // Nothing left to take back, but the statement still needs to know
+        // where buying on credit stopped: a 0đ marker line.
+        const wallet = await this.getOrCreateWalletWithManager(
+          partner.id,
+          manager,
+        );
+        const transactions = manager.getRepository(
+          PartnerWalletTransactionEntity,
+        );
+        await transactions.save(
+          transactions.create({
+            walletId: wallet.id,
+            partnerId: partner.id,
+            type: PartnerWalletTransactionTypeEnum.CREDIT_LIMIT_RESET,
+            amountVnd: 0,
+            balanceAfterVnd: balance,
+            sourceType: 'admin',
+            sourceId: String(adminId),
+            createdByAdminId: adminId,
+            metadata: { creditOff: true },
+            reason: 'Chuyển về hình thức ký quỹ (hạn mức đã dùng hết)',
+          }),
+        );
+      }
+      if (delta !== 0) {
+        await this.createWalletTransactionWithManager(
+          partner.id,
+          PartnerWalletTransactionTypeEnum.CREDIT_LIMIT_RESET,
+          delta,
+          {
+            sourceType: 'admin',
+            sourceId: String(adminId),
+            createdByAdminId: adminId,
+            // Marks where buying on credit stopped, for the statement.
+            ...(dto.noDepositRequired ? {} : { metadata: { creditOff: true } }),
+            reason: !dto.noDepositRequired
+              ? 'Thu hồi hạn mức còn lại (chuyển về hình thức ký quỹ)'
+              : wasOn
+                ? `Đổi hạn mức giao dịch ${oldLimit.toLocaleString('vi-VN')}đ → ${newLimit.toLocaleString('vi-VN')}đ`
+                : `Cấp hạn mức giao dịch ${newLimit.toLocaleString('vi-VN')}đ (không cần ký quỹ)`,
+          },
+          manager,
+        );
+      }
+
+      await manager.getRepository(PartnerEntity).update(
+        { id: partner.id },
+        {
+          noDepositRequired: dto.noDepositRequired,
+          creditLimitVnd: newLimit,
+        },
+      );
+    });
+
+    return this.adminFindById(id);
+  }
+
+  /** Buying on credit rather than from a deposit (vande #056). */
+  private async isOnCredit(partnerId: number): Promise<boolean> {
+    const partner = await this.partnerRepository.findOne({
+      where: { id: partnerId },
+    });
+    return Boolean(partner?.noDepositRequired);
+  }
+
+  /** The wallet balance, read under a row lock for the rest of the transaction. */
+  private async lockedWalletBalance(
+    partnerId: number,
+    manager: EntityManager,
+  ): Promise<number> {
+    const wallet = await this.getOrCreateWalletWithManager(partnerId, manager);
+    const locked = await manager
+      .getRepository(PartnerWalletEntity)
+      .createQueryBuilder('wallet')
+      .setLock('pessimistic_write')
+      .where('wallet.id = :id', { id: wallet.id })
+      .getOne();
+    return Number(locked?.balanceVnd ?? wallet.balanceVnd);
+  }
+
+  /**
+   * 0h on the 1st, Vietnam time: every no-deposit partner's wallet goes back
+   * to their limit for the new month (vande #056).
+   *
+   * One ledger line per partner per month, keyed on the month, so a restart
+   * or a second instance cannot top anybody up twice.
+   */
+  @Cron('0 0 1 * *', { timeZone: 'Asia/Ho_Chi_Minh' })
+  async resetCreditLimits(month = vnMonth(0)): Promise<number> {
+    const partners = await this.partnerRepository.find({
+      where: { noDepositRequired: true, status: PartnerStatusEnum.ACTIVE },
+    });
+    let reset = 0;
+    for (const partner of partners) {
+      const limit = Number(partner.creditLimitVnd ?? 0);
+      if (!(limit > 0)) continue;
+      try {
+        await this.dataSource.transaction(async (manager) => {
+          const balance = await this.lockedWalletBalance(partner.id, manager);
+          const delta = limit - balance;
+          if (delta === 0) return;
+          await this.createWalletTransactionWithManager(
+            partner.id,
+            PartnerWalletTransactionTypeEnum.CREDIT_LIMIT_RESET,
+            delta,
+            {
+              sourceType: 'system',
+              sourceId: month,
+              idempotencyKey: `credit_limit_reset:${partner.id}:${month}`,
+              reason: `Đặt lại hạn mức giao dịch tháng ${Number(month.slice(5))}/${month.slice(0, 4)}: ${limit.toLocaleString('vi-VN')}đ`,
+            },
+            manager,
+          );
+        });
+        reset++;
+      } catch (err) {
+        this.logger.error(
+          `Credit limit reset for partner ${partner.id} (${month}) failed: ${(err as Error).message}`,
+        );
+      }
+    }
+    this.logger.log(`Credit limits reset for ${month}: ${reset} partner(s)`);
+    return reset;
+  }
+
+  /**
+   * What a no-deposit partner bought in one Vietnamese month and what they
+   * owe for it (vande #056): purchases less what was given back, both read
+   * off the wallet ledger — the same lines that moved their balance.
+   */
+  async creditStatement(
+    partnerId: number,
+    period: string,
+  ): Promise<{
+    period: string;
+    periodLabel: string;
+    creditLimitVnd: number;
+    orderCount: number;
+    esimCount: number;
+    purchasedVnd: number;
+    refundedVnd: number;
+    amountDueVnd: number;
+    lines: CreditStatementLine[];
+  }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const rows: {
+      type: string;
+      amountVnd: string;
+      createdAt: Date;
+      orderNumber: string | null;
+      deliveryEmail: string | null;
+      products: string | null;
+      esims: number | null;
+    }[] = await this.dataSource.query(
+      `SELECT t.type, t."amountVnd", t."createdAt", o."orderNumber",
+              -- No address of its own: the eSIMs went to the partner's login.
+              COALESCE(NULLIF(o."deliveryEmail", ''), u.email) AS "deliveryEmail",
+              (SELECT string_agg(p.name || CASE WHEN oi.quantity > 1
+                                   THEN ' x' || oi.quantity ELSE '' END, ' + ')
+                 FROM order_item oi JOIN plan p ON p.id = oi."planId"
+                WHERE oi."orderId" = o.id) AS products,
+              (SELECT COALESCE(SUM(oi.quantity), 0)::int
+                 FROM order_item oi WHERE oi."orderId" = o.id) AS esims
+         FROM partner_wallet_transaction t
+         LEFT JOIN "order" o ON o.id = t."orderId"
+         LEFT JOIN "user" u ON u.id = o."userId"
+        WHERE t."partnerId" = $1
+          AND t.type IN ('${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE}',
+                         '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')
+          AND ${vnMonthSql('t."createdAt"', '$2')}
+          -- Only what moved while on credit: the latest limit line before it
+          -- is a grant or a refill, not the one switching credit off. What
+          -- was bought from a deposit, before or after, is not billed.
+          AND COALESCE((
+                SELECT (r.metadata->>'creditOff') IS NULL
+                  FROM partner_wallet_transaction r
+                 WHERE r."partnerId" = t."partnerId"
+                   AND r.type = '${PartnerWalletTransactionTypeEnum.CREDIT_LIMIT_RESET}'
+                   AND r.id < t.id
+                 ORDER BY r.id DESC
+                 LIMIT 1), false)
+        ORDER BY t."createdAt" ASC, t.id ASC`,
+      [partnerId, `${period}-01`],
+    );
+
+    const lines: CreditStatementLine[] = rows.map((r) => {
+      const purchase =
+        r.type === PartnerWalletTransactionTypeEnum.ORDER_PURCHASE;
+      return {
+        orderNumber: r.orderNumber ?? '—',
+        products: r.products ?? '',
+        // The ledger stores a purchase as money out (negative); the statement
+        // reads it as money owed.
+        amountVnd: -Number(r.amountVnd),
+        customer: r.deliveryEmail ?? '',
+        esims: purchase ? Number(r.esims ?? 0) : 0,
+        status: purchase ? 'Đã mua' : 'Hoàn tiền',
+        createdAt: new Date(r.createdAt),
+      };
+    });
+    const purchases = lines.filter((l) => l.status === 'Đã mua');
+    const purchasedVnd = purchases.reduce((sum, l) => sum + l.amountVnd, 0);
+    const refundedVnd = -lines
+      .filter((l) => l.status !== 'Đã mua')
+      .reduce((sum, l) => sum + l.amountVnd, 0);
+
+    return {
+      period,
+      periodLabel: `Tháng ${period.slice(5)}/${period.slice(0, 4)}`,
+      creditLimitVnd: Number(partner.creditLimitVnd ?? 0),
+      orderCount: new Set(purchases.map((l) => l.orderNumber)).size,
+      esimCount: purchases.reduce((sum, l) => sum + l.esims, 0),
+      purchasedVnd,
+      refundedVnd,
+      amountDueVnd: Math.max(0, purchasedVnd - refundedVnd),
+      lines,
+    };
+  }
+
+  /** The statement as the .xlsx attached to its email (vande #056). */
+  async creditStatementWorkbook(
+    partnerId: number,
+    period: string,
+  ): Promise<{ filename: string; content: Buffer }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const statement = await this.creditStatement(partnerId, period);
+    const content = await buildCreditStatementWorkbook({
+      partnerName: partner.companyName?.trim() || partner.contactName,
+      ...statement,
+    });
+    return {
+      filename: downloadFilename(
+        `Chi-tiet-giao-dich-${period}-doi-tac-${partnerId}`,
+      ),
+      content,
+    };
+  }
+
+  /**
+   * Email every no-deposit partner what they owe for `period` (vande #056).
+   * `partnerId` limits it to one — the admin's "Gửi đối soát" button.
+   */
+  async sendCreditStatements(
+    period: string,
+    partnerId?: number,
+  ): Promise<{ sent: number; partners: number }> {
+    const partners = await this.partnerRepository.find({
+      where: partnerId ? { id: partnerId } : { noDepositRequired: true },
+    });
+    let sent = 0;
+    for (const partner of partners) {
+      const to = partner.contactEmail?.trim();
+      if (!to) continue;
+      try {
+        const statement = await this.creditStatement(partner.id, period);
+        // Somebody switched on or off mid-way may have bought nothing on
+        // credit: no statement for an empty month, unless asked for.
+        if (!partnerId && statement.lines.length === 0) continue;
+        let attachment: { filename: string; content: Buffer } | undefined;
+        try {
+          attachment = await this.creditStatementWorkbook(partner.id, period);
+        } catch (err) {
+          this.logger.error(
+            `Credit statement file for partner ${partner.id} (${period}) failed: ${(err as Error).message}`,
+          );
+        }
+        await this.mailService.sendPartnerCreditStatement({
+          to,
+          contactName: partner.contactName || 'Quý đối tác',
+          periodLabel: statement.periodLabel,
+          creditLimitVnd: statement.creditLimitVnd,
+          orderCount: statement.orderCount,
+          esimCount: statement.esimCount,
+          purchasedVnd: statement.purchasedVnd,
+          refundedVnd: statement.refundedVnd,
+          amountDueVnd: statement.amountDueVnd,
+          ...(attachment ? { attachment } : {}),
+        });
+        sent++;
+      } catch (err) {
+        this.logger.error(
+          `Credit statement for partner ${partner.id} (${period}) failed: ${(err as Error).message}`,
+        );
+      }
+    }
+    return { sent, partners: partners.length };
   }
 
   /** Applying returns the token that opens the document upload (doitac-1410 #013). */
@@ -8950,7 +9358,11 @@ export class PartnersService {
       rejection: lineRejection
         ? `${lineRejection.name}: ${lineRejection.rejection}`
         : shortBy > 0
-          ? `Số dư ví không đủ: cần ${totalVnd.toLocaleString('vi-VN')}đ, còn thiếu ${shortBy.toLocaleString('vi-VN')}đ. Vui lòng nạp thêm.`
+          ? shortfallMessage(
+              totalVnd,
+              shortBy,
+              await this.isOnCredit(partnerId),
+            )
           : null,
     };
   }
@@ -9077,7 +9489,11 @@ export class PartnersService {
       rejection: errorCount
         ? `${errorCount} dòng có lỗi, hãy sửa file rồi nhập lại.`
         : shortBy > 0
-          ? `Số dư ví không đủ: cần ${totalVnd.toLocaleString('vi-VN')}đ, còn thiếu ${shortBy.toLocaleString('vi-VN')}đ. Vui lòng nạp thêm.`
+          ? shortfallMessage(
+              totalVnd,
+              shortBy,
+              await this.isOnCredit(partnerId),
+            )
           : null,
     };
   }
@@ -9228,7 +9644,7 @@ export class PartnersService {
       if (balanceVnd < amount) {
         const thieu = amount - balanceVnd;
         throw new BadRequestException(
-          `Số dư ví không đủ: cần ${amount.toLocaleString('vi-VN')}đ, còn thiếu ${thieu.toLocaleString('vi-VN')}đ. Vui lòng nạp thêm.`,
+          shortfallMessage(amount, thieu, await this.isOnCredit(partnerId)),
         );
       }
 
