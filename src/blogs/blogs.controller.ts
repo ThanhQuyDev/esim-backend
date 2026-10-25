@@ -38,6 +38,7 @@ import { RoleEnum } from '../roles/roles.enum';
 import { allRoleIds } from '../roles/extra-roles';
 import { RolesGuard } from '../roles/roles.guard';
 import { AuthorsService } from '../authors/authors.service';
+import { BlogCategoriesService } from './blog-categories.service';
 
 @ApiTags('Blogs')
 @Controller({
@@ -48,6 +49,7 @@ export class BlogsController {
   constructor(
     private readonly blogsService: BlogsService,
     private readonly authorsService: AuthorsService,
+    private readonly blogCategoriesService: BlogCategoriesService,
   ) {}
 
   @ApiBearerAuth()
@@ -153,6 +155,19 @@ export class BlogsController {
   @Get('author-profiles')
   findAuthorProfiles() {
     return this.blogsService.findAuthorProfiles();
+  }
+
+  /**
+   * The made-in-advance categories, parent → children, in both languages
+   * (vande #076) — what the CMS offers in its "Danh mục" and "Danh mục con"
+   * select boxes. Declared before `:id`, which would otherwise catch it.
+   */
+  @Get('category-tree')
+  @ApiOkResponse({
+    description: 'Parents with their children, EN + VI names and slugs',
+  })
+  findCategoryTree() {
+    return this.blogCategoriesService.tree();
   }
 
   @Get('categories')

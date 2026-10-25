@@ -12,7 +12,11 @@ describe('BlogsController — drafts stay out of the public API', () => {
       findAllWithPagination: jest.fn().mockResolvedValue([[], 0]),
       findById: jest.fn().mockResolvedValue(blog),
     };
-    const controller = new BlogsController(blogsService as never, {} as never);
+    const controller = new BlogsController(
+      blogsService as never,
+      {} as never,
+      {} as never,
+    );
     return { controller, blogsService };
   }
 
