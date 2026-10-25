@@ -52,6 +52,8 @@ export class RegionsService {
       }
     }
 
+    await this.assertParent(null, createRegionDto.parentId);
+
     return this.regionsRepository.create(
       {
         name: createRegionDto.name,
@@ -69,6 +71,7 @@ export class RegionsService {
         providers: createRegionDto.providers ?? null,
         isActive: createRegionDto.isActive ?? true,
         isPopular: createRegionDto.isPopular ?? false,
+        parentId: createRegionDto.parentId ?? null,
       },
       createRegionDto.destinationIds,
     );
@@ -134,6 +137,8 @@ export class RegionsService {
       }
     }
 
+    await this.assertParent(Number(id), updateRegionDto.parentId);
+
     return this.regionsRepository.update(
       id,
       {
@@ -151,9 +156,35 @@ export class RegionsService {
         providers: updateRegionDto.providers,
         isActive: updateRegionDto.isActive,
         isPopular: updateRegionDto.isPopular,
+        parentId: updateRegionDto.parentId,
       },
       updateRegionDto.destinationIds,
     );
+  }
+
+  /**
+   * "Khu vực cha" (vande #035) is one level deep: the parent must exist, not be
+   * the region itself, and not have a parent of its own; and a region that is
+   * already some region's parent cannot be put under another.
+   */
+  private async assertParent(
+    id: number | null,
+    parentId: number | null | undefined,
+  ): Promise<void> {
+    if (parentId === undefined || parentId === null) return;
+    const fail = (reason: string) => {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { parentId: reason },
+      });
+    };
+    if (id !== null && Number(parentId) === id) fail('parentIsSelf');
+    const parent = await this.regionsRepository.findById(parentId);
+    if (!parent) fail('parentNotFound');
+    if (parent?.parentId) fail('parentHasParent');
+    if (id !== null && (await this.regionsRepository.hasChildren(id))) {
+      fail('regionHasChildren');
+    }
   }
 
   async updateProviders(

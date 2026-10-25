@@ -216,6 +216,14 @@ export class RegionsRelationalRepository implements RegionRepository {
     return RegionMapper.toDomain(entity);
   }
 
+  /** Whether any region lists this one as its parent (vande #035). */
+  async hasChildren(id: Region['id']): Promise<boolean> {
+    const count = await this.regionsRepository.count({
+      where: { parentId: Number(id) },
+    });
+    return count > 0;
+  }
+
   async update(
     id: Region['id'],
     payload: Partial<Region>,
@@ -229,11 +237,18 @@ export class RegionsRelationalRepository implements RegionRepository {
       throw new Error('Region not found');
     }
 
+    // A key left undefined means "not changing it"; spread as-is it reached
+    // the mapper and was saved as null (vande #035 — the parent region, and
+    // the notice, title… of an update that did not send them).
+    const changes = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== undefined),
+    ) as Partial<Region>;
+
     const updatedEntity = await this.regionsRepository.save(
       this.regionsRepository.create(
         RegionMapper.toPersistence({
           ...RegionMapper.toDomain(entity),
-          ...payload,
+          ...changes,
         }),
       ),
     );
@@ -269,5 +284,10 @@ export class RegionsRelationalRepository implements RegionRepository {
 
   async remove(id: Region['id']): Promise<void> {
     await this.regionsRepository.softDelete(id);
+    // Its packs stand on their own again rather than point at a deleted page.
+    await this.regionsRepository.update(
+      { parentId: Number(id) },
+      { parentId: null },
+    );
   }
 }

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -107,6 +108,17 @@ export class CreateRegionDto {
   @IsOptional()
   @IsBoolean()
   isPopular?: boolean;
+
+  @ApiPropertyOptional({
+    example: 38,
+    type: Number,
+    nullable: true,
+    description: 'Parent region (vande #035); null for none.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  parentId?: number | null;
 
   @ApiPropertyOptional({
     example: 'airalo,esimaccess',

@@ -86,6 +86,14 @@ export class Region {
   @ApiProperty({ type: Boolean, example: false })
   isPopular: boolean;
 
+  @ApiPropertyOptional({
+    type: Number,
+    example: 38,
+    description:
+      "Parent region (vande #035): this region is listed as another pack on the parent's page.",
+  })
+  parentId?: number | null;
+
   @ApiProperty({
     type: Number,
     example: 120,

@@ -74,6 +74,14 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: 'text', nullable: true })
   noticeVi: string | null;
 
+  /**
+   * "Khu vực cha" (vande #035): the region whose page this one is listed on as
+   * another pack. One level only — a parent has no parent of its own.
+   */
+  @Index()
+  @Column({ type: 'int', nullable: true })
+  parentId: number | null;
+
   /** Units sold across this region's plans, recounted hourly (#053). */
   @Column({ type: 'int', default: 0 })
   soldCount: number;

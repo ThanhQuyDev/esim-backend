@@ -36,5 +36,8 @@ export abstract class RegionRepository {
     destinationIds?: number[],
   ): Promise<Region | null>;
 
+  /** Whether any region lists this one as its parent (vande #035). */
+  abstract hasChildren(id: Region['id']): Promise<boolean>;
+
   abstract remove(id: Region['id']): Promise<void>;
 }
