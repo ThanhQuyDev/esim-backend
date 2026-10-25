@@ -24,6 +24,7 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { AllConfigType } from '../config/config.type';
 import { loadPartnerQrLogo } from './partner-qr-logo';
+import { loadLookupDetails, lookupVoiceAndSms } from './esim-lookup-details';
 import { Response } from 'express';
 import { renderEsimQrCode } from './esim-qrcode';
 
@@ -166,11 +167,48 @@ export class EsimsPublicController {
       throw new NotFoundException('esimNotFound');
     }
 
+    const details = await loadLookupDetails(this.dataSource, Number(esim.id));
+    // Shown to whoever holds the link (vande #037): the order, where it works
+    // and how it connects. Never the activation code or LPA.
+    const info = {
+      iccid: esim.iccid,
+      iccidMasked: maskIccid(esim.iccid),
+      planName: esim.plan?.standardName || esim.plan?.name || null,
+      orderNumber: details.orderNumber,
+      destinationVi: details.destinationVi,
+      destinationEn: details.destinationEn,
+      operatorName: esim.plan?.operatorName || null,
+      networkSpeed: esim.plan?.speed || null,
+      apn: esim.apnValue || esim.plan?.apn || null,
+    };
+
+    // A refunded eSIM is cancelled (vande #037): say so instead of asking the
+    // supplier for usage of a profile that no longer counts.
+    if (esimLifecycleStatus(esim, esim.plan) === 'refunded') {
+      return {
+        ...info,
+        status: 'REFUNDED',
+        refunded: true,
+        isUnlimited: false,
+        totalMb: 0,
+        usedMb: 0,
+        remainingMb: null,
+        durationDays: esim.plan?.durationDays ?? null,
+        activatedAt: esim.activatedAt
+          ? new Date(esim.activatedAt).toISOString()
+          : null,
+        expiredAt: null,
+        lastUpdateTime: null,
+        usageAvailable: false,
+        ...lookupVoiceAndSms({}, null),
+      };
+    }
+
     const usage = await this.esimsService.getDataUsage(esim);
 
     return {
-      iccidMasked: maskIccid(esim.iccid),
-      planName: esim.plan?.standardName || esim.plan?.name || null,
+      ...info,
+      refunded: false,
       status: usage.status || esim.status,
       isUnlimited: usage.isUnlimited,
       totalMb: usage.total,
@@ -182,10 +220,7 @@ export class EsimsPublicController {
       lastUpdateTime: usage.lastUpdateTime,
       usageAvailable: usage.usageAvailable !== false,
       // The provider's own totals when it reports them, else the plan's.
-      callMinutes: usage.voiceTotal ?? esim.plan?.call ?? null,
-      smsCount: usage.smsTotal ?? esim.plan?.sms ?? null,
-      callMinutesRemaining: usage.voiceRemaining ?? null,
-      smsRemaining: usage.smsRemaining ?? null,
+      ...lookupVoiceAndSms(usage, esim.plan),
     };
   }
 }

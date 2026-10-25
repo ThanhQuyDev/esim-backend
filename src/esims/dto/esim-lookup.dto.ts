@@ -27,8 +27,35 @@ export class EsimLookupTokenResponseDto {
  * partner supplies the eSIM — same rule as #029).
  */
 export class EsimLookupResponseDto {
+  /** In full (vande #037): whoever has the link already knows the eSIM. */
+  @ApiProperty({ type: String, example: '8901234567890123456' })
+  iccid: string;
+
   @ApiProperty({ type: String, example: '•••••••••••••••3456' })
   iccidMasked: string | null;
+
+  @ApiPropertyOptional({ type: String, example: 'ORD-1788246919271' })
+  orderNumber: string | null;
+
+  /** The plan's country, or its region (vande #037). */
+  @ApiPropertyOptional({ type: String, example: 'Nhật Bản' })
+  destinationVi: string | null;
+
+  @ApiPropertyOptional({ type: String, example: 'Japan' })
+  destinationEn: string | null;
+
+  @ApiPropertyOptional({ type: String, example: 'SoftBank, KDDI' })
+  operatorName: string | null;
+
+  @ApiPropertyOptional({ type: String, example: '5G' })
+  networkSpeed: string | null;
+
+  @ApiPropertyOptional({ type: String, example: 'globaldata' })
+  apn: string | null;
+
+  /** Refunded from the order: the eSIM is cancelled (vande #037). */
+  @ApiProperty({ type: Boolean })
+  refunded: boolean;
 
   @ApiPropertyOptional({ type: String, example: 'Japan 5GB / 7 days' })
   planName: string | null;
