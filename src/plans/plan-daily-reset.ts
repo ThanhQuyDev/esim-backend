@@ -48,10 +48,8 @@ export type DailyReset = {
  *  - Viettel and the domestic eSIMs reset on the Vietnamese calendar day.
  *
  * Billion and MicroEsim are deliberately absent: they send the cycle per plan
- * (Billion in `highSpeedTime`), so a blanket default here would overwrite the
- * real answer on every sync. They are read from the API in #071, and until then
- * their plans simply have no value — which the storefront can omit, rather than
- * stating something untrue.
+ * (see `billionDailyReset` / `microEsimDailyReset`), so a blanket default here
+ * would overwrite the real answer on every sync.
  */
 export function defaultDailyReset(
   provider: string | null | undefined,
@@ -112,6 +110,77 @@ export function parseDailyResetPolicy(
     return DailyResetPolicyEnum.CalendarDay;
   }
   return null;
+}
+
+/** "UTC+8", "UTC-8", "UTC+5:30" → hours east of UTC, or null. */
+function utcOffsetHours(text: string | null | undefined): number | null {
+  const m = (text ?? '').match(/UTC\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?/i);
+  if (!m) return null;
+  const hours = Number(m[2]) + Number(m[3] ?? 0) / 60;
+  return Math.round((m[1] === '-' ? -hours : hours) * 100) / 100;
+}
+
+/**
+ * MicroEsim states the cycle per plan in `usage_reset` (vande #033):
+ * "24Hrs" for a rolling day, or the clock time the allowance comes back,
+ * "0:00 (UTC+8)". A reset at another hour ("23:00 (UTC+9)") is the same thing
+ * as midnight in the zone where that hour is 00:00, so it is stored that way
+ * and the storefront sentence ("tính đến 23:59 (UTC+x)") stays true.
+ */
+export function microEsimDailyReset(
+  usageReset: string | null | undefined,
+): Partial<DailyReset> {
+  const text = (usageReset ?? '').trim();
+  if (!text) return {};
+  if (/^24\s*h/i.test(text)) {
+    return {
+      dailyResetPolicy: DailyResetPolicyEnum.Rolling24h,
+      dailyResetUtcOffset: null,
+    };
+  }
+  const clock = text.match(/^(\d{1,2}):(\d{2})/);
+  const offset = utcOffsetHours(text);
+  if (!clock || offset == null) return {};
+  const hour = Number(clock[1]) + Number(clock[2]) / 60;
+  let midnightOffset = offset + (hour === 0 ? 0 : 24 - hour);
+  if (midnightOffset > 14) midnightOffset -= 24;
+  return {
+    dailyResetPolicy: DailyResetPolicyEnum.CalendarDay,
+    dailyResetUtcOffset: Math.round(midnightOffset),
+  };
+}
+
+/**
+ * Billion's daily plans come in two kinds (vande #033, read from F002 on
+ * 25/10): "Natural Day" ones, whose description says "Natural Day means
+ * 00:00-24:00 based on UTC+8 TimeZone" (or flag `highSpeedDataResetTimeType`
+ * "2"), reset at midnight in the product's `timeZone`; the plain "1GB/day"
+ * ones carry no such wording and run a 24-hour cycle. Plans with one total
+ * allowance (`planType` "0") have no daily reset, so they get no keys.
+ */
+export function billionDailyReset(product: {
+  name?: string | null;
+  desc?: string | null;
+  planType?: string | null;
+  highSpeedDataResetTimeType?: string | null;
+  timeZone?: string | null;
+}): Partial<DailyReset> {
+  if (product.planType !== '1') return {};
+  const naturalDay =
+    product.highSpeedDataResetTimeType === '2' ||
+    /natural\s*day/i.test(`${product.name ?? ''} ${product.desc ?? ''}`);
+  if (!naturalDay) {
+    return {
+      dailyResetPolicy: DailyResetPolicyEnum.Rolling24h,
+      dailyResetUtcOffset: null,
+    };
+  }
+  return {
+    dailyResetPolicy: DailyResetPolicyEnum.CalendarDay,
+    dailyResetUtcOffset: Math.round(
+      utcOffsetHours(product.timeZone) ?? CHINA_UTC_OFFSET,
+    ),
+  };
 }
 
 /**

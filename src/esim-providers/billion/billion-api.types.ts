@@ -68,6 +68,8 @@ export interface BillionProduct {
   validityPeriod?: string | null;
   /** Timezone of the product's dates, "UTC+8". */
   timeZone?: string | null;
+  /** "2" on some "Natural Day" plans, empty on the rest (vande #033). */
+  highSpeedDataResetTimeType?: string | null;
 }
 
 /** Price row within a F003 price array (one per number-of-copies). */

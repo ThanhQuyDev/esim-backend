@@ -9,6 +9,7 @@ import * as crypto from 'crypto';
 import { AllConfigType } from '../../config/config.type';
 import { PlansService } from '../../plans/plans.service';
 import { parseValidityDays } from '../../plans/plan-activation';
+import { microEsimDailyReset } from '../../plans/plan-daily-reset';
 import { DestinationsService } from '../../destinations/destinations.service';
 import { RegionsService } from '../../regions/regions.service';
 import { ProviderSyncLogsService } from '../../provider-sync-logs/provider-sync-logs.service';
@@ -439,6 +440,8 @@ export class MicroEsimService {
       // `validity_period` is free text ("180", "180 days"), so the day count is
       // pulled out rather than trusted to be numeric (#070).
       activationValidityDays: parseValidityDays(item.validity_period),
+      // "24Hrs" / "0:00 (UTC+8)" (vande #033).
+      ...microEsimDailyReset(item.usage_reset),
       hotSpot: true,
       hotSpotAllow: this.formatHotSpotAllow(type, dataMb),
       lastSyncedAt: new Date(),

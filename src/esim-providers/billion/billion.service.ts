@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { AllConfigType } from '../../config/config.type';
 import { PlansService } from '../../plans/plans.service';
 import { ExchangeRateService } from '../../plans/exchange-rate.service';
+import { billionDailyReset } from '../../plans/plan-daily-reset';
 import { DestinationsService } from '../../destinations/destinations.service';
 import { RegionsService } from '../../regions/regions.service';
 import { ProviderSyncLogsService } from '../../provider-sync-logs/provider-sync-logs.service';
@@ -504,6 +505,9 @@ export class BillionService {
         product.validityPeriod,
         product.timeZone,
       ),
+      // "Natural Day" plans reset at midnight in `timeZone`, others every 24h
+      // (vande #033).
+      ...billionDailyReset(product),
       hotSpot: product.hotspotSupport === '1',
       hotSpotAllow: this.formatHotSpotAllow(type, dataMb),
       lastSyncedAt: new Date(),

@@ -278,11 +278,19 @@ export class PlansRelationalRepository implements PlanRepository {
       throw new Error('Plan not found');
     }
 
+    // A key the caller left `undefined` means "not changing it". Spreading it
+    // as-is overwrote the stored value, and the mapper then wrote null — every
+    // supplier sync blanked "Giờ làm mới mỗi ngày" this way (vande #033).
+    // Clearing a field takes an explicit null.
+    const changes = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== undefined),
+    ) as Partial<Plan>;
+
     const updatedEntity = await this.plansRepository.save(
       this.plansRepository.create(
         PlanMapper.toPersistence({
           ...PlanMapper.toDomain(entity),
-          ...payload,
+          ...changes,
         }),
       ),
     );
