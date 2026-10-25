@@ -10550,6 +10550,15 @@ export class PartnersService {
       commissionVnd: number;
       /** What they paid us for stock. */
       purchasesVnd: number;
+      /** Settled orders, refunded orders and the share refunded (vande #060). */
+      orders: number;
+      refundedOrders: number;
+      refundRatePercent: number;
+      /** What the delivered eSIMs cost esim.vn. */
+      costVnd: number;
+      /** What esim.vn keeps once the cost is paid: revenue − cost. */
+      profitVnd: number;
+      esimsSold: number;
     }[];
     totalRevenueVnd: number;
     previousTotalRevenueVnd: number;
@@ -10619,6 +10628,41 @@ export class PartnersService {
        GROUP BY 1`,
     );
 
+    // Orders, refunds, cost and eSIMs of the period on both sides (vande
+    // #060), each order once: an order credited to a partner, and a
+    // partner's own purchase not credited to another partner. "Hoàn" is an
+    // order refunded in full, the rule of the partner list (#095).
+    const volume = await this.dataSource.query(
+      `WITH scoped AS (
+         SELECT p."partnerType", o.id, o.status
+           FROM "order" o JOIN partner p ON p.id = o."attributedPartnerId"
+          WHERE o."deletedAt" IS NULL AND o."userId" <> p."userId"
+            AND o."createdAt" >= $1 AND o."createdAt" < $2
+            AND o.status IN ('paid', 'completed', 'refunded')
+         UNION
+         SELECT p."partnerType", o.id, o.status
+           FROM "order" o JOIN partner p ON p."userId" = o."userId"
+          WHERE o."deletedAt" IS NULL
+            AND (o."attributedPartnerId" IS NULL OR o."attributedPartnerId" = p.id)
+            AND o."createdAt" >= $1 AND o."createdAt" < $2
+            AND o.status IN ('paid', 'completed', 'refunded')
+       )
+       SELECT s."partnerType",
+              COUNT(*) FILTER (WHERE s.status IN ('paid', 'completed')) AS orders,
+              COUNT(*) FILTER (WHERE s.status = 'refunded') AS "refundedOrders",
+              COALESCE(SUM((SELECT SUM(oi."vndCostPrice") FROM order_item oi
+                             WHERE oi."orderId" = s.id AND oi.status = 'completed'))
+                FILTER (WHERE s.status IN ('paid', 'completed')), 0) AS "costVnd",
+              COALESCE(SUM((SELECT COUNT(*) FROM esim e
+                              JOIN order_item oi ON oi.id = e."orderItemId"
+                             WHERE oi."orderId" = s.id AND e."deletedAt" IS NULL
+                               AND e.status <> 'refunded'))
+                FILTER (WHERE s.status IN ('paid', 'completed')), 0) AS "esimsSold"
+         FROM scoped s
+        GROUP BY 1`,
+      [from, to],
+    );
+
     const n = (v: unknown) => Number(v ?? 0);
     const types = new Set<string>([
       ...(counts as Record<string, any>[]).map((r) => String(r.partnerType)),
@@ -10638,6 +10682,9 @@ export class PartnersService {
       const c = (counts as Record<string, any>[]).find(
         (r) => r.partnerType === partnerType,
       );
+      const v = (volume as Record<string, any>[]).find(
+        (r) => r.partnerType === partnerType,
+      );
 
       const attributedGrossVnd = n(a?.grossVnd);
       const commissionVnd = n(a?.commissionVnd);
@@ -10655,6 +10702,20 @@ export class PartnersService {
         attributedGrossVnd,
         commissionVnd,
         purchasesVnd,
+        orders: n(v?.orders),
+        refundedOrders: n(v?.refundedOrders),
+        refundRatePercent:
+          n(v?.orders) + n(v?.refundedOrders) > 0
+            ? Math.round(
+                (n(v?.refundedOrders) / (n(v?.orders) + n(v?.refundedOrders))) *
+                  1000,
+              ) / 10
+            : 0,
+        costVnd: Math.round(n(v?.costVnd)),
+        // Distribution: what they paid − cost; affiliate: order value −
+        // commission − cost. `revenueVnd` already holds the first two terms.
+        profitVnd: Math.round(revenueVnd - n(v?.costVnd)),
+        esimsSold: n(v?.esimsSold),
       };
     });
 
@@ -11100,7 +11161,13 @@ export class PartnersService {
          (SELECT COALESCE(SUM("amountVnd"), 0) FROM partner_payout WHERE status = 'pending')  AS "pendingPayoutVnd",
          (SELECT COUNT(*) FROM partner_deposit_request WHERE status = 'pending') AS "pendingDeposits",
          (SELECT COALESCE(SUM("commissionVnd"), 0) FROM order_partner_commission WHERE status = 'pending') AS "pendingCommissionVnd",
-         (SELECT COUNT(*) FROM order_partner_commission WHERE status = 'pending') AS "pendingCommissions"`,
+         (SELECT COUNT(*) FROM order_partner_commission WHERE status = 'pending') AS "pendingCommissions",
+         -- A partner's ticket waiting on support (vande #060): new, or the
+         -- partner wrote last on one not yet closed — the sidebar badge's rule.
+         (SELECT COUNT(*) FROM ticket t
+           WHERE t."fromPartner" = true
+             AND (t.status = 'open' OR (t."lastReplyRole" = 'customer' AND t.status <> 'closed'))
+         ) AS "pendingTickets"`,
     );
 
     const [money] = await this.dataSource.query(
@@ -11155,6 +11222,7 @@ export class PartnersService {
         pendingDeposits: n(queue?.pendingDeposits),
         pendingCommissionVnd: n(queue?.pendingCommissionVnd),
         pendingCommissions: n(queue?.pendingCommissions),
+        pendingTickets: n(queue?.pendingTickets),
       },
       money: {
         revenue30dVnd: n(revenue?.revenue30dVnd),

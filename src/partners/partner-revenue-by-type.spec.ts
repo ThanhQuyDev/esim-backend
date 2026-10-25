@@ -14,12 +14,14 @@ function buildService(rows: {
   attributed?: Record<string, unknown>[];
   purchases?: Record<string, unknown>[];
   counts?: Record<string, unknown>[];
+  volume?: Record<string, unknown>[];
 }) {
   const query = jest
     .fn()
     .mockResolvedValueOnce(rows.attributed ?? [])
     .mockResolvedValueOnce(rows.purchases ?? [])
-    .mockResolvedValueOnce(rows.counts ?? []);
+    .mockResolvedValueOnce(rows.counts ?? [])
+    .mockResolvedValueOnce(rows.volume ?? []);
 
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, { dataSource: { query } });
@@ -209,5 +211,60 @@ describe('PartnersService.adminRevenueByPartnerType (#050)', () => {
     const [sql] = query.mock.calls[1] as [string];
     expect(sql).toContain("rt.type = 'order_purchase_reversal'");
     expect(sql).toContain('rt."orderId" = o.id');
+  });
+
+  it('should give orders, refunds, profit and eSIMs per type (vande #060)', async () => {
+    // Affiliate: 100tr of orders, 18tr commission, 60tr cost → 22tr profit.
+    // Distribution: bought 50tr, cost 40tr → 10tr profit.
+    const { service } = buildService({
+      attributed: [
+        {
+          partnerType: 'kol',
+          grossVnd: '100000000',
+          commissionVnd: '18000000',
+        },
+      ],
+      purchases: [{ partnerType: 'distribution', purchasesVnd: '50000000' }],
+      counts: [
+        { partnerType: 'kol', partners: '10' },
+        { partnerType: 'distribution', partners: '2' },
+      ],
+      volume: [
+        {
+          partnerType: 'kol',
+          orders: '45',
+          refundedOrders: '5',
+          costVnd: '60000000',
+          esimsSold: '52',
+        },
+        {
+          partnerType: 'distribution',
+          orders: '8',
+          refundedOrders: '0',
+          costVnd: '40000000',
+          esimsSold: '120',
+        },
+      ],
+    });
+
+    const result = await service.adminRevenueByPartnerType();
+    const kol = result.byType.find((r) => r.partnerType === 'kol')!;
+    const dist = result.byType.find((r) => r.partnerType === 'distribution')!;
+
+    expect(kol).toMatchObject({
+      orders: 45,
+      refundedOrders: 5,
+      refundRatePercent: 10,
+      costVnd: 60_000_000,
+      profitVnd: 22_000_000,
+      esimsSold: 52,
+    });
+    expect(dist).toMatchObject({
+      orders: 8,
+      refundedOrders: 0,
+      refundRatePercent: 0,
+      profitVnd: 10_000_000,
+      esimsSold: 120,
+    });
   });
 });
