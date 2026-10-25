@@ -7,6 +7,8 @@ import { PlanEntity } from '../plans/infrastructure/persistence/relational/entit
 import { UserEntity } from '../users/infrastructure/persistence/relational/entities/user.entity';
 import { OverviewController } from './overview.controller';
 import { OverviewService } from './overview.service';
+import { OverviewInsightsService } from './overview-insights.service';
+import { SiteVisitsPublicController } from './site-visits-public.controller';
 
 @Module({
   imports: [
@@ -18,8 +20,8 @@ import { OverviewService } from './overview.service';
       EsimEntity,
     ]),
   ],
-  controllers: [OverviewController],
-  providers: [OverviewService],
+  controllers: [OverviewController, SiteVisitsPublicController],
+  providers: [OverviewService, OverviewInsightsService],
   exports: [OverviewService],
 })
 export class OverviewModule {}

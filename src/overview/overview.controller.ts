@@ -29,6 +29,7 @@ import {
   TopDestinationsResponseDto,
 } from './dto/overview.dto';
 import { OverviewService } from './overview.service';
+import { OverviewInsightsService } from './overview-insights.service';
 
 @ApiBearerAuth()
 @Roles(RoleEnum.admin)
@@ -36,7 +37,26 @@ import { OverviewService } from './overview.service';
 @ApiTags('Overview')
 @Controller({ path: 'overview', version: '1' })
 export class OverviewController {
-  constructor(private readonly overviewService: OverviewService) {}
+  constructor(
+    private readonly overviewService: OverviewService,
+    private readonly insights: OverviewInsightsService,
+  ) {}
+
+  /** The five KPI cards (vande #059). */
+  @ApiOperation({ summary: 'Overview KPI cards (vande #059)' })
+  @Get('kpis')
+  @HttpCode(HttpStatus.OK)
+  getKpis(@Query() query: OverviewProviderFilterQueryDto) {
+    return this.insights.getKpis(query);
+  }
+
+  /** Visits and orders by device, new vs returning, and by place (vande #059). */
+  @ApiOperation({ summary: 'Overview audience charts (vande #059)' })
+  @Get('audience')
+  @HttpCode(HttpStatus.OK)
+  getAudience(@Query() query: OverviewProviderFilterQueryDto) {
+    return this.insights.getAudience(query);
+  }
 
   @ApiOperation({ summary: 'Get all overview dashboard blocks' })
   @ApiOkResponse({ type: OverviewResponseDto })

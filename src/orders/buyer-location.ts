@@ -26,6 +26,31 @@ export function publicIp(ip?: string | null): string | null {
 
 const COUNTRY = new Intl.DisplayNames(['en'], { type: 'region' });
 
+/** Country code and city of a public address (vande #059), or null. */
+export async function ipPlace(
+  ip?: string | null,
+): Promise<{ country: string; city: string | null } | null> {
+  const address = publicIp(ip);
+  if (!address) return null;
+  try {
+    const found = await lookup(address);
+    return found?.country
+      ? { country: found.country, city: found.city || null }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** "Vietnam" for "VN"; the code itself when the name is not known. */
+export function countryName(code: string, locale = 'en'): string {
+  try {
+    return new Intl.DisplayNames([locale], { type: 'region' }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
 /** "Ho Chi Minh City, Vietnam" — null when the address is unknown. */
 export async function ipLocation(ip?: string | null): Promise<string | null> {
   const address = publicIp(ip);
