@@ -31,7 +31,10 @@ import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import { OrdersService } from './orders.service';
 import { Order } from './domain/order';
-import { SubmitManualOrderDto } from './dto/submit-manual-order.dto';
+import {
+  SubmitBulkOrderDto,
+  SubmitManualOrderDto,
+} from './dto/submit-manual-order.dto';
 import {
   ORDER_IMPORT_MAX_BYTES,
   orderImportTemplate,
@@ -87,6 +90,68 @@ export class AdminOrdersController {
       file.buffer,
       file.originalname,
     );
+  }
+
+  /** The bulk file template, with the "Email nhận QR" column (vande #057). */
+  @Get('bulk/import-template')
+  @ApiOperation({ summary: 'Template of the bulk eSIM order file (.xlsx)' })
+  async bulkOrderTemplate(@Res() res: Response): Promise<void> {
+    const buffer = await orderImportTemplate(true);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${downloadFilename('File-mau-dat-esim-hang-loat')}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
+  /** Reads a bulk file — up to 50 rows, with emails — and places nothing. */
+  @Post('bulk/import-file')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: ORDER_IMPORT_MAX_BYTES } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Preview a bulk eSIM order file (.xlsx / .csv)' })
+  previewBulkOrderFile(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Chưa chọn file.');
+    return this.ordersService.previewManualOrderFile(
+      file.buffer,
+      file.originalname,
+      { bulk: true },
+    );
+  }
+
+  /** "Đặt eSIM hàng loạt": mailed spaced out, or as a list (vande #057). */
+  @Post('bulk')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Place a bulk eSIM order from file rows' })
+  submitBulkOrders(
+    @Request() req: { user: { id: number } },
+    @Body() dto: SubmitBulkOrderDto,
+  ) {
+    return this.ordersService.submitBulkOrders(req.user.id, dto);
+  }
+
+  /** The eSIMs of an order as a list, supplier and cost included (vande #057). */
+  @Get(':orderId/esim-list')
+  @ApiParam({ name: 'orderId', type: Number, required: true })
+  async bulkEsimList(
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @Res() res: Response,
+  ): Promise<void> {
+    const file = await this.ordersService.bulkEsimList(
+      { id: orderId },
+      { forAdmin: true },
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${file.filename}"`,
+      'Content-Length': file.content.length.toString(),
+    });
+    res.end(file.content);
   }
 
   @Post('submit-manual')

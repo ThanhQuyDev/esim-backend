@@ -44,6 +44,9 @@ export class OrderMapper {
     domainEntity.deviceType = raw.deviceType ?? null;
     domainEntity.attributionWarning = raw.attributionWarning ?? null;
     domainEntity.deliveryEmail = raw.deliveryEmail ?? null;
+    domainEntity.bulkMode = raw.bulkMode ?? null;
+    domainEntity.bulkBatch = raw.bulkBatch ?? null;
+    domainEntity.bulkEmailIntervalSec = raw.bulkEmailIntervalSec ?? null;
     domainEntity.referralDiscountVndAmount = Number(
       raw.referralDiscountVndAmount,
     );
@@ -128,6 +131,9 @@ export class OrderMapper {
     persistenceEntity.deviceType = domainEntity.deviceType;
     persistenceEntity.attributionWarning = domainEntity.attributionWarning;
     persistenceEntity.deliveryEmail = domainEntity.deliveryEmail;
+    persistenceEntity.bulkMode = domainEntity.bulkMode;
+    persistenceEntity.bulkBatch = domainEntity.bulkBatch;
+    persistenceEntity.bulkEmailIntervalSec = domainEntity.bulkEmailIntervalSec;
     persistenceEntity.referralDiscountVndAmount =
       domainEntity.referralDiscountVndAmount ?? 0;
     persistenceEntity.walletSpentVndAmount =

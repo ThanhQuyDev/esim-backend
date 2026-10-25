@@ -418,6 +418,17 @@ export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   id: number;
 
+  /** Ordered in bulk from a file: mailed spaced out, or as a list (vande #057). */
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['email', 'file'],
+    nullable: true,
+  })
+  bulkMode?: 'email' | 'file' | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  bulkEmailIntervalSec?: number | null;
+
   @ApiPropertyOptional({ type: Number })
   subtotalVndPrice?: number;
 

@@ -13,6 +13,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
@@ -30,6 +31,7 @@ import {
   orderImportTemplate,
 } from '../utils/order-import-file';
 import { downloadFilename } from '../utils/download-filename';
+import { bulkEmailInterval } from '../orders/bulk-esim-list';
 
 /**
  * Hai hành động ghi của luồng đối tác tự mua hàng (#046).
@@ -132,7 +134,36 @@ export class PartnerPurchaseController {
     return this.purchaseService.purchaseCart(partner.id, {
       items: dto.items,
       recipientEmail: dto.recipientEmail ?? null,
+      bulk: dto.bulkMode
+        ? {
+            mode: dto.bulkMode,
+            // Namespaced by partner: two partners' uploads never share a queue.
+            batch: `P${partner.id}-${dto.bulkBatch ?? randomUUID()}`,
+            intervalSec: bulkEmailInterval(dto.emailIntervalSec),
+          }
+        : null,
     });
+  }
+
+  /** The eSIMs of one of the partner's orders as the bulk list (vande #057). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/purchases/:orderNumber/esim-list')
+  async esimList(
+    @Request() req: { user: { id: number } },
+    @Param('orderNumber') orderNumber: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    const file = await this.purchaseService.esimList(partner.id, orderNumber);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${file.filename}"`,
+      'Content-Length': file.content.length.toString(),
+    });
+    res.end(file.content);
   }
 
   /** "Gửi lại email eSIM" for a whole order (doitac-1410 #042). */

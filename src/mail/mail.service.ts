@@ -5,6 +5,7 @@ import {
 } from '../partners/notification-html';
 import { Optional, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Interval } from '@nestjs/schedule';
 import { I18nContext } from 'nestjs-i18n';
 import { MailData } from './interfaces/mail-data.interface';
 import {
@@ -233,13 +234,17 @@ export class MailService {
    * customer address they gave, with the partner's own logo from "Cấu hình
    * thương hiệu". Every other order is untouched. Best-effort.
    */
-  private async esimMailOverrides(
-    orderNumber?: string | null,
-  ): Promise<{ to?: string; logoUrl?: string; brand?: PartnerBrand }> {
+  private async esimMailOverrides(orderNumber?: string | null): Promise<{
+    to?: string;
+    logoUrl?: string;
+    brand?: PartnerBrand;
+    bulk?: { mode: 'email' | 'file'; batch: string; intervalSec: number };
+  }> {
     if (!orderNumber || !this.dataSource) return {};
     try {
       const [row] = await this.dataSource.query(
-        `SELECT o."deliveryEmail", pa."brandInfo"
+        `SELECT o."deliveryEmail", pa."brandInfo", o."bulkMode", o."bulkBatch",
+                o."bulkEmailIntervalSec"
            FROM "order" o
            LEFT JOIN partner pa
              ON pa."userId" = o."userId" AND pa."partnerType" = 'distribution'
@@ -255,6 +260,15 @@ export class MailService {
         ...(row.deliveryEmail ? { to: String(row.deliveryEmail) } : {}),
         ...(brand?.logoUrl ? { logoUrl: brand.logoUrl } : {}),
         ...(brand ? { brand } : {}),
+        ...(row.bulkMode === 'email' || row.bulkMode === 'file'
+          ? {
+              bulk: {
+                mode: row.bulkMode,
+                batch: String(row.bulkBatch ?? orderNumber),
+                intervalSec: Math.max(0, Number(row.bulkEmailIntervalSec ?? 0)),
+              },
+            }
+          : {}),
       };
     } catch (err) {
       this.logger.error(
@@ -458,8 +472,25 @@ export class MailService {
     });
   }
 
-  async sendEsimPurchase(data: EsimPurchaseMailData): Promise<void> {
+  async sendEsimPurchase(
+    data: EsimPurchaseMailData,
+    options: { queued?: boolean } = {},
+  ): Promise<void> {
     const overrides = await this.esimMailOverrides(data.orderNumber);
+    // Ordered in bulk (vande #057): a "file" order mails nobody — its eSIMs
+    // are handed over as a list; an "email" order is mailed from the queue,
+    // one email every few seconds, so a group's QR codes are not sent back
+    // to back and marked as spam.
+    if (overrides.bulk?.mode === 'file') {
+      this.logger.log(
+        `sendEsimPurchase: ${data.orderNumber} is a bulk "file" order, no email`,
+      );
+      return;
+    }
+    if (overrides.bulk?.mode === 'email' && !options.queued) {
+      await this.queueEsimEmail(data, overrides.bulk);
+      return;
+    }
     const template =
       await this.emailTemplatesService.findByName('esim_purchase');
     if (!template) {
@@ -538,6 +569,116 @@ export class MailService {
       context: {},
       html: htmlCompiled,
     });
+  }
+
+  /**
+   * Put one eSIM email of a bulk order in the queue (vande #057), timed
+   * `intervalSec` after the last one of its upload — or now, when the queue
+   * for it is empty. The lock keeps two eSIMs provisioned at the same moment
+   * from taking the same slot.
+   */
+  private async queueEsimEmail(
+    data: EsimPurchaseMailData,
+    bulk: { batch: string; intervalSec: number },
+  ): Promise<void> {
+    await this.dataSource!.transaction(async (manager) => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+        `esim_email_queue:${bulk.batch}`,
+      ]);
+      // A resend while the first is still waiting would mail it twice.
+      const [waiting] = await manager.query(
+        `SELECT 1 FROM esim_email_queue
+          WHERE batch = $1 AND "esimId" = $2 AND "sentAt" IS NULL`,
+        [bulk.batch, data.esimId],
+      );
+      if (waiting) return;
+      await manager.query(
+        // `scheduledAt` is the slot and never moves; `sendAt` is when to try
+        // next, pushed back by a lease or a retry.
+        `INSERT INTO esim_email_queue
+                (batch, "orderNumber", "esimId", payload, "intervalSec",
+                 "scheduledAt", "sendAt")
+         SELECT $1, $2, $3, $4, $5, slot, slot
+           FROM (SELECT GREATEST(now(), COALESCE(
+                   (SELECT max("scheduledAt") FROM esim_email_queue WHERE batch = $1)
+                     + make_interval(secs => $5), now())) AS slot) s`,
+        [bulk.batch, data.orderNumber, data.esimId, data, bulk.intervalSec],
+      );
+    });
+  }
+
+  private sendingQueue = false;
+
+  /**
+   * Send the queued eSIM emails whose time has come (vande #057). Each row
+   * is claimed before it is sent — leased for two minutes — so a second
+   * instance cannot send it too; a failure is retried a minute later, five
+   * times at most.
+   */
+  @Interval(2_000)
+  async sendDueEsimEmails(): Promise<number> {
+    if (!this.dataSource || this.sendingQueue) return 0;
+    this.sendingQueue = true;
+    let sent = 0;
+    try {
+      const claimed: unknown[] = await this.dataSource.query(
+        `UPDATE esim_email_queue
+              SET attempts = attempts + 1,
+                  "sendAt" = now() + interval '2 minutes'
+            WHERE id IN (
+                    -- The next one of each upload, and only once the one
+                    -- before it went out at least its interval ago: a poll
+                    -- that fell behind must not send a backlog in one burst.
+                    SELECT id FROM (
+                      SELECT q.id, row_number() OVER (
+                               PARTITION BY q.batch ORDER BY q."scheduledAt", q.id) AS n
+                        FROM esim_email_queue q
+                       WHERE q."sentAt" IS NULL AND q.attempts < 5
+                         AND q."sendAt" <= now()
+                         AND NOT EXISTS (
+                               SELECT 1 FROM esim_email_queue p
+                                WHERE p.batch = q.batch
+                                  AND p."sentAt" > now() - make_interval(secs => q."intervalSec"))
+                    ) due
+                     WHERE due.n = 1
+                     LIMIT 5)
+              -- Checked again on the row itself, so two instances polling at
+              -- once cannot both claim it.
+              AND "sentAt" IS NULL AND "sendAt" <= now()
+           RETURNING id, payload`,
+      );
+      // An UPDATE … RETURNING comes back from the pg driver as
+      // [rows, affected], not as the rows themselves.
+      const rows = (Array.isArray(claimed[0]) ? claimed[0] : claimed) as {
+        id: number;
+        payload: EsimPurchaseMailData;
+      }[];
+      for (const row of rows) {
+        try {
+          await this.sendEsimPurchase(row.payload, { queued: true });
+          await this.dataSource.query(
+            `UPDATE esim_email_queue SET "sentAt" = now(), "lastError" = NULL WHERE id = $1`,
+            [row.id],
+          );
+          sent++;
+        } catch (err) {
+          await this.dataSource.query(
+            `UPDATE esim_email_queue
+                SET "lastError" = $2, "sendAt" = now() + interval '1 minute'
+              WHERE id = $1`,
+            [row.id, (err as Error).message],
+          );
+          this.logger.error(
+            `Queued eSIM email ${row.id} failed: ${(err as Error).message}`,
+          );
+        }
+      }
+    } catch (err) {
+      this.logger.error(`eSIM email queue: ${(err as Error).message}`);
+    } finally {
+      this.sendingQueue = false;
+    }
+    return sent;
   }
 
   /**

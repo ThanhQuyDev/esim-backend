@@ -2,8 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsEmail,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -107,4 +109,50 @@ export class SubmitManualOrderDto {
   @IsInt()
   @Min(1)
   quantity?: number;
+}
+
+/** One row of a bulk upload (vande #057). */
+export class BulkOrderRowDto {
+  @ApiProperty({ example: 'thailand-3gb-30days' })
+  @IsString()
+  @IsNotEmpty()
+  slug: string;
+
+  @ApiProperty({ example: 2 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  quantity: number;
+
+  @ApiPropertyOptional({ example: 'khach@example.com' })
+  @IsOptional()
+  @IsEmail()
+  email?: string | null;
+}
+
+/**
+ * "Đặt eSIM hàng loạt" (vande #057): mailed to each row's email, spaced out,
+ * or one order handed over as a downloadable list.
+ */
+export class SubmitBulkOrderDto {
+  @ApiProperty({ enum: ['email', 'file'] })
+  @IsIn(['email', 'file'])
+  mode: 'email' | 'file';
+
+  @ApiPropertyOptional({ example: 30, description: 'Seconds between emails' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(600)
+  emailIntervalSec?: number;
+
+  @ApiProperty({ type: [BulkOrderRowDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => BulkOrderRowDto)
+  rows: BulkOrderRowDto[];
 }

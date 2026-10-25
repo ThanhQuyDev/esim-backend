@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { BulkOrderTag } from '../orders/bulk-esim-list';
 import { DataSource } from 'typeorm';
 import { OrdersService } from '../orders/orders.service';
 import { PartnersService } from '../partners/partners.service';
@@ -270,6 +271,8 @@ export class PartnerPurchaseService {
     input: {
       items: { planId: number; quantity: number; periodNum?: number | null }[];
       recipientEmail?: string | null;
+      /** Part of a bulk upload (vande #057). */
+      bulk?: BulkOrderTag | null;
     },
   ): Promise<{
     orderNumber: string;
@@ -298,7 +301,12 @@ export class PartnerPurchaseService {
         unitPriceVnd: l.unitPriceVnd,
         periodNum: l.periodNum,
       })),
-      deliveryEmail: input.recipientEmail?.trim().toLowerCase() || null,
+      // A "file" upload mails nobody: the list is the delivery (vande #057).
+      deliveryEmail:
+        input.bulk?.mode === 'file'
+          ? null
+          : input.recipientEmail?.trim().toLowerCase() || null,
+      bulk: input.bulk ?? null,
       onDebit: async (orderId, orderNumber) => {
         await this.partnersService.debitWalletForPurchase(partnerId, {
           orderId,
@@ -386,6 +394,15 @@ export class PartnerPurchaseService {
           failed.reduce((sum, i) => sum + Number(i.quantity), 0),
       ),
     };
+  }
+
+  /** One of the partner's own orders as the bulk eSIM list (vande #057). */
+  async esimList(partnerId: number, orderNumber: string) {
+    const partner = await this.partnersService.getPartnerOrThrowById(partnerId);
+    return this.ordersService.bulkEsimList(
+      { orderNumber },
+      { forAdmin: false, userId: partner.userId },
+    );
   }
 
   /**

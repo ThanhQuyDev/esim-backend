@@ -5,9 +5,11 @@ import {
   ArrayMinSize,
   IsArray,
   IsEmail,
+  IsIn,
   IsInt,
   IsOptional,
   Max,
+  Matches,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -55,4 +57,27 @@ export class CreatePartnerCartPurchaseDto {
   )
   @IsEmail({}, { message: 'Email nhận eSIM không hợp lệ.' })
   recipientEmail?: string;
+
+  /**
+   * Part of a bulk upload (vande #057): `email` — the QR codes mailed spaced
+   * `emailIntervalSec` apart; `file` — nothing mailed, a list to download.
+   */
+  @ApiPropertyOptional({ enum: ['email', 'file'] })
+  @IsOptional()
+  @IsIn(['email', 'file'])
+  bulkMode?: 'email' | 'file';
+
+  /** Shared by every checkout of one upload, so their emails queue together. */
+  @ApiPropertyOptional({ example: 'b7f3c2a1-upload' })
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9-]{8,64}$/)
+  bulkBatch?: string;
+
+  @ApiPropertyOptional({ example: 30 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(600)
+  emailIntervalSec?: number;
 }

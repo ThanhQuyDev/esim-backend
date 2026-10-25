@@ -175,6 +175,8 @@ describe('OrdersService.previewManualOrderFile (doitac-1410 #084)', () => {
         row: 2,
         slug: 'jp',
         quantity: 2,
+        // Only a bulk upload reads emails (vande #057).
+        email: null,
         plan: {
           id: 1,
           slug: 'jp',
@@ -187,6 +189,8 @@ describe('OrdersService.previewManualOrderFile (doitac-1410 #084)', () => {
         row: 3,
         slug: 'nope',
         quantity: 1,
+        // Only a bulk upload reads emails (vande #057).
+        email: null,
         plan: null,
         error: 'Không thấy gói có mã "nope".',
       },
@@ -194,6 +198,8 @@ describe('OrdersService.previewManualOrderFile (doitac-1410 #084)', () => {
         row: 4,
         slug: 'off',
         quantity: 1,
+        // Only a bulk upload reads emails (vande #057).
+        email: null,
         plan: null,
         error: 'Gói đang ngừng bán.',
       },

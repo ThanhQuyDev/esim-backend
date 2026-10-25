@@ -159,6 +159,22 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   deliveryEmail?: string | null;
 
+  /**
+   * Ordered in bulk from a file (vande #057): `email` — every eSIM mailed to
+   * its customer, spaced `bulkEmailIntervalSec` apart; `file` — nothing
+   * mailed, the eSIMs handed over as one downloadable list.
+   */
+  @Column({ type: String, nullable: true })
+  bulkMode?: 'email' | 'file' | null;
+
+  /** One upload — the orders whose emails are spaced out together. */
+  @Index('IDX_order_bulkBatch')
+  @Column({ type: String, nullable: true })
+  bulkBatch?: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  bulkEmailIntervalSec?: number | null;
+
   @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
   referralDiscountVndAmount!: number;
 

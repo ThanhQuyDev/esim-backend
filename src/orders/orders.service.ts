@@ -75,6 +75,16 @@ import { PartnersService } from '../partners/partners.service';
 import { SessionShapeEnum } from '../partners/partners.enum';
 import { generateOrderNumber } from '../utils/order-number';
 import { parseOrderImportFile } from '../utils/order-import-file';
+import { randomBytes } from 'crypto';
+import { downloadFilename } from '../utils/download-filename';
+import { activationDeadlineFromDays } from '../plans/plan-activation';
+import {
+  BULK_ORDER_MAX_ROWS,
+  BulkEsimRow,
+  BulkOrderTag,
+  buildBulkEsimList,
+  bulkEmailInterval,
+} from './bulk-esim-list';
 
 const VND_ROUNDING_UNIT = 1000;
 
@@ -1619,11 +1629,15 @@ export class OrdersService {
   async previewManualOrderFile(
     buffer: Buffer,
     filename: string,
+    // A bulk order takes up to 50 rows, each with the email its QR codes go
+    // to (vande #057).
+    options: { bulk?: boolean } = {},
   ): Promise<{
     lines: {
       row: number;
       slug: string;
       quantity: number;
+      email: string | null;
       plan: {
         id: number;
         slug: string;
@@ -1636,8 +1650,8 @@ export class OrdersService {
   }> {
     // One manual order takes at most 20 plans (SubmitManualOrderDto).
     const rows = await parseOrderImportFile(buffer, filename, {
-      maxRows: 20,
-      withEmail: false,
+      maxRows: options.bulk ? BULK_ORDER_MAX_ROWS : 20,
+      withEmail: Boolean(options.bulk),
     });
     const plans = new Map<
       string,
@@ -1655,6 +1669,7 @@ export class OrdersService {
         row: row.row,
         slug: row.slug,
         quantity: row.quantity,
+        email: row.email,
         plan:
           plan && !error
             ? {
@@ -1693,6 +1708,8 @@ export class OrdersService {
         periodNum?: number;
       }[];
     },
+    /** Part of a bulk order from a file (vande #057). */
+    bulk?: BulkOrderTag,
   ): Promise<Order> {
     // 1. Resolve every plan by slug (primary) and verify its packageCode.
     //
@@ -1800,6 +1817,9 @@ export class OrdersService {
       orderNumber,
       vndRate,
     );
+    // Before any eSIM exists, so every mail of it — now or by a supplier's
+    // webhook later — is queued or held back (vande #057).
+    if (bulk) await this.tagBulkOrder(order.id, bulk);
 
     this.logger.log(
       `Admin ${adminUserId} created manual order ${orderNumber} for buyer ${buyer.id} (${dto.email}) — ${resolved.map((l) => `${l.plan.slug} x${l.quantity}`).join(', ')}`,
@@ -1860,6 +1880,8 @@ export class OrdersService {
     }[];
     /** The partner's customer the QR codes go to (doitac-1410 #034). */
     deliveryEmail?: string | null;
+    /** Part of a bulk order from a file (vande #057). */
+    bulk?: BulkOrderTag | null;
     onDebit: (orderId: number, orderNumber: string) => Promise<void>;
   }): Promise<Order> {
     const lines = input.items?.length
@@ -1929,6 +1951,7 @@ export class OrdersService {
       // supplier's webhook later — goes to the customer (doitac-1410 #034).
       deliveryEmail: input.deliveryEmail ?? null,
     } as Partial<Order>);
+    if (input.bulk) await this.tagBulkOrder(order.id, input.bulk);
     for (const line of lines) {
       // Matched on the days too: one plan can be two lines (#014).
       const days =
@@ -1975,6 +1998,249 @@ export class OrdersService {
 
     const finalOrder = await this.orderRepository.findById(order.id);
     return finalOrder ?? order;
+  }
+
+  /** Mark an order as part of a bulk upload (vande #057). */
+  private async tagBulkOrder(orderId: number, bulk: BulkOrderTag) {
+    await this.dataSource.query(
+      `UPDATE "order"
+          SET "bulkMode" = $2, "bulkBatch" = $3, "bulkEmailIntervalSec" = $4
+        WHERE id = $1`,
+      [
+        orderId,
+        bulk.mode,
+        bulk.batch,
+        bulk.mode === 'email' ? bulkEmailInterval(bulk.intervalSec) : null,
+      ],
+    );
+  }
+
+  /**
+   * Admin "Đặt eSIM hàng loạt" (vande #057), from the rows of an uploaded
+   * file — up to 50, each a plan, a quantity and, to mail it, an email.
+   *
+   * - `email`: one order per customer email, each eSIM mailed from the queue
+   *   `emailIntervalSec` after the one before, so a group's QR codes are not
+   *   sent back to back.
+   * - `file`: ONE order, under the admin's own account, nothing mailed; the
+   *   eSIMs are downloaded as a list from the order's page.
+   *
+   * Paid like "Đặt đơn hộ khách" (admin_manual). A row with an error stops
+   * the whole upload: half an order for a travel group is worse than none.
+   */
+  async submitBulkOrders(
+    adminUserId: number,
+    dto: {
+      mode: 'email' | 'file';
+      emailIntervalSec?: number;
+      rows: { slug: string; quantity: number; email?: string | null }[];
+    },
+  ): Promise<{
+    batch: string;
+    mode: 'email' | 'file';
+    orders: { id: number; orderNumber: string; email: string; esims: number }[];
+  }> {
+    if (!dto.rows?.length) {
+      throw new BadRequestException('Chưa có dòng gói cước nào.');
+    }
+    if (dto.rows.length > BULK_ORDER_MAX_ROWS) {
+      throw new BadRequestException(
+        `Mỗi lần đặt tối đa ${BULK_ORDER_MAX_ROWS} dòng.`,
+      );
+    }
+    const resolved: {
+      slug: string;
+      packageCode: string;
+      quantity: number;
+      email: string | null;
+    }[] = [];
+    for (const [index, row] of dto.rows.entries()) {
+      const plan = await this.plansService.findBySlug(row.slug);
+      if (!plan || !plan.isActive) {
+        throw new BadRequestException(
+          `Dòng ${index + 1}: ${plan ? 'gói đang ngừng bán' : `không thấy gói có mã "${row.slug}"`}.`,
+        );
+      }
+      const email = row.email?.trim().toLowerCase() || null;
+      if (dto.mode === 'email' && !email) {
+        throw new BadRequestException(
+          `Dòng ${index + 1}: thiếu email nhận mã QR.`,
+        );
+      }
+      resolved.push({
+        slug: plan.slug,
+        packageCode: plan.providerPlanId,
+        quantity: row.quantity,
+        email,
+      });
+    }
+
+    const tag: BulkOrderTag = {
+      mode: dto.mode,
+      batch: `BULK-${randomBytes(8).toString('hex')}`,
+      intervalSec: bulkEmailInterval(dto.emailIntervalSec),
+    };
+
+    // One order per customer, or one order for all of it.
+    const groups = new Map<string, typeof resolved>();
+    if (dto.mode === 'file') {
+      const admin = await this.usersService.findById(adminUserId);
+      if (!admin?.email) {
+        throw new BadRequestException('Tài khoản admin chưa có email.');
+      }
+      groups.set(admin.email, resolved);
+    } else {
+      for (const line of resolved) {
+        groups.set(line.email!, [...(groups.get(line.email!) ?? []), line]);
+      }
+    }
+
+    const orders: {
+      id: number;
+      orderNumber: string;
+      email: string;
+      esims: number;
+    }[] = [];
+    for (const [email, lines] of groups) {
+      const order = await this.submitManualOrder(
+        adminUserId,
+        {
+          email,
+          items: lines.map(({ slug, packageCode, quantity }) => ({
+            slug,
+            packageCode,
+            quantity,
+          })),
+        },
+        tag,
+      );
+      // A manual order is muted until the admin confirms payment; a bulk
+      // email order is the admin asking for it to go out, through the queue.
+      if (dto.mode === 'email') {
+        try {
+          await this.resendEsimEmail(Number(order.id));
+        } catch (err) {
+          this.logger.error(
+            `submitBulkOrders: could not queue mail for ${order.orderNumber}: ${(err as Error).message}`,
+          );
+        }
+      }
+      orders.push({
+        id: Number(order.id),
+        orderNumber: order.orderNumber,
+        email,
+        esims: lines.reduce((sum, l) => sum + l.quantity, 0),
+      });
+    }
+    return { batch: tag.batch, mode: dto.mode, orders };
+  }
+
+  /**
+   * The eSIMs of an order as the bulk list (vande #057). `userId` limits it
+   * to the buyer's own order — the partner's download; the admin's copy adds
+   * the supplier and the cost price.
+   */
+  async bulkEsimList(
+    orderRef: { id?: number; orderNumber?: string },
+    options: { forAdmin: boolean; userId?: number },
+  ): Promise<{ filename: string; content: Buffer }> {
+    const [order] = await this.dataSource.query(
+      `SELECT o.id, o."orderNumber", o."createdAt", o."userId", u.email,
+              o."paymentMethod"
+         FROM "order" o LEFT JOIN "user" u ON u.id = o."userId"
+        WHERE o."deletedAt" IS NULL
+          AND (o.id = $1 OR o."orderNumber" = $2)
+          AND ($3::int IS NULL OR o."userId" = $3)`,
+      [
+        orderRef.id ?? null,
+        orderRef.orderNumber ?? null,
+        options.userId ?? null,
+      ],
+    );
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng.');
+
+    const rows: Record<string, any>[] = await this.dataSource.query(
+      `SELECT e.id, e.iccid, e.lpa, e."smdpAddress", e."activationCode",
+              e."qrAccessToken", e."phoneNumber", e."createdAt" AS "esimAt",
+              e.provider AS "esimProvider",
+              oi.quantity, oi."vndPrice", oi."vndCostPrice",
+              p.name, p.slug, p."providerPlanId", p.provider, p.type,
+              p."durationDays", p."dataMb", p."fupSpeed", p.call, p.sms,
+              p."topUp", p."activationValidityDays", p."activationValidUntil",
+              COALESCE(NULLIF(d."titleVi", ''), d.name,
+                       NULLIF(r."titleVi", ''), r.name, '') AS destination
+         FROM esim e
+         JOIN order_item oi ON oi.id = e."orderItemId"
+         LEFT JOIN plan p ON p.id = oi."planId"
+         LEFT JOIN destination d ON d.id = p."destinationId"
+         LEFT JOIN region r ON r.id = p."regionId"
+        WHERE oi."orderId" = $1 AND e."deletedAt" IS NULL
+        ORDER BY oi.id, e.id`,
+      [order.id],
+    );
+
+    const rate = await this.exchangeRateService.getUsdToVndRate();
+    const backendDomain = this.configService.getOrThrow('app.backendDomain', {
+      infer: true,
+    });
+    // One eSIM's price: a line stores its total, except on a partner's own
+    // purchase, which is repriced per eSIM; the cost is always the line's.
+    const perEsim = order.paymentMethod !== 'partner_wallet';
+    const list: BulkEsimRow[] = rows.map((r) => {
+      const quantity = Math.max(1, Number(r.quantity ?? 1));
+      const priceVnd = Math.round(
+        Number(r.vndPrice ?? 0) / (perEsim ? quantity : 1),
+      );
+      const lpa =
+        (r.lpa as string | null)?.trim() ||
+        (r.smdpAddress && r.activationCode
+          ? `LPA:1$${r.smdpAddress}$${r.activationCode}`
+          : '');
+      const validUntil = r.activationValidUntil as Date | string | null;
+      return {
+        orderNumber: order.orderNumber,
+        iccid: r.iccid,
+        planName: r.name ?? '',
+        destination: r.destination ?? '',
+        planType: r.type ?? null,
+        durationDays: r.durationDays == null ? null : Number(r.durationDays),
+        dataMb: r.dataMb == null ? null : Number(r.dataMb),
+        fupSpeed: r.fupSpeed ?? null,
+        phoneNumber: r.phoneNumber ?? null,
+        call: r.call == null ? null : Number(r.call),
+        sms: r.sms == null ? null : Number(r.sms),
+        topUp: Boolean(r.topUp),
+        packageCode: r.providerPlanId ?? null,
+        slug: r.slug ?? null,
+        provider: r.esimProvider ?? r.provider ?? null,
+        costVnd:
+          r.vndCostPrice == null
+            ? null
+            : Math.round(Number(r.vndCostPrice) / quantity),
+        priceVnd,
+        priceUsd: rate > 0 ? Math.round((priceVnd / rate) * 100) / 100 : 0,
+        createdBy: order.email ?? '',
+        orderedAt: new Date(order.createdAt),
+        activationDeadline: validUntil
+          ? validUntil instanceof Date
+            ? validUntil.toISOString()
+            : String(validUntil)
+          : activationDeadlineFromDays(
+              r.activationValidityDays,
+              new Date(r.esimAt),
+            ),
+        lpa,
+        qrUrl:
+          r.id && r.qrAccessToken
+            ? `${backendDomain}/api/v1/esims/${r.id}/qrcode?token=${r.qrAccessToken}`
+            : '',
+      };
+    });
+
+    return {
+      filename: downloadFilename(`Danh-sach-eSIM-${order.orderNumber}`),
+      content: await buildBulkEsimList(list, options),
+    };
   }
 
   /**
@@ -2516,6 +2782,9 @@ export class OrdersService {
 
     return {
       id: order.id,
+      // Ordered in bulk from a file (vande #057).
+      bulkMode: order.bulkMode ?? null,
+      bulkEmailIntervalSec: order.bulkEmailIntervalSec ?? null,
       subtotalVndPrice: Number(order.subtotalVndPrice ?? 0),
       payableVndPrice: Number(order.payableVndPrice ?? 0),
       refundedAmountVnd: refundedVnd,
