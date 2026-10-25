@@ -93,8 +93,10 @@ export function fupSpeedKbps(plan: Pick<Plan, 'fupSpeed'>): number {
   return kbps ? parseFloat(kbps[1]) : 0;
 }
 
-/** Cost in đồng, the figure `markCheapestPlans` compares on. */
+/** Cost in đồng, the figure `markCheapestPlans` compares on — unrounded (vande #064). */
 function planCostVnd(plan: Plan): number {
+  const exact = Number(plan.vndCostExact ?? 0);
+  if (exact > 0) return exact;
   const vnd = Number(plan.vndCostPrice ?? 0);
   return vnd > 0 ? vnd : Number(plan.costPrice ?? 0) * 26000;
 }

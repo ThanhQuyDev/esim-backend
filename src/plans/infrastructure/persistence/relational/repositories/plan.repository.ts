@@ -369,9 +369,12 @@ export class PlansRelationalRepository implements PlanRepository {
           p."isDomesticEsim",
           (COALESCE(p."sms", 0) > 0 OR COALESCE(p."call", 0) > 0) AS voice,
           -- Cost in đồng incl. the supplier's tax/fee (v3 #018): the one figure
-          -- comparable across USD and VND suppliers. Plans not converted yet
-          -- fall back to the dollar cost with the fee.
-          CASE WHEN p."vndCostPrice" > 0 THEN p."vndCostPrice"::numeric
+          -- comparable across USD and VND suppliers — unrounded (vande #064),
+          -- since the display figure rounded to the thousand made plans a few
+          -- hundred đồng apart tie. Plans the rate job has not reached yet
+          -- fall back to the rounded figure, then to the dollar cost.
+          CASE WHEN p."vndCostExact" > 0 THEN p."vndCostExact"::numeric
+               WHEN p."vndCostPrice" > 0 THEN p."vndCostPrice"::numeric
                ELSE p."costPrice" * (1 + COALESCE(s."percentage", 0) / 100) * 26000
           END AS cost,
           COALESCE(
@@ -585,6 +588,7 @@ export class PlansRelationalRepository implements PlanRepository {
       `UPDATE "plan" SET
          "vndPrice" = ROUND("price" * $1::numeric / 1000) * 1000,
          "vndCostPrice" = ROUND(${EFFECTIVE_COST_SQL} * $1::numeric / 1000) * 1000,
+         "vndCostExact" = ${EFFECTIVE_COST_SQL} * $1::numeric,
          "vndRetailPrice" = ROUND("retailPrice" * $1::numeric / 1000) * 1000,
          "usdPrice" = "price",
          "usdCostPrice" = ROUND(${EFFECTIVE_COST_SQL}::numeric, 2),
@@ -600,6 +604,7 @@ export class PlansRelationalRepository implements PlanRepository {
       `UPDATE "plan" SET
          "vndPrice" = ROUND("price" / 1000) * 1000,
          "vndCostPrice" = ROUND(${EFFECTIVE_COST_SQL}),
+         "vndCostExact" = ${EFFECTIVE_COST_SQL},
          "vndRetailPrice" = ROUND("retailPrice"),
          "usdPrice" = ROUND("price"::numeric / $1::numeric, 2),
          "usdCostPrice" = ROUND(${EFFECTIVE_COST_SQL}::numeric / $1::numeric, 2),

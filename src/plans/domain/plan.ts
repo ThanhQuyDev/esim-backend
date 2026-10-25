@@ -143,6 +143,8 @@ export class Plan {
     description: 'Cost price in VND',
   })
   vndCostPrice: number;
+  /** Unrounded cost incl. supplier fee, for the cheapest-plan comparison (vande #064). */
+  vndCostExact?: number | null;
 
   @ApiProperty({
     type: Number,

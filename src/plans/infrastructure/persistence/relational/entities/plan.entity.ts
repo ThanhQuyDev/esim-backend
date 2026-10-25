@@ -147,6 +147,16 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: 'bigint', default: 0 })
   vndCostPrice: number;
 
+  /**
+   * The same cost incl. the supplier's tax/fee, NOT rounded (vande #064) —
+   * what `markCheapestPlans` compares on. `vndCostPrice` is rounded to the
+   * thousand for display, and two plans a few hundred đồng apart rounded to
+   * one figure, tied, and the lower id won even when it cost more. Never
+   * shown to anybody; null until the exchange-rate job first fills it.
+   */
+  @Column({ type: 'decimal', precision: 18, scale: 4, nullable: true })
+  vndCostExact?: number | null;
+
   @Column({ type: 'bigint', default: 0 })
   vndRetailPrice: number;
 

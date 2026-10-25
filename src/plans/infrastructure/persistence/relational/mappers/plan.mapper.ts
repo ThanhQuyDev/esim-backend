@@ -52,6 +52,8 @@ export class PlanMapper {
     domainEntity.usdCostPrice = Number(raw.usdCostPrice ?? 0);
     domainEntity.usdRetailPrice = Number(raw.usdRetailPrice ?? 0);
     domainEntity.vndCostPrice = Number(raw.vndCostPrice ?? 0);
+    domainEntity.vndCostExact =
+      raw.vndCostExact == null ? null : Number(raw.vndCostExact);
     domainEntity.vndRetailPrice = Number(raw.vndRetailPrice ?? 0);
     domainEntity.isNonHkIp = !!raw.isNonHkIp;
     domainEntity.ipExport = raw.ipExport ?? null;
@@ -129,6 +131,10 @@ export class PlanMapper {
     persistenceEntity.usdCostPrice = domainEntity.usdCostPrice;
     persistenceEntity.usdRetailPrice = domainEntity.usdRetailPrice;
     persistenceEntity.vndCostPrice = domainEntity.vndCostPrice;
+    // Only the exchange-rate job writes it; an ordinary save leaves it alone.
+    if (domainEntity.vndCostExact !== undefined) {
+      persistenceEntity.vndCostExact = domainEntity.vndCostExact;
+    }
     persistenceEntity.vndRetailPrice = domainEntity.vndRetailPrice;
     persistenceEntity.isNonHkIp = domainEntity.isNonHkIp;
     if (domainEntity.activationValidUntil !== undefined) {
