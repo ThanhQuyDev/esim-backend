@@ -22,7 +22,8 @@ import {
   UpdateReferralCodeDto,
   UpdateWalletStatusDto,
 } from './dto/admin-wallet.dto';
-import { MembershipTierEnum } from './tier/tier.enum';
+import { MembershipTierCode } from './tier/tier.enum';
+import { currentTierBenefits } from './tier/tier.registry';
 import {
   AdminWalletListItemDto,
   ReferralProfileDto,
@@ -116,8 +117,9 @@ export class WalletsController {
     const tiers = (membershipTiers ?? '')
       .split(',')
       .map((tier) => tier.trim())
-      .filter((tier): tier is MembershipTierEnum =>
-        Object.values(MembershipTierEnum).includes(tier as MembershipTierEnum),
+      // Tiers an admin added count too (vande #066).
+      .filter((tier): tier is MembershipTierCode =>
+        Object.prototype.hasOwnProperty.call(currentTierBenefits(), tier),
       );
 
     return this.walletsService.listWallets({

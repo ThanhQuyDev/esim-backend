@@ -3,6 +3,7 @@ import {
   Injectable,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { currentTierBenefits } from '../wallets/tier/tier.registry';
 import { CreateUserDto } from './dto/create-user.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { FilterUserDto, SortUserDto } from './dto/query-user.dto';
@@ -302,6 +303,18 @@ export class UsersService {
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         errors: { authorProfile: 'authorProfileRequired' },
+      });
+    }
+
+    // Tiers are the admin's to add and remove (vande #066): one placed by
+    // hand must still exist.
+    if (
+      updateUserDto.tierOverride &&
+      !currentTierBenefits()[updateUserDto.tierOverride]
+    ) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { tierOverride: 'tierNotFound' },
       });
     }
 

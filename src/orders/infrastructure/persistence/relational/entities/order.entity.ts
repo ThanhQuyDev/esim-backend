@@ -14,6 +14,7 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 import {
   MembershipTierEnum,
   TierSourceEnum,
+  MembershipTierCode,
 } from '../../../../../wallets/tier/tier.enum';
 
 @Entity({
@@ -199,7 +200,7 @@ export class OrderEntity extends EntityRelationalHelper {
   cashbackAmountVnd!: number;
 
   @Column({ type: String, default: MembershipTierEnum.TRAVELER })
-  membershipTierSnapshot!: MembershipTierEnum;
+  membershipTierSnapshot!: MembershipTierCode;
 
   @Column({ type: String, default: TierSourceEnum.AUTOMATIC })
   tierSourceSnapshot!: TierSourceEnum;

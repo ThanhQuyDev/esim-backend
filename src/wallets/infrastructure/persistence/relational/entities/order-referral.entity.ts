@@ -13,7 +13,11 @@ import { UserEntity } from '../../../../../users/infrastructure/persistence/rela
 import { OrderEntity } from '../../../../../orders/infrastructure/persistence/relational/entities/order.entity';
 import { WalletTransactionEntity } from './wallet-transaction.entity';
 import { OrderReferralStatusEnum } from '../../../../wallets.enum';
-import { MembershipTierEnum, TierSourceEnum } from '../../../../tier/tier.enum';
+import {
+  MembershipTierEnum,
+  TierSourceEnum,
+  MembershipTierCode,
+} from '../../../../tier/tier.enum';
 
 @Entity({ name: 'order_referral' })
 export class OrderReferralEntity extends EntityRelationalHelper {
@@ -55,7 +59,7 @@ export class OrderReferralEntity extends EntityRelationalHelper {
   rewardVnd!: number;
 
   @Column({ type: String, default: MembershipTierEnum.TRAVELER })
-  membershipTierSnapshot!: MembershipTierEnum;
+  membershipTierSnapshot!: MembershipTierCode;
 
   @Column({ type: String, default: TierSourceEnum.AUTOMATIC })
   tierSourceSnapshot!: TierSourceEnum;

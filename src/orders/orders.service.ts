@@ -68,7 +68,11 @@ import { Plan } from '../plans/domain/plan';
 import { WalletsService } from '../wallets/wallets.service';
 import type { ReferralValidationResult } from '../wallets/wallets.service';
 import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
-import { MembershipTierEnum, TierSourceEnum } from '../wallets/tier/tier.enum';
+import {
+  MembershipTierEnum,
+  TierSourceEnum,
+  MembershipTierCode,
+} from '../wallets/tier/tier.enum';
 import { InvoiceRepository } from '../invoices/infrastructure/persistence/invoice.repository';
 import { InvoiceStatus } from '../invoices/invoices.enum';
 import { PartnersService } from '../partners/partners.service';
@@ -202,7 +206,7 @@ type OrderPricing = {
   walletSpentVndAmount: number;
   payableVndPrice: number;
   cashbackAmountVnd: number;
-  membershipTierSnapshot: MembershipTierEnum;
+  membershipTierSnapshot: MembershipTierCode;
   tierSourceSnapshot: TierSourceEnum;
   cashbackPercentSnapshot: number;
   eligibleSpendVnd: number;

@@ -1,4 +1,7 @@
-import { TIER_BENEFITS, TIER_ORDER } from './tier.constants';
+import { TIER_BENEFITS } from './tier.constants';
+import { defaultTable, tierOrder } from './tier.registry';
+
+const TIER_ORDER = tierOrder(defaultTable());
 import { MembershipTierEnum } from './tier.enum';
 import { getTierBenefits, resolveTierSummary } from './tier.resolver';
 

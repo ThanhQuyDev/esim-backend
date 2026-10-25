@@ -4,8 +4,8 @@ import { Role } from '../../roles/domain/role';
 import { Status } from '../../statuses/domain/status';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  MembershipTierEnum,
   TierSourceEnum,
+  MembershipTierCode,
 } from '../../wallets/tier/tier.enum';
 import { TierBenefits } from '../../wallets/tier/tier.constants';
 import { AuthorProfile } from '../../authors/domain/author-profile';
@@ -131,17 +131,17 @@ export class User {
   @ApiPropertyOptional({ type: String, nullable: true, example: 'active' })
   exuWalletStatus?: string | null;
 
-  @ApiPropertyOptional({ enum: MembershipTierEnum, nullable: true })
-  tierOverride: MembershipTierEnum | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  tierOverride: MembershipTierCode | null;
 
   @ApiPropertyOptional({ type: String, nullable: true })
   tierOverrideReason: string | null;
 
-  @ApiProperty({ enum: MembershipTierEnum })
-  automaticTier?: MembershipTierEnum;
+  @ApiProperty({ type: String })
+  automaticTier?: MembershipTierCode;
 
-  @ApiProperty({ enum: MembershipTierEnum })
-  membershipTier?: MembershipTierEnum;
+  @ApiProperty({ type: String })
+  membershipTier?: MembershipTierCode;
 
   @ApiProperty({ enum: TierSourceEnum })
   tierSource?: TierSourceEnum;

@@ -1,6 +1,5 @@
-import { TIER_ORDER } from './tier.constants';
-import { MembershipTierEnum } from './tier.enum';
-import { currentTierBenefits } from './tier.registry';
+import { MembershipTierCode } from './tier.enum';
+import { currentTierBenefits, tierOrder } from './tier.registry';
 
 /**
  * The lifetime-spend range that earns one tier.
@@ -8,7 +7,7 @@ import { currentTierBenefits } from './tier.registry';
  * `ceilingVnd` is inclusive and `null` for the top tier, which has none.
  */
 export type TierBand = {
-  tier: MembershipTierEnum;
+  tier: MembershipTierCode;
   floorVnd: number;
   ceilingVnd: number | null;
 };
@@ -27,14 +26,15 @@ export type TierBand = {
  * decimal(14,0) — whole đồng — so a band ends one đồng short of the next floor,
  * which is what keeps adjacent bands from overlapping on a round number.
  */
-export function tierBands(tiers: MembershipTierEnum[]): TierBand[] {
-  const wanted = TIER_ORDER.filter((tier) => tiers.includes(tier));
+export function tierBands(tiers: MembershipTierCode[]): TierBand[] {
+  const order = tierOrder();
+  const wanted = order.filter((tier) => tiers.includes(tier));
   if (!wanted.length) return [];
 
   const benefits = currentTierBenefits();
 
   return wanted.map((tier) => {
-    const nextTier = TIER_ORDER[TIER_ORDER.indexOf(tier) + 1];
+    const nextTier = order[order.indexOf(tier) + 1];
     return {
       tier,
       floorVnd: benefits[tier].minimumSpendVnd,

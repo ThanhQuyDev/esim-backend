@@ -18,7 +18,7 @@ import { UserRepository } from '../../user.repository';
 import { UserMapper } from '../mappers/user.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { COMPLETED_ORDER_STATUSES } from '../../../../../overview/dto/overview.dto';
-import { MembershipTierEnum } from '../../../../../wallets/tier/tier.enum';
+import { MembershipTierCode } from '../../../../../wallets/tier/tier.enum';
 import {
   WalletHoldStatusEnum,
   WalletStatusEnum,
@@ -47,7 +47,7 @@ function customerCodeToId(code: string): number | null {
  * where-clause per case, to be OR-ed by the caller.
  */
 function tierWherePredicates(
-  tiers: MembershipTierEnum[],
+  tiers: MembershipTierCode[],
 ): FindOptionsWhere<UserEntity>[] {
   const bands = tierBands(tiers);
   if (!bands.length) return [{}];

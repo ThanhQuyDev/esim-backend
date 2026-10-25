@@ -1,7 +1,7 @@
 import { UsersRelationalRepository } from './infrastructure/persistence/relational/repositories/user.repository';
 import { MembershipTierEnum } from '../wallets/tier/tier.enum';
 import { TIER_BENEFITS } from '../wallets/tier/tier.constants';
-import { applyTierBenefits } from '../wallets/tier/tier.registry';
+import { applyTierBenefits, defaultTable } from '../wallets/tier/tier.registry';
 
 /**
  * #037 — the admin customer list filters: Mã khách hàng, Hạng khách hàng and
@@ -42,7 +42,7 @@ describe('Admin user list filters (#037)', () => {
 
   beforeEach(() => {
     // The bands come from the live registry, so pin it to the documented ladder.
-    applyTierBenefits({ ...TIER_BENEFITS });
+    applyTierBenefits(defaultTable());
   });
 
   describe('Mã khách hàng', () => {
@@ -144,9 +144,9 @@ describe('Admin user list filters (#037)', () => {
       // An admin who moves a threshold in membership_tier_config must move this
       // filter with it, or the list disagrees with the badge in its own column.
       applyTierBenefits({
-        ...TIER_BENEFITS,
+        ...defaultTable(),
         [MembershipTierEnum.SILVER]: {
-          ...TIER_BENEFITS[MembershipTierEnum.SILVER],
+          ...defaultTable()[MembershipTierEnum.SILVER],
           minimumSpendVnd: 2_000_000,
         },
       });

@@ -5,9 +5,9 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEmail,
-  IsEnum,
   IsOptional,
   IsString,
+  MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -15,7 +15,7 @@ import { FileDto } from '../../files/dto/file.dto';
 import { RoleDto } from '../../roles/dto/role.dto';
 import { StatusDto } from '../../statuses/dto/status.dto';
 import { lowerCaseTransformer } from '../../utils/transformers/lower-case.transformer';
-import { MembershipTierEnum } from '../../wallets/tier/tier.enum';
+import { MembershipTierCode } from '../../wallets/tier/tier.enum';
 import { AuthorProfileDto } from '../../authors/dto/author-profile.dto';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
@@ -46,10 +46,13 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   phoneNumber?: string | null;
 
-  @ApiPropertyOptional({ enum: MembershipTierEnum, nullable: true })
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
-  @IsEnum(MembershipTierEnum)
-  tierOverride?: MembershipTierEnum | null;
+  // Any tier an admin has created, not only the built-in four (vande #066);
+  // the users service checks it exists.
+  @IsString()
+  @MaxLength(32)
+  tierOverride?: MembershipTierCode | null;
 
   @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()

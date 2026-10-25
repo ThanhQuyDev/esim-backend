@@ -39,9 +39,9 @@ import { resolveTierSummary } from './tier/tier.resolver';
 import { tierBands } from './tier/tier-bands';
 import { calculateCumulativeReversalVnd } from './wallets.refund';
 import {
-  MembershipTierEnum,
   TierSourceEnum,
   UserSpendTransactionTypeEnum,
+  MembershipTierCode,
 } from './tier/tier.enum';
 import {
   EXU_EXPIRY_DAYS,
@@ -80,7 +80,7 @@ export type ReferralValidationResult = {
   referrerUserId: number;
   buyerDiscountVnd: number;
   rewardVnd: number;
-  membershipTierSnapshot: MembershipTierEnum;
+  membershipTierSnapshot: MembershipTierCode;
   tierSourceSnapshot: TierSourceEnum;
 };
 
@@ -192,7 +192,7 @@ export class WalletsService {
     /** Tên khách hàng, matched across first and last name (#057). */
     customerName?: string;
     /** Hạng khách hàng — the EFFECTIVE tier, same as the customer list (#057). */
-    membershipTiers?: MembershipTierEnum[];
+    membershipTiers?: MembershipTierCode[];
   }): Promise<{
     data: AdminWalletListItemDto[];
     hasNextPage: boolean;

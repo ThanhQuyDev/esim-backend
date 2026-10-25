@@ -1,43 +1,54 @@
-import { TIER_ORDER, TierBenefits } from './tier.constants';
-import { MembershipTierEnum, TierSourceEnum } from './tier.enum';
-import { currentTierBenefits } from './tier.registry';
+import { TierBenefits } from './tier.constants';
+import { MembershipTierCode, TierSourceEnum } from './tier.enum';
+import { baseTier, currentTierBenefits, tierOrder } from './tier.registry';
 
 export type TierSummary = {
-  automaticTier: MembershipTierEnum;
-  membershipTier: MembershipTierEnum;
+  automaticTier: MembershipTierCode;
+  membershipTier: MembershipTierCode;
   tierSource: TierSourceEnum;
   benefits: TierBenefits;
-  nextTier: MembershipTierEnum | null;
+  nextTier: MembershipTierCode | null;
   nextTierThresholdVnd: number | null;
   progressPercent: number;
 };
 
 export function resolveAutomaticTier(
   lifetimeSpendVnd: number,
-): MembershipTierEnum {
+): MembershipTierCode {
   const spend = Math.max(0, Number(lifetimeSpendVnd) || 0);
+  const order = tierOrder();
 
-  for (let index = TIER_ORDER.length - 1; index >= 0; index -= 1) {
-    const tier = TIER_ORDER[index];
+  for (let index = order.length - 1; index >= 0; index -= 1) {
+    const tier = order[index];
     if (spend >= currentTierBenefits()[tier].minimumSpendVnd) return tier;
   }
 
-  return MembershipTierEnum.TRAVELER;
+  return baseTier();
 }
 
-export function getTierBenefits(tier: MembershipTierEnum): TierBenefits {
-  return { ...currentTierBenefits()[tier] };
+/** What a tier pays; a tier since deleted pays what the first tier pays. */
+export function getTierBenefits(tier: MembershipTierCode): TierBenefits {
+  const row = currentTierBenefits()[tier] ?? currentTierBenefits()[baseTier()];
+  return {
+    minimumSpendVnd: row.minimumSpendVnd,
+    cashbackPercent: row.cashbackPercent,
+    referralRewardVnd: row.referralRewardVnd,
+  };
 }
 
 export function resolveTierSummary(
   lifetimeSpendVnd: number,
-  tierOverride?: MembershipTierEnum | null,
+  tierOverride?: MembershipTierCode | null,
 ): TierSummary {
   const spend = Math.max(0, Number(lifetimeSpendVnd) || 0);
   const automaticTier = resolveAutomaticTier(spend);
-  const membershipTier = tierOverride ?? automaticTier;
-  const currentAutomaticIndex = TIER_ORDER.indexOf(automaticTier);
-  const nextTier = TIER_ORDER[currentAutomaticIndex + 1] ?? null;
+  // An override to a tier that has since been deleted no longer applies.
+  const override =
+    tierOverride && currentTierBenefits()[tierOverride] ? tierOverride : null;
+  const membershipTier = override ?? automaticTier;
+  const order = tierOrder();
+  const currentAutomaticIndex = order.indexOf(automaticTier);
+  const nextTier = order[currentAutomaticIndex + 1] ?? null;
   const table = currentTierBenefits();
   const currentThreshold = table[automaticTier].minimumSpendVnd;
   const nextThreshold = nextTier ? table[nextTier].minimumSpendVnd : null;
@@ -55,9 +66,7 @@ export function resolveTierSummary(
   return {
     automaticTier,
     membershipTier,
-    tierSource: tierOverride
-      ? TierSourceEnum.OVERRIDE
-      : TierSourceEnum.AUTOMATIC,
+    tierSource: override ? TierSourceEnum.OVERRIDE : TierSourceEnum.AUTOMATIC,
     benefits: getTierBenefits(membershipTier),
     nextTier,
     nextTierThresholdVnd: nextThreshold,

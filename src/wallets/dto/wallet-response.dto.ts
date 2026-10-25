@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { WalletStatusEnum, WalletTransactionTypeEnum } from '../wallets.enum';
 import { TierBenefits } from '../tier/tier.constants';
-import { MembershipTierEnum, TierSourceEnum } from '../tier/tier.enum';
+import { TierSourceEnum, MembershipTierCode } from '../tier/tier.enum';
 
 export class WalletTransactionDto {
   @ApiProperty({ type: Number })
@@ -46,8 +46,8 @@ export class AdminWalletUserDto {
    * The EFFECTIVE tier — `tierOverride ?? automaticTier(spend)` — resolved the
    * same way the customer list resolves it, so the two screens agree (#057).
    */
-  @ApiProperty({ enum: MembershipTierEnum })
-  membershipTier!: MembershipTierEnum;
+  @ApiProperty({ type: String })
+  membershipTier!: MembershipTierCode;
 }
 
 export class AdminWalletListItemDto {
@@ -95,11 +95,11 @@ export class WalletMeDto {
   @ApiProperty({ type: Number })
   lifetimeSpendVnd!: number;
 
-  @ApiProperty({ enum: MembershipTierEnum })
-  automaticTier!: MembershipTierEnum;
+  @ApiProperty({ type: String })
+  automaticTier!: MembershipTierCode;
 
-  @ApiProperty({ enum: MembershipTierEnum })
-  membershipTier!: MembershipTierEnum;
+  @ApiProperty({ type: String })
+  membershipTier!: MembershipTierCode;
 
   @ApiProperty({ enum: TierSourceEnum })
   tierSource!: TierSourceEnum;
@@ -113,8 +113,8 @@ export class WalletMeDto {
   @ApiProperty({ type: Object })
   tierBenefits!: TierBenefits;
 
-  @ApiProperty({ enum: MembershipTierEnum, nullable: true })
-  nextTier!: MembershipTierEnum | null;
+  @ApiProperty({ type: String, nullable: true })
+  nextTier!: MembershipTierCode | null;
 
   @ApiProperty({ type: Number, nullable: true })
   nextTierThresholdVnd!: number | null;

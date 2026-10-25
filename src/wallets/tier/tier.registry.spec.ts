@@ -1,7 +1,7 @@
-import { TIER_BENEFITS } from './tier.constants';
 import { MembershipTierEnum } from './tier.enum';
 import {
   applyTierBenefits,
+  defaultTable,
   TierBenefitsTable,
   validateTierLadder,
 } from './tier.registry';
@@ -18,7 +18,7 @@ function ladder(
     Record<MembershipTierEnum, Partial<TierBenefitsTable['gold']>>
   >,
 ): TierBenefitsTable {
-  const table = JSON.parse(JSON.stringify(TIER_BENEFITS)) as TierBenefitsTable;
+  const table = JSON.parse(JSON.stringify(defaultTable())) as TierBenefitsTable;
   for (const [tier, values] of Object.entries(patch)) {
     Object.assign(table[tier as MembershipTierEnum], values);
   }
@@ -26,7 +26,7 @@ function ladder(
 }
 
 describe('tier registry', () => {
-  afterEach(() => applyTierBenefits(TIER_BENEFITS));
+  afterEach(() => applyTierBenefits(defaultTable()));
 
   it('should pay out from an edited ladder once applied', () => {
     applyTierBenefits(
@@ -56,7 +56,7 @@ describe('tier registry', () => {
   });
 
   it('should accept the default ladder', () => {
-    expect(validateTierLadder(TIER_BENEFITS)).toBeNull();
+    expect(validateTierLadder(defaultTable())).toBeNull();
   });
 
   it.each([
@@ -71,8 +71,9 @@ describe('tier registry', () => {
       'minimumSpendNotAscending',
     ],
     [
-      'a threshold above the tier above',
-      ladder({ [MembershipTierEnum.SILVER]: { minimumSpendVnd: 6_000_000 } }),
+      // Tiers are ordered by threshold (vande #066), so two may not share one.
+      'two tiers on the same threshold',
+      ladder({ [MembershipTierEnum.SILVER]: { minimumSpendVnd: 5_000_000 } }),
       'minimumSpendNotAscending',
     ],
     [

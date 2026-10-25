@@ -1,25 +1,37 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 import { MembershipTierConfigService } from './membership-tier-config.service';
-import { TIER_BENEFITS, TIER_ORDER } from './tier.constants';
 import { MembershipTierEnum } from './tier.enum';
-import { applyTierBenefits } from './tier.registry';
+import { applyTierBenefits, defaultTable, tierOrder } from './tier.registry';
 import { resolveTierSummary } from './tier.resolver';
 
 type Row = {
-  tier: MembershipTierEnum;
+  tier: string;
+  name?: string | null;
+  nameEn?: string | null;
   minimumSpendVnd: number | string;
   cashbackPercent: number | string;
   referralRewardVnd: number | string;
 };
 
 function defaultRows(): Row[] {
-  return TIER_ORDER.map((tier) => ({ tier, ...TIER_BENEFITS[tier] }));
+  return tierOrder(defaultTable()).map((tier) => ({
+    tier,
+    ...defaultTable()[tier],
+  }));
 }
 
-function buildService(rows: Row[]) {
+function buildService(rows: Row[], overrides = 0) {
   const repository = {
     find: jest.fn(() => Promise.resolve(rows)),
     create: jest.fn((row: Row) => row),
+    delete: jest.fn(({ tier }: { tier: string }) => {
+      rows.splice(
+        rows.findIndex((r) => r.tier === tier),
+        1,
+      );
+      return Promise.resolve();
+    }),
+    query: jest.fn(() => Promise.resolve([{ count: overrides }])),
     save: jest.fn((saved: Row[]) => {
       rows.splice(0, rows.length, ...saved);
       return Promise.resolve(saved);
@@ -31,7 +43,7 @@ function buildService(rows: Row[]) {
 }
 
 describe('MembershipTierConfigService (#024)', () => {
-  afterEach(() => applyTierBenefits(TIER_BENEFITS));
+  afterEach(() => applyTierBenefits(defaultTable()));
 
   it('should load saved tiers, reading Postgres numeric strings as numbers', async () => {
     const rows = defaultRows();
@@ -81,6 +93,8 @@ describe('MembershipTierConfigService (#024)', () => {
     expect(repository.save).toHaveBeenCalledTimes(1);
     expect(ladder[2]).toEqual({
       tier: MembershipTierEnum.GOLD,
+      name: 'Du khách vàng',
+      nameEn: 'Gold Traveler',
       minimumSpendVnd: 5_000_000,
       cashbackPercent: 5,
       referralRewardVnd: 16_000,
@@ -101,5 +115,104 @@ describe('MembershipTierConfigService (#024)', () => {
     expect(resolveTierSummary(1_000_000).membershipTier).toBe(
       MembershipTierEnum.SILVER,
     );
+  });
+
+  describe('tiers the admin adds, renames and removes (vande #066)', () => {
+    it('should add "Kim cương" at the top of the ladder by its threshold', async () => {
+      const { service } = buildService(defaultRows());
+
+      const ladder = await service.create({
+        name: 'Kim cương',
+        nameEn: 'Diamond',
+        minimumSpendVnd: 100_000_000,
+        cashbackPercent: 10,
+        referralRewardVnd: 30_000,
+      });
+
+      expect(ladder.map((t) => t.tier)).toEqual([
+        'traveler',
+        'silver',
+        'gold',
+        'platinum',
+        'kim-cuong',
+      ]);
+      expect(resolveTierSummary(150_000_000).membershipTier).toBe('kim-cuong');
+      expect(resolveTierSummary(150_000_000).benefits.cashbackPercent).toBe(10);
+      // Platinum now has a tier above it to climb to.
+      expect(resolveTierSummary(30_000_000).nextTier).toBe('kim-cuong');
+    });
+
+    it('should slot a tier in between by its threshold', async () => {
+      const { service } = buildService(defaultRows());
+      const ladder = await service.create({
+        name: 'Đồng',
+        minimumSpendVnd: 500_000,
+        cashbackPercent: 2.5,
+        referralRewardVnd: 11_000,
+      });
+      expect(ladder.map((t) => t.tier).slice(0, 3)).toEqual([
+        'traveler',
+        'dong',
+        'silver',
+      ]);
+    });
+
+    it('should refuse a new tier on a threshold already taken', async () => {
+      const { service } = buildService(defaultRows());
+      await expect(
+        service.create({
+          name: 'Trùng',
+          minimumSpendVnd: 5_000_000,
+          cashbackPercent: 5,
+          referralRewardVnd: 0,
+        }),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('should rename a tier', async () => {
+      const { service } = buildService(defaultRows());
+      const ladder = await service.update(MembershipTierEnum.PLATINUM, {
+        name: 'Khách VIP',
+        nameEn: 'VIP',
+      });
+      expect(ladder[3]).toMatchObject({
+        tier: 'platinum',
+        name: 'Khách VIP',
+        nameEn: 'VIP',
+        minimumSpendVnd: 25_000_000,
+      });
+    });
+
+    it('should remove a tier nobody is placed on by hand', async () => {
+      const { service } = buildService(defaultRows());
+      const ladder = await service.remove(MembershipTierEnum.GOLD);
+      expect(ladder.map((t) => t.tier)).toEqual([
+        'traveler',
+        'silver',
+        'platinum',
+      ]);
+      // Customers it held fall to the tier below by their spend.
+      expect(resolveTierSummary(6_000_000).membershipTier).toBe('silver');
+    });
+
+    it('should not remove a tier customers are placed on by hand', async () => {
+      const { service } = buildService(defaultRows(), 3);
+      await expect(service.remove(MembershipTierEnum.GOLD)).rejects.toThrow(
+        /Còn 3 khách hàng/,
+      );
+    });
+
+    it('should never remove the first tier', async () => {
+      const { service } = buildService(defaultRows());
+      await expect(service.remove(MembershipTierEnum.TRAVELER)).rejects.toThrow(
+        /hạng đầu tiên/,
+      );
+    });
+
+    it('should let a customer placed on a deleted tier fall back to their spend', () => {
+      expect(
+        resolveTierSummary(6_000_000, 'tier-that-is-gone').membershipTier,
+      ).toBe('gold');
+    });
   });
 });

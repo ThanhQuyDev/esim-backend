@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  MembershipTierEnum,
   TierSourceEnum,
+  MembershipTierCode,
 } from '../../wallets/tier/tier.enum';
 
 export class Order {
@@ -189,8 +189,8 @@ export class Order {
   @ApiProperty({ type: Number, example: 9000 })
   cashbackAmountVnd!: number;
 
-  @ApiProperty({ enum: MembershipTierEnum })
-  membershipTierSnapshot!: MembershipTierEnum;
+  @ApiProperty({ type: String })
+  membershipTierSnapshot!: MembershipTierCode;
 
   @ApiProperty({ enum: TierSourceEnum })
   tierSourceSnapshot!: TierSourceEnum;

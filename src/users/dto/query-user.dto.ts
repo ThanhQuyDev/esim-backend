@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
-  IsEnum,
   IsNumber,
   IsOptional,
   IsString,
@@ -10,7 +9,7 @@ import {
 import { Transform, Type, plainToInstance } from 'class-transformer';
 import { User } from '../domain/user';
 import { RoleDto } from '../../roles/dto/role.dto';
-import { MembershipTierEnum } from '../../wallets/tier/tier.enum';
+import { MembershipTierCode } from '../../wallets/tier/tier.enum';
 
 export class FilterUserDto {
   @ApiPropertyOptional({ type: String })
@@ -40,11 +39,11 @@ export class FilterUserDto {
    * customer's lifetime spend earns. Not a stored column, so the repository has
    * to translate it into the two cases.
    */
-  @ApiPropertyOptional({ enum: MembershipTierEnum, isArray: true })
+  @ApiPropertyOptional({ type: String, isArray: true })
   @IsOptional()
   @IsArray()
-  @IsEnum(MembershipTierEnum, { each: true })
-  membershipTiers?: MembershipTierEnum[];
+  @IsString({ each: true })
+  membershipTiers?: MembershipTierCode[];
 
   /** Trạng thái (#037) — status ids: 1 = Active, 2 = Inactive. */
   @ApiPropertyOptional({ type: [Number], example: [1] })

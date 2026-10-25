@@ -17,7 +17,7 @@ import { FileEntity } from '../../../../../files/infrastructure/persistence/rela
 
 import { AuthProvidersEnum } from '../../../../../auth/auth-providers.enum';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
-import { MembershipTierEnum } from '../../../../../wallets/tier/tier.enum';
+import { MembershipTierCode } from '../../../../../wallets/tier/tier.enum';
 import { AuthorProfileEntity } from '../../../../../authors/infrastructure/persistence/relational/entities/author-profile.entity';
 
 @Entity({
@@ -61,7 +61,7 @@ export class UserEntity extends EntityRelationalHelper {
   lifetimeSpendVnd: number;
 
   @Column({ type: String, nullable: true })
-  tierOverride: MembershipTierEnum | null;
+  tierOverride: MembershipTierCode | null;
 
   @Column({ type: String, nullable: true })
   tierOverrideReason: string | null;

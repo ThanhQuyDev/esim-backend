@@ -1,7 +1,7 @@
 import { tierBands } from './tier-bands';
 import { MembershipTierEnum } from './tier.enum';
 import { TIER_BENEFITS } from './tier.constants';
-import { applyTierBenefits } from './tier.registry';
+import { applyTierBenefits, defaultTable } from './tier.registry';
 
 /**
  * #057 — the spend bands that translate a membership tier back into a
@@ -15,7 +15,7 @@ import { applyTierBenefits } from './tier.registry';
  */
 describe('Tier spend bands (#057)', () => {
   beforeEach(() => {
-    applyTierBenefits({ ...TIER_BENEFITS });
+    applyTierBenefits(defaultTable());
   });
 
   it('should gives one band per requested tier', () => {
@@ -79,9 +79,9 @@ describe('Tier spend bands (#057)', () => {
     // A threshold an admin moves in membership_tier_config must move both
     // screens' filters with it.
     applyTierBenefits({
-      ...TIER_BENEFITS,
+      ...defaultTable(),
       [MembershipTierEnum.SILVER]: {
-        ...TIER_BENEFITS[MembershipTierEnum.SILVER],
+        ...defaultTable()[MembershipTierEnum.SILVER],
         minimumSpendVnd: 2_000_000,
       },
     });
