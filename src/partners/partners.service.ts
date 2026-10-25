@@ -58,6 +58,10 @@ import {
 } from './purchase-delivery-workbook';
 import { PartnerEsimFaultReportEntity } from './infrastructure/persistence/relational/entities/partner-esim-fault-report.entity';
 import * as ExcelJS from 'exceljs';
+import {
+  ExchangeRateService,
+  FALLBACK_USD_VND_RATE,
+} from '../plans/exchange-rate.service';
 import { PlansService } from '../plans/plans.service';
 import { Plan } from '../plans/domain/plan';
 import { TicketsService } from '../tickets/tickets.service';
@@ -686,6 +690,8 @@ export class PartnersService {
     @Optional() private readonly plansService?: PlansService,
     /** eSIM reports open a support ticket (doitac-1410 #039). */
     @Optional() private readonly ticketsService?: TicketsService,
+    /** Dollar prices next to the đồng ones on the price list (vande #055). */
+    @Optional() private readonly exchangeRateService?: ExchangeRateService,
   ) {}
 
   /**
@@ -8628,6 +8634,9 @@ export class PartnersService {
       isCheapest: boolean;
       /** Giá đại lý × 5/3, làm tròn nghìn. */
       suggestedRetailVnd: number;
+      /** Both prices in dollars at today's rate, to the cent (vande #055). */
+      unitPriceUsd: number;
+      suggestedRetailUsd: number;
       apn: string | null;
       ipExport: string | null;
       isNonHkIp: boolean;
@@ -8688,6 +8697,13 @@ export class PartnersService {
       paginationOptions: { page, limit },
     });
 
+    // A partner selling abroad quotes in dollars too (vande #055); the rate
+    // is the one the storefront converts with.
+    const usdVndRate =
+      (await this.exchangeRateService?.getUsdToVndRate()) ||
+      FALLBACK_USD_VND_RATE;
+    const toUsd = (vnd: number) => Math.round((vnd / usdVndRate) * 100) / 100;
+
     // The markup itself is not sent: it is a trade secret, and the partner
     // reads only the price they pay (doitac-1410 #006).
     return {
@@ -8728,6 +8744,8 @@ export class PartnersService {
           isAbleMultidate: Boolean(plan.isAbleMultidate),
           isCheapest: Boolean(plan.isCheapest),
           suggestedRetailVnd: partnerSuggestedRetailVnd(unitPriceVnd),
+          unitPriceUsd: toUsd(unitPriceVnd),
+          suggestedRetailUsd: toUsd(partnerSuggestedRetailVnd(unitPriceVnd)),
           apn: plan.apn ?? null,
           ipExport: plan.ipExport ?? null,
           isNonHkIp: Boolean(plan.isNonHkIp),
@@ -9129,6 +9147,19 @@ export class PartnersService {
         width: 22,
         style: { numFmt: money },
       },
+      // The same two prices in dollars, as on the screen (vande #055).
+      {
+        header: 'Giá đại lý (USD)',
+        key: 'agentUsd',
+        width: 16,
+        style: { numFmt: '"$"#,##0.00' },
+      },
+      {
+        header: 'Giá bán lẻ đề xuất (USD)',
+        key: 'retailUsd',
+        width: 22,
+        style: { numFmt: '"$"#,##0.00' },
+      },
     ];
     for (const p of rows) {
       sheet.addRow({
@@ -9148,6 +9179,8 @@ export class PartnersService {
         cheapest: yes(p.isCheapest),
         agent: p.purchasable ? p.unitPriceVnd : null,
         retail: p.purchasable ? p.suggestedRetailVnd : null,
+        agentUsd: p.purchasable ? p.unitPriceUsd : null,
+        retailUsd: p.purchasable ? p.suggestedRetailUsd : null,
       });
     }
     sheet.getRow(1).font = { bold: true };

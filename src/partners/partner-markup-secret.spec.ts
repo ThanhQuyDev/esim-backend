@@ -59,6 +59,22 @@ describe('cost markup is never sent to a partner (doitac-1410 #006)', () => {
     expect(JSON.stringify(catalogue)).not.toMatch(/markup/i);
     expect(catalogue.plans[0].unitPriceVnd).toBe(108000);
   });
+
+  it('should give both prices in dollars at the current rate (vande #055)', async () => {
+    const s = service();
+    Object.assign(s, {
+      exchangeRateService: {
+        getUsdToVndRate: jest.fn().mockResolvedValue(25000),
+      },
+    });
+
+    const [plan] = (await s.getPurchaseCatalogue(4)).plans;
+
+    expect(plan.unitPriceUsd).toBe(4.32);
+    expect(plan.suggestedRetailUsd).toBe(
+      Math.round((plan.suggestedRetailVnd / 25000) * 100) / 100,
+    );
+  });
 });
 
 describe('price list filters (doitac-1410 #033)', () => {
