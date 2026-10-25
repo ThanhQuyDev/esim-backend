@@ -248,9 +248,21 @@ export class AdminPartnersController {
   listDepositRequests(
     @Query('status') status?: PartnerDepositRequestStatusEnum,
     @Query('search') search?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('period') period?: string,
+    @Query('limit') limit?: string,
   ) {
-    // Searchable, with the partner by name (doitac-1410 #063).
-    return this.partnersService.adminListDepositRequests({ status, search });
+    // Searchable, with the partner by name (doitac-1410 #063); filtered like
+    // the withdrawals beside it on "Tài chính" (vande #067).
+    return this.partnersService.adminListDepositRequests({
+      status,
+      search,
+      dateFrom,
+      dateTo,
+      period,
+      limit,
+    });
   }
 
   /** "Từ chối", with the reason the partner reads (doitac-1410 #063). */

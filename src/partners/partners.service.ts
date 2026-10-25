@@ -254,6 +254,20 @@ function formatPartnerBankAccount(partner: {
  * system raised, otherwise the Vietnam month it was asked in (createdAt is
  * stored as UTC wall time) — doitac-1410 #057.
  */
+/**
+ * "Mã yêu cầu" of a withdrawal (vande #067): RT and the id, six digits, e.g.
+ * RT000123. A deposit request already has its own code, the transfer memo.
+ */
+export function payoutRequestCode(id: number): string {
+  return `RT${String(id).padStart(6, '0')}`;
+}
+
+/** The payout id in "RT000123" / "rt-123", or null when it is not one. */
+export function payoutIdFromCode(text: string): number | null {
+  const match = /^RT-?0*(\d{1,9})$/i.exec(text.trim());
+  return match ? Number(match[1]) : null;
+}
+
 const PAYOUT_PERIOD_SQL = `COALESCE(pay."reconciliationPeriod",
   to_char((pay."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM'))`;
 
@@ -290,6 +304,8 @@ type MyNotificationRow = {
 
 type AdminPayoutRow = {
   id: number;
+  /** "Mã yêu cầu", e.g. RT000123 (vande #067). */
+  code: string;
   partnerId: number;
   contactName: string | null;
   /** A company by its own name, a person by theirs (doitac-1410 #057). */
@@ -3911,6 +3927,7 @@ export class PartnersService {
     paidThisMonth: { totalVnd: number; partners: number };
     paidAllTime: { totalVnd: number; partners: number };
     distributionDeposit: { totalVnd: number; partners: number };
+    depositRequested: { totalVnd: number; partners: number; requests: number };
   }> {
     const [payouts] = await this.dataSource.query(
       `SELECT
@@ -3940,6 +3957,17 @@ export class PartnersService {
       [PartnerTypeEnum.DISTRIBUTION],
     );
 
+    // "Đang yêu cầu ký quỹ" (vande #067): deposits waiting on an admin —
+    // mostly companies paying by their own bank transfer, confirmed by hand.
+    const [requested] = await this.dataSource.query(
+      `SELECT COALESCE(SUM("amountVnd"), 0) AS "totalVnd",
+              COUNT(DISTINCT "partnerId") AS partners,
+              COUNT(*) AS requests
+         FROM partner_deposit_request
+        WHERE status = $1`,
+      [PartnerDepositRequestStatusEnum.PENDING],
+    );
+
     const n = (v: unknown) => Number(v ?? 0);
     return {
       payoutRequested: {
@@ -3957,6 +3985,11 @@ export class PartnersService {
       distributionDeposit: {
         totalVnd: n(deposits?.totalVnd),
         partners: n(deposits?.partners),
+      },
+      depositRequested: {
+        totalVnd: n(requested?.totalVnd),
+        partners: n(requested?.partners),
+        requests: n(requested?.requests),
       },
     };
   }
@@ -5100,7 +5133,16 @@ export class PartnersService {
    * where it stands — searchable by partner name / ID / email or the code.
    */
   async adminListDepositRequests(
-    query: { status?: string; search?: string; limit?: number | string } = {},
+    query: {
+      status?: string;
+      search?: string;
+      limit?: number | string;
+      // "Tài chính" lists deposits beside withdrawals (vande #067), so they
+      // take the same filters.
+      dateFrom?: string;
+      dateTo?: string;
+      period?: string;
+    } = {},
   ): Promise<Record<string, unknown>[]> {
     const status =
       query.status && query.status !== 'all' ? String(query.status) : null;
@@ -5110,12 +5152,25 @@ export class PartnersService {
     const search = raw && !idOnly ? raw : null;
     const partnerId = idOnly ? Number(raw.replace(/^#/, '')) : null;
     const limit = Math.min(Math.max(Number(query.limit) || 200, 1), 500);
+    const period = /^\d{4}-\d{2}$/.test(query.period ?? '')
+      ? query.period!
+      : null;
+    // Calendar days in Vietnam, inclusive of the end day, as on withdrawals.
+    const dateFrom = /^\d{4}-\d{2}-\d{2}$/.test(query.dateFrom ?? '')
+      ? query.dateFrom!
+      : null;
+    const dateTo = /^\d{4}-\d{2}-\d{2}$/.test(query.dateTo ?? '')
+      ? query.dateTo!
+      : null;
+    const vnDay = `(r."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh'`;
 
     const rows: Record<string, any>[] = await this.dataSource.query(
       `SELECT r.*,
               CASE WHEN p."legalType" = 'company' AND p."companyName" IS NOT NULL
                    THEN p."companyName" ELSE p."contactName" END AS "partnerName",
-              p."contactName", p."contactEmail", p."partnerType"
+              p."contactName", p."contactEmail", p."partnerType",
+              p."bankName", p."bankAccountNumber", p."bankAccountHolder",
+              to_char(${vnDay}, 'YYYY-MM') AS period
          FROM partner_deposit_request r
          JOIN partner p ON p.id = r."partnerId"
         WHERE ($1::text IS NULL OR r.status = $1)
@@ -5125,12 +5180,19 @@ export class PartnersService {
                OR p."companyName" ILIKE '%' || $3 || '%'
                OR p."contactEmail" ILIKE '%' || $3 || '%'
                OR r."bankTransferCode" ILIKE '%' || $3 || '%')
+          AND ($5::text IS NULL OR to_char(${vnDay}, 'YYYY-MM') = $5)
+          AND ($6::date IS NULL OR (${vnDay})::date >= $6::date)
+          AND ($7::date IS NULL OR (${vnDay})::date <= $7::date)
         ORDER BY (r.status = 'pending') DESC, r."createdAt" DESC
         LIMIT $4`,
-      [status, partnerId, search, limit],
+      [status, partnerId, search, limit, period, dateFrom, dateTo],
     );
     return rows.map((row) => ({
       ...row,
+      // The account the partner has on file — a deposit is paid in from it.
+      bankAccountLast4: row.bankAccountNumber
+        ? String(row.bankAccountNumber).slice(-4)
+        : null,
       id: Number(row.id),
       partnerId: Number(row.partnerId),
       amountVnd: Number(row.amountVnd ?? 0),
@@ -5556,8 +5618,10 @@ export class PartnersService {
     // phone number, so matching it as text listed every request (doitac-1410
     // #057). A longer one is still searched as a phone.
     const raw = (query.search ?? '').trim();
+    // "RT000123" is the request itself (vande #067).
+    const payoutId = payoutIdFromCode(raw);
     const idOnly = /^#?\d{1,5}$/.test(raw);
-    const search = raw && !idOnly ? raw : null;
+    const search = raw && !idOnly && payoutId === null ? raw : null;
     const asId = Number(raw.replace(/^#/, ''));
     const searchId = idOnly && asId > 0 ? asId : null;
     const period = /^\d{4}-\d{2}$/.test(query.period ?? '')
@@ -5580,8 +5644,9 @@ export class PartnersService {
          AND ($3::int IS NULL OR p.id = $3)
          AND ($4::timestamptz IS NULL OR pay."createdAt" >= $4)
          AND ($5::timestamptz IS NULL OR pay."createdAt" < $5)
-         AND ($6::text IS NULL OR ${PAYOUT_PERIOD_SQL} = $6)`;
-    const params = [status, search, searchId, from, to, period];
+         AND ($6::text IS NULL OR ${PAYOUT_PERIOD_SQL} = $6)
+         AND ($7::int IS NULL OR pay.id = $7)`;
+    const params = [status, search, searchId, from, to, period, payoutId];
 
     const [[counted], rows] = await Promise.all([
       this.dataSource.query(
@@ -5628,6 +5693,7 @@ export class PartnersService {
         const account = row.bankAccountNumber ?? null;
         return {
           id: Number(row.id),
+          code: payoutRequestCode(Number(row.id)),
           partnerId: Number(row.partnerId),
           contactName: row.contactName ?? null,
           partnerName: row.partnerName ?? row.contactName ?? null,

@@ -12,11 +12,17 @@ import { PartnersService } from './partners.service';
 function buildService(
   payouts: Record<string, unknown>,
   deposits: Record<string, unknown>,
+  requested: Record<string, unknown> = {
+    totalVnd: '0',
+    partners: '0',
+    requests: '0',
+  },
 ) {
   const query = jest
     .fn()
     .mockResolvedValueOnce([payouts])
-    .mockResolvedValueOnce([deposits]);
+    .mockResolvedValueOnce([deposits])
+    .mockResolvedValueOnce([requested]);
 
   const service = Object.create(PartnersService.prototype) as PartnersService;
   Object.assign(service, { dataSource: { query } });
@@ -35,6 +41,25 @@ const PAYOUTS = {
 const DEPOSITS = { totalVnd: '180000000', partners: '9' };
 
 describe('PartnersService.adminPayoutSummary (#067)', () => {
+  it('should add up the deposits waiting on an admin (vande #067)', async () => {
+    const { service, query } = buildService(PAYOUTS, DEPOSITS, {
+      totalVnd: '75000000',
+      partners: '2',
+      requests: '3',
+    });
+
+    const result = await service.adminPayoutSummary();
+
+    expect(result.depositRequested).toEqual({
+      totalVnd: 75_000_000,
+      partners: 2,
+      requests: 3,
+    });
+    const [sql, params] = query.mock.calls[2] as [string, unknown[]];
+    expect(sql).toContain('partner_deposit_request');
+    expect(params).toEqual(['pending']);
+  });
+
   it('should report what partners have asked to withdraw', async () => {
     const { service } = buildService(PAYOUTS, DEPOSITS);
 
@@ -83,7 +108,7 @@ describe('PartnersService.adminPayoutSummary (#067)', () => {
   });
 
   it('should read an empty programme as zeroes rather than NaN', async () => {
-    const { service } = buildService({}, {});
+    const { service } = buildService({}, {}, {});
 
     const result = await service.adminPayoutSummary();
 
@@ -92,6 +117,7 @@ describe('PartnersService.adminPayoutSummary (#067)', () => {
       paidThisMonth: { totalVnd: 0, partners: 0 },
       paidAllTime: { totalVnd: 0, partners: 0 },
       distributionDeposit: { totalVnd: 0, partners: 0 },
+      depositRequested: { totalVnd: 0, partners: 0, requests: 0 },
     });
   });
 
