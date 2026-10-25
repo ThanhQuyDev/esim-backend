@@ -183,6 +183,25 @@ export class CreateBlogDto {
   @IsBoolean()
   faqEnabled?: boolean;
 
+  /**
+   * SEO of the post's page, written to the SEO table by the blog service so an
+   * author's post gets one too (vande #040). Not stored on the post itself.
+   */
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  seoTitle?: string;
+
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  seoDescription?: string;
+
+  @ApiProperty({ required: false, type: () => String })
+  @IsOptional()
+  @IsString()
+  seoKeywords?: string;
+
   @ApiProperty({
     required: false,
     type: () => Boolean,

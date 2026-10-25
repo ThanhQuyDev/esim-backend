@@ -104,7 +104,7 @@ export class BlogsService {
         })
       : [];
 
-    return this.blogRepository.create({
+    const created = await this.blogRepository.create({
       // Do not remove comment below.
       // <creating-property-payload />
       language: createBlogDto.language,
@@ -135,6 +135,11 @@ export class BlogsService {
       planCodes: createBlogDto.planCodes,
       faqs,
     });
+    // SEO typed in the post form goes to the SEO table here, so an author's
+    // post gets one too — the form used to write it through the admin-only SEO
+    // API, which refused authors without a word (vande #040).
+    if (created) await this.syncSeoConfig(created, createBlogDto);
+    return created;
   }
 
   async findAllWithPagination({
@@ -268,7 +273,7 @@ export class BlogsService {
             return f;
           });
 
-    return this.blogRepository.update(id, {
+    const updated = await this.blogRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
       language: updateBlogDto.language,
@@ -302,6 +307,44 @@ export class BlogsService {
       planCodes: updateBlogDto.planCodes,
       faqs,
     });
+    // SEO typed in the post form goes to the SEO table here, so an author's
+    // post gets one too — the form used to write it through the admin-only SEO
+    // API, which refused authors without a word (vande #040).
+    if (updated) await this.syncSeoConfig(updated, updateBlogDto);
+    return updated;
+  }
+
+  /**
+   * Create or update the post's SEO config from the SEO fields of the post
+   * form (vande #040). Nothing is written when none of them was filled in, and
+   * a field left empty keeps what the SEO table already has.
+   */
+  private async syncSeoConfig(
+    blog: Pick<Blog, 'slug' | 'language' | 'title'>,
+    dto: { seoTitle?: string; seoDescription?: string; seoKeywords?: string },
+  ): Promise<void> {
+    const seoTitle = dto.seoTitle?.trim();
+    const seoDescription = dto.seoDescription?.trim();
+    const seoKeywords = dto.seoKeywords?.trim();
+    if (!seoTitle && !seoDescription && !seoKeywords) return;
+    const [url] = blogSeoUrls(blog);
+    if (!url) return;
+    const existing = await this.seoConfigsService.findByUrl(url);
+    if (existing) {
+      await this.seoConfigsService.update(existing.id, {
+        ...(seoTitle ? { metaTitle: seoTitle } : {}),
+        ...(seoDescription ? { metaDescription: seoDescription } : {}),
+        ...(seoKeywords ? { metaKeywords: seoKeywords } : {}),
+      });
+    } else {
+      await this.seoConfigsService.create({
+        url,
+        metaTitle: seoTitle || blog.title,
+        metaDescription: seoDescription || '',
+        metaKeywords: seoKeywords || '',
+        isActive: true,
+      });
+    }
   }
 
   async remove(id: Blog['id'], editor: BlogEditor): Promise<void> {
