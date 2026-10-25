@@ -41,6 +41,7 @@ import { QueryPartnerCommissionDto } from './dto/query-partner.dto';
 import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import {
   CreateDepositRequestDto,
+  CreateManualDepositRequestDto,
   CreatePartnerPayoutDto,
 } from './dto/admin-partner.dto';
 import {
@@ -265,6 +266,63 @@ export class PartnersController {
   async getMyDepositRequests(@Request() req: { user: { id: number } }) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
     return this.partnersService.getMyDepositRequests(partner.id);
+  }
+
+  /**
+   * "Gửi yêu cầu ký quỹ" with the transfer details and the proof, for a
+   * partner on manual top-ups (vande #069).
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/wallet/deposit-requests/manual')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FilesInterceptor('files', PARTNER_DOCUMENT_MAX_FILES, {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: PARTNER_DOCUMENT_MAX_BYTES,
+        files: PARTNER_DOCUMENT_MAX_FILES,
+      },
+    }),
+  )
+  async createManualDepositRequest(
+    @Request() req: { user: { id: number } },
+    @Body() dto: CreateManualDepositRequestDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.createManualDepositRequest(
+      partner.id,
+      dto,
+      files,
+    );
+  }
+
+  /** The proof the partner sent with a manual top-up, to look at again. */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/wallet/deposit-requests/:id/proofs/:fileId')
+  async getMyDepositProof(
+    @Request() req: { user: { id: number } },
+    @Param('id') id: number,
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    const { document, content } = await this.partnersService.readDepositProof(
+      Number(id),
+      fileId,
+      partner.id,
+    );
+    res.setHeader('Content-Type', document.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename*=UTF-8''${encodeURIComponent(document.name)}`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(content);
   }
 
   /**

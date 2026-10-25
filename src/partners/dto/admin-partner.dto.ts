@@ -19,7 +19,11 @@ import {
   IsDateString,
   IsNumber,
 } from 'class-validator';
-import { PartnerStatusEnum, PartnerTopupMethodEnum } from '../partners.enum';
+import {
+  PartnerDepositModeEnum,
+  PartnerStatusEnum,
+  PartnerTopupMethodEnum,
+} from '../partners.enum';
 
 export class RejectPartnerDto {
   @ApiProperty({ example: 'Thông tin doanh nghiệp chưa đầy đủ' })
@@ -127,6 +131,12 @@ export class UpdatePartnerProfileByAdminDto {
   @IsInt()
   @Min(0)
   depositMaxVnd?: number | null;
+
+  /** "Nạp tiền tự động" / "Nạp tiền thủ công" (vande #068). */
+  @ApiPropertyOptional({ enum: PartnerDepositModeEnum })
+  @IsOptional()
+  @IsEnum(PartnerDepositModeEnum)
+  depositMode?: PartnerDepositModeEnum;
 }
 
 /** Filters on the withdrawal list (#068). */
@@ -473,8 +483,35 @@ export class CreateDepositRequestDto {
       'bank_transfer: SePay QR, credited in full. card: OnePay, with the gateway fee taken out of what is credited (#047).',
   })
   @IsOptional()
-  @IsEnum(PartnerTopupMethodEnum)
+  // A manual transfer has its own form, with proof (vande #069).
+  @IsIn([PartnerTopupMethodEnum.BANK_TRANSFER, PartnerTopupMethodEnum.CARD])
   method?: PartnerTopupMethodEnum;
+}
+
+/**
+ * "Nhập thông tin chuyển khoản" (vande #069): a top-up a company has already
+ * paid from its own bank account, reported for an admin to confirm. Sent as
+ * multipart with the proof, so the numbers arrive as text.
+ */
+export class CreateManualDepositRequestDto {
+  @ApiProperty({ type: Number, example: 50000000 })
+  @Type(() => Number)
+  @IsInt({ message: 'Số tiền đã thanh toán phải là số nguyên.' })
+  @Min(1, { message: 'Vui lòng nhập số tiền đã thanh toán.' })
+  @Max(100_000_000_000)
+  amountVnd!: number;
+
+  @ApiProperty({ example: 'CTY HOANG HA NAP KY QUY T10' })
+  @IsString()
+  @MinLength(2, { message: 'Vui lòng nhập nội dung chuyển tiền.' })
+  @MaxLength(200)
+  transferContent!: string;
+
+  @ApiPropertyOptional({ example: 'Chuyển từ tài khoản Techcombank công ty' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
 }
 
 export class CreatePartnerPayoutDto {

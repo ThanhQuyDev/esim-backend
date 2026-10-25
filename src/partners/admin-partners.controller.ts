@@ -280,6 +280,26 @@ export class AdminPartnersController {
     );
   }
 
+  /** A proof file of a manual top-up (vande #069), for the admin only. */
+  @Get('deposit-requests/:id/proofs/:fileId')
+  async getDepositProof(
+    @Param('id') id: number,
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+  ) {
+    const { document, content } = await this.partnersService.readDepositProof(
+      Number(id),
+      fileId,
+    );
+    res.setHeader('Content-Type', document.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename*=UTF-8''${encodeURIComponent(document.name)}`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(content);
+  }
+
   @Post('deposit-requests/:id/confirm')
   @HttpCode(HttpStatus.OK)
   confirmDepositRequest(

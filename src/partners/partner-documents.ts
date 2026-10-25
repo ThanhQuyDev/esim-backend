@@ -14,6 +14,8 @@ import { extname } from 'path';
  */
 
 export const PARTNER_DOCUMENTS_DIR = './private/partner-documents';
+/** Proof of a manual ký quỹ transfer (vande #069), private like the above. */
+export const PARTNER_DEPOSIT_PROOFS_DIR = './private/partner-deposit-proofs';
 export const PARTNER_DOCUMENT_MAX_FILES = 5;
 export const PARTNER_DOCUMENT_MAX_BYTES = 5 * 1024 * 1024;
 const TOKEN_TTL_MS = 60 * 60 * 1000;

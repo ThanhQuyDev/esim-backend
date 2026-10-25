@@ -29,6 +29,7 @@ import { randomBytes } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
 import {
+  PARTNER_DEPOSIT_PROOFS_DIR,
   PARTNER_DOCUMENTS_DIR,
   PARTNER_DOCUMENT_MAX_FILES,
   documentUploadToken,
@@ -130,6 +131,7 @@ import {
   AssignPartnerTierDto,
   BulkPartnerStatusDto,
   CreateDepositRequestDto,
+  CreateManualDepositRequestDto,
   CreatePartnerPayoutDto,
   RejectPartnerDto,
   UpdatePartnerProfileByAdminDto,
@@ -167,6 +169,7 @@ import {
   PartnerWalletStatusEnum,
   PartnerEsimFaultStatusEnum,
   PartnerTopupMethodEnum,
+  PartnerDepositModeEnum,
   PartnerWalletTransactionTypeEnum,
   SessionEventTypeEnum,
   SessionShapeEnum,
@@ -1284,6 +1287,15 @@ export class PartnersService {
       );
     }
 
+    // "Nạp tiền thủ công" (vande #068): a company pays from its own bank
+    // account, which SePay and OnePay never see — the transfer is reported
+    // with proof instead, and an admin confirms it.
+    if (partner.depositMode === PartnerDepositModeEnum.MANUAL) {
+      throw new BadRequestException(
+        'Tài khoản của bạn nạp ký quỹ thủ công: chuyển khoản từ tài khoản công ty rồi gửi thông tin chuyển khoản kèm bằng chứng để esim.vn duyệt.',
+      );
+    }
+
     const sepay = this.configService.get('sepay', { infer: true });
     if (!sepay?.accountNumber) {
       throw new BadRequestException(
@@ -1372,6 +1384,113 @@ export class PartnersService {
       accountName: sepay.accountName,
       bankCode: sepay.bankCode,
     };
+  }
+
+  /**
+   * "Gửi yêu cầu ký quỹ" for a partner on manual top-ups (vande #069): the
+   * money has already gone from their own bank account, so this records what
+   * they paid, the memo they wrote and the proof, and waits for an admin.
+   * Nothing reaches the wallet until "Duyệt" in "Tài chính". The request
+   * cannot be edited or deleted afterwards — a mistake is a new request.
+   */
+  async createManualDepositRequest(
+    partnerId: number,
+    dto: CreateManualDepositRequestDto,
+    files: Express.Multer.File[],
+  ): Promise<PartnerDepositRequestEntity> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    if (partner.partnerType === PartnerTypeEnum.KOL) {
+      throw new BadRequestException(
+        'Đối tác tiếp thị không dùng ví ký quỹ. Thu nhập của bạn là hoa hồng, rút ở mục Rút tiền.',
+      );
+    }
+    if (partner.noDepositRequired) {
+      throw new BadRequestException(
+        'Tài khoản của bạn dùng hạn mức giao dịch (không cần ký quỹ) nên không nạp ký quỹ.',
+      );
+    }
+    if (partner.depositMode !== PartnerDepositModeEnum.MANUAL) {
+      throw new BadRequestException(
+        'Tài khoản của bạn nạp ký quỹ tự động qua chuyển khoản QR hoặc thẻ — số dư được cộng ngay, không cần gửi bằng chứng.',
+      );
+    }
+    if (!files?.length) {
+      throw new BadRequestException(
+        'Vui lòng đính kèm bằng chứng chuyển tiền (ảnh chụp giao dịch hoặc ủy nhiệm chi).',
+      );
+    }
+    if (files.length > PARTNER_DOCUMENT_MAX_FILES) {
+      throw new BadRequestException(
+        `Tối đa ${PARTNER_DOCUMENT_MAX_FILES} file bằng chứng cho mỗi yêu cầu.`,
+      );
+    }
+    for (const file of files) {
+      const problem = isAllowedPartnerDocument(file);
+      if (problem) throw new BadRequestException(problem);
+    }
+
+    const amountVnd = Math.round(dto.amountVnd);
+    const dir = join(PARTNER_DEPOSIT_PROOFS_DIR, String(partnerId));
+    await mkdir(dir, { recursive: true });
+    const proofFiles: PartnerDocument[] = [];
+    for (const file of files) {
+      const id = `${randomBytes(12).toString('hex')}${extname(file.originalname).toLowerCase()}`;
+      await writeFile(join(dir, id), file.buffer);
+      proofFiles.push({
+        id,
+        // Multer reads the name as latin1; Vietnamese names need it back.
+        name: Buffer.from(file.originalname, 'latin1').toString('utf8'),
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        uploadedAt: new Date().toISOString(),
+      });
+    }
+
+    return this.depositRequestRepository.save(
+      this.depositRequestRepository.create({
+        partnerId,
+        amountVnd,
+        method: PartnerTopupMethodEnum.MANUAL_TRANSFER,
+        feeVnd: 0,
+        creditedVnd: amountVnd,
+        // A code of our own still, so the request has a "Mã yêu cầu" like
+        // any other; the partner's memo is kept beside it as they wrote it.
+        bankTransferCode: generateBankTransferCode(),
+        status: PartnerDepositRequestStatusEnum.PENDING,
+        transferContent: dto.transferContent.trim(),
+        partnerNote: dto.note?.trim() || null,
+        proofFiles,
+      }),
+    );
+  }
+
+  /**
+   * One proof file of a manual top-up (vande #069) — for an admin, or for the
+   * partner who sent it (`partnerId`), who may look but not change it.
+   */
+  async readDepositProof(
+    requestId: number,
+    fileId: string,
+    partnerId?: number,
+  ): Promise<{ document: PartnerDocument; content: Buffer }> {
+    const request = await this.depositRequestRepository.findOne({
+      where: { id: requestId },
+    });
+    if (
+      !request ||
+      (partnerId !== undefined && request.partnerId !== partnerId)
+    ) {
+      throw new NotFoundException('Không tìm thấy bằng chứng chuyển tiền.');
+    }
+    const document = (request.proofFiles ?? []).find((d) => d.id === fileId);
+    // The id is ours (hex + extension), never a path the caller chose.
+    if (!document || !/^[a-f0-9]{24}\.[a-z]+$/.test(document.id)) {
+      throw new NotFoundException('Không tìm thấy bằng chứng chuyển tiền.');
+    }
+    const content = await readFile(
+      join(PARTNER_DEPOSIT_PROOFS_DIR, String(request.partnerId), document.id),
+    );
+    return { document, content };
   }
 
   /**
@@ -4800,6 +4919,15 @@ export class PartnersService {
     if (dto.depositMaxVnd !== undefined) {
       partner.depositMaxVnd = dto.depositMaxVnd;
     }
+    // Only a partner with a ký quỹ wallet tops up (vande #068).
+    if (dto.depositMode !== undefined) {
+      if (partner.partnerType === PartnerTypeEnum.KOL) {
+        throw new BadRequestException(
+          'Đối tác tiếp thị không nạp ký quỹ nên không chọn cách nạp tiền.',
+        );
+      }
+      partner.depositMode = dto.depositMode;
+    }
 
     const min = partner.depositMinVnd;
     const max = partner.depositMaxVnd;
@@ -5270,6 +5398,11 @@ export class PartnersService {
   ): Promise<PartnerDepositRequestEntity> {
     const request = await this.getDepositRequestOrThrow(id);
     if (request.status !== PartnerDepositRequestStatusEnum.PENDING) {
+      return request;
+    }
+    // A manual top-up is paid into the company account and confirmed by an
+    // admin against the proof (vande #069); SePay never credits it.
+    if (request.method === PartnerTopupMethodEnum.MANUAL_TRANSFER) {
       return request;
     }
     return this.creditDepositRequest(request, {

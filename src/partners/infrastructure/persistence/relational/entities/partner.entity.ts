@@ -148,6 +148,14 @@ export class PartnerEntity extends EntityRelationalHelper {
   depositMaxVnd?: number | null;
 
   /**
+   * "Nạp tiền tự động" or "Nạp tiền thủ công" (vande #068): whether a top-up
+   * credits itself (SePay / OnePay) or is reported with proof and confirmed
+   * by an admin, as a company paying from its own bank account must be.
+   */
+  @Column({ type: String, length: 10, default: 'auto' })
+  depositMode!: 'auto' | 'manual';
+
+  /**
    * An admin's own note on this partner (#056).
    *
    * Separate from `notes`, which is what the applicant wrote about themselves:

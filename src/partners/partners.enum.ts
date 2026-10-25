@@ -139,6 +139,24 @@ export enum SessionShapeEnum {
 export enum PartnerTopupMethodEnum {
   BANK_TRANSFER = 'bank_transfer',
   CARD = 'card',
+  /**
+   * Paid from the partner's own (company) bank account to esim.vn's, then
+   * reported with proof and confirmed by an admin (vande #068/#069).
+   */
+  MANUAL_TRANSFER = 'manual_transfer',
+}
+
+/**
+ * "Nạp tiền tự động" / "Nạp tiền thủ công" for one partner (vande #068).
+ *
+ * Automatic: a SePay transfer or a card payment credits the wallet by itself —
+ * usually a person. Manual: a company pays from its own bank account, which
+ * SePay and OnePay cannot see, so the partner reports the transfer with proof
+ * and an admin confirms it.
+ */
+export enum PartnerDepositModeEnum {
+  AUTO = 'auto',
+  MANUAL = 'manual',
 }
 
 /** What an applicant can pick on the sign-up form (#053, test round 4). */

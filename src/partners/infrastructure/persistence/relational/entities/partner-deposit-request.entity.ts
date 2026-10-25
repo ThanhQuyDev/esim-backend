@@ -9,7 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
-import { PartnerEntity } from './partner.entity';
+import { PartnerEntity, type PartnerDocument } from './partner.entity';
 import {
   PartnerDepositRequestStatusEnum,
   PartnerTopupMethodEnum,
@@ -84,6 +84,20 @@ export class PartnerDepositRequestEntity extends EntityRelationalHelper {
 
   @Column({ type: 'timestamp', nullable: true })
   rejectedAt?: Date | null;
+
+  /**
+   * A manual top-up as the partner reported it (vande #069): the memo they
+   * wrote on the transfer, a note for esim.vn, and the proof — screenshots or
+   * the payment order. Kept outside the public uploads folder.
+   */
+  @Column({ type: String, length: 200, nullable: true })
+  transferContent?: string | null;
+
+  @Column({ type: String, length: 1000, nullable: true })
+  partnerNote?: string | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  proofFiles!: PartnerDocument[];
 
   @CreateDateColumn()
   createdAt!: Date;
