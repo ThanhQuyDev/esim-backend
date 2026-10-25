@@ -160,6 +160,17 @@ export class OrderEntity extends EntityRelationalHelper {
   deliveryEmail?: string | null;
 
   /**
+   * The buyer's address and where it is, for "Vị trí & IP" on the admin
+   * order page (vande #058) — "Ho Chi Minh City, Vietnam". Only orders a
+   * customer places on the website have them.
+   */
+  @Column({ type: String, nullable: true })
+  buyerIp?: string | null;
+
+  @Column({ type: String, nullable: true })
+  buyerLocation?: string | null;
+
+  /**
    * Ordered in bulk from a file (vande #057): `email` — every eSIM mailed to
    * its customer, spaced `bulkEmailIntervalSec` apart; `file` — nothing
    * mailed, the eSIMs handed over as one downloadable list.

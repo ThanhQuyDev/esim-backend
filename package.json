@@ -59,6 +59,7 @@
     "class-validator": "0.15.1",
     "dotenv": "17.3.1",
     "exceljs": "^4.4.0",
+    "fast-geoip": "1.1.88",
     "google-auth-library": "10.6.2",
     "handlebars": "4.7.9",
     "imapflow": "^2.1.2",

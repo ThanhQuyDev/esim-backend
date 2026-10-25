@@ -418,6 +418,21 @@ export class AdminOrderDetailDto {
   @ApiProperty({ type: Number })
   id: number;
 
+  /** "Vị trí & IP" of the buyer (vande #058). */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '14.161.22.33',
+  })
+  buyerIp?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Ho Chi Minh City, Vietnam',
+  })
+  buyerLocation?: string | null;
+
   /** Ordered in bulk from a file: mailed spaced out, or as a list (vande #057). */
   @ApiPropertyOptional({
     type: String,

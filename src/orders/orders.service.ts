@@ -75,6 +75,7 @@ import { PartnersService } from '../partners/partners.service';
 import { SessionShapeEnum } from '../partners/partners.enum';
 import { generateOrderNumber } from '../utils/order-number';
 import { parseOrderImportFile } from '../utils/order-import-file';
+import { ipLocation, publicIp } from './buyer-location';
 import { randomBytes } from 'crypto';
 import { downloadFilename } from '../utils/download-filename';
 import { activationDeadlineFromDays } from '../plans/plan-activation';
@@ -513,6 +514,8 @@ export class OrdersService {
     clientIpHash?: string | null,
     /** The buyer's user agent, for the device backstop in #039. */
     clientUserAgent?: string | null,
+    /** The buyer's address itself, for "Vị trí & IP" (vande #058). */
+    clientIp?: string | null,
   ): Promise<Order> {
     // Save phone number to user profile
     if (dto.phoneNumber) {
@@ -591,6 +594,8 @@ export class OrdersService {
       partnerLinkCode: attribution.partnerLinkCode,
       attributedPartnerId: attribution.attributedPartnerId,
       buyerIpHash: fraudSignals.ipHash,
+      buyerIp: publicIp(clientIp),
+      buyerLocation: await ipLocation(clientIp),
       buyerVisitorId: fraudSignals.visitorId,
       attributionWarning: fraudSignals.warning,
       // "Thiết bị" on the order and the overview chart (doitac-1410 #082, #083).
@@ -838,6 +843,8 @@ export class OrdersService {
     clientIpHash?: string | null,
     /** The buyer's user agent, for the device backstop in #039. */
     clientUserAgent?: string | null,
+    /** The buyer's address itself, for "Vị trí & IP" (vande #058). */
+    clientIp?: string | null,
   ): Promise<Order> {
     // Save phone number to user profile if provided and user doesn't have one yet
     if (dto.phoneNumber) {
@@ -924,6 +931,8 @@ export class OrdersService {
       partnerLinkCode: attribution.partnerLinkCode,
       attributedPartnerId: attribution.attributedPartnerId,
       buyerIpHash: fraudSignals.ipHash,
+      buyerIp: publicIp(clientIp),
+      buyerLocation: await ipLocation(clientIp),
       buyerVisitorId: fraudSignals.visitorId,
       attributionWarning: fraudSignals.warning,
       // "Thiết bị" on the order and the overview chart (doitac-1410 #082, #083).
@@ -2782,6 +2791,9 @@ export class OrdersService {
 
     return {
       id: order.id,
+      // "Vị trí & IP" (vande #058).
+      buyerIp: order.buyerIp ?? null,
+      buyerLocation: order.buyerLocation ?? null,
       // Ordered in bulk from a file (vande #057).
       bulkMode: order.bulkMode ?? null,
       bulkEmailIntervalSec: order.bulkEmailIntervalSec ?? null,

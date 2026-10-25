@@ -84,6 +84,8 @@ export class OrdersController {
       dto,
       hashIpForFraudWatch(clientIp(req)),
       userAgent ?? null,
+      // The address itself only for the admin's "Vị trí & IP" (vande #058).
+      clientIp(req),
     );
   }
 

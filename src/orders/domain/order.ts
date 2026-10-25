@@ -168,6 +168,9 @@ export class Order {
   attributionWarning?: string | null;
   /** Where a partner order's eSIM QR codes go (doitac-1410 #034). */
   deliveryEmail?: string | null;
+  /** "Vị trí & IP" of the buyer (vande #058). */
+  buyerIp?: string | null;
+  buyerLocation?: string | null;
   /** Ordered in bulk from a file: mailed spaced out, or as a list (vande #057). */
   @ApiPropertyOptional({ type: String, enum: ['email', 'file'] })
   bulkMode?: 'email' | 'file' | null;

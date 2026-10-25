@@ -76,6 +76,8 @@ export class PaymentService {
       rate,
       hashIpForFraudWatch(clientIp),
       userAgent ?? null,
+      // "Vị trí & IP" on the admin order page (vande #058).
+      clientIp,
     );
 
     // If eXU wallet covers the entire amount, skip OnePay and finalize immediately
@@ -156,6 +158,8 @@ export class PaymentService {
       rate,
       hashIpForFraudWatch(clientIp),
       userAgent ?? null,
+      // "Vị trí & IP" on the admin order page (vande #058).
+      clientIp,
     );
 
     // Wallet covers the whole amount — nothing to transfer, finalize now.
