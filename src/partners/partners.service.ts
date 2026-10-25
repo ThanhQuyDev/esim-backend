@@ -6634,6 +6634,11 @@ export class PartnersService {
       `SELECT c.id,
               c.code,
               c."discountPercent",
+              c."discountType",
+              c."discountAmount",
+              c."maxDiscountAmount",
+              c."minOrderAmount",
+              c."maxUsagePerUser",
               c."usageCount",
               c."maxUsage",
               c."expiresAt",
@@ -6663,6 +6668,17 @@ export class PartnersService {
       id: Number(r.id),
       code: r.code,
       discountPercent: Number(r.discountPercent ?? 0),
+      // The terms of the code, so the partner can tell a customer exactly
+      // what it gives (vande #054): % or a flat amount, the cap on a %, the
+      // minimum order and how often one customer may use it.
+      discountType: r.discountType === 'fixed' ? 'fixed' : 'percent',
+      discountAmount: Number(r.discountAmount ?? 0),
+      maxDiscountAmount:
+        r.maxDiscountAmount == null ? null : Number(r.maxDiscountAmount),
+      minOrderAmount:
+        r.minOrderAmount == null ? null : Number(r.minOrderAmount),
+      maxUsagePerUser:
+        r.maxUsagePerUser == null ? null : Number(r.maxUsagePerUser),
       usageCount: Number(r.usageCount ?? 0),
       maxUsage: r.maxUsage == null ? null : Number(r.maxUsage),
       expiresAt: r.expiresAt ?? null,
