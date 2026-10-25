@@ -1,4 +1,5 @@
 import { PlansService } from '../plans/plans.service';
+import { derivedExpiry } from './daily-cycle';
 import {
   HttpStatus,
   Inject,
@@ -83,6 +84,15 @@ export interface DataUsageResult {
   deviceModel?: string | null;
   /** Plan length in days, so the page can draw a time bar like the data bar. */
   durationDays?: number | null;
+  /**
+   * How the plan's days are counted (vande #075): 24 hours from the first
+   * connection, or the supplier's calendar day in `dailyResetUtcOffset`.
+   * Null when the supplier has not said.
+   */
+  dailyResetPolicy?: string | null;
+  dailyResetUtcOffset?: number | null;
+  /** "fixed" / "daily"…: whether there is a daily allowance to reset. */
+  planType?: string | null;
   /**
    * False when nothing real is known about consumption — the provider has no
    * usage API (Viettel and other local inventory) or the eSIM lacks the ids
@@ -654,10 +664,21 @@ export class EsimsService {
       usage.expiredAt ??
       (stored?.expiresAt ? stored.expiresAt.toISOString() : null);
 
-    if (!expiredAt && activatedAt && durationDays) {
-      const expiry = new Date(activatedAt);
-      expiry.setDate(expiry.getDate() + durationDays);
-      expiredAt = expiry.toISOString();
+    // Counted the way the plan counts its days (vande #075): a calendar-day
+    // plan ends at midnight in its own timezone, not 24-hour blocks later.
+    const policy = stored?.plan?.dailyResetPolicy ?? null;
+    const utcOffset =
+      stored?.plan?.dailyResetUtcOffset != null
+        ? Number(stored.plan.dailyResetUtcOffset)
+        : null;
+    if (!expiredAt) {
+      expiredAt =
+        derivedExpiry(
+          activatedAt,
+          durationDays,
+          policy,
+          utcOffset,
+        )?.toISOString() ?? null;
     }
 
     return {
@@ -665,6 +686,9 @@ export class EsimsService {
       expiredAt,
       activatedAt: activatedAt ? new Date(activatedAt).toISOString() : null,
       durationDays,
+      dailyResetPolicy: policy,
+      dailyResetUtcOffset: utcOffset,
+      planType: stored?.plan?.type ?? null,
     };
   }
 

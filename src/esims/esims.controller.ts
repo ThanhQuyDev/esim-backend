@@ -194,6 +194,9 @@ export class EsimsPublicController {
         usedMb: 0,
         remainingMb: null,
         durationDays: esim.plan?.durationDays ?? null,
+        dailyResetPolicy: esim.plan?.dailyResetPolicy ?? null,
+        dailyResetUtcOffset: esim.plan?.dailyResetUtcOffset ?? null,
+        planType: esim.plan?.type ?? null,
         activatedAt: esim.activatedAt
           ? new Date(esim.activatedAt).toISOString()
           : null,
@@ -215,6 +218,13 @@ export class EsimsPublicController {
       usedMb: usage.dataUsed,
       remainingMb: usage.remaining,
       durationDays: usage.durationDays ?? esim.plan?.durationDays ?? null,
+      // How the days are counted, so the page counts them the same way
+      // (vande #075).
+      dailyResetPolicy:
+        usage.dailyResetPolicy ?? esim.plan?.dailyResetPolicy ?? null,
+      dailyResetUtcOffset:
+        usage.dailyResetUtcOffset ?? esim.plan?.dailyResetUtcOffset ?? null,
+      planType: usage.planType ?? esim.plan?.type ?? null,
       activatedAt: usage.activatedAt ?? null,
       expiredAt: usage.expiredAt,
       lastUpdateTime: usage.lastUpdateTime,

@@ -79,6 +79,19 @@ export class EsimLookupResponseDto {
   @ApiPropertyOptional({ type: Number })
   durationDays: number | null;
 
+  /**
+   * How the plan's days are counted (vande #075): `rolling_24h` from the first
+   * connection, or `calendar_day` in `dailyResetUtcOffset`. Null if unknown.
+   */
+  @ApiPropertyOptional({ type: String, example: 'calendar_day' })
+  dailyResetPolicy: string | null;
+
+  @ApiPropertyOptional({ type: Number, example: 8 })
+  dailyResetUtcOffset: number | null;
+
+  @ApiPropertyOptional({ type: String, example: 'daily' })
+  planType: string | null;
+
   @ApiPropertyOptional({ type: String, format: 'date-time' })
   activatedAt: string | null;
 
