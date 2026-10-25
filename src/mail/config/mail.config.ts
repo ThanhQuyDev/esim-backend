@@ -140,6 +140,33 @@ class EnvironmentVariablesValidator {
   @IsString()
   @IsOptional()
   MAIL_SUPPORT_DEFAULT_NAME: string;
+
+  // Vande #072 — SMTP for service@, the sender of customer announcements.
+  @IsString()
+  @IsOptional()
+  MAIL_SERVICE_HOST: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(65535)
+  @IsOptional()
+  MAIL_SERVICE_PORT: number;
+
+  @IsString()
+  @IsOptional()
+  MAIL_SERVICE_USER: string;
+
+  @IsString()
+  @IsOptional()
+  MAIL_SERVICE_PASSWORD: string;
+
+  @IsBoolean()
+  @IsOptional()
+  MAIL_SERVICE_SECURE: boolean;
+
+  @IsString()
+  @IsOptional()
+  MAIL_SERVICE_DEFAULT_NAME: string;
 }
 
 export default registerAs<MailConfig>('mail', () => {
@@ -202,6 +229,19 @@ export default registerAs<MailConfig>('mail', () => {
           ? process.env.MAIL_SUPPORT_SECURE === 'true'
           : true,
       defaultName: process.env.MAIL_SUPPORT_DEFAULT_NAME,
+    },
+    service: {
+      host: process.env.MAIL_SERVICE_HOST,
+      port: process.env.MAIL_SERVICE_PORT
+        ? parseInt(process.env.MAIL_SERVICE_PORT, 10)
+        : 465,
+      user: process.env.MAIL_SERVICE_USER,
+      password: process.env.MAIL_SERVICE_PASSWORD,
+      secure:
+        process.env.MAIL_SERVICE_SECURE !== undefined
+          ? process.env.MAIL_SERVICE_SECURE === 'true'
+          : true,
+      defaultName: process.env.MAIL_SERVICE_DEFAULT_NAME,
     },
   };
 });

@@ -963,6 +963,62 @@ ${notificationBodyText(data.body)}`,
   }
 
   /**
+   * A customer announcement (vande #072) as it will arrive: the subject and
+   * HTML from the `customer_announcement` template. The CMS preview renders
+   * through here too, so what the admin sees is what is sent. Null when the
+   * template is missing.
+   */
+  async renderCustomerAnnouncement(data: {
+    subject: string;
+    body: string;
+    customerName?: string | null;
+  }): Promise<{ subject: string; html: string; text: string } | null> {
+    const template = await this.emailTemplatesService.findByName(
+      'customer_announcement',
+    );
+    if (!template) return null;
+    const context = {
+      customerName: data.customerName?.trim() || 'Quý khách',
+      title: data.subject,
+      bodyHtml: notificationBodyHtml(data.body),
+      siteUrl: SITE_URL,
+      app_name: BRAND_NAME,
+      logoUrl: BRAND_LOGO_URL,
+      supportEmail: SUPPORT_EMAIL,
+      subject: data.subject,
+    };
+    return {
+      subject: Handlebars.compile(template.subject)(context),
+      html: Handlebars.compile(template.htmlBody, { strict: false })(context),
+      text: `${data.subject}
+
+${notificationBodyText(data.body)}`,
+    };
+  }
+
+  /** Send one customer announcement, as service@ when that is set up. */
+  async sendCustomerAnnouncement(data: {
+    to: string;
+    subject: string;
+    body: string;
+    customerName?: string | null;
+  }): Promise<void> {
+    const rendered = await this.renderCustomerAnnouncement(data);
+    if (!rendered) {
+      throw new Error('Email template "customer_announcement" not found');
+    }
+    await this.mailerService.sendMail({
+      transportName: 'service',
+      to: data.to,
+      subject: rendered.subject,
+      text: rendered.text,
+      templatePath: '',
+      context: {},
+      html: rendered.html,
+    });
+  }
+
+  /**
    * A support email: the acknowledgement of a new ticket, or an admin's reply
    * (#059).
    *

@@ -62,4 +62,19 @@ export type MailConfig = {
     secure: boolean;
     defaultName?: string;
   };
+
+  /**
+   * Vande #072 — SMTP for `service@esim.com.vn`, the mailbox customer
+   * announcements are sent from. Same shape and rules as `support`: `user` is
+   * the From address, and without `host` announcements go out on the primary
+   * transport.
+   */
+  service: {
+    host?: string;
+    port: number;
+    user?: string;
+    password?: string;
+    secure: boolean;
+    defaultName?: string;
+  };
 };

@@ -23,6 +23,7 @@ import { AuthGoogleModule } from './auth-google/auth-google.module';
 import { HeaderResolver, I18nModule } from 'nestjs-i18n';
 import { TypeOrmConfigService } from './database/typeorm-config.service';
 import { MailModule } from './mail/mail.module';
+import { CustomerAnnouncementsModule } from './customer-announcements/customer-announcements.module';
 import { HomeModule } from './home/home.module';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { AllConfigType } from './config/config.type';
@@ -159,6 +160,8 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     AuthGoogleModule,
     SessionModule,
     MailModule,
+    // Email announcements to storefront customers (vande #072).
+    CustomerAnnouncementsModule,
     MailerModule,
     HomeModule,
     DestinationsModule,

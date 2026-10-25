@@ -68,6 +68,16 @@ MAIL_SUPPORT_PASSWORD=
 MAIL_SUPPORT_SECURE=true
 MAIL_SUPPORT_DEFAULT_NAME=eSIM.vn Support
 
+# SMTP for service@esim.com.vn, the sender of customer announcements (vande
+# #072). Without MAIL_SERVICE_HOST they go out on the primary transport. The
+# password is set on the server only — never committed.
+MAIL_SERVICE_HOST=mail.esim.com.vn
+MAIL_SERVICE_PORT=465
+MAIL_SERVICE_USER=service@esim.com.vn
+MAIL_SERVICE_PASSWORD=
+MAIL_SERVICE_SECURE=true
+MAIL_SERVICE_DEFAULT_NAME=ESIM.VN
+
 AUTH_JWT_SECRET=secret
 AUTH_JWT_TOKEN_EXPIRES_IN=15m
 AUTH_REFRESH_SECRET=secret_for_refresh

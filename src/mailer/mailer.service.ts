@@ -25,6 +25,11 @@ export class MailerService {
    * whichever transport it used before.
    */
   private readonly supportTransporter: nodemailer.Transporter | null;
+  /**
+   * Vande #072 — `service@esim.com.vn`, which customer announcements are sent
+   * as. Set when `mail.service.host` is configured, like the support one.
+   */
+  private readonly serviceTransporter: nodemailer.Transporter | null;
 
   constructor(private readonly configService: ConfigService<AllConfigType>) {
     this.transporter = nodemailer.createTransport({
@@ -66,6 +71,19 @@ export class MailerService {
           },
         })
       : null;
+
+    const serviceHost = configService.get('mail.service.host', { infer: true });
+    this.serviceTransporter = serviceHost
+      ? nodemailer.createTransport({
+          host: serviceHost,
+          port: configService.get('mail.service.port', { infer: true }),
+          secure: configService.get('mail.service.secure', { infer: true }),
+          auth: {
+            user: configService.get('mail.service.user', { infer: true }),
+            pass: configService.get('mail.service.password', { infer: true }),
+          },
+        })
+      : null;
   }
 
   async sendMail({
@@ -103,7 +121,7 @@ export class MailerService {
      * with its own default From identity. An unconfigured channel falls back to
      * the primary transport.
      */
-    transportName?: 'default' | 'otp' | 'support';
+    transportName?: 'default' | 'otp' | 'support' | 'service';
     /**
      * Threading headers, passed straight to nodemailer: a support ticket's
      * emails reference its first one so mail clients keep them in one
@@ -121,15 +139,22 @@ export class MailerService {
 
     // A requested transport that is not configured falls back to the primary one,
     // so an environment without the extra credentials still sends.
-    const useSupport = transportName === 'support' && this.supportTransporter;
+    const useService = transportName === 'service' && this.serviceTransporter;
+    const useSupport =
+      !useService && transportName === 'support' && this.supportTransporter;
     const useOtp =
-      !useSupport && transportName === 'otp' && this.otpTransporter;
+      !useService &&
+      !useSupport &&
+      transportName === 'otp' &&
+      this.otpTransporter;
 
-    const transporter = useSupport
-      ? this.supportTransporter!
-      : useOtp
-        ? this.otpTransporter!
-        : this.transporter;
+    const transporter = useService
+      ? this.serviceTransporter!
+      : useSupport
+        ? this.supportTransporter!
+        : useOtp
+          ? this.otpTransporter!
+          : this.transporter;
 
     const fallbackName = this.configService.get('mail.defaultName', {
       infer: true,
@@ -138,20 +163,27 @@ export class MailerService {
       infer: true,
     });
 
-    const defaultName = useSupport
-      ? (this.configService.get('mail.support.defaultName', { infer: true }) ??
+    const defaultName = useService
+      ? (this.configService.get('mail.service.defaultName', { infer: true }) ??
         fallbackName)
-      : useOtp
-        ? (this.configService.get('mail.otp.defaultName', { infer: true }) ??
-          fallbackName)
-        : fallbackName;
-    const defaultEmail = useSupport
-      ? (this.configService.get('mail.support.user', { infer: true }) ??
+      : useSupport
+        ? (this.configService.get('mail.support.defaultName', {
+            infer: true,
+          }) ?? fallbackName)
+        : useOtp
+          ? (this.configService.get('mail.otp.defaultName', { infer: true }) ??
+            fallbackName)
+          : fallbackName;
+    const defaultEmail = useService
+      ? (this.configService.get('mail.service.user', { infer: true }) ??
         fallbackEmail)
-      : useOtp
-        ? (this.configService.get('mail.otp.defaultEmail', { infer: true }) ??
+      : useSupport
+        ? (this.configService.get('mail.support.user', { infer: true }) ??
           fallbackEmail)
-        : fallbackEmail;
+        : useOtp
+          ? (this.configService.get('mail.otp.defaultEmail', { infer: true }) ??
+            fallbackEmail)
+          : fallbackEmail;
 
     await transporter.sendMail({
       ...mailOptions,
