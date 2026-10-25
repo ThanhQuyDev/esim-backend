@@ -69,7 +69,7 @@ describe('CustomPaymentLinksController — history listing', () => {
 
     expect(findAllWithPagination).toHaveBeenCalledWith(
       expect.objectContaining({
-        paginationOptions: { page: 3, limit: 50 },
+        paginationOptions: { page: 3, limit: 200 },
       }),
     );
   });

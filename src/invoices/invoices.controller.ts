@@ -59,8 +59,9 @@ export class InvoicesController {
   ): Promise<InfinityPaginationResponseDto<Invoice>> {
     const page = query?.page ?? 1;
     let limit = query?.limit ?? 10;
-    if (limit > 50) {
-      limit = 50;
+    // The CMS tables offer up to 200 rows a page (vande #043).
+    if (limit > 200) {
+      limit = 200;
     }
 
     return infinityPagination(
