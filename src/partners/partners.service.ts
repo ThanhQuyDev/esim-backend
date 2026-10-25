@@ -475,6 +475,27 @@ const VN_PREV_MONTH_START_SQL =
   "(date_trunc('month', (now() AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '1 month') AT TIME ZONE 'Asia/Ho_Chi_Minh')";
 
 /**
+ * `YYYY-MM` of the Vietnamese month `offset` months from now — 0 this month,
+ * -1 the month before (vande #053).
+ */
+export function vnMonth(offset = 0, now = new Date()): string {
+  const vn = new Date(now.getTime() + VN_OFFSET_MS);
+  const d = new Date(
+    Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth() + offset, 1),
+  );
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * `column` falls inside the Vietnamese month whose first day (`YYYY-MM-01`)
+ * is bound to `param` — cut on Hanoi midnight, like VN_MONTH_START_SQL.
+ */
+function vnMonthSql(column: string, param: string): string {
+  return `${column} >= (${param}::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+    AND ${column} < ((${param}::timestamp + INTERVAL '1 month') AT TIME ZONE 'Asia/Ho_Chi_Minh')`;
+}
+
+/**
  * Day bounds for the dashboard window (#010), in Vietnamese days
  * (doitac-1410 #017).
  *
@@ -4966,7 +4987,7 @@ export class PartnersService {
     const saved = await this.partnerRepository.save(partner);
 
     if (tierBefore !== dto.tierCode) {
-      // The weekly review leaves a trail; a change made by hand used to leave
+      // The monthly review leaves a trail; a change made by hand used to leave
       // none at all.
       await this.tierEvaluationRepository.save(
         this.tierEvaluationRepository.create({
@@ -6663,16 +6684,6 @@ export class PartnersService {
   }
 
   /**
-   * Weekly tier review (Sunday 03:00). For each active partner it compares
-   * cumulative valid revenue — paid/completed orders attributed to them — with
-   * the tier thresholds and writes one history row either way, so the partner
-   * can see the review happened even when nothing changed.
-   *
-   * Promotion only: a partner is never automatically demoted, because dropping
-   * someone's commission rate off the back of a quiet week is a commercial
-   * decision, not a cron's. Demotions stay a manual admin action.
-   */
-  /**
    * Credit commissions whose 24h hold has passed (#019).
    *
    * Hourly rather than by the minute: the brief's promise is "sau 24h", and an
@@ -7067,44 +7078,98 @@ export class PartnersService {
     );
   }
 
-  @Cron(CronExpression.EVERY_WEEK)
-  async runWeeklyTierReview(): Promise<void> {
+  /**
+   * Valid revenue behind one partner in one Vietnamese calendar month — the
+   * figure the monthly tier review decides on (vande #053).
+   *
+   * What "doanh thu" means depends on which side of the programme the partner
+   * is on: orders credited to a marketing partner, orders a distribution
+   * partner placed themselves (#072, #073).
+   */
+  private async tierRevenueInMonth(
+    partner: PartnerEntity,
+    period: string,
+  ): Promise<{ revenueVnd: number; validOrders: number }> {
+    const inMonth = vnMonthSql('o."createdAt"', '$2');
+    const [row] =
+      partner.partnerType === PartnerTypeEnum.DISTRIBUTION
+        ? await this.dataSource.query(
+            `SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueVnd",
+                    COUNT(*)::int AS "validOrders"
+             FROM "order" o
+             JOIN partner p ON p."userId" = o."userId"
+             WHERE p.id = $1
+               AND o."deletedAt" IS NULL
+               AND o.status IN ('paid', 'completed')
+               AND ${inMonth}`,
+            [partner.id, `${period}-01`],
+          )
+        : await this.dataSource.query(
+            `SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueVnd",
+                    COUNT(*)::int AS "validOrders"
+             FROM "order" o
+             WHERE o."attributedPartnerId" = $1
+               AND o."deletedAt" IS NULL
+               -- A top-up earns a marketing partner nothing (#025), so it
+               -- does not lift their tier either.
+               AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
+               AND o.status IN ('paid', 'completed')
+               AND ${inMonth}`,
+            [partner.id, `${period}-01`],
+          );
+    return {
+      revenueVnd: Number(row?.revenueVnd ?? 0),
+      validOrders: Number(row?.validOrders ?? 0),
+    };
+  }
+
+  /**
+   * Monthly tier review (vande #053): the valid revenue of month n decides the
+   * tier for month n+1 — up or down.
+   *
+   * It used to run every week on all-time revenue and only ever promote, so
+   * one good stretch kept a partner on a high rate for good without selling
+   * again. Now each month starts from what was sold in the month before.
+   *
+   * Runs at 00:10 on the 1st, Vietnam time, for the month just ended. The cron
+   * skips partners already reviewed for that month (a restart, a second
+   * instance); the admin "Xét hạng" button passes `rerun` to review everybody
+   * again, e.g. after changing thresholds.
+   */
+  @Cron('10 0 1 * *', { timeZone: 'Asia/Ho_Chi_Minh' })
+  async runMonthlyTierReview(
+    opts: { period?: string; rerun?: boolean } = {},
+  ): Promise<void> {
+    const period = opts.period ?? vnMonth(-1);
     const partners = await this.partnerRepository.find({
       where: { status: PartnerStatusEnum.ACTIVE },
     });
     if (partners.length === 0) return;
 
     let promoted = 0;
+    let demoted = 0;
     for (const partner of partners) {
       try {
         const distribution =
           partner.partnerType === PartnerTypeEnum.DISTRIBUTION;
+        const { revenueVnd, validOrders } = await this.tierRevenueInMonth(
+          partner,
+          period,
+        );
 
-        // What "doanh thu" means depends on which side of the programme the
-        // partner is on: orders credited to a marketing partner, orders a
-        // distribution partner placed themselves (#072, #073).
-        const [row] = distribution
-          ? await this.dataSource.query(
-              `SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueVnd",
-                      COUNT(*)::int AS "validOrders"
-               FROM "order" o
-               JOIN partner p ON p."userId" = o."userId"
-               WHERE p.id = $1
-                 AND o."deletedAt" IS NULL
-                 AND o.status IN ('paid', 'completed')`,
-              [partner.id],
-            )
-          : await this.dataSource.query(
-              `SELECT COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "revenueVnd",
-                      COUNT(*)::int AS "validOrders"
-               FROM "order" o
-               WHERE o."attributedPartnerId" = $1
-                 AND o."deletedAt" IS NULL
-                 AND o.status IN ('paid', 'completed')`,
-              [partner.id],
-            );
-        const revenueVnd = Number(row?.revenueVnd ?? 0);
-        const validOrders = Number(row?.validOrders ?? 0);
+        const monthStart = `($3::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')`;
+        const [flags] = await this.dataSource.query(
+          `SELECT
+             EXISTS (SELECT 1 FROM partner_tier_evaluation e
+                      WHERE e."partnerId" = $1 AND e.period = $2) AS "reviewed",
+             (EXISTS (SELECT 1 FROM partner_tier_evaluation e
+                       WHERE e."partnerId" = $1 AND e.result = 'manual'
+                         AND e."createdAt" >= ${monthStart})
+              OR COALESCE(p."approvedAt", p."createdAt") >= ${monthStart}) AS "held"
+           FROM partner p WHERE p.id = $1`,
+          [partner.id, period, `${period}-01`],
+        );
+        if (flags?.reviewed && !opts.rerun) continue;
 
         // A distribution partner also qualifies on what they are holding on
         // deposit right now (#073) — either route alone is enough.
@@ -7120,7 +7185,7 @@ export class PartnersService {
 
         const tiers = await this.tierRepository.find({
           // An internal tier is negotiated, not earned, so the review neither
-          // promotes anybody onto one nor considers it a rung (#074).
+          // moves anybody onto one nor considers it a rung (#074).
           where: {
             partnerType: partner.partnerType,
             isActive: true,
@@ -7134,8 +7199,12 @@ export class PartnersService {
           (Number(t.minDepositVnd) > 0 &&
             depositVnd >= Number(t.minDepositVnd));
 
-        // Highest tier whose threshold the partner has already cleared.
-        const earned = [...tiers].reverse().find(qualifies);
+        // Highest tier the month's figures clear; with none cleared, the
+        // bottom of the ladder.
+        const earned =
+          [...tiers].reverse().find(qualifies) ??
+          tiers.find((t) => t.isDefault) ??
+          tiers[0];
 
         const currentTier = await this.tierRepository.findOne({
           where: {
@@ -7144,43 +7213,56 @@ export class PartnersService {
           },
         });
 
+        const rank = (t?: PartnerTierEntity | null) =>
+          Number(t?.minVolumeVnd ?? -1);
+        let result: 'promoted' | 'demoted' | 'unchanged' = 'unchanged';
         // Somebody placed on an internal tier stays there: the review is not
         // allowed to undo a negotiated rate (#074).
-        const shouldPromote =
+        if (
+          earned &&
           !currentTier?.isInternal &&
-          !!earned &&
-          earned.tierCode !== partner.tierCode &&
-          Number(earned.minVolumeVnd) > Number(currentTier?.minVolumeVnd ?? -1);
+          earned.tierCode !== partner.tierCode
+        ) {
+          if (rank(earned) > rank(currentTier)) {
+            result = 'promoted';
+          } else if (rank(earned) < rank(currentTier) && !flags?.held) {
+            // Not for a partner who only joined during the month, nor one an
+            // admin placed by hand during it: neither had a whole month to
+            // sell in, and the admin's decision would be quietly undone.
+            result = 'demoted';
+          }
+        }
 
-        if (shouldPromote) {
-          partner.tierCode = earned.tierCode;
+        const tierBefore = partner.tierCode ?? null;
+        if (result !== 'unchanged') {
+          partner.tierCode = earned!.tierCode;
           // From this moment on, not backwards (#042).
           partner.tierEffectiveFrom = new Date();
           await this.partnerRepository.save(partner);
-          promoted++;
+          if (result === 'promoted') promoted++;
+          else demoted++;
         }
 
         await this.tierEvaluationRepository.save(
           this.tierEvaluationRepository.create({
             partnerId: partner.id,
+            period,
             revenueVnd,
             validOrders,
-            tierBefore: currentTier?.tierCode ?? null,
-            tierAfter: shouldPromote
-              ? earned!.tierCode
-              : (partner.tierCode ?? null),
-            result: shouldPromote ? 'promoted' : 'unchanged',
+            tierBefore: currentTier?.tierCode ?? tierBefore,
+            tierAfter: partner.tierCode ?? null,
+            result,
           }),
         );
       } catch (err) {
         this.logger.error(
-          `Weekly tier review failed for partner ${partner.id}: ${(err as Error).message}`,
+          `Monthly tier review failed for partner ${partner.id}: ${(err as Error).message}`,
         );
       }
     }
 
     this.logger.log(
-      `Weekly tier review: ${partners.length} partner(s) reviewed, ${promoted} promoted`,
+      `Monthly tier review ${period}: ${partners.length} partner(s), ${promoted} promoted, ${demoted} demoted`,
     );
   }
 
@@ -9776,9 +9858,21 @@ export class PartnersService {
         ) ?? null);
 
     const revenueTotal = Number(perf?.revenueTotal ?? 0);
+    // The tier for next month is decided on this month's revenue alone
+    // (vande #053), so that is what the progress bar measures.
+    const tierPeriod = vnMonth(0);
+    const { revenueVnd: monthRevenueVnd } = await this.tierRevenueInMonth(
+      partner,
+      tierPeriod,
+    );
     const toNextTierVnd = nextTier
-      ? Math.max(0, Number(nextTier.minVolumeVnd) - revenueTotal)
+      ? Math.max(0, Number(nextTier.minVolumeVnd) - monthRevenueVnd)
       : 0;
+    // What is still missing this month to stay where they are next month.
+    const toKeepTierVnd =
+      currentTier && !isInternalTier
+        ? Math.max(0, Number(currentTier.minVolumeVnd) - monthRevenueVnd)
+        : 0;
 
     return {
       /** The window the figures below cover, echoed back for the header. */
@@ -9824,13 +9918,18 @@ export class PartnersService {
         effectiveFrom: partner.tierEffectiveFrom
           ? partner.tierEffectiveFrom.toISOString()
           : null,
+        /** The month being counted towards next month's tier (`YYYY-MM`). */
+        period: tierPeriod,
+        /** Valid revenue so far this month — what next month's tier rests on. */
+        monthRevenueVnd,
         toNextTierVnd,
-        /** 0–100, how far this partner is towards `next`. */
+        toKeepTierVnd,
+        /** 0–100, how far this month's revenue is towards `next`. */
         progressPercent: nextTier
           ? Math.min(
               100,
               Math.round(
-                (revenueTotal / Math.max(1, Number(nextTier.minVolumeVnd))) *
+                (monthRevenueVnd / Math.max(1, Number(nextTier.minVolumeVnd))) *
                   100,
               ),
             )

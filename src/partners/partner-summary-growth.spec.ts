@@ -16,6 +16,7 @@ function buildService(commissionThis: number, commissionPrev: number) {
     [{ clicks30: 0, clicksTotal: 0 }],
     [{ newCustomers: 0, returningCustomers: 0 }],
     [{ commissionThis, commissionPrev }],
+    [{ revenueVnd: 0, validOrders: 0 }],
   ];
   let call = 0;
 

@@ -770,7 +770,7 @@ export class PartnersController {
     );
   }
 
-  /** Weekly tier review history for this partner. */
+  /** Tier review history for this partner — one row per month (vande #053). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)

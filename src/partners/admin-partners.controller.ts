@@ -222,13 +222,14 @@ export class AdminPartnersController {
   }
 
   /**
-   * Run the weekly tier review now. Same code path as the Sunday cron — useful
-   * after changing tier thresholds, or to re-check a partner who just crossed one.
+   * Run the monthly tier review now, on last month's figures (vande #053).
+   * Same code path as the cron on the 1st — useful after changing tier
+   * thresholds; partners already reviewed for that month are reviewed again.
    */
   @Post('tier-review')
   @HttpCode(HttpStatus.OK)
   async runTierReview() {
-    await this.partnersService.runWeeklyTierReview();
+    await this.partnersService.runMonthlyTierReview({ rerun: true });
     return { success: true };
   }
 
