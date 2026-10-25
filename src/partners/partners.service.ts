@@ -255,16 +255,17 @@ function formatPartnerBankAccount(partner: {
  * stored as UTC wall time) — doitac-1410 #057.
  */
 /**
- * "Mã yêu cầu" of a withdrawal (vande #067): RT and the id, six digits, e.g.
- * RT000123. A deposit request already has its own code, the transfer memo.
+ * "Mã yêu cầu" of a withdrawal (vande #067): WD- and the id in six digits,
+ * e.g. WD-000123 — the code the partner already reads in their own portal.
+ * A deposit request already has its own code, the transfer memo.
  */
 export function payoutRequestCode(id: number): string {
-  return `RT${String(id).padStart(6, '0')}`;
+  return `WD-${String(id).padStart(6, '0')}`;
 }
 
-/** The payout id in "RT000123" / "rt-123", or null when it is not one. */
+/** The payout id in "WD-000123" / "wd123", or null when it is not one. */
 export function payoutIdFromCode(text: string): number | null {
-  const match = /^RT-?0*(\d{1,9})$/i.exec(text.trim());
+  const match = /^WD-?0*(\d{1,9})$/i.exec(text.trim());
   return match ? Number(match[1]) : null;
 }
 
@@ -304,7 +305,7 @@ type MyNotificationRow = {
 
 type AdminPayoutRow = {
   id: number;
-  /** "Mã yêu cầu", e.g. RT000123 (vande #067). */
+  /** "Mã yêu cầu", e.g. WD-000123 (vande #067). */
   code: string;
   partnerId: number;
   contactName: string | null;
@@ -5618,7 +5619,7 @@ export class PartnersService {
     // phone number, so matching it as text listed every request (doitac-1410
     // #057). A longer one is still searched as a phone.
     const raw = (query.search ?? '').trim();
-    // "RT000123" is the request itself (vande #067).
+    // "WD-000123" is the request itself (vande #067).
     const payoutId = payoutIdFromCode(raw);
     const idOnly = /^#?\d{1,5}$/.test(raw);
     const search = raw && !idOnly && payoutId === null ? raw : null;
