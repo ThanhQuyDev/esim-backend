@@ -52,18 +52,29 @@ export class MenuSlidesService {
    * "nothing configured yet" from "this panel has slides" without guessing.
    */
   async findGrouped(lang?: string): Promise<GroupedMenuSlides> {
-    const slides = await this.menuSlideRepository.findActiveForMenus(lang);
+    // Every language at once (vande #039): a panel with slides in one language
+    // only shows those in the other too, rather than the design's placeholder
+    // pictures — a slide made in Vietnamese "did not show" on the English site.
+    const slides = await this.menuSlideRepository.findActiveForMenus();
 
     const grouped = Object.fromEntries(
+      MENU_SLIDE_KEYS.map((key) => [key, [] as MenuSlide[]]),
+    ) as GroupedMenuSlides;
+    const others = Object.fromEntries(
       MENU_SLIDE_KEYS.map((key) => [key, [] as MenuSlide[]]),
     ) as GroupedMenuSlides;
 
     for (const slide of slides) {
       // A key that is no longer a panel (renamed menu, stale row) is skipped
       // rather than creating a group nothing renders.
-      if (slide.menuKey in grouped) {
-        grouped[slide.menuKey as MenuSlideKey].push(slide);
-      }
+      if (!(slide.menuKey in grouped)) continue;
+      const key = slide.menuKey as MenuSlideKey;
+      if (!lang || slide.language === lang) grouped[key].push(slide);
+      else others[key].push(slide);
+    }
+
+    for (const key of MENU_SLIDE_KEYS) {
+      if (grouped[key].length === 0) grouped[key] = others[key];
     }
 
     return grouped;

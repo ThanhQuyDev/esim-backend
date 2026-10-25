@@ -96,12 +96,26 @@ describe('MenuSlidesService', () => {
       expect(grouped.product.map((s) => s.id)).toEqual(['good']);
     });
 
-    it('should ask for one language at a time', async () => {
-      const { service, menuSlideRepository } = makeService([]);
+    it('should give a panel only the slides of the asked language', async () => {
+      const { service } = makeService([
+        slide({ id: 'vi', menuKey: 'product', language: 'vi' }),
+        slide({ id: 'en', menuKey: 'product', language: 'en' }),
+      ]);
 
-      await service.findGrouped('en');
+      const grouped = await service.findGrouped('en');
 
-      expect(menuSlideRepository.findActiveForMenus).toHaveBeenCalledWith('en');
+      expect(grouped.product.map((s) => s.id)).toEqual(['en']);
+    });
+
+    it('should fall back to the other language when a panel has none (vande #039)', async () => {
+      const { service } = makeService([
+        slide({ id: 'vi-only', menuKey: 'product', language: 'vi' }),
+      ]);
+
+      const grouped = await service.findGrouped('en');
+
+      expect(grouped.product.map((s) => s.id)).toEqual(['vi-only']);
+      expect(grouped.help).toEqual([]);
     });
   });
 
