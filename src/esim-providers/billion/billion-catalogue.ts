@@ -21,7 +21,10 @@ import { BillionPrice, BillionProduct } from './billion-api.types';
  */
 
 export interface BillionPlanVariant {
-  /** `skuId`, or `skuId:copies` when the order must buy several copies. */
+  /**
+   * `skuId`, or `skuId:copies` when the order must buy several copies; a
+   * rechargeable eSIM ends in `:r` (`skuId:copies:r`).
+   */
   providerPlanId: string;
   copies: number;
   durationDays: number;
@@ -33,23 +36,42 @@ export interface BillionPlanVariant {
   name: string;
 }
 
-/** Plan id stored on our `plan` row for one BILLION sku + copies. */
-export function encodeBillionPlanId(skuId: string, copies: number): string {
+/**
+ * Plan id stored on our `plan` row for one BILLION sku + copies. A
+ * rechargeable eSIM (vande #004) is marked in the id itself, because F040 must
+ * be told (`rechargeableESIM`) and the CMS may change the plan's other fields.
+ */
+export function encodeBillionPlanId(
+  skuId: string,
+  copies: number,
+  rechargeable = false,
+): string {
+  if (rechargeable) return `${skuId}:${copies}:r`;
   return copies > 1 ? `${skuId}:${copies}` : skuId;
 }
 
 /**
- * Split a stored BILLION `providerPlanId` back into the skuId and the number of
- * copies F040/F007 must order. Plans synced before copies were encoded are a
- * bare skuId, i.e. one copy.
+ * Split a stored BILLION `providerPlanId` back into the skuId, the number of
+ * copies F040/F007 must order and whether it is a rechargeable eSIM. Plans
+ * synced before copies were encoded are a bare skuId, i.e. one copy.
  */
 export function parseBillionPlanId(providerPlanId: string): {
   skuId: string;
   copies: number;
+  rechargeable: boolean;
 } {
-  const [skuId, rawCopies] = providerPlanId.split(':');
+  const [skuId, rawCopies, flag] = providerPlanId.split(':');
   const copies = parseInt(rawCopies ?? '1', 10);
-  return { skuId, copies: copies > 0 ? copies : 1 };
+  return {
+    skuId,
+    copies: copies > 0 ? copies : 1,
+    rechargeable: flag === 'r',
+  };
+}
+
+/** A rechargeable-eSIM plan ("复充商品"), sold as a new eSIM (vande #004). */
+export function isBillionRechargeableEsim(product: BillionProduct): boolean {
+  return product.rechargeableProduct === '1';
 }
 
 const num = (value: string | undefined): number => {
@@ -200,14 +222,34 @@ export function isRawBillionRegionName(name: string): boolean {
   return /eSIM Carrier/i.test(name) || /\d\s*(?:GB|MB)\b/i.test(name);
 }
 
-/** Every plan row one product yields — one per sellable duration. */
+/**
+ * Every plan row one product yields — one per sellable duration.
+ *
+ * A rechargeable eSIM (type 110 with `rechargeableProduct` '1', vande #004) is
+ * a self-selected plan like 3105, sold on the eSIM carrier of its recharge
+ * series: `carrierFee` (F060) is added to every duration's cost, and its plan
+ * ids carry the `:r` mark. As a topup of an eSIM (`carrierFee` left out) the
+ * same product keeps plain ids and the plan price alone.
+ */
 export function billionPlanVariants(
   product: BillionProduct,
   price: BillionPrice | undefined,
+  carrierFee?: number,
 ): BillionPlanVariant[] {
   const rows = price?.price ?? [];
   const { type, dataMb, fupSpeed } = billionDataAndType(product);
   const baseName = cleanBillionName(product.name) || product.name.trim();
+  const asEsim = carrierFee != null && isBillionRechargeableEsim(product);
+
+  if (asEsim) {
+    return billionPlanVariants({ ...product, type: '3105' }, price).map(
+      (v) => ({
+        ...v,
+        providerPlanId: encodeBillionPlanId(product.skuId, v.copies, true),
+        cost: Math.round((v.cost + carrierFee) * 10000) / 10000,
+      }),
+    );
+  }
 
   if (product.type === '3105') {
     const variants: BillionPlanVariant[] = [];

@@ -144,17 +144,32 @@ describe('Per-eSIM (ICCID) refund', () => {
     ).rejects.toThrow(/do not belong/i);
   });
 
-  it('should warn when the supplier cannot cancel a single eSIM', async () => {
+  it('should ask Billion to take back a single eSIM (vande #004)', async () => {
     const { service } = makeService();
+    const requestAfterSale = jest.fn().mockResolvedValue('AS1');
+    Object.assign(service, {
+      billionService: {
+        afterSaleReason: jest.fn().mockResolvedValue('20'),
+        requestAfterSale,
+      },
+      dataSource: { query: jest.fn().mockResolvedValue([]) },
+      addOrderNote: jest.fn().mockResolvedValue({}),
+    });
 
     const result = (await service.refundOrder(
       7 as never,
       { mode: 'wallet', amountVnd: 50000, esimIds: [104] } as never,
       1,
-    )) as { supplierWarnings: string[] };
+    )) as { supplierWarnings: string[]; supplierRequests: string[] };
 
-    expect(result.supplierWarnings).toEqual([
-      expect.stringContaining('ICCID 8904 (billion)'),
+    // Billion takes single eSIMs back by after-sale request (F017), so there
+    // is no "settle it with the supplier by hand" warning any more.
+    expect(requestAfterSale).toHaveBeenCalledWith(
+      expect.objectContaining({ iccids: ['8904'] }),
+    );
+    expect(result.supplierWarnings).toEqual([]);
+    expect(result.supplierRequests).toEqual([
+      expect.stringContaining('#AS1 cho ICCID 8904'),
     ]);
   });
 });

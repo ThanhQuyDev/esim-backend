@@ -17,12 +17,14 @@ import { MailService } from '../../mail/mail.service';
 import { UsersService } from '../../users/users.service';
 import { OrdersService } from '../../orders/orders.service';
 import {
+  BillionAfterSaleInfo,
   BillionApiResponse,
   BillionCreateOrderResult,
   BillionPrice,
   BillionProduct,
   BillionProfileStatus,
   BillionQrNotification,
+  BillionRechargeSeries,
   BillionUsageResult,
 } from './billion-api.types';
 import {
@@ -31,6 +33,8 @@ import {
   billionRegionName,
   isRawBillionRegionName,
   billionActivationUntil,
+  isBillionRechargeableEsim,
+  parseBillionPlanId,
 } from './billion-catalogue';
 import {
   exitIpFromName,
@@ -96,6 +100,9 @@ const BILLION_TOPUP_TRADE_TYPE = 'F007';
  * that a given ICCID is eligible to recharge with.
  */
 const BILLION_RECHARGE_COMMODITIES_TRADE_TYPE = 'F052';
+
+/** F017 after-sale reasons: 20 = no reason given, 29 = eSIM not downloaded. */
+export type BillionAfterSaleReason = '20' | '29';
 
 @Injectable()
 export class BillionService {
@@ -209,27 +216,44 @@ export class BillionService {
     try {
       // F002 has products but no prices; F003 has prices keyed by skuId. Fetch
       // both and merge — a product without a price row is skipped.
-      const [products, prices] = await Promise.all([
+      const [products, prices, carrierFees] = await Promise.all([
         this.invoke<BillionProduct[]>('F002', {
           salesMethod: '1',
           language: '2',
         }),
         this.invoke<BillionPrice[]>('F003', { salesMethod: '1' }),
+        this.getCarrierFees(),
       ]);
 
       const priceBySku = new Map<string, BillionPrice>();
       for (const p of prices ?? []) priceBySku.set(p.skuId, p);
 
-      const esimProducts = (products ?? []).filter((p) =>
-        ESIM_TYPES.has(p.type),
+      // Rechargeable eSIMs too (vande #004): ~9,600 plans the catalogue sold
+      // apart from the 3105/3106 ones, often cheaper for the same allowance.
+      const esimProducts = (products ?? []).filter(
+        (p) => ESIM_TYPES.has(p.type) || isBillionRechargeableEsim(p),
       );
 
       let itemsSynced = 0;
       for (const product of esimProducts) {
         try {
+          let carrierFee: number | undefined;
+          if (isBillionRechargeableEsim(product)) {
+            carrierFee = carrierFees.get(
+              String(product.rechargeableProductSeriesId ?? ''),
+            );
+            if (carrierFee == null) {
+              // Without its carrier price the eSIM would be sold at a loss.
+              this.logger.warn(
+                `Skipping billion sku ${product.skuId} (${product.name}): no carrier fee for series ${product.rechargeableProductSeriesId}`,
+              );
+              continue;
+            }
+          }
           const variants = billionPlanVariants(
             product,
             priceBySku.get(product.skuId),
+            carrierFee,
           );
           if (variants.length === 0) {
             this.logger.warn(
@@ -447,11 +471,24 @@ export class BillionService {
     );
     // Matched by the supplier's plan id, so a slug format change renames the
     // row instead of creating a duplicate next to it.
+    // The slug only finds this same sku: a rechargeable eSIM shares its slug
+    // with the ordinary plan of the same allowance, and taking that row
+    // overwrote the ordinary plan (vande #004).
+    const bySlug = await this.plansService.findBySlug(baseSlug);
+    const sameSku = (id: string | null | undefined) => {
+      if (!id) return false;
+      const a = parseBillionPlanId(id);
+      const b = parseBillionPlanId(variant.providerPlanId);
+      return a.skuId === b.skuId && a.rechargeable === b.rechargeable;
+    };
     const existing =
       (await this.plansService.findByProviderPlanId(
         PROVIDER,
         variant.providerPlanId,
-      )) ?? (await this.plansService.findBySlug(baseSlug));
+      )) ??
+      (bySlug?.provider === PROVIDER && sameSku(bySlug.providerPlanId)
+        ? bySlug
+        : null);
     const slug = await this.plansService.uniqueSyncedPlanSlug(
       baseSlug,
       PROVIDER,
@@ -490,7 +527,8 @@ export class BillionService {
       sms: null,
       call: null,
       type,
-      topUp: false,
+      // A rechargeable eSIM takes topups later (F052 + F007, vande #004).
+      topUp: isBillionRechargeableEsim(product),
       slug,
       speed: networkSpeed(generations),
       operatorName: uniqueOperators(carriers),
@@ -572,6 +610,8 @@ export class BillionService {
       deviceSkuId: string;
       planSkuCopies?: number;
       number: number;
+      /** A rechargeable-eSIM plan (vande #004). */
+      rechargeable?: boolean;
     }>;
   }): Promise<BillionCreateOrderResult> {
     this.logger.log(
@@ -589,6 +629,8 @@ export class BillionService {
         deviceSkuId: s.deviceSkuId,
         planSkuCopies: String(s.planSkuCopies ?? 1),
         number: String(s.number),
+        // "复充eSIM": Billion puts the plan on its series' eSIM carrier.
+        ...(s.rechargeable ? { rechargeableESIM: '1' } : {}),
       })),
     });
 
@@ -614,6 +656,10 @@ export class BillionService {
    * Cancel an order (F008). Throws BILLION's reason when it refuses, so a refund
    * can tell the admin the supplier did not cancel (v3 #002) — it used to be
    * swallowed and the refund always looked complete on our side.
+   *
+   * Only for an order Billion has not shipped: once the eSIMs are out it
+   * answers "1018 - The order has been shipped" and the refund is an
+   * after-sale request instead (F017, vande #004).
    */
   async cancelOrder(orderId: string): Promise<void> {
     try {
@@ -627,7 +673,93 @@ export class BillionService {
     }
   }
 
+  // ─── After-sale (refund of delivered eSIMs, vande #004) ───────────────────
+
+  /**
+   * Ask Billion to take eSIMs back and refund them (F017 售后申请). Billion
+   * reviews the request (N004) and then refunds (N005); F020 reads where it
+   * stands. One request per sub-order, i.e. per order line.
+   *
+   * eSIM orders must say: flow given back (`unSubscribeFlow` 1), received
+   * (`receivingState` 1), no card to return (`returnCardOrNot` 0). The refund
+   * is automatic (`refundType` 0), so no amount is sent.
+   *
+   * @returns Billion's after-sale number.
+   */
+  async requestAfterSale(params: {
+    channelOrderId: string;
+    channelSubOrderId: string;
+    iccids: string[];
+    /** 20 = no reason given, 29 = eSIM never downloaded. */
+    reason: BillionAfterSaleReason;
+    comment?: string;
+  }): Promise<string> {
+    const result = await this.invoke<{ afterSaleId: string }>('F017', {
+      channelOrderId: params.channelOrderId,
+      channelSubOrderId: params.channelSubOrderId,
+      reason: params.reason,
+      iccid: params.iccids,
+      unSubscribeFlow: '1',
+      receivingState: '1',
+      returnCardOrNot: '0',
+      refundType: '0',
+      ...(params.comment ? { comment: params.comment.slice(0, 200) } : {}),
+    });
+    if (!result?.afterSaleId) {
+      throw new Error('BILLION F017 returned no afterSaleId');
+    }
+    this.logger.log(
+      `BILLION after-sale ${result.afterSaleId} requested for ${params.iccids.join(', ')}`,
+    );
+    return result.afterSaleId;
+  }
+
+  /** Where an after-sale request stands (F020). */
+  async getAfterSale(afterSaleId: string): Promise<BillionAfterSaleInfo> {
+    return this.invoke<BillionAfterSaleInfo>('F020', { afterSaleId });
+  }
+
+  /**
+   * The after-sale reason for an eSIM: 29 ("eSIM not downloaded") while F042
+   * has never seen it downloaded, else 20 ("no reason"). 20 when F042 cannot
+   * be read — it fits every case, 29 only tells Billion more.
+   */
+  async afterSaleReason(iccid: string): Promise<BillionAfterSaleReason> {
+    try {
+      const history = await this.getProfileStatus(iccid);
+      const downloaded = (history ?? []).some((h) => Number(h.status) >= 1);
+      return downloaded ? '20' : '29';
+    } catch (err) {
+      this.logger.warn(
+        `BILLION F042 for ${iccid} failed, after-sale reason 20: ${(err as Error).message}`,
+      );
+      return '20';
+    }
+  }
+
   // ─── Topup / recharge an existing eSIM ─────────────────────────────────────
+
+  /**
+   * Carrier fee of each recharge series (F060), keyed by series id. Empty
+   * when F060 fails: rechargeable eSIMs are then left out of that sync rather
+   * than priced without their carrier.
+   */
+  private async getCarrierFees(): Promise<Map<string, number>> {
+    try {
+      const series = await this.invoke<BillionRechargeSeries[]>('F060', {});
+      const fees = new Map<string, number>();
+      for (const s of series ?? []) {
+        const fee = Number(s.carrierFee);
+        if (Number.isFinite(fee)) fees.set(String(s.rechargeSeriesId), fee);
+      }
+      return fees;
+    } catch (err) {
+      this.logger.error(
+        `BILLION F060 failed, rechargeable eSIMs skipped: ${(err as Error).message}`,
+      );
+      return new Map();
+    }
+  }
 
   /**
    * List the recharge products (skuIds) an existing eSIM is eligible for

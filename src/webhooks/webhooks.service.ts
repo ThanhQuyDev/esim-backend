@@ -8,6 +8,10 @@ import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.servi
 import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
+import {
+  afterSaleFromN004,
+  afterSaleFromN005,
+} from '../esim-providers/billion/billion-after-sale';
 import { AllConfigType } from '../config/config.type';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
@@ -627,6 +631,21 @@ export class WebhooksService {
 
     if (tradeType === 'N009') {
       await this.billionService.handleCallback(tradeData);
+      return;
+    }
+
+    // Review (N004) and refund (N005) of an after-sale request (vande #004).
+    if (tradeType === 'N004' || tradeType === 'N005') {
+      const update =
+        tradeType === 'N004'
+          ? afterSaleFromN004(tradeData)
+          : afterSaleFromN005(tradeData);
+      if (tradeData?.afterSaleId && update) {
+        await this.ordersService.recordBillionAfterSale(
+          String(tradeData.afterSaleId),
+          update,
+        );
+      }
       return;
     }
 

@@ -237,10 +237,12 @@ describe('parseBillionPlanId', () => {
     expect(parseBillionPlanId('1785911513572650:7')).toEqual({
       skuId: '1785911513572650',
       copies: 7,
+      rechargeable: false,
     });
     expect(parseBillionPlanId('1785911513572650')).toEqual({
       skuId: '1785911513572650',
       copies: 1,
+      rechargeable: false,
     });
   });
 });

@@ -48,6 +48,13 @@ import { GadgetKoreaService } from '../esim-providers/gadgetkorea/gadgetkorea.se
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
 import { parseBillionPlanId } from '../esim-providers/billion/billion-catalogue';
+import {
+  AfterSaleUpdate,
+  FINAL_AFTER_SALE_STATUSES,
+  afterSaleFromF020,
+  afterSaleNote,
+  afterSaleReasonLabel,
+} from '../esim-providers/billion/billion-after-sale';
 import { AllConfigType } from '../config/config.type';
 import { CouponsService } from '../coupons/coupons.service';
 import { EsimsService } from '../esims/esims.service';
@@ -1554,7 +1561,7 @@ export class OrdersService {
           subOrderList: billionItems.map((item) => {
             // A per-duration plan of a self-selected sku stores its copies in
             // the plan id ("skuId:7" = buy 7 days).
-            const { skuId, copies } = parseBillionPlanId(
+            const { skuId, copies, rechargeable } = parseBillionPlanId(
               item.plan.providerPlanId,
             );
             return {
@@ -1562,6 +1569,7 @@ export class OrdersService {
               deviceSkuId: skuId,
               planSkuCopies: copies,
               number: item.quantity,
+              rechargeable,
             };
           }),
         });
@@ -3216,8 +3224,20 @@ export class OrdersService {
       );
     }
 
-    // Airalo has no cancel, but takes refund requests (doitac-1410 #079).
+    // Billion takes delivered eSIMs back through after-sale requests (vande
+    // #004) — F008 only cancels an order it has not shipped.
     const supplierRequests: string[] = [];
+    const billion = await this.requestBillionRefunds(order, dto, {
+      isPartial,
+      selectedItemIds,
+      selectedEsims,
+      orderItems,
+      adminId,
+    });
+    supplierRequests.push(...billion.requests);
+    supplierWarnings.push(...billion.warnings);
+
+    // Airalo has no cancel, but takes refund requests (doitac-1410 #079).
     if (dto.airaloRefundReason) {
       const airalo = await this.requestAiraloRefunds(order, dto, {
         isPartial,
@@ -3414,6 +3434,195 @@ export class OrdersService {
   }
 
   /**
+   * Ask Billion to refund its delivered eSIMs of this refund (vande #004):
+   * whole lines refunded and single eSIMs picked, one F017 after-sale request
+   * per order line and reason. Refunds used to call F008, which only cancels an
+   * order Billion has not shipped — for delivered eSIMs it answered "1018 - The
+   * order has been shipped" and Billion never gave the money back.
+   *
+   * Billion reviews each request and refunds later: the request is kept as an
+   * order note and a `billion_after_sale` row that its N004 / N005 notices
+   * (and F020 reads) bring up to date. Never stops the customer's refund.
+   */
+  private async requestBillionRefunds(
+    order: Order,
+    dto: RefundOrderDto,
+    ctx: {
+      isPartial: boolean;
+      selectedItemIds: number[];
+      selectedEsims: Esim[];
+      orderItems: OrderItem[];
+      adminId: number;
+    },
+  ): Promise<{ requests: string[]; warnings: string[] }> {
+    const requests: string[] = [];
+    const warnings: string[] = [];
+    const byItem = new Map<number, string[]>();
+    try {
+      const items = ctx.orderItems.length
+        ? ctx.orderItems
+        : await this.orderItemsService.findByOrderId(order.id);
+      const billionItemIds = new Set<number>();
+      for (const item of items) {
+        const plan = await this.plansService.findById(item.planId);
+        if (plan?.provider === 'billion') billionItemIds.add(Number(item.id));
+      }
+      if (!billionItemIds.size) return { requests, warnings };
+
+      const wholeLines = (
+        ctx.isPartial ? ctx.selectedItemIds : [...billionItemIds]
+      ).filter((id) => billionItemIds.has(Number(id)));
+      const lineEsims = wholeLines.length
+        ? await this.esimsService.findByOrderItemIds(wholeLines)
+        : [];
+      for (const esim of [
+        ...lineEsims.filter((e) => e.status !== 'refunded'),
+        ...ctx.selectedEsims.filter((e) =>
+          billionItemIds.has(Number(e.orderItemId)),
+        ),
+      ]) {
+        if (!esim.iccid) continue;
+        const itemId = Number(esim.orderItemId);
+        const iccids = byItem.get(itemId) ?? [];
+        if (!iccids.includes(esim.iccid)) iccids.push(esim.iccid);
+        byItem.set(itemId, iccids);
+      }
+    } catch (err) {
+      warnings.push(
+        `Billion: không xác định được eSIM cần hoàn — ${(err as Error).message}`,
+      );
+      return { requests, warnings };
+    }
+
+    for (const [itemId, iccids] of byItem) {
+      // 29 "eSIM not downloaded" or 20 "no reason", eSIM by eSIM.
+      const byReason = new Map<string, string[]>();
+      for (const iccid of iccids) {
+        const reason = await this.billionService.afterSaleReason(iccid);
+        byReason.set(reason, [...(byReason.get(reason) ?? []), iccid]);
+      }
+      for (const [reason, group] of byReason) {
+        try {
+          // The ids F040 was sent, which Billion files the order under.
+          const afterSaleId = await this.billionService.requestAfterSale({
+            channelOrderId: `${order.orderNumber}-bl`,
+            channelSubOrderId: `${order.orderNumber}-bl-${itemId}`,
+            iccids: group,
+            reason: reason as '20' | '29',
+            comment: dto.reason || undefined,
+          });
+          requests.push(
+            `Billion: đã gửi yêu cầu hoàn tiền #${afterSaleId} cho ICCID ${group.join(', ')} (${afterSaleReasonLabel(reason)}) — Billion duyệt rồi tự hoàn tiền, kết quả sẽ ghi vào ghi chú đơn.`,
+          );
+          try {
+            await this.dataSource.query(
+              `INSERT INTO billion_after_sale ("afterSaleId", "orderId", "orderItemId", iccids, reason)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT ("afterSaleId") DO NOTHING`,
+              [afterSaleId, order.id, itemId, group.join(', '), reason],
+            );
+          } catch (err) {
+            this.logger.error(
+              `refundOrder: failed to record Billion after-sale ${afterSaleId}: ${(err as Error).message}`,
+            );
+          }
+        } catch (err) {
+          this.logger.error(
+            `refundOrder: Billion after-sale for order ${order.id} failed: ${(err as Error).message}`,
+          );
+          warnings.push(
+            `Billion: chưa gửi được yêu cầu hoàn tiền cho ICCID ${group.join(', ')} — ${(err as Error).message}`,
+          );
+        }
+      }
+    }
+
+    // On the order, so the follow-up with Billion is not lost.
+    for (const line of [...requests, ...warnings]) {
+      try {
+        await this.addOrderNote(order.id, line, ctx.adminId);
+      } catch (err) {
+        this.logger.error(
+          `refundOrder: failed to note the Billion request on order ${order.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return { requests, warnings };
+  }
+
+  /**
+   * What Billion did with an after-sale request — from its N004 / N005 notice
+   * or a F020 read (vande #004). Saved on the request and noted on its order
+   * when it changed; an unknown request is ignored.
+   */
+  async recordBillionAfterSale(
+    afterSaleId: string,
+    update: AfterSaleUpdate,
+  ): Promise<boolean> {
+    const [row] = await this.dataSource.query(
+      `SELECT id, "orderId", iccids, status, opinion FROM billion_after_sale WHERE "afterSaleId" = $1`,
+      [String(afterSaleId)],
+    );
+    if (!row) return false;
+    if (
+      row.status === update.status &&
+      (row.opinion ?? null) === update.opinion
+    ) {
+      return false;
+    }
+    // A late "approved" never undoes a refund already made.
+    if (
+      FINAL_AFTER_SALE_STATUSES.includes(row.status) &&
+      !FINAL_AFTER_SALE_STATUSES.includes(update.status)
+    ) {
+      return false;
+    }
+    await this.dataSource.query(
+      `UPDATE billion_after_sale SET status = $2, opinion = $3, "updatedAt" = now() WHERE id = $1`,
+      [row.id, update.status, update.opinion],
+    );
+    await this.dataSource.query(
+      `INSERT INTO order_note ("orderId", "adminId", body) VALUES ($1, NULL, $2)`,
+      [
+        row.orderId,
+        afterSaleNote(afterSaleId, row.iccids, update).slice(0, 2000),
+      ],
+    );
+    return true;
+  }
+
+  /**
+   * Read the Billion after-sale requests still open (F020): a notice Billion
+   * failed to deliver must not leave the admin waiting forever. Requests older
+   * than 60 days are left alone.
+   */
+  @Cron(CronExpression.EVERY_30_MINUTES)
+  async refreshBillionAfterSales(): Promise<void> {
+    let rows: { afterSaleId: string }[] = [];
+    try {
+      rows = await this.dataSource.query(
+        `SELECT "afterSaleId" FROM billion_after_sale
+         WHERE status <> ALL($1::varchar[]) AND "createdAt" > now() - interval '60 days'
+         ORDER BY id LIMIT 50`,
+        [FINAL_AFTER_SALE_STATUSES],
+      );
+    } catch (err) {
+      this.logger.error(`refreshBillionAfterSales: ${(err as Error).message}`);
+      return;
+    }
+    for (const { afterSaleId } of rows) {
+      try {
+        const info = await this.billionService.getAfterSale(afterSaleId);
+        await this.recordBillionAfterSale(afterSaleId, afterSaleFromF020(info));
+      } catch (err) {
+        this.logger.warn(
+          `refreshBillionAfterSales: F020 ${afterSaleId} failed: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /**
    * Cancel order items with their respective suppliers.
    * - Airalo: skip (no cancel API)
    * - EsimAccess: call POST /api/v1/open/esim/cancel with esimTranNo from esim table
@@ -3522,6 +3731,8 @@ export class OrdersService {
         } else if (plan.provider === 'airalo' && airaloRequested) {
           // No cancel; a refund request goes out instead when the admin asks
           // for one (doitac-1410 #079).
+        } else if (plan.provider === 'billion') {
+          // An after-sale request goes out for it (requestBillionRefunds).
         } else {
           warnings.push(
             `${label}: nhà cung cấp không hủy được riêng 1 eSIM — cần liên hệ nhà cung cấp để hoàn eSIM này`,
@@ -3587,9 +3798,11 @@ export class OrdersService {
             }
           }
         } else if (item.plan.provider === 'billion') {
-          // Cancel billion: F008 cancels the whole order by orderId
-          // (stored as orderRequestId). Best-effort inside the service.
-          if (item.orderRequestId) {
+          // Delivered eSIMs go back through an after-sale request
+          // (requestBillionRefunds, vande #004). F008 only cancels an order
+          // Billion has not shipped — a line still waiting for its eSIMs.
+          const esims = await this.esimsService.findByOrderItemIds([item.id]);
+          if (item.orderRequestId && esims.length === 0) {
             await this.billionService.cancelOrder(item.orderRequestId);
           }
         } else if (item.plan.isLocalInventory) {

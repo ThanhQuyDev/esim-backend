@@ -6,7 +6,7 @@ import { OrdersService } from './orders.service';
  * so the admin saw a clean refund while our money stayed with the supplier.
  */
 describe('OrdersService.cancelOrderWithSuppliers — supplier warnings', () => {
-  function makeService(cancelOrder: jest.Mock) {
+  function makeService(cancelOrder: jest.Mock, delivered = false) {
     const service = Object.create(OrdersService.prototype) as OrdersService;
     const internals = service as unknown as Record<string, unknown>;
     internals.orderItemsService = {
@@ -21,6 +21,15 @@ describe('OrdersService.cancelOrderWithSuppliers — supplier warnings', () => {
           id === 1
             ? { provider: 'billion', name: 'Korea 1GB/ngày' }
             : { provider: 'airalo', name: 'Japan 3GB' },
+        ),
+      ),
+    };
+    // Line 28 is still waiting for its eSIMs: only then is F008 the way to
+    // cancel (vande #004).
+    internals.esimsService = {
+      findByOrderItemIds: jest.fn((ids: number[]) =>
+        Promise.resolve(
+          delivered && ids.includes(28) ? [{ id: 1, orderItemId: 28 }] : [],
         ),
       ),
     };
@@ -49,6 +58,15 @@ describe('OrdersService.cancelOrderWithSuppliers — supplier warnings', () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('Korea 1GB/ngày');
     expect(warnings[0]).toContain('2003 - used');
+  });
+
+  it('should not call F008 for a line Billion has delivered (vande #004)', async () => {
+    const cancelOrder = jest.fn();
+    const { cancel } = makeService(cancelOrder, true);
+
+    await expect(cancel(25)).resolves.toEqual([]);
+    // Delivered eSIMs go back through an after-sale request instead.
+    expect(cancelOrder).not.toHaveBeenCalled();
   });
 
   it('should return no warnings when every supplier cancelled', async () => {

@@ -70,6 +70,34 @@ export interface BillionProduct {
   timeZone?: string | null;
   /** "2" on some "Natural Day" plans, empty on the rest (vande #033). */
   highSpeedDataResetTimeType?: string | null;
+  /**
+   * '1' on a rechargeable-eSIM plan ("复充商品", type 110): sold as a new eSIM
+   * that can be topped up later (vande #004).
+   */
+  rechargeableProduct?: string | null;
+  /** The recharge series it belongs to — F060 gives the series' carrier fee. */
+  rechargeableProductSeriesId?: string | null;
+}
+
+/** F060 (查询eSIM复充商品系列列表) — one recharge series. */
+export interface BillionRechargeSeries {
+  rechargeSeriesId: number;
+  name: string;
+  enName: string;
+  /** Price of the eSIM carrier bound to the series, in the price currency. */
+  carrierFee: number;
+}
+
+/** F020 (查询售后信息 / Query after-sale) result, the fields we read. */
+export interface BillionAfterSaleInfo {
+  afterSaleId: string;
+  /** 0 not reviewed, 1 withdrawn, 2 approved, 3 rejected, 4 to be modified. */
+  auditStatus: string;
+  auditOpinion?: string;
+  /** 0 to be refunded, 1 refunded, 2 rejected. */
+  refundStatus: string;
+  refundOpinion?: string;
+  refundAmount?: string;
 }
 
 /** Price row within a F003 price array (one per number-of-copies). */
