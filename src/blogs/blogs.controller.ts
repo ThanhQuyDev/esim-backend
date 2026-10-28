@@ -11,6 +11,9 @@ import {
   Headers,
   NotFoundException,
   Request,
+  ParseIntPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { BlogEditor, BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
@@ -39,6 +42,10 @@ import { allRoleIds } from '../roles/extra-roles';
 import { RolesGuard } from '../roles/roles.guard';
 import { AuthorsService } from '../authors/authors.service';
 import { BlogCategoriesService } from './blog-categories.service';
+import {
+  BlogCategoryNamesDto,
+  CreateBlogCategoryDto,
+} from './dto/blog-category.dto';
 
 @ApiTags('Blogs')
 @Controller({
@@ -168,6 +175,37 @@ export class BlogsController {
   })
   findCategoryTree() {
     return this.blogCategoriesService.tree();
+  }
+
+  /** Add a blog category or sub-category (vande #076). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('category-tree')
+  createCategory(@Body() dto: CreateBlogCategoryDto) {
+    return this.blogCategoriesService.create(dto);
+  }
+
+  /** Rename a blog category; its posts take the new name (vande #076). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('category-tree/:categoryId')
+  renameCategory(
+    @Param('categoryId', ParseIntPipe) categoryId: number,
+    @Body() dto: BlogCategoryNamesDto,
+  ) {
+    return this.blogCategoriesService.rename(categoryId, dto);
+  }
+
+  /** Delete a blog category no post is filed under (vande #076). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Delete('category-tree/:categoryId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeCategory(@Param('categoryId', ParseIntPipe) categoryId: number) {
+    return this.blogCategoriesService.remove(categoryId);
   }
 
   @Get('categories')
