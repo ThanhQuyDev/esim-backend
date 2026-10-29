@@ -8,12 +8,34 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { PartnersService } from './partners.service';
 
-class RecordClickDto {
+/**
+ * Without validators the global pipe (`whitelist: true`) stripped every field,
+ * so no click ever kept its IP hash or browser — and a device could not be
+ * recognised, neither to count a double-load once nor to attribute an order to
+ * it (vande #079).
+ */
+export class RecordClickDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
   ipHash?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   userAgent?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
   referrer?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
   visitorId?: string;
 }
 

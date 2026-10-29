@@ -671,6 +671,9 @@ function adminLinkState(row: Record<string, any>): string {
   return row.status === 'active' ? 'active' : 'inactive';
 }
 
+/** Repeat opens of a link from one device inside this window are one click (vande #079). */
+export const DUPLICATE_CLICK_WINDOW_MS = 30_000;
+
 @Injectable()
 export class PartnersService {
   private readonly logger = new Logger(PartnersService.name);
@@ -6245,6 +6248,29 @@ export class PartnersService {
     });
     if (!link) return null;
 
+    // One visit, one click (vande #079). Pressing Enter on the link counted 2:
+    // the browser's address bar fetches the page ahead (prefetch / prerender)
+    // and then loads it for real. The same device on the same link within a few
+    // seconds is that one visit — it gets the click already recorded.
+    const deviceHash = partnerDeviceFingerprint(meta.ipHash, meta.userAgent);
+    if (deviceHash) {
+      const recent = await this.linkClickRepository.findOne({
+        where: {
+          linkId: link.id,
+          deviceHash,
+          clickedAt: MoreThan(new Date(Date.now() - DUPLICATE_CLICK_WINDOW_MS)),
+        },
+        order: { clickedAt: 'DESC' },
+      });
+      if (recent?.clickId) {
+        return {
+          targetPath: link.targetPath ?? null,
+          clickId: recent.clickId,
+          clickToken: signClickToken(recent.clickId),
+        };
+      }
+    }
+
     // Minted here, on the server, and handed back so the redirect can carry it
     // in the URL (#039). 32 hex characters: guessing one would mean guessing a
     // click that really happened.
@@ -6258,7 +6284,7 @@ export class PartnersService {
         referrer: meta.referrer ?? null,
         visitorId: meta.visitorId ?? null,
         clickId,
-        deviceHash: partnerDeviceFingerprint(meta.ipHash, meta.userAgent),
+        deviceHash,
         signed: true,
       }),
     );
