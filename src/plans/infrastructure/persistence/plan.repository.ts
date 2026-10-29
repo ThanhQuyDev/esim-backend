@@ -83,9 +83,13 @@ export abstract class PlanRepository {
       fixedAmountVnd?: number;
     }>,
     exchangeRate?: number,
+    ids?: Plan['id'][],
   ): Promise<void>;
 
-  abstract updateAllVndPrices(rate: number): Promise<void>;
+  abstract updateAllVndPrices(rate: number, ids?: Plan['id'][]): Promise<void>;
+
+  /** Put these plans on sale (or off) in one statement (vande #078). */
+  abstract setActive(ids: Plan['id'][], isActive: boolean): Promise<void>;
 
   abstract remove(id: Plan['id']): Promise<void>;
 

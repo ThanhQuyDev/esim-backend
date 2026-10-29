@@ -57,13 +57,10 @@ function makeService(opts: { existingRegionName?: string } = {}) {
 
   const plansService = {
     findBySlug: jest.fn().mockResolvedValue(null),
-    create: jest.fn((payload: Record<string, unknown>) => {
-      created.push(payload);
-      return Promise.resolve({ id: 1, ...payload });
-    }),
-    update: jest.fn((_id: unknown, payload: Record<string, unknown>) => {
-      updated.push(payload);
-      return Promise.resolve(payload);
+    // The sync writes through saveSyncedPlan (vande #078): an id means update.
+    saveSyncedPlan: jest.fn((id: unknown, payload: Record<string, unknown>) => {
+      (id ? updated : created).push(payload);
+      return Promise.resolve({ id: id ?? 1, ...payload });
     }),
   };
 

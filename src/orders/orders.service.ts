@@ -542,7 +542,8 @@ export class OrdersService {
     // 1. Resolve all plans and validate
     const planDetails = await Promise.all(
       dto.items.map(async (item) => {
-        const plan = await this.plansService.findById(item.planId);
+        // Never charge a plan at its bare cost (vande #078).
+        const plan = await this.plansService.findForSale(item.planId);
         if (!plan) {
           throw new NotFoundException(`Plan ${item.planId} not found`);
         }
@@ -870,7 +871,8 @@ export class OrdersService {
 
     const planDetails = await Promise.all(
       dto.items.map(async (item) => {
-        const plan = await this.plansService.findById(item.planId);
+        // Never charge a plan at its bare cost (vande #078).
+        const plan = await this.plansService.findForSale(item.planId);
         if (!plan) {
           throw new NotFoundException(`Plan ${item.planId} not found`);
         }

@@ -174,6 +174,11 @@ function groupPlansBySimType(plans: Plan[]): PlanGroups {
   };
 }
 
+/** Synced plans priced together (vande #078). */
+export const SYNC_REPRICE_BATCH = 200;
+/** How long a part-filled batch waits before it is priced anyway. */
+export const SYNC_REPRICE_DELAY_MS = 2000;
+
 @Injectable()
 export class PlansService implements OnApplicationBootstrap {
   private readonly logger = new Logger(PlansService.name);
@@ -656,6 +661,120 @@ export class PlansService implements OnApplicationBootstrap {
 
     // Step 3: Mark cheapest plans
     await this.plansRepository.markCheapestPlans();
+  }
+
+  /**
+   * Sale price (margin tier) and the converted columns of these plans, from
+   * their current cost — the full-catalogue pass narrowed to a few rows.
+   */
+  async repricePlans(ids: Plan['id'][]): Promise<void> {
+    if (!ids.length) return;
+    const [tiers, rate] = await Promise.all([
+      this.marginTiers(),
+      this.exchangeRateService.getUsdToVndRate(),
+    ]);
+    await this.plansRepository.recalculatePricesByTiers(
+      tiers.map((t) => ({ ...t, fixedAmountVnd: t.fixedAmountVnd ?? 0 })),
+      rate,
+      ids,
+    );
+    await this.plansRepository.updateAllVndPrices(rate, ids);
+  }
+
+  /**
+   * Write one plan a supplier sync or price import read, already priced
+   * (vande #078).
+   *
+   * The syncs used to store `price = costPrice` and leave the margin to a pass
+   * at the very end of the 6-hourly run — so for the whole run the shop showed,
+   * and customers bought, plans at cost. Now:
+   * - an existing plan keeps its current sale price while the new cost is
+   *   written, and is repriced from that cost moments later;
+   * - a new plan is created off sale and only goes on sale once it is priced.
+   *
+   * Repricing goes in batches of {@link SYNC_REPRICE_BATCH} (or after a short
+   * pause, for the last few): one plan at a time made a Billion sync of 26,000
+   * plans take three times as long.
+   */
+  async saveSyncedPlan(
+    existingId: Plan['id'] | null | undefined,
+    data: CreatePlanDto,
+  ): Promise<Plan | null> {
+    // The sync's `price` is only the cost; the reprice sets the sale price.
+    const withoutPrice = { ...data, price: undefined };
+    let saved: Plan | null;
+    if (existingId) {
+      saved = await this.update(existingId, withoutPrice);
+      this.pendingReprice.add(Number(existingId));
+    } else {
+      saved = await this.create({ ...data, isActive: false });
+      this.pendingReprice.add(Number(saved.id));
+      if (data.isActive ?? true) this.pendingActivation.add(Number(saved.id));
+    }
+    if (this.pendingReprice.size >= SYNC_REPRICE_BATCH) {
+      await this.flushSyncedPlans();
+    } else {
+      this.scheduleFlush();
+    }
+    return saved;
+  }
+
+  private readonly pendingReprice = new Set<number>();
+  private readonly pendingActivation = new Set<number>();
+  private flushTimer: NodeJS.Timeout | null = null;
+  private flushing: Promise<void> = Promise.resolve();
+
+  /** Price, then put on sale, every plan {@link saveSyncedPlan} has queued. */
+  async flushSyncedPlans(): Promise<void> {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    const ids = [...this.pendingReprice];
+    const activate = ids.filter((id) => this.pendingActivation.has(id));
+    this.pendingReprice.clear();
+    for (const id of activate) this.pendingActivation.delete(id);
+    if (!ids.length) return this.flushing;
+    this.flushing = this.flushing
+      .catch(() => undefined)
+      .then(async () => {
+        await this.repricePlans(ids);
+        if (activate.length)
+          await this.plansRepository.setActive(activate, true);
+      });
+    return this.flushing;
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushTimer) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      void this.flushSyncedPlans().catch((err: Error) =>
+        this.logger.error(`Could not price synced plans: ${err.message}`),
+      );
+    }, SYNC_REPRICE_DELAY_MS);
+    this.flushTimer.unref?.();
+  }
+
+  /**
+   * A plan as an order may charge it: a supplier plan whose sale price is not
+   * above its cost is repriced first (vande #078). With no margin tier
+   * matching, the reprice leaves the price at cost — that is the tier setup,
+   * not a half-finished sync.
+   */
+  async findForSale(id: Plan['id']): Promise<NullableType<Plan>> {
+    const plan = await this.findById(id);
+    if (!plan || plan.isLocalInventory) return plan;
+    const price = Number(plan.price ?? 0);
+    const cost = Number(plan.costPrice ?? 0);
+    if (cost > 0 && price <= cost) {
+      this.logger.warn(
+        `Plan ${id} priced at cost (${price}) when ordered; repricing`,
+      );
+      await this.repricePlans([id]);
+      return this.findById(id);
+    }
+    return plan;
   }
 
   async updateVndPrices(): Promise<void> {

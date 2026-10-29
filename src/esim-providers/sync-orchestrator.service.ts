@@ -9,6 +9,7 @@ import { BillionService } from './billion/billion.service';
 import { PlansService } from '../plans/plans.service';
 import { ProfitMarginsService } from '../profit-margins/profit-margins.service';
 import { ProviderSalesStatusEntity } from '../providers/infrastructure/persistence/relational/entities/provider-sales-status.entity';
+import { FullSyncRunEntity } from './entities/full-sync-run.entity';
 
 /** Where the full catalogue sync stands, for the CMS (doitac-1410 #074). */
 export interface FullSyncStatus {
@@ -19,6 +20,25 @@ export interface FullSyncStatus {
   /** Suppliers whose call failed in the last run, with the reason. */
   errors: string[];
 }
+
+/** One past run for the CMS list (vande #078). */
+export interface FullSyncRunView {
+  id: number;
+  startedAt: Date;
+  finishedAt: Date | null;
+  /** Whole seconds, null while the run is still going. */
+  durationSeconds: number | null;
+  /** "Hệ thống" for the scheduled run, else the admin's name or email. */
+  startedBy: string;
+  errors: string[];
+}
+
+/** Error recorded for a run the server restarted in the middle of. */
+export const INTERRUPTED_RUN =
+  'Bị dừng giữa chừng (máy chủ khởi động lại khi đang cập nhật)';
+
+/** How many runs the history keeps and shows (vande #078). */
+export const FULL_SYNC_HISTORY_SIZE = 5;
 
 @Injectable()
 export class SyncOrchestratorService implements OnModuleInit {
@@ -41,10 +61,27 @@ export class SyncOrchestratorService implements OnModuleInit {
     private readonly profitMarginsService: ProfitMarginsService,
     @InjectRepository(ProviderSalesStatusEntity)
     private readonly salesStatus: Repository<ProviderSalesStatusEntity>,
+    @InjectRepository(FullSyncRunEntity)
+    private readonly runs: Repository<FullSyncRunEntity>,
   ) {}
 
   async onModuleInit(): Promise<void> {
     // await this.runFullSync();
+
+    // A run the server was restarted in the middle of (a deploy, a crash)
+    // would read "Đang chạy…" in the history for ever (vande #078).
+    try {
+      await this.runs.query(
+        `UPDATE "full_sync_run"
+            SET "finishedAt" = now(), "errors" = $1::jsonb
+          WHERE "finishedAt" IS NULL`,
+        [JSON.stringify([INTERRUPTED_RUN])],
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not close interrupted sync runs: ${(err as Error).message}`,
+      );
+    }
   }
 
   getStatus(): FullSyncStatus {
@@ -56,18 +93,24 @@ export class SyncOrchestratorService implements OnModuleInit {
    * now. It runs in the background — calling every supplier takes minutes —
    * and a run already under way is not started a second time.
    */
-  startManualSync(): { started: boolean; status: FullSyncStatus } {
+  startManualSync(adminId?: number | null): {
+    started: boolean;
+    status: FullSyncStatus;
+  } {
     if (this.status.running) {
       return { started: false, status: this.getStatus() };
     }
-    void this.runFullSync('manual').catch((err: Error) =>
+    void this.runFullSync('manual', adminId ?? null).catch((err: Error) =>
       this.logger.error(`Manual full sync failed: ${err.message}`),
     );
     return { started: true, status: this.getStatus() };
   }
 
   @Cron('0 */6 * * *')
-  async runFullSync(trigger: 'cron' | 'manual' = 'cron'): Promise<void> {
+  async runFullSync(
+    trigger: 'cron' | 'manual' = 'cron',
+    adminId: number | null = null,
+  ): Promise<void> {
     // One run at a time: a manual run must not overlap the scheduled one.
     if (this.status.running) {
       this.logger.warn(
@@ -82,10 +125,92 @@ export class SyncOrchestratorService implements OnModuleInit {
       finishedAt: null,
       errors: [],
     };
+    const run = await this.recordStart(trigger, adminId);
     try {
       await this.syncEverything();
     } finally {
       this.status = { ...this.status, running: false, finishedAt: new Date() };
+      await this.recordFinish(run);
+    }
+  }
+
+  /** The latest runs, newest first, with who started them (vande #078). */
+  async getHistory(): Promise<FullSyncRunView[]> {
+    const rows: (FullSyncRunEntity & {
+      firstName: string | null;
+      lastName: string | null;
+      email: string | null;
+    })[] = await this.runs.query(
+      `SELECT r.*, u."firstName", u."lastName", u."email"
+         FROM "full_sync_run" r
+         LEFT JOIN "user" u ON u.id = r."adminId"
+        ORDER BY r."startedAt" DESC, r.id DESC
+        LIMIT $1`,
+      [FULL_SYNC_HISTORY_SIZE],
+    );
+    return rows.map((row) => {
+      const name = [row.firstName, row.lastName].filter(Boolean).join(' ');
+      const startedAt = new Date(row.startedAt);
+      const finishedAt = row.finishedAt ? new Date(row.finishedAt) : null;
+      return {
+        id: Number(row.id),
+        startedAt,
+        finishedAt,
+        durationSeconds: finishedAt
+          ? Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000)
+          : null,
+        startedBy:
+          row.trigger === 'cron'
+            ? 'Hệ thống'
+            : name ||
+              row.email ||
+              (row.adminId ? `Admin #${row.adminId}` : 'Admin'),
+        errors: row.errors ?? [],
+      };
+    });
+  }
+
+  /** A history row for this run; a failed write never stops the sync. */
+  private async recordStart(
+    trigger: 'cron' | 'manual',
+    adminId: number | null,
+  ): Promise<FullSyncRunEntity | null> {
+    try {
+      return await this.runs.save(
+        this.runs.create({
+          trigger,
+          adminId,
+          startedAt: this.status.startedAt ?? new Date(),
+          finishedAt: null,
+          errors: [],
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not record the sync start: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  /** Close the run's row and keep only the latest runs. */
+  private async recordFinish(run: FullSyncRunEntity | null): Promise<void> {
+    if (!run) return;
+    try {
+      await this.runs.update(run.id, {
+        finishedAt: this.status.finishedAt ?? new Date(),
+        errors: this.status.errors,
+      });
+      await this.runs.query(
+        `DELETE FROM "full_sync_run" WHERE id NOT IN (
+           SELECT id FROM "full_sync_run" ORDER BY "startedAt" DESC, id DESC LIMIT $1
+         )`,
+        [FULL_SYNC_HISTORY_SIZE],
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not record the sync end: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -120,6 +245,9 @@ export class SyncOrchestratorService implements OnModuleInit {
         this.status.errors.push(`${label}: ${error.message}`);
       }
     }
+
+    // Whatever the last supplier left half a batch of (vande #078).
+    await this.plansService.flushSyncedPlans();
 
     this.logger.log('Recalculating prices by tiers...');
     await this.profitMarginsService.recalculateAllPlanPrices();

@@ -387,7 +387,7 @@ export class EsimAccessService {
     );
 
     const costPrice = pkg.price / 10000;
-    // During sync, set price = costPrice (no profit).
+    // `price` here is only the cost; saveSyncedPlan prices the plan (#078).
     // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
     const price = costPrice;
     const planData = {
@@ -432,11 +432,8 @@ export class EsimAccessService {
       isActive: true,
     };
 
-    if (existing) {
-      return this.plansService.update(existing.id, planData);
-    }
-
-    return this.plansService.create({
+    // Priced as it is written, never left at cost mid-sync (vande #078).
+    return this.plansService.saveSyncedPlan(existing?.id, {
       ...planData,
       slug,
     });

@@ -4,6 +4,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -31,9 +32,19 @@ export class FullSyncController {
     return this.orchestrator.getStatus();
   }
 
+  /** The latest runs with start, end, duration and who ran them (#078). */
+  @Get('history')
+  @HttpCode(HttpStatus.OK)
+  history() {
+    return this.orchestrator.getHistory();
+  }
+
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
-  start() {
-    return this.orchestrator.startManualSync();
+  start(@Request() request: { user?: { id?: number | string } }) {
+    const adminId = Number(request.user?.id);
+    return this.orchestrator.startManualSync(
+      Number.isFinite(adminId) ? adminId : null,
+    );
   }
 }

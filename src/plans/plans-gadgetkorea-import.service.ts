@@ -286,7 +286,7 @@ export class PlansGadgetkoreaImportService {
             this.getNumber(row.getCell(COL.B2B_PRICE).value) ?? 0;
           const retailPrice =
             this.getNumber(row.getCell(COL.NORMAL_PRICE).value) ?? 0;
-          // During import, set price = costPrice (no profit).
+          // `price` here is only the cost; saveSyncedPlan prices the plan (#078).
           // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
           const price = costPrice;
 
@@ -363,13 +363,10 @@ export class PlansGadgetkoreaImportService {
           };
 
           const existing = await this.plansService.findBySlug(slug);
-          if (existing) {
-            await this.plansService.update(existing.id, planData);
-            result.updated++;
-          } else {
-            await this.plansService.create(planData);
-            result.created++;
-          }
+          // Priced as it is written, never left at cost (vande #078).
+          await this.plansService.saveSyncedPlan(existing?.id, planData);
+          if (existing) result.updated++;
+          else result.created++;
         } catch (error: any) {
           result.skipped++;
           result.errors.push({
@@ -383,6 +380,8 @@ export class PlansGadgetkoreaImportService {
       }
     }
 
+    // Price the last imported plans before ranking them (vande #078).
+    await this.plansService.flushSyncedPlans();
     await this.plansService.markCheapestPlans();
     await this.plansService.updateVndPrices();
 

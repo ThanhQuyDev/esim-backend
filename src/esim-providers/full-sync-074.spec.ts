@@ -25,12 +25,20 @@ function buildService(
     microEsim: { syncPlans: step('microesim') },
     billion: { syncPlans: step('billion') },
     plans: {
+      flushSyncedPlans: jest.fn().mockResolvedValue(undefined),
       updateVndPrices: step('vnd'),
       markCheapestPlans: step('cheapest'),
       refreshProviders: step('refresh'),
       refreshStandardNames: step('names'),
     },
     margins: { recalculateAllPlanPrices: step('margins') },
+    // Run history (vande #078).
+    runs: {
+      create: jest.fn((row: object) => row),
+      save: jest.fn((row: object) => Promise.resolve({ id: 1, ...row })),
+      update: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue([]),
+    },
     // Rows of "Ngưng bán" (#005); the query asks for isEnabled = false.
     salesStatus: {
       find: jest.fn().mockResolvedValue(
@@ -49,6 +57,7 @@ function buildService(
     deps.plans as never,
     deps.margins as never,
     deps.salesStatus as never,
+    deps.runs as never,
   );
   return { service, order, deps };
 }

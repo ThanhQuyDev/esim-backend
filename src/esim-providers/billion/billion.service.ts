@@ -552,10 +552,8 @@ export class BillionService {
       isActive: true,
     };
 
-    if (existing) {
-      return this.plansService.update(existing.id, planData);
-    }
-    return this.plansService.create(planData);
+    // Priced as it is written, never left at cost mid-sync (vande #078).
+    return this.plansService.saveSyncedPlan(existing?.id, planData);
   }
 
   private formatHotSpotAllow(type: string, dataMb: number): string | null {

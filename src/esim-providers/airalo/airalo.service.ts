@@ -281,7 +281,7 @@ export class AiraloService {
     const existing = await this.plansService.findBySlug(slug);
 
     const costPrice = pkg.net_price;
-    // During sync, set price = costPrice (no profit).
+    // `price` here is only the cost; saveSyncedPlan prices the plan (#078).
     // Tier-based profit recalculation happens separately via recalculateAllPlanPrices().
     const price = costPrice;
 
@@ -344,11 +344,8 @@ export class AiraloService {
       isActive: true,
     };
 
-    if (existing) {
-      return this.plansService.update(existing.id, planData);
-    }
-
-    return this.plansService.create({
+    // Priced as it is written, never left at cost mid-sync (vande #078).
+    return this.plansService.saveSyncedPlan(existing?.id, {
       ...planData,
       slug,
     });

@@ -20,6 +20,7 @@ import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
 import { OrdersModule } from '../orders/orders.module';
 import { ProviderSalesStatusEntity } from '../providers/infrastructure/persistence/relational/entities/provider-sales-status.entity';
+import { FullSyncRunEntity } from './entities/full-sync-run.entity';
 
 @Module({
   // "Cập nhật lại toàn bộ sản phẩm" (doitac-1410 #074).
@@ -27,8 +28,9 @@ import { ProviderSalesStatusEntity } from '../providers/infrastructure/persisten
   imports: [
     ScheduleModule.forRoot(),
     HttpModule,
-    // Read by the full sync, to leave switched-off suppliers alone (#005).
-    TypeOrmModule.forFeature([ProviderSalesStatusEntity]),
+    // Read by the full sync, to leave switched-off suppliers alone (#005);
+    // its run history (vande #078).
+    TypeOrmModule.forFeature([ProviderSalesStatusEntity, FullSyncRunEntity]),
     PlansModule,
     DestinationsModule,
     RegionsModule,

@@ -26,6 +26,11 @@ import {
  */
 export const EFFECTIVE_COST_SQL = `("costPrice" * (1 + COALESCE((SELECT s."percentage" FROM "provider_surcharge" s WHERE s."provider" = "plan"."provider"), 0) / 100))`;
 
+/** `AND id = ANY($1)` for a statement whose only parameter is the id list. */
+function onlyIds(ids: Plan['id'][]): { sql: string; params: unknown[] } {
+  return { sql: ` AND "id" = ANY($1::int[])`, params: [ids.map(Number)] };
+}
+
 @Injectable()
 export class PlansRelationalRepository implements PlanRepository {
   constructor(
@@ -467,10 +472,16 @@ export class PlansRelationalRepository implements PlanRepository {
       fixedAmountVnd?: number;
     }>,
     exchangeRate?: number,
+    ids?: Plan['id'][],
   ): Promise<void> {
+    // Only these plans when given: a supplier sync prices each plan the moment
+    // it writes the new cost, so the shop never shows the bare cost (vande #078).
+    const only = ids ? onlyIds(ids) : { sql: '', params: [] };
+    if (ids && !ids.length) return;
     if (tiers.length === 0) {
       await this.plansRepository.query(
-        `UPDATE "plan" SET "price" = ROUND(${EFFECTIVE_COST_SQL} * 100) / 100 WHERE "deletedAt" IS NULL`,
+        `UPDATE "plan" SET "price" = ROUND(${EFFECTIVE_COST_SQL} * 100) / 100 WHERE "deletedAt" IS NULL${only.sql}`,
+        only.params,
       );
       return;
     }
@@ -499,7 +510,16 @@ export class PlansRelationalRepository implements PlanRepository {
     caseExpr += `ELSE ROUND(${cost} * 100) / 100 END`;
 
     await this.plansRepository.query(
-      `UPDATE "plan" SET "price" = ${caseExpr} WHERE "deletedAt" IS NULL`,
+      `UPDATE "plan" SET "price" = ${caseExpr} WHERE "deletedAt" IS NULL${only.sql}`,
+      only.params,
+    );
+  }
+
+  async setActive(ids: Plan['id'][], isActive: boolean): Promise<void> {
+    if (!ids.length) return;
+    await this.plansRepository.query(
+      `UPDATE "plan" SET "isActive" = $1 WHERE "id" = ANY($2::int[])`,
+      [isActive, ids.map(Number)],
     );
   }
 
@@ -576,8 +596,13 @@ export class PlansRelationalRepository implements PlanRepository {
    * (25887.097637) was rejected and the whole method threw. The caller logs and
    * swallows that, which made the failure invisible.
    */
-  async updateAllVndPrices(rate: number): Promise<void> {
+  async updateAllVndPrices(rate: number, ids?: Plan['id'][]): Promise<void> {
     if (!(rate > 0)) return;
+    if (ids && !ids.length) return;
+    // $1 is the rate, so the id list is $2.
+    const only = ids
+      ? { sql: ` AND "id" = ANY($2::int[])`, params: [ids.map(Number)] }
+      : { sql: '', params: [] };
 
     const DONG_QUOTED = `("isLocalInventory" = true OR "currency" = 'VND')`;
     const DOLLAR_QUOTED = `("isLocalInventory" IS NOT TRUE AND "currency" <> 'VND')`;
@@ -593,8 +618,8 @@ export class PlansRelationalRepository implements PlanRepository {
          "usdPrice" = "price",
          "usdCostPrice" = ROUND(${EFFECTIVE_COST_SQL}::numeric, 2),
          "usdRetailPrice" = "retailPrice"
-       WHERE "deletedAt" IS NULL AND ${DOLLAR_QUOTED}`,
-      [rate],
+       WHERE "deletedAt" IS NULL AND ${DOLLAR_QUOTED}${only.sql}`,
+      [rate, ...only.params],
     );
 
     // Đồng-quoted: dollars are the derived side. Without this, a Viettel plan
@@ -609,8 +634,8 @@ export class PlansRelationalRepository implements PlanRepository {
          "usdPrice" = ROUND("price"::numeric / $1::numeric, 2),
          "usdCostPrice" = ROUND(${EFFECTIVE_COST_SQL}::numeric / $1::numeric, 2),
          "usdRetailPrice" = ROUND("retailPrice"::numeric / $1::numeric, 2)
-       WHERE "deletedAt" IS NULL AND ${DONG_QUOTED}`,
-      [rate],
+       WHERE "deletedAt" IS NULL AND ${DONG_QUOTED}${only.sql}`,
+      [rate, ...only.params],
     );
   }
 
