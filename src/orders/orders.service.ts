@@ -1097,9 +1097,11 @@ export class OrdersService {
         userId,
       );
       couponCode = dto.couponCode.toUpperCase();
-      couponDiscountVndAmount = roundVndToThousands(
-        couponResult.discountAmount,
-      );
+      // To the đồng, not the thousand (vande #080): 5% of 2,145,000 is
+      // 107,250, and rounding it to 107,000 charged the customer 250đ more,
+      // paid the partner 250đ more and left every line's net price off by an
+      // odd few đồng (684,084 instead of 684,000) once shared out per line.
+      couponDiscountVndAmount = Math.round(couponResult.discountAmount);
       // Derive the USD discount from the share actually taken off, not the
       // coupon's configured percentage: a capped or flat-amount code (#082)
       // is no longer described by that number, and the two currencies would
