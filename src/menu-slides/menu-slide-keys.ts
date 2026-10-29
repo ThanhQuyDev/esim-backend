@@ -13,6 +13,8 @@ export const MENU_SLIDE_KEYS = [
   'product',
   'resources',
   'offers',
+  // "Đối tác", the menu added for partners (doitac-1410 #014, vande #082).
+  'partners',
   'help',
 ] as const;
 
