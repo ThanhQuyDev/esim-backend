@@ -1,7 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsDateString,
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
@@ -10,12 +14,16 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import {
   ANNOUNCEMENT_AUDIENCES,
   ANNOUNCEMENT_PERIODS,
+  ANNOUNCEMENT_TARGETS,
+  MAX_ANNOUNCEMENT_EMAILS,
   type AnnouncementAudience,
   type AnnouncementPeriod,
+  type AnnouncementTarget,
 } from './announcement-window';
 
 /** Who an announcement goes to (vande #072). */
@@ -30,7 +38,29 @@ export class AnnouncementAudienceDto {
 }
 
 /** "Soạn thông báo gửi khách hàng" (vande #072). */
-export class CreateCustomerAnnouncementDto extends AnnouncementAudienceDto {
+export class CreateCustomerAnnouncementDto {
+  /** A customer group, or `emails` for the addresses typed in (vande #087). */
+  @ApiProperty({ enum: ANNOUNCEMENT_TARGETS, example: 'purchased' })
+  @IsIn(ANNOUNCEMENT_TARGETS)
+  audience!: AnnouncementTarget;
+
+  /** Read with a group only; `emails` ignores it. */
+  @ApiProperty({ enum: ANNOUNCEMENT_PERIODS, example: 'last_30_days' })
+  @IsIn(ANNOUNCEMENT_PERIODS)
+  period!: AnnouncementPeriod;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['khach@example.com'],
+    description: 'audience "emails" only: who gets it (vande #087).',
+  })
+  @ValidateIf((o: CreateCustomerAnnouncementDto) => o.audience === 'emails')
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Nhập ít nhất 1 email.' })
+  @ArrayMaxSize(MAX_ANNOUNCEMENT_EMAILS)
+  @IsEmail({}, { each: true, message: 'Email không hợp lệ: $value' })
+  emails?: string[];
+
   @ApiProperty({ example: 'Ưu đãi eSIM tháng 11' })
   @IsString()
   @MinLength(3, { message: 'Tiêu đề cần ít nhất 3 ký tự.' })

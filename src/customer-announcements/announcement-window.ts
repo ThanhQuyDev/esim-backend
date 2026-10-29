@@ -28,6 +28,31 @@ export type AnnouncementPeriod = (typeof ANNOUNCEMENT_PERIODS)[number];
 export const ANNOUNCEMENT_AUDIENCES = ['new', 'purchased', 'failed'] as const;
 export type AnnouncementAudience = (typeof ANNOUNCEMENT_AUDIENCES)[number];
 
+/**
+ * Who an announcement is sent to: one of the groups above, or `emails` — the
+ * addresses the admin typed in, whatever group they are in or even without an
+ * account (vande #087).
+ */
+export const ANNOUNCEMENT_TARGETS = [
+  ...ANNOUNCEMENT_AUDIENCES,
+  'emails',
+] as const;
+export type AnnouncementTarget = (typeof ANNOUNCEMENT_TARGETS)[number];
+
+/** Most addresses one announcement may be typed in with. */
+export const MAX_ANNOUNCEMENT_EMAILS = 1000;
+
+/** The typed-in addresses, trimmed, lower-cased and each only once. */
+export function normalizeAnnouncementEmails(
+  emails: readonly string[],
+): string[] {
+  return [
+    ...new Set(
+      emails.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0),
+    ),
+  ];
+}
+
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

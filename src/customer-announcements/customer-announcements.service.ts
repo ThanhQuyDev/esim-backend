@@ -12,6 +12,8 @@ import { RoleEnum } from '../roles/roles.enum';
 import {
   announcementWindow,
   type AnnouncementAudience,
+  type AnnouncementTarget,
+  normalizeAnnouncementEmails,
   type AnnouncementPeriod,
 } from './announcement-window';
 import { CreateCustomerAnnouncementDto } from './customer-announcement.dto';
@@ -27,8 +29,10 @@ export type CustomerAnnouncementRow = {
   id: number;
   subject: string;
   body: string;
-  audience: AnnouncementAudience;
+  audience: AnnouncementTarget;
   period: AnnouncementPeriod;
+  /** audience `emails`: the addresses typed in (vande #087). */
+  emails: string[] | null;
   intervalSec: number;
   scheduledAt: Date;
   status: 'scheduled' | 'sending' | 'sent' | 'cancelled';
@@ -146,16 +150,23 @@ export class CustomerAnnouncementsService {
       throw new BadRequestException('Vui lòng nhập nội dung thông báo.');
     }
     const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
+    const emails =
+      dto.audience === 'emails'
+        ? normalizeAnnouncementEmails(dto.emails ?? [])
+        : null;
+    if (emails && !emails.length) {
+      throw new BadRequestException('Nhập ít nhất 1 email.');
+    }
     if (scheduledAt && scheduledAt.getTime() < Date.now() - 60_000) {
       throw new BadRequestException('Thời gian đặt lịch phải ở tương lai.');
     }
     const [row] = (await this.dataSource.query(
       `INSERT INTO customer_announcement
               (subject, body, audience, period, "intervalSec", "scheduledAt",
-               status, "createdByAdminId", "createdByName")
+               status, "createdByAdminId", "createdByName", emails)
        VALUES ($1, $2, $3, $4, $5,
                COALESCE($6::timestamptz, now()),
-               'scheduled', $7, $8)
+               'scheduled', $7, $8, $9::text[])
        RETURNING *`,
       [
         dto.subject.trim(),
@@ -166,6 +177,7 @@ export class CustomerAnnouncementsService {
         scheduledAt?.toISOString() ?? null,
         admin.id,
         admin.name ?? null,
+        emails,
       ],
     )) as CustomerAnnouncementRow[];
     // Sent now: start straight away rather than at the next tick.
@@ -221,26 +233,44 @@ export class CustomerAnnouncementsService {
   private async startDue(): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       const [due] = (await manager.query(
-        `SELECT id, audience, period FROM customer_announcement
+        `SELECT id, audience, period, emails FROM customer_announcement
           WHERE status = 'scheduled' AND "scheduledAt" <= now()
           ORDER BY "scheduledAt" LIMIT 1
           FOR UPDATE SKIP LOCKED`,
       )) as {
         id: number;
-        audience: AnnouncementAudience;
+        audience: AnnouncementTarget;
         period: AnnouncementPeriod;
+        emails: string[] | null;
       }[];
       if (!due) return;
-      const [from, to] = this.windowParams(due.period);
-      await manager.query(
-        `INSERT INTO customer_announcement_recipient
-                ("announcementId", "userId", email, name)
-         SELECT DISTINCT ON (a.email) $3::int, a."userId", a.email, a.name
-           FROM (${audienceSql(due.audience)}) a
-          ORDER BY a.email
-         ON CONFLICT ("announcementId", email) DO NOTHING`,
-        [from, to, due.id],
-      );
+      if (due.audience === 'emails') {
+        // The addresses typed in (vande #087): the account's name when there
+        // is one, and sent all the same when there is not.
+        await manager.query(
+          `INSERT INTO customer_announcement_recipient
+                  ("announcementId", "userId", email, name)
+           SELECT DISTINCT ON (e.email) $1::int, u.id, e.email,
+                  NULLIF(trim(concat_ws(' ', u."firstName", u."lastName")), '')
+             FROM unnest($2::text[]) AS e(email)
+             LEFT JOIN "user" u
+               ON lower(u.email) = e.email AND u."deletedAt" IS NULL
+            ORDER BY e.email, u.id
+           ON CONFLICT ("announcementId", email) DO NOTHING`,
+          [due.id, normalizeAnnouncementEmails(due.emails ?? [])],
+        );
+      } else {
+        const [from, to] = this.windowParams(due.period);
+        await manager.query(
+          `INSERT INTO customer_announcement_recipient
+                  ("announcementId", "userId", email, name)
+           SELECT DISTINCT ON (a.email) $3::int, a."userId", a.email, a.name
+             FROM (${audienceSql(due.audience)}) a
+            ORDER BY a.email
+           ON CONFLICT ("announcementId", email) DO NOTHING`,
+          [from, to, due.id],
+        );
+      }
       await manager.query(
         `UPDATE customer_announcement
             SET status = 'sending', "startedAt" = now(),
