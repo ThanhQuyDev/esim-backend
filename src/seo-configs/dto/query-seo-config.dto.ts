@@ -22,6 +22,15 @@ export class FilterSeoConfigDto {
   @IsString()
   search?: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'The one CMS search box (vande #084): URL, Meta Title or Meta Description.',
+  })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
   /**
    * Substring of the meta title (#048). Separate from {@link search}, which
    * matches the URL only: searching "destination" there used to return

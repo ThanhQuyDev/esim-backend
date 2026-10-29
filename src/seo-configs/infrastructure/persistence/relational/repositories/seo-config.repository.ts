@@ -97,9 +97,20 @@ export class SeoConfigsRelationalRepository implements SeoConfigRepository {
     // title/description surfaced unrelated pages whose copy merely contained
     // the word — searching "destination" returned "/en/home".
     const search = filterOptions?.search?.trim();
-    const where: FindOptionsWhere<SeoConfigEntity> = search
-      ? { ...baseWhere, url: ILike(`%${search}%`) }
-      : baseWhere;
+    // The CMS list has one search box now (vande #084): it finds a config by
+    // its URL or by the words of its Meta Title / Description.
+    const q = filterOptions?.q?.trim();
+    const where:
+      | FindOptionsWhere<SeoConfigEntity>
+      | FindOptionsWhere<SeoConfigEntity>[] = q
+      ? [
+          { ...baseWhere, url: ILike(`%${q}%`) },
+          { ...baseWhere, metaTitle: ILike(`%${q}%`) },
+          { ...baseWhere, metaDescription: ILike(`%${q}%`) },
+        ]
+      : search
+        ? { ...baseWhere, url: ILike(`%${search}%`) }
+        : baseWhere;
 
     const [entities, count] = await this.seoConfigsRepository.findAndCount({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
