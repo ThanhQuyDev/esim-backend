@@ -20,6 +20,16 @@ import {
   BillionTopupOffer,
 } from '../esim-providers/billion/billion.service';
 import { parseBillionPlanId } from '../esim-providers/billion/billion-catalogue';
+import {
+  BILLION_ADDON_DAY_TYPES,
+  BILLION_ADDON_KIND,
+  BILLION_ADDON_LABEL,
+  billionAddonCopies,
+  billionAddonData,
+  billionAddonPackageId,
+  parseBillionAddonPackageId,
+  planTakesAddons,
+} from './billion-addon';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { AiraloTopupPackage } from '../esim-providers/airalo/airalo-api.types';
 import { EsimAccessPackage } from '../esim-providers/esimaccess/esimaccess-api.types';
@@ -97,6 +107,13 @@ const TOPUP_DB_CATALOGUE_PROVIDERS: ReadonlySet<TopupProvider> = new Set([
   TopupProvider.BILLION,
   TopupProvider.MICRO_ESIM,
 ]);
+
+/** How an add-on is named on the order (vande #081). */
+const ADDON_KIND_LABEL: Record<'boost' | 'upgrade' | 'extra', string> = {
+  boost: BILLION_ADDON_LABEL['0'],
+  upgrade: BILLION_ADDON_LABEL['1'],
+  extra: BILLION_ADDON_LABEL['2'],
+};
 
 /** Package ids of Billion recharge products from F052 (doitac-1410 #064). */
 const BILLION_TOPUP_PACKAGE_PREFIX = 'billion:';
@@ -344,6 +361,9 @@ export class TopupService {
       packages = await Promise.all(
         offers.map((offer) => this.mapBillionOffer(offer, vndRate)),
       );
+      // Data on top of the current plan (vande #081). Never blocks the
+      // top-ups above: an add-on Billion cannot list is just not offered.
+      packages.push(...(await this.listBillionAddons(esim, vndRate)));
     } else {
       // GADGET_KOREA / MICRO_ESIM — these providers have no "topups eligible
       // for this SIM" API, so we offer topup plans from our own `plan` table,
@@ -444,7 +464,10 @@ export class TopupService {
       topupPackageId: dto.packageId,
       // Snapshot of what the package gave: the provider catalogue changes, the
       // order must not (#015).
-      topupPackageName: pkg.name ?? null,
+      topupPackageName:
+        pkg.kind === 'addon' && pkg.addonKind
+          ? `Mua thêm dung lượng (${ADDON_KIND_LABEL[pkg.addonKind]}) – ${pkg.name}`
+          : (pkg.name ?? null),
       topupDataText: pkg.dataAmountText ?? null,
       topupDurationDays: pkg.durationDays ?? null,
       topupIsUnlimited: !!pkg.isUnlimited,
@@ -704,6 +727,19 @@ export class TopupService {
     }
 
     try {
+      // Data bought on top of the current plan (vande #081): F016, not F007.
+      const addon = parseBillionAddonPackageId(packageId);
+      if (provider === TopupProvider.BILLION && addon) {
+        await this.submitBillionAddon(orderNumber, iccid, addon);
+        await this.orderRepository.update(order.id, {
+          status: TOPUP_ORDER_STATUS.COMPLETED,
+        });
+        this.logger.log(
+          `Add-on executed successfully: orderNumber=${orderNumber} provider=${provider}`,
+        );
+        return;
+      }
+
       // `packageId` is our own id for DB-catalogued providers; translate it to
       // whatever the provider expects before calling out.
       const providerPackageId = await this.resolveProviderPackageId(
@@ -864,15 +900,147 @@ export class TopupService {
     return plan.providerPlanId;
   }
 
+  /**
+   * What a Billion eSIM can buy on top of its plan (F015, vande #081), priced
+   * with our margin tiers on its cost like every top-up. Only for an activated
+   * eSIM whose plan takes add-ons (accelerationSupport 2 or 3) — Billion sells
+   * nothing before activation.
+   */
+  private async listBillionAddons(
+    esim: {
+      id: number;
+      iccid: string;
+      planId?: number | null;
+      activatedAt?: Date | null;
+    },
+    vndRate: number | null,
+  ): Promise<TopupPackageDto[]> {
+    try {
+      if (!esim.activatedAt || !esim.planId) return [];
+      const plan = await this.plansService.findById(esim.planId);
+      if (!plan?.providerPlanId || !planTakesAddons(plan.accelerationSupport)) {
+        return [];
+      }
+      const orderId = await this.resolveProviderOrderRef(esim.id);
+      if (!orderId) return [];
+      const originalDays =
+        Number(plan.durationDays) ||
+        parseBillionPlanId(plan.providerPlanId).copies;
+      const activatedAt = new Date(esim.activatedAt);
+      const [hkdToUsd, perType] = await Promise.all([
+        this.billionService.hkdToUsdRate(),
+        Promise.all(
+          BILLION_ADDON_DAY_TYPES.map((dayType) =>
+            this.billionService
+              .listAccelerationOffers({ orderId, iccid: esim.iccid, dayType })
+              .then((skus) => ({ dayType, skus }))
+              .catch((err: Error) => {
+                this.logger.warn(
+                  `Billion add-ons (F015 dayType=${dayType}) for ${esim.iccid}: ${err.message}`,
+                );
+                return { dayType, skus: [] };
+              }),
+          ),
+        ),
+      ]);
+      const rate = vndRate ?? FALLBACK_USD_VND_RATE;
+      const packages: TopupPackageDto[] = [];
+      for (const { dayType, skus } of perType) {
+        const copies = billionAddonCopies({
+          dayType,
+          originalDays,
+          activatedAt,
+        });
+        if (!copies) continue;
+        for (const sku of skus) {
+          const unit = Number(sku.settlementPrice);
+          if (!(unit > 0)) continue;
+          const costUsd = Math.round(unit * copies * hkdToUsd * 10000) / 10000;
+          const vndPrice =
+            await this.profitMarginsService.calculateRetailVndFromCostUsd(
+              costUsd,
+              rate,
+            );
+          const { bytes, perDay } = billionAddonData(sku);
+          const dataText = bytes > 0 ? formatDataLabel(bytes) : sku.name;
+          packages.push({
+            provider: TopupProvider.BILLION,
+            packageId: billionAddonPackageId(dayType, sku.skuId, copies),
+            providerPackageId: sku.skuId,
+            name: sku.name,
+            dataAmountBytes: bytes * (perDay ? copies : 1),
+            dataAmountText: perDay ? `${dataText}/ngày` : dataText,
+            durationDays: copies,
+            isUnlimited: false,
+            price: costUsd,
+            retailPrice: Math.round((vndPrice / rate) * 100) / 100,
+            vndPrice,
+            kind: 'addon',
+            addonKind: BILLION_ADDON_KIND[dayType],
+          });
+        }
+      }
+      return packages;
+    } catch (err) {
+      this.logger.warn(
+        `Billion add-ons for ${esim.iccid} not listed: ${(err as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Buy a Billion add-on (F016, vande #081). The price per copy is read again
+   * from F015 — it is what Billion bills — and the order refused when the
+   * package is gone.
+   */
+  private async submitBillionAddon(
+    orderNumber: string,
+    iccid: string,
+    addon: NonNullable<ReturnType<typeof parseBillionAddonPackageId>>,
+  ): Promise<void> {
+    const esim = await this.esimsService.findByIccid(iccid);
+    if (!esim) throw new Error(`eSIM ${iccid} not found`);
+    const plan = esim.planId
+      ? await this.plansService.findById(esim.planId)
+      : null;
+    if (!plan?.providerPlanId) {
+      throw new Error(`eSIM ${iccid} has no Billion plan to add data to`);
+    }
+    const originalOrderId = await this.resolveProviderOrderRef(esim.id);
+    if (!originalOrderId) {
+      throw new Error(`eSIM ${iccid} has no Billion order id (F040)`);
+    }
+    const skus = await this.billionService.listAccelerationOffers({
+      orderId: originalOrderId,
+      iccid,
+      dayType: addon.dayType,
+    });
+    const sku = skus.find((s) => s.skuId === addon.skuId);
+    if (!sku) {
+      throw new Error(
+        `Billion no longer offers add-on ${addon.skuId} (${BILLION_ADDON_LABEL[addon.dayType]}) for ${iccid}`,
+      );
+    }
+    await this.billionService.submitAcceleration({
+      originalOrderId,
+      originalSkuId: parseBillionPlanId(plan.providerPlanId).skuId,
+      channelOrderId: `${orderNumber}-acc`,
+      channelSubOrderId: `${orderNumber}-acc-1`,
+      iccid,
+      skuId: sku.skuId,
+      copies: addon.copies,
+      settlementPrice: sku.settlementPrice,
+      dayType: addon.dayType,
+    });
+  }
+
   private async resolveProviderOrderRef(
     esimId: number,
   ): Promise<string | null> {
-    const esimWithRelations =
-      await this.esimsService.findByIdWithRelations(esimId);
-    return (
-      (esimWithRelations as { orderItem?: { orderRequestId?: string | null } })
-        ?.orderItem?.orderRequestId ?? null
-    );
+    // Read straight off the order line: `findByIdWithRelations` loads the user
+    // and the plan but not the order item, so this was always null (vande #081).
+    return this.esimsService.findOrderRequestId(esimId);
   }
 
   private async markManualIntervention(

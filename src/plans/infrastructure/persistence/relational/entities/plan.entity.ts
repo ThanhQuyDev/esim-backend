@@ -94,6 +94,10 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isAddOn: boolean;
 
+  /** Billion: data can be bought on top — 0 no, 1 SIM, 2 eSIM, 3 both (vande #081). */
+  @Column({ type: 'smallint', nullable: true })
+  accelerationSupport: number | null;
+
   /** The name under the one naming rule (vande #020); `name` is the supplier's. */
   @Column({ type: String, nullable: true })
   standardName: string | null;

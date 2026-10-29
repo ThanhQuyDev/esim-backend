@@ -145,6 +145,16 @@ export class CreatePlanDto {
   @IsBoolean()
   isAddOn?: boolean;
 
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Billion: data can be bought on top — 0 no, 1 SIM, 2 eSIM, 3 both (vande #081).',
+  })
+  @IsOptional()
+  @IsInt()
+  accelerationSupport?: number | null;
+
   @ApiPropertyOptional({ example: true, type: Boolean })
   @IsOptional()
   @IsBoolean()

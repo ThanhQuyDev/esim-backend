@@ -84,4 +84,18 @@ export class TopupPackageDto {
     description: 'Retail price in VND (rounded). Used to charge OnePay.',
   })
   vndPrice?: number;
+
+  @ApiPropertyOptional({
+    enum: ['topup', 'addon'],
+    description:
+      '"addon" = data bought on top of the current plan (Billion acceleration, vande #081); a top-up otherwise.',
+  })
+  kind?: 'topup' | 'addon';
+
+  @ApiPropertyOptional({
+    enum: ['boost', 'upgrade', 'extra'],
+    description:
+      'Add-on only: boost = high speed for one day, upgrade = bigger plan for the days left, extra = more total data.',
+  })
+  addonKind?: 'boost' | 'upgrade' | 'extra';
 }

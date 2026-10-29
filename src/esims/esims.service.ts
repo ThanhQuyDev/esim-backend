@@ -286,6 +286,14 @@ export class EsimsService {
     return { ...withTopup, plan, topups, chosenDays };
   }
 
+  /**
+   * The supplier's order reference on the eSIM's order line — Billion's F040
+   * `orderId`, MicroEsim's `topup_id` (vande #081).
+   */
+  findOrderRequestId(id: Esim['id']): Promise<string | null> {
+    return this.esimsRepository.findOrderRequestId(id);
+  }
+
   findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {
     return this.esimsRepository.findByIccid(iccid);
   }

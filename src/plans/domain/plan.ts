@@ -81,6 +81,14 @@ export class Plan {
   })
   isAddOn?: boolean;
 
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Billion: data can be bought on top — 0 no, 1 SIM, 2 eSIM, 3 both (vande #081).',
+  })
+  accelerationSupport?: number | null;
+
   @ApiPropertyOptional({ type: String, example: '4G,5G' })
   speed: string | null;
 

@@ -18,6 +18,9 @@ import { UsersService } from '../../users/users.service';
 import { OrdersService } from '../../orders/orders.service';
 import {
   BillionAfterSaleInfo,
+  BillionAccelerationDayType,
+  BillionAccelerationInfo,
+  BillionAccelerationSku,
   BillionApiResponse,
   BillionCreateOrderResult,
   BillionPrice,
@@ -100,6 +103,10 @@ const BILLION_TOPUP_TRADE_TYPE = 'F007';
  * that a given ICCID is eligible to recharge with.
  */
 const BILLION_RECHARGE_COMMODITIES_TRADE_TYPE = 'F052';
+
+/** Query / create an acceleration package (加速包) order (vande #081). */
+const BILLION_ACCELERATION_QUERY_TRADE_TYPE = 'F015';
+const BILLION_ACCELERATION_ORDER_TRADE_TYPE = 'F016';
 
 /** F017 after-sale reasons: 20 = no reason given, 29 = eSIM not downloaded. */
 export type BillionAfterSaleReason = '20' | '29';
@@ -529,6 +536,12 @@ export class BillionService {
       type,
       // A rechargeable eSIM takes topups later (F052 + F007, vande #004).
       topUp: isBillionRechargeableEsim(product),
+      // Whether data can be bought on top later (F015/F016, vande #081).
+      accelerationSupport: /^[0-3]$/.test(
+        String(product.accelerationSupport ?? ''),
+      )
+        ? Number(product.accelerationSupport)
+        : null,
       slug,
       speed: networkSpeed(generations),
       operatorName: uniqueOperators(carriers),
@@ -891,6 +904,81 @@ export class BillionService {
     );
 
     this.logger.log(`BILLION topup submitted: orderId=${result.orderId}`);
+    return result;
+  }
+
+  /**
+   * Acceleration packages this eSIM can buy on top (F015, vande #081) — read
+   * only. `orderId` is Billion's F040 order the eSIM came from. Billion only
+   * answers once the eSIM is activated.
+   */
+  /** HKD to USD, the currency Billion quotes in (vande #081). */
+  hkdToUsdRate(): Promise<number> {
+    return this.exchangeRateService.getHkdToUsdRate();
+  }
+
+  async listAccelerationOffers(params: {
+    orderId: string;
+    iccid: string;
+    dayType: BillionAccelerationDayType;
+  }): Promise<BillionAccelerationSku[]> {
+    const result = await this.invoke<
+      BillionAccelerationInfo[] | BillionAccelerationInfo
+    >(BILLION_ACCELERATION_QUERY_TRADE_TYPE, [
+      {
+        orderId: params.orderId,
+        iccid: params.iccid,
+        dayType: params.dayType,
+        language: '2',
+      },
+    ]);
+    const rows = Array.isArray(result) ? result : result ? [result] : [];
+    return rows.flatMap((row) => row.accelerationSkuList ?? []);
+  }
+
+  /**
+   * Buy an acceleration package for an activated eSIM (F016, vande #081).
+   * `copies`: 1 for a one-day boost (dayType 0); for an upgrade (1) or extra
+   * data (2), the days left on the original plan — "original days − days used
+   * + 1" in Billion's words.
+   */
+  async submitAcceleration(params: {
+    originalOrderId: string;
+    originalSkuId: string;
+    channelOrderId: string;
+    channelSubOrderId: string;
+    iccid: string;
+    skuId: string;
+    copies: number;
+    settlementPrice: string;
+    dayType: BillionAccelerationDayType;
+  }): Promise<BillionCreateOrderResult> {
+    this.logger.log(
+      `Submitting BILLION acceleration (F016): channelOrderId=${params.channelOrderId}, iccid=${params.iccid}, skuId=${params.skuId}, dayType=${params.dayType}, copies=${params.copies}`,
+    );
+    const result = await this.invoke<BillionCreateOrderResult>(
+      BILLION_ACCELERATION_ORDER_TRADE_TYPE,
+      {
+        originalOrderId: params.originalOrderId,
+        originalSaleGoodsId: params.originalSkuId,
+        channelOrderId: params.channelOrderId,
+        orderCreateTime: this.tradeTime(),
+        comment: '',
+        dayType: params.dayType,
+        subOrderList: [
+          {
+            channelSubOrderId: params.channelSubOrderId,
+            iccid: params.iccid,
+            skuId: params.skuId,
+            copies: String(params.copies),
+            settlementPrice: params.settlementPrice,
+          },
+        ],
+      },
+    );
+    this.logger.log(
+      `BILLION acceleration submitted: orderId=${result.orderId}`,
+    );
     return result;
   }
 

@@ -77,6 +77,40 @@ export interface BillionProduct {
   rechargeableProduct?: string | null;
   /** The recharge series it belongs to — F060 gives the series' carrier fee. */
   rechargeableProductSeriesId?: string | null;
+  /**
+   * Whether data can be bought on top later (F015/F016, vande #081):
+   * '0' no, '1' physical SIM only, '2' eSIM only, '3' both.
+   */
+  accelerationSupport?: string | null;
+}
+
+/** F015 dayType: what an acceleration package does (vande #081). */
+export type BillionAccelerationDayType = '0' | '1' | '2';
+
+/** F015 (查询加速包商品) — one package an eSIM can buy on top. */
+export interface BillionAccelerationSku {
+  skuId: string;
+  /** Per copy, in Billion's currency (HKD). */
+  settlementPrice: string;
+  name: string;
+  days?: string;
+  /** '0' total-type / '1' single-day-type. */
+  planType?: string;
+  /** Total data in KB (total-type). */
+  capacity?: string;
+  /** High-speed data per day in KB (single-day-type). */
+  highFlowSize?: string;
+  /** Speed after the high-speed data, kbps. */
+  limitFlowSpeed?: string;
+  hotspotSupport?: string;
+  desc?: string;
+}
+
+/** F015 response — one entry per eSIM asked about. */
+export interface BillionAccelerationInfo {
+  orderId: string;
+  iccid: string;
+  accelerationSkuList?: BillionAccelerationSku[];
 }
 
 /** F060 (查询eSIM复充商品系列列表) — one recharge series. */
