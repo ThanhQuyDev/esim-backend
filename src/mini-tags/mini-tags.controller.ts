@@ -32,6 +32,7 @@ import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('MiniTags')
+// Authors manage these too, beside their blog posts (vande #086).
 @Controller({
   path: 'mini-tags',
   version: '1',
@@ -40,7 +41,7 @@ export class MiniTagsController {
   constructor(private readonly miniTagsService: MiniTagsService) {}
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
@@ -89,7 +90,7 @@ export class MiniTagsController {
   }
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
@@ -105,7 +106,7 @@ export class MiniTagsController {
   }
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({

@@ -34,6 +34,7 @@ import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 @ApiTags('Faqs')
+// Authors manage these too, beside their blog posts (vande #086).
 @Controller({
   path: 'faqs',
   version: '1',
@@ -42,7 +43,7 @@ export class FaqsController {
   constructor(private readonly faqsService: FaqsService) {}
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post()
   @ApiCreatedResponse({
@@ -118,7 +119,7 @@ export class FaqsController {
    * which would otherwise capture "bulk" as an id.
    */
   @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch('bulk/status')
   @ApiOkResponse({ description: 'How many FAQs were updated' })
@@ -127,7 +128,7 @@ export class FaqsController {
   }
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete('bulk')
   @ApiOkResponse({ description: 'How many FAQs were deleted' })
@@ -136,7 +137,7 @@ export class FaqsController {
   }
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch(':id')
   @ApiParam({
@@ -152,7 +153,7 @@ export class FaqsController {
   }
 
   @ApiBearerAuth()
-  @Roles(RoleEnum.admin)
+  @Roles(RoleEnum.admin, RoleEnum.author)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Delete(':id')
   @ApiParam({
