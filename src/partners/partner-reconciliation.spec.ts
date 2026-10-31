@@ -117,7 +117,11 @@ describe('PartnersService.adminListReconciliations (#065)', () => {
       period: 'tháng chín',
     });
 
-    expect(result.period).toBe(new Date().toISOString().slice(0, 7));
+    // The month in Vietnam: on the 1st before 07:00 the UTC month is still
+    // the previous one.
+    expect(result.period).toBe(
+      new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 7),
+    );
   });
 
   it('should cut the period at the calendar month', async () => {

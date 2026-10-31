@@ -236,6 +236,7 @@ describe('PartnersService.createPendingCommissionForOrder — the refusal is rec
 
     await expect(
       service.createPendingCommissionForOrder({
+        paid: true,
         orderId: 1,
         partnerId: 8,
         linkId: 11,
@@ -255,6 +256,7 @@ describe('PartnersService.createPendingCommissionForOrder — the refusal is rec
 
     await expect(
       service.createPendingCommissionForOrder({
+        paid: true,
         orderId: 1,
         partnerId: 8,
         linkId: 11,

@@ -46,6 +46,7 @@ describe('PartnersService — self-referral', () => {
     const { service, commissionRepository } = buildService();
 
     const result = await service.createPendingCommissionForOrder({
+      paid: true,
       orderId: 1,
       partnerId: 5,
       linkId: 2,
@@ -67,6 +68,7 @@ describe('PartnersService — self-referral', () => {
     const { service, commissionRepository } = buildService();
 
     const result = await service.createPendingCommissionForOrder({
+      paid: true,
       orderId: 1,
       partnerId: 5,
       linkId: 2,
@@ -86,6 +88,7 @@ describe('PartnersService — self-referral', () => {
     // A guest checkout has no account to compare; refusing here would drop
     // commission on real orders to catch a case we cannot even see.
     await service.createPendingCommissionForOrder({
+      paid: true,
       orderId: 1,
       partnerId: 5,
       linkId: 2,
@@ -113,6 +116,7 @@ describe('PartnersService — self-referral', () => {
     });
 
     const result = await service.createPendingCommissionForOrder({
+      paid: true,
       orderId: 42,
       partnerId: 5,
       linkId: 2,

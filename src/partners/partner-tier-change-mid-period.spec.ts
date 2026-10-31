@@ -58,6 +58,7 @@ describe('Commission rates across a tier change (#042)', () => {
 
     await expect(
       service.createPendingCommissionForOrder({
+        paid: true,
         orderId: 1,
         partnerId: 8,
         linkId: 11,
@@ -76,6 +77,7 @@ describe('Commission rates across a tier change (#042)', () => {
     // Order placed on SILVER: 5% of a million.
     const before = buildService({ tierCode: 'SILVER', commissionPercent: 5 });
     const earlier = await before.service.createPendingCommissionForOrder({
+      paid: true,
       orderId: 1,
       partnerId: 8,
       linkId: 11,
@@ -86,6 +88,7 @@ describe('Commission rates across a tier change (#042)', () => {
     // Promoted to GOLD; the next order earns 8%.
     const after = buildService({ tierCode: 'GOLD', commissionPercent: 8 });
     const later = await after.service.createPendingCommissionForOrder({
+      paid: true,
       orderId: 2,
       partnerId: 8,
       linkId: 11,
@@ -112,6 +115,7 @@ describe('Commission rates across a tier change (#042)', () => {
     });
 
     const commission = await service.createPendingCommissionForOrder({
+      paid: true,
       orderId: 1,
       partnerId: 8,
       linkId: 11,

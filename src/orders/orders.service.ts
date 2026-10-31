@@ -445,6 +445,9 @@ export class OrdersService {
         contactEmail: contact.email ?? null,
         contactPhone: contact.phone ?? null,
         couponDiscountVnd: Number(order.couponDiscountVndAmount ?? 0),
+        // Counts only once paid (doitac-3010 #002); `finalizePaidOrder`
+        // switches it on.
+        paid: order.status === 'paid' || order.status === 'completed',
       });
     } catch (err) {
       this.logger.error(

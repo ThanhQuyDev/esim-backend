@@ -68,6 +68,13 @@ export enum PartnerLinkStatusEnum {
 }
 
 export enum OrderPartnerCommissionStatusEnum {
+  /**
+   * The order is not paid yet (doitac-3010 #001-#002): the share is worked out
+   * when the order is placed, but counts nowhere — not in the partner's
+   * order count, the "chờ duyệt" queue or any total — until the payment lands
+   * and it becomes PENDING. An order that fails or is cancelled leaves it here.
+   */
+  UNPAID = 'unpaid',
   PENDING = 'pending',
   CREDITED = 'credited',
   REVERSED = 'reversed',

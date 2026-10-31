@@ -55,12 +55,15 @@ describe('PartnersService.adminListCommissions — filters (#064)', () => {
     expect(clauses(qb).join(' ')).toContain('c.status = :status');
   });
 
-  it('should treat "all" as no status filter at all', async () => {
+  it('should treat "all" as every status but an unpaid order', async () => {
     const { service, qb } = buildService();
 
     await service.adminListCommissions({ status: 'all' });
 
-    expect(clauses(qb).join(' ')).not.toContain('c.status');
+    // doitac-3010 #002: a share of an order never paid earns nothing.
+    expect(clauses(qb).filter((c) => c.includes('c.status'))).toEqual([
+      'c.status <> :unpaid',
+    ]);
   });
 
   it('should search the partner by name, email, phone or id', async () => {

@@ -1832,8 +1832,8 @@ export class PartnersService {
             WHERE c."linkId" = l.id AND c."clickedAt" >= $2 AND c."clickedAt" < $3
          ) ck ON TRUE
          LEFT JOIN LATERAL (
-           SELECT COUNT(DISTINCT c."orderId") FILTER (WHERE c.status <> 'reversed') AS orders,
-                  COALESCE(SUM(c."commissionVnd") FILTER (WHERE c.status <> 'reversed'), 0) AS commission
+           SELECT COUNT(DISTINCT c."orderId") FILTER (WHERE c.status NOT IN ('reversed', 'unpaid')) AS orders,
+                  COALESCE(SUM(c."commissionVnd") FILTER (WHERE c.status NOT IN ('reversed', 'unpaid')), 0) AS commission
              FROM order_partner_commission c
             WHERE c."linkId" = l.id AND c."createdAt" >= $2 AND c."createdAt" < $3
          ) co ON TRUE
@@ -2366,7 +2366,7 @@ export class PartnersService {
                   COALESCE(SUM(c."commissionVnd"), 0) AS commission
              FROM order_partner_commission c
              JOIN "order" o ON o.id = c."orderId" AND o."deletedAt" IS NULL
-            WHERE c."linkId" = k.id AND c.status <> 'reversed'
+            WHERE c."linkId" = k.id AND c.status NOT IN ('reversed', 'unpaid')
               AND c."createdAt" >= $2 AND c."createdAt" < $3
          ) co ON TRUE
         GROUP BY k.channel
@@ -2539,9 +2539,9 @@ export class PartnersService {
               ev."lastChangedAt", ev."lastActor", ev."createdBy",
               COALESCE(ev.edits, 0) AS edits,
               (SELECT COUNT(DISTINCT c."orderId")::int FROM order_partner_commission c
-                WHERE c."linkId" = l.id AND c.status <> 'reversed') AS orders,
+                WHERE c."linkId" = l.id AND c.status NOT IN ('reversed', 'unpaid')) AS orders,
               (SELECT COALESCE(SUM(c."commissionVnd"), 0) FROM order_partner_commission c
-                WHERE c."linkId" = l.id AND c.status <> 'reversed') AS "commissionVnd"
+                WHERE c."linkId" = l.id AND c.status NOT IN ('reversed', 'unpaid')) AS "commissionVnd"
        ${from}
        ORDER BY COALESCE(ev."lastChangedAt", l."updatedAt") DESC, l.id DESC
        OFFSET ${(page - 1) * limit} LIMIT ${limit}`,
@@ -2605,10 +2605,10 @@ export class PartnersService {
     const [period] = await this.dataSource.query(
       `SELECT
          (SELECT COUNT(DISTINCT c."orderId")::int FROM order_partner_commission c
-           WHERE c."linkId" IS NOT NULL AND c.status <> 'reversed'
+           WHERE c."linkId" IS NOT NULL AND c.status NOT IN ('reversed', 'unpaid')
              AND c."createdAt" >= $1 AND c."createdAt" < $2) AS orders,
          (SELECT COALESCE(SUM(c."commissionVnd"), 0) FROM order_partner_commission c
-           WHERE c."linkId" IS NOT NULL AND c.status <> 'reversed'
+           WHERE c."linkId" IS NOT NULL AND c.status NOT IN ('reversed', 'unpaid')
              AND c."createdAt" >= $1 AND c."createdAt" < $2) AS "commissionVnd",
          (SELECT COUNT(DISTINCT e."linkId")::int FROM partner_link_event e
            WHERE e.action = 'retargeted'
@@ -3310,7 +3310,7 @@ export class PartnersService {
          SELECT COUNT(*) FILTER (WHERE ord.status IN ('paid', 'completed')) AS orders,
                 COUNT(*) FILTER (WHERE ord.status = 'refunded') AS "refundedOrders",
                 COALESCE(SUM(opc."commissionVnd") FILTER (
-                  WHERE opc.status <> 'reversed'
+                  WHERE opc.status NOT IN ('reversed', 'unpaid')
                 ), 0) AS "commissionVnd"
          FROM order_partner_commission opc
          JOIN "order" ord ON ord.id = opc."orderId" AND ord."deletedAt" IS NULL
@@ -3327,7 +3327,7 @@ export class PartnersService {
               COUNT(*) FILTER (WHERE o.status IN ('paid', 'completed')) AS orders,
               COUNT(*) FILTER (WHERE o.status = 'refunded') AS "refundedOrders",
               COALESCE(SUM(opc."commissionVnd") FILTER (
-                WHERE opc.status <> 'reversed'
+                WHERE opc.status NOT IN ('reversed', 'unpaid')
               ), 0) AS "commissionVnd"
        FROM coupon c
        JOIN "order" o
@@ -4194,7 +4194,7 @@ export class PartnersService {
                   WHERE o.status = ANY($6)
                 ), 0) AS "revenueVnd",
                 COALESCE(SUM(c."commissionVnd") FILTER (
-                  WHERE c.status <> 'reversed'
+                  WHERE c.status NOT IN ('reversed', 'unpaid')
                 ), 0) AS "commissionVnd"
          FROM order_partner_commission c
          JOIN "order" o
@@ -5608,7 +5608,13 @@ export class PartnersService {
       qb.andWhere('c."partnerId" = :partnerId', { partnerId: query.partnerId });
     }
 
-    if (query.status && query.status !== 'all') {
+    if (!query.status || query.status === 'all') {
+      // An unpaid order earns nothing yet (doitac-3010 #002): kept out of the
+      // list unless asked for by name.
+      qb.andWhere('c.status <> :unpaid', {
+        unpaid: OrderPartnerCommissionStatusEnum.UNPAID,
+      });
+    } else {
       if (query.status === 'reviewing') {
         qb.andWhere('c.status = :pending', {
           pending: OrderPartnerCommissionStatusEnum.PENDING,
@@ -10458,7 +10464,7 @@ export class PartnersService {
        FROM order_partner_commission c
        JOIN "order" o ON o.id = c."orderId"
        WHERE c."partnerId" = $1
-         AND c.status <> 'reversed'
+         AND c.status NOT IN ('reversed', 'unpaid')
          -- Historical rows from before top-ups stopped earning (#025).
          AND o."orderType" <> '${TOPUP_ORDER_TYPE}'`,
       [partnerId, from, to],
@@ -10525,7 +10531,7 @@ export class PartnersService {
            AS "commissionPrev"
        FROM order_partner_commission c
        CROSS JOIN bounds b
-       WHERE c."partnerId" = $1 AND c.status <> 'reversed'`,
+       WHERE c."partnerId" = $1 AND c.status NOT IN ('reversed', 'unpaid')`,
       [partnerId],
     );
 
@@ -10816,7 +10822,7 @@ export class PartnersService {
        FROM "order" o
        JOIN partner p ON p.id = o."attributedPartnerId"
        LEFT JOIN order_partner_commission c
-         ON c."orderId" = o.id AND c.status <> 'reversed'
+         ON c."orderId" = o.id AND c.status NOT IN ('reversed', 'unpaid')
        WHERE o."deletedAt" IS NULL
          AND o.status = ANY($5)
          AND o."createdAt" >= $3 AND o."createdAt" < $2
@@ -11114,7 +11120,7 @@ export class PartnersService {
                 ${ORDER_REVENUE_SQL} - COALESCE(
                   (SELECT c."commissionVnd" - COALESCE(c."reversedCommissionVnd", 0)
                    FROM order_partner_commission c
-                   WHERE c."orderId" = o.id AND c.status <> 'reversed'), 0
+                   WHERE c."orderId" = o.id AND c.status NOT IN ('reversed', 'unpaid')), 0
                 ) AS "revenueVnd"
          FROM "order" o
          JOIN partner p ON p.id = o."attributedPartnerId"
@@ -11249,12 +11255,12 @@ export class PartnersService {
                 ${ORDER_REVENUE_SQL} - COALESCE(
                   (SELECT c."commissionVnd" - COALESCE(c."reversedCommissionVnd", 0)
                    FROM order_partner_commission c
-                   WHERE c."orderId" = o.id AND c.status <> 'reversed'), 0
+                   WHERE c."orderId" = o.id AND c.status NOT IN ('reversed', 'unpaid')), 0
                 ) AS "revenueVnd",
                 COALESCE(
                   (SELECT c."commissionVnd" - COALESCE(c."reversedCommissionVnd", 0)
                    FROM order_partner_commission c
-                   WHERE c."orderId" = o.id AND c.status <> 'reversed'), 0
+                   WHERE c."orderId" = o.id AND c.status NOT IN ('reversed', 'unpaid')), 0
                 ) AS "commissionVnd"
          FROM "order" o
          WHERE o."deletedAt" IS NULL AND o.status = ANY($3)
@@ -11400,7 +11406,7 @@ export class PartnersService {
       `SELECT
          COALESCE(SUM(c."commissionVnd") FILTER (WHERE c."createdAt" >= now() - INTERVAL '30 days'), 0) AS "commission30dVnd",
          COALESCE(SUM(c."commissionVnd"), 0) AS "commissionTotalVnd"
-       FROM order_partner_commission c WHERE c.status <> 'reversed'`,
+       FROM order_partner_commission c WHERE c.status NOT IN ('reversed', 'unpaid')`,
     );
 
     const [revenue] = await this.dataSource.query(
@@ -12242,6 +12248,11 @@ export class PartnersService {
     /** Email and phone typed at checkout (doitac-1410 #027). */
     contactEmail?: string | null;
     contactPhone?: string | null;
+    /**
+     * Whether the order is already paid. An unpaid order's share is stored
+     * UNPAID and counts nowhere until the payment lands (doitac-3010 #002).
+     */
+    paid?: boolean;
   }): Promise<OrderPartnerCommissionEntity | null> {
     const partner = await this.partnerRepository.findOne({
       where: { id: params.partnerId },
@@ -12273,7 +12284,11 @@ export class PartnersService {
           linkId: params.linkId,
           commissionVnd: 0,
           tierSnapshot: partner.tierCode ?? null,
-          status: OrderPartnerCommissionStatusEnum.REJECTED,
+          // Unpaid: the verdict waits for the payment, so a self-referral
+          // that never paid is not an order of the partner's either.
+          status: params.paid
+            ? OrderPartnerCommissionStatusEnum.REJECTED
+            : OrderPartnerCommissionStatusEnum.UNPAID,
           rejectionReason: selfReferral,
         }),
       );
@@ -12325,7 +12340,9 @@ export class PartnersService {
         // own percentage — cannot reach back and alter this order. With the
         // partner's own code it is the share they kept (#060).
         commissionPercentSnapshot: effectivePercent,
-        status: OrderPartnerCommissionStatusEnum.PENDING,
+        status: params.paid
+          ? OrderPartnerCommissionStatusEnum.PENDING
+          : OrderPartnerCommissionStatusEnum.UNPAID,
       }),
     );
   }
@@ -12347,17 +12364,28 @@ export class PartnersService {
     const commission = await this.commissionRepository.findOne({
       where: { orderId },
     });
+    if (!commission) return;
+
+    const [order] = await this.dataSource.query(
+      `SELECT "createdAt", status FROM "order" WHERE id = $1`,
+      [orderId],
+    );
+
+    // The payment landed (doitac-3010 #002): the share starts to count — as
+    // the 24h queue, or as the self-referral it was found to be.
     if (
-      !commission ||
-      commission.status !== OrderPartnerCommissionStatusEnum.PENDING
+      commission.status === OrderPartnerCommissionStatusEnum.UNPAID &&
+      SETTLED_ORDER_STATUSES.has(String(order?.status ?? ''))
     ) {
+      commission.status = commission.rejectionReason
+        ? OrderPartnerCommissionStatusEnum.REJECTED
+        : OrderPartnerCommissionStatusEnum.PENDING;
+      await this.commissionRepository.save(commission);
+    }
+    if (commission.status !== OrderPartnerCommissionStatusEnum.PENDING) {
       return;
     }
 
-    const [order] = await this.dataSource.query(
-      `SELECT "createdAt" FROM "order" WHERE id = $1`,
-      [orderId],
-    );
     const placedAt = order?.createdAt ? new Date(order.createdAt) : null;
     if (
       placedAt &&
