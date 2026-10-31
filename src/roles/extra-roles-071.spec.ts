@@ -1,7 +1,7 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { DataSource } from 'typeorm';
-import { RolesGuard } from './roles.guard';
+import { ROLE_FORBIDDEN_MESSAGE, RolesGuard } from './roles.guard';
 import { RoleEnum } from './roles.enum';
 import { allRoleIds, cleanExtraRoleIds } from './extra-roles';
 
@@ -22,10 +22,17 @@ function contextFor(user: unknown, roles: number[]) {
   return { reflector, context };
 }
 
-function guardWith(saved: number[] | null, user: unknown, roles: number[]) {
+function guardWith(
+  saved: number[] | null,
+  user: unknown,
+  roles: number[],
+  savedMainRole: number | null = null,
+) {
   const query = jest
     .fn()
-    .mockResolvedValue(saved === null ? [] : [{ extraRoleIds: saved }]);
+    .mockResolvedValue(
+      saved === null ? [] : [{ roleId: savedMainRole, extraRoleIds: saved }],
+    );
   const { reflector, context } = contextFor(user, roles);
   const guard = new RolesGuard(reflector, { query } as unknown as DataSource);
   return { run: () => guard.canActivate(context), query };
@@ -59,7 +66,7 @@ describe('RolesGuard with extra roles (vande #071)', () => {
       [RoleEnum.admin, RoleEnum.author],
     );
 
-    await expect(run()).resolves.toBe(false);
+    await expect(run()).rejects.toThrow(ROLE_FORBIDDEN_MESSAGE);
     expect(query.mock.calls[0][1]).toEqual([9]);
   });
 
@@ -70,13 +77,25 @@ describe('RolesGuard with extra roles (vande #071)', () => {
       [RoleEnum.admin],
     );
 
-    await expect(run()).resolves.toBe(false);
+    await expect(run()).rejects.toThrow(ROLE_FORBIDDEN_MESSAGE);
+  });
+
+  it('should let an author made Admin while signed in place a manual order (doitac-3010 #007)', async () => {
+    // The token still says author; the account is Admin now.
+    const { run } = guardWith(
+      [],
+      { id: 9, role: { id: RoleEnum.author } },
+      [RoleEnum.admin],
+      RoleEnum.admin,
+    );
+
+    await expect(run()).resolves.toBe(true);
   });
 
   it('should refuse a deleted account', async () => {
     const { run } = guardWith(null, { id: 9, role: { id: 2 } }, [3]);
 
-    await expect(run()).resolves.toBe(false);
+    await expect(run()).rejects.toThrow(ROLE_FORBIDDEN_MESSAGE);
   });
 });
 
