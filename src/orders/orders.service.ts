@@ -2335,7 +2335,15 @@ export class OrdersService {
    */
   async resendEsimEmail(
     orderId: number,
-    options: { onlyOrderItemIds?: number[]; onlyIccid?: string } = {},
+    options: {
+      onlyOrderItemIds?: number[];
+      onlyIccid?: string;
+      /**
+       * A person pressed "Gửi lại email eSIM": mail every eSIM again. Without
+       * it an eSIM already mailed is skipped (doitac-3010 #004).
+       */
+      force?: boolean;
+    } = {},
   ): Promise<{
     sent: number;
     skippedReason?: string;
@@ -2389,22 +2397,25 @@ export class OrdersService {
     for (const esim of esims) {
       const plan = esim.planId != null ? plansById.get(esim.planId) : undefined;
       try {
-        await this.mailService.sendEsimPurchase({
-          to: buyer.email,
-          esimId: esim.id,
-          qrAccessToken: esim.qrAccessToken,
-          iccid: esim.iccid,
-          activationCode: esim.activationCode,
-          lpa: esim.lpa,
-          smdpAddress: esim.smdpAddress,
-          apn: esim.apnValue,
-          phoneNumber: esim.phoneNumber,
-          planName: plan?.standardName || plan?.name || '',
-          callMinutes: plan?.call ?? null,
-          smsCount: plan?.sms ?? null,
-          planData: plan ?? null,
-          orderNumber: order.orderNumber,
-        });
+        await this.mailService.sendEsimPurchase(
+          {
+            to: buyer.email,
+            esimId: esim.id,
+            qrAccessToken: esim.qrAccessToken,
+            iccid: esim.iccid,
+            activationCode: esim.activationCode,
+            lpa: esim.lpa,
+            smdpAddress: esim.smdpAddress,
+            apn: esim.apnValue,
+            phoneNumber: esim.phoneNumber,
+            planName: plan?.standardName || plan?.name || '',
+            callMinutes: plan?.call ?? null,
+            smsCount: plan?.sms ?? null,
+            planData: plan ?? null,
+            orderNumber: order.orderNumber,
+          },
+          { force: options.force },
+        );
         sent += 1;
       } catch (err) {
         this.logger.error(

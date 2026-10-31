@@ -293,6 +293,12 @@ export class MailService {
     return {
       logoAlign: brand?.logoPosition ?? 'center',
       brandColor: brand?.primaryColor ?? DEFAULT_PRIMARY_COLOR,
+      // The Android button follows the partner's colour like the iOS one; the
+      // plain email keeps Android green (doitac-3010 #004).
+      androidColor: brand ? (brand.primaryColor ?? DEFAULT_PRIMARY_COLOR) : '',
+      // A partner's logo is often square, and 48px tall it read as an icon
+      // in the corner; the wide esim.vn wordmark keeps 48px.
+      logoHeight: brand ? 80 : 48,
       usageCheckUrl: brand && !brand.showUsageCheck ? '' : usageCheckUrl,
       installGuideUrl:
         brand?.showInstallGuide && base
@@ -474,7 +480,15 @@ export class MailService {
 
   async sendEsimPurchase(
     data: EsimPurchaseMailData,
-    options: { queued?: boolean } = {},
+    options: {
+      queued?: boolean;
+      /**
+       * Someone pressed "Gửi lại email eSIM": send even when this eSIM was
+       * mailed before. Every other caller — checkout, a supplier's webhook,
+       * a partner order — mails an eSIM once (doitac-3010 #004).
+       */
+      force?: boolean;
+    } = {},
   ): Promise<void> {
     const overrides = await this.esimMailOverrides(data.orderNumber);
     // Ordered in bulk (vande #057): a "file" order mails nobody — its eSIMs
@@ -487,10 +501,6 @@ export class MailService {
       );
       return;
     }
-    if (overrides.bulk?.mode === 'email' && !options.queued) {
-      await this.queueEsimEmail(data, overrides.bulk);
-      return;
-    }
     const template =
       await this.emailTemplatesService.findByName('esim_purchase');
     if (!template) {
@@ -499,7 +509,124 @@ export class MailService {
       );
       return;
     }
+    // A partner order's eSIMs were mailed by the order itself and again by
+    // the supplier's webhook when they landed: 4 eSIMs, 7 emails (doitac-3010
+    // #004). Claimed before queueing, so the queued send does not ask again.
+    const claimed =
+      options.queued || options.force
+        ? false
+        : await this.claimEsimEmail(data.esimId);
+    if (claimed === null) {
+      this.logger.log(
+        `sendEsimPurchase: eSIM ${data.esimId} of ${data.orderNumber} was mailed already`,
+      );
+      return;
+    }
+    if (overrides.bulk?.mode === 'email' && !options.queued) {
+      await this.queueEsimEmail(data, overrides.bulk);
+      return;
+    }
 
+    const { subject, html } = this.renderEsimPurchase(
+      template,
+      data,
+      overrides,
+    );
+    try {
+      await this.mailerService.sendMail({
+        to: overrides.to ?? data.to,
+        subject,
+        text: `eSIM của bạn đã sẵn sàng / Your eSIM is ready — ${data.orderNumber}`,
+        templatePath: '',
+        context: {},
+        html,
+        // The customer of a distribution partner sees the partner's name as
+        // the sender and replies to the partner (doitac-3010 #004).
+        ...(overrides.brand?.displayName
+          ? { fromName: overrides.brand.displayName }
+          : {}),
+        ...(overrides.brand?.supportEmail
+          ? { replyTo: overrides.brand.supportEmail }
+          : {}),
+      });
+    } catch (err) {
+      // Not sent, so the next attempt may send it.
+      if (claimed) await this.releaseEsimEmail(data.esimId);
+      throw err;
+    }
+  }
+
+  /**
+   * Mark an eSIM's purchase email as sent. True when this call took it,
+   * null when an earlier send already had; an eSIM without an id or a
+   * database to ask is always sent (false: nothing to release).
+   */
+  private async claimEsimEmail(
+    esimId: number | null | undefined,
+  ): Promise<boolean | null> {
+    if (!esimId || !this.dataSource) return false;
+    try {
+      const result = await this.dataSource.query(
+        `UPDATE esim SET "purchaseEmailSentAt" = now()
+          WHERE id = $1 AND "purchaseEmailSentAt" IS NULL
+          RETURNING id`,
+        [esimId],
+      );
+      // pg returns [rows, count] for an UPDATE … RETURNING.
+      const rows = Array.isArray(result?.[0]) ? result[0] : result;
+      return rows?.length ? true : null;
+    } catch (err) {
+      // A missing mark must not cost the customer their eSIM.
+      this.logger.error(`claimEsimEmail(${esimId}): ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  private async releaseEsimEmail(esimId: number | null | undefined) {
+    if (!esimId || !this.dataSource) return;
+    await this.dataSource
+      .query(`UPDATE esim SET "purchaseEmailSentAt" = NULL WHERE id = $1`, [
+        esimId,
+      ])
+      .catch(() => undefined);
+  }
+
+  /**
+   * What the "Cấu hình thương hiệu" page shows on the right (doitac-3010
+   * #004): the real eSIM email, with sample eSIM details and the partner's
+   * brand as it stands in the form — not a drawing of one.
+   */
+  async previewEsimPurchase(
+    brand: PartnerBrand,
+    qrCodeDataUrl: string,
+  ): Promise<{ subject: string; html: string }> {
+    const template =
+      await this.emailTemplatesService.findByName('esim_purchase');
+    if (!template) return { subject: '', html: '' };
+    return this.renderEsimPurchase(
+      template,
+      {
+        to: brand.supportEmail || 'khach@example.com',
+        iccid: '8985200000000000000',
+        activationCode: 'K2-1ABCD-EFGH2IJ',
+        lpa: 'LPA:1$smdp.example.com$K2-1ABCD-EFGH2IJ',
+        smdpAddress: 'smdp.example.com',
+        apn: 'internet',
+        planName: 'Japan - Total 5 GB - 7 days',
+        planData: { dataMb: 5120, durationDays: 7, type: 'fixed' },
+        orderNumber: 'PTN-261101090000000-MAU001',
+      } as EsimPurchaseMailData,
+      { brand, ...(brand.logoUrl ? { logoUrl: brand.logoUrl } : {}) },
+      { qrCodeUrl: qrCodeDataUrl, usageCheckUrl: '#' },
+    );
+  }
+
+  private renderEsimPurchase(
+    template: { subject: string; htmlBody: string },
+    data: EsimPurchaseMailData,
+    overrides: { logoUrl?: string; brand?: PartnerBrand },
+    sample?: { qrCodeUrl: string; usageCheckUrl: string },
+  ): { subject: string; html: string } {
     const appName = BRAND_NAME;
     const backendDomain = this.configService.get('app.backendDomain', {
       infer: true,
@@ -507,8 +634,9 @@ export class MailService {
     const frontendDomain = this.configService.get('app.frontendDomain', {
       infer: true,
     });
-    const qrCodeUrl =
-      data.esimId && data.qrAccessToken
+    const qrCodeUrl = sample
+      ? sample.qrCodeUrl
+      : data.esimId && data.qrAccessToken
         ? `${backendDomain}/api/v1/esims/${data.esimId}/qrcode?token=${data.qrAccessToken}`
         : '';
 
@@ -519,8 +647,8 @@ export class MailService {
     // Signing needs a secret, and a deployment missing one must NOT cost the
     // customer their eSIM: the link is a convenience, the email is the delivery.
     // Without it the template's `{{#if usageCheckUrl}}` simply hides the button.
-    let usageCheckUrl = '';
-    if (data.esimId && frontendDomain) {
+    let usageCheckUrl = sample?.usageCheckUrl ?? '';
+    if (!sample && data.esimId && frontendDomain) {
       try {
         usageCheckUrl = `${frontendDomain}${ESIM_LOOKUP_PATH}?token=${createEsimLookupToken(data.esimId)}`;
       } catch (err) {
@@ -556,19 +684,10 @@ export class MailService {
       subject: template.subject,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
-    const htmlCompiled = Handlebars.compile(template.htmlBody, {
-      strict: false,
-    })(context);
-
-    await this.mailerService.sendMail({
-      to: overrides.to ?? data.to,
-      subject: subjectCompiled,
-      text: `Your eSIM is ready — Order ${data.orderNumber}`,
-      templatePath: '',
-      context: {},
-      html: htmlCompiled,
-    });
+    return {
+      subject: Handlebars.compile(template.subject)(context),
+      html: Handlebars.compile(template.htmlBody, { strict: false })(context),
+    };
   }
 
   /**

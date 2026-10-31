@@ -29,6 +29,14 @@ export const QR_SIZE = 400;
  */
 const LOGO_WIDTH_RATIO = 0.58;
 
+/**
+ * Logo height as a share of the QR height (doitac-3010 #004). The width cap
+ * alone let a square partner logo grow to 58% × 58% — a third of the code,
+ * past what level H can lose, and phones could not scan it. A wide wordmark
+ * never reaches this; a square logo stops at about 5% of the code.
+ */
+const LOGO_HEIGHT_RATIO = 0.22;
+
 /** White padding around the logo, so it reads as a plate rather than noise. */
 const LOGO_PADDING = 8;
 
@@ -64,9 +72,15 @@ export async function compositeLogo(
   size = QR_SIZE,
 ): Promise<Buffer> {
   const logoWidth = Math.round(size * LOGO_WIDTH_RATIO);
+  const logoHeight = Math.round(size * LOGO_HEIGHT_RATIO);
 
   const plate = await sharp(logoBuffer)
-    .resize({ width: logoWidth, fit: 'inside', withoutEnlargement: false })
+    .resize({
+      width: logoWidth,
+      height: logoHeight,
+      fit: 'inside',
+      withoutEnlargement: false,
+    })
     .flatten({ background: '#ffffff' })
     .extend({
       top: LOGO_PADDING,

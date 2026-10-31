@@ -90,6 +90,7 @@ export class MailerService {
     templatePath,
     context,
     transportName,
+    fromName,
     ...mailOptions
   }: {
     templatePath: string;
@@ -99,6 +100,12 @@ export class MailerService {
     text?: string;
     html?: string;
     from?: string;
+    /**
+     * The name shown as the sender, keeping the transport's own address: a
+     * distribution partner's customer sees the partner's brand, not "esim.vn",
+     * while the mail still leaves from order@ (doitac-3010 #004).
+     */
+    fromName?: string;
     /**
      * Where a reply should go, when that differs from the sending identity — a
      * support email has to land in the support mailbox, not in the transactional
@@ -189,8 +196,16 @@ export class MailerService {
       ...mailOptions,
       from: mailOptions.from
         ? mailOptions.from
-        : `"${defaultName}" <${defaultEmail}>`,
+        : `"${senderName(fromName) || defaultName}" <${defaultEmail}>`,
       html: mailOptions.html ? mailOptions.html : html,
     });
   }
+}
+
+/** A display name safe inside `"…" <address>`: no quotes, brackets or breaks. */
+function senderName(name: string | undefined): string {
+  return (name ?? '')
+    .replace(/["<>\\\r\n]/g, '')
+    .trim()
+    .slice(0, 64);
 }

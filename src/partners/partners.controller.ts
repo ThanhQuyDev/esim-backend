@@ -1,3 +1,4 @@
+import { BrandEmailPreviewDto } from './dto/brand-email-preview.dto';
 import { downloadFilename } from '../utils/download-filename';
 import {
   Body,
@@ -140,6 +141,23 @@ export class PartnersController {
     @Body() dto: UpdatePartnerProfileDto,
   ) {
     return this.partnersService.updateMyProfile(req.user.id, dto);
+  }
+
+  /**
+   * The real eSIM email, in the brand the partner is editing (doitac-3010
+   * #004): what "Cấu hình thương hiệu" shows on the right, before saving.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/brand/email-preview')
+  @HttpCode(HttpStatus.OK)
+  async previewBrandEmail(
+    @Request() req: { user: { id: number } },
+    @Body() dto: BrandEmailPreviewDto,
+  ) {
+    await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.brandEmailPreview(dto.brandInfo ?? {});
   }
 
   /** Ask for the code that releases a bank account change (#005). */

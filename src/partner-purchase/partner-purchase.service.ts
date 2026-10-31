@@ -48,6 +48,7 @@ export class PartnerPurchaseService {
     );
     const result = await this.ordersService.resendEsimEmail(orderId, {
       onlyIccid: iccid,
+      force: true,
     });
     if (!result.sent) {
       throw new BadRequestException(
@@ -72,7 +73,9 @@ export class PartnerPurchaseService {
         'Đơn topup không có eSIM mới để gửi lại. Hãy gửi lại từ trang chi tiết eSIM.',
       );
     }
-    const result = await this.ordersService.resendEsimEmail(orderId);
+    const result = await this.ordersService.resendEsimEmail(orderId, {
+      force: true,
+    });
     if (!result.sent) {
       throw new BadRequestException(
         'Chưa gửi được email: đơn chưa có eSIM nào được cấp.',

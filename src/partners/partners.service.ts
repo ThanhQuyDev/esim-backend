@@ -1,3 +1,5 @@
+import { fetchPartnerLogo } from '../esims/partner-qr-logo';
+import { renderEsimQrCode } from '../esims/esim-qrcode';
 import { downloadFilename } from '../utils/download-filename';
 import { parseOrderImportFile } from '../utils/order-import-file';
 import { vnFold, vnFoldSql } from '../utils/vn-fold';
@@ -52,7 +54,7 @@ import {
   planRefundSupported,
   partnerLineDays,
 } from './partner-purchase';
-import { sanitizeBrandInput } from './partner-brand';
+import { readPartnerBrand, sanitizeBrandInput } from './partner-brand';
 import {
   buildPurchaseDeliveryWorkbook,
   purchaseDeliveryFilename,
@@ -12231,6 +12233,36 @@ export class PartnersService {
     return sameCode && Number(sameCode.partnerId) === Number(partnerId)
       ? Number(discountVnd)
       : 0;
+  }
+
+  /**
+   * The eSIM email a distribution partner's customer receives, built from the
+   * stock template with sample eSIM details and the brand being edited
+   * (doitac-3010 #004). The QR code carries the partner's logo the way the
+   * real one does.
+   */
+  async brandEmailPreview(
+    info: Record<string, unknown>,
+  ): Promise<{ subject: string; html: string }> {
+    const brand = readPartnerBrand(info);
+    const logo = await fetchPartnerLogo(brand.logoUrl, {
+      backendDomain: this.configService.get('app.backendDomain', {
+        infer: true,
+      }),
+      s3Bucket: this.configService.get('file.awsDefaultS3Bucket', {
+        infer: true,
+      }),
+      s3Region: this.configService.get('file.awsS3Region', { infer: true }),
+    });
+    const qr = await renderEsimQrCode(
+      'LPA:1$smdp.example.com$K2-1ABCD-EFGH2IJ',
+      undefined,
+      logo,
+    );
+    return this.mailService.previewEsimPurchase(
+      brand,
+      `data:image/png;base64,${qr.toString('base64')}`,
+    );
   }
 
   async createPendingCommissionForOrder(params: {

@@ -200,6 +200,7 @@ export class AdminOrdersController {
   resendEsimEmail(
     @Param('orderId', ParseIntPipe) orderId: number,
   ): Promise<{ sent: number; skippedReason?: string }> {
-    return this.ordersService.resendEsimEmail(orderId);
+    // The admin asked: mail every eSIM again (doitac-3010 #004).
+    return this.ordersService.resendEsimEmail(orderId, { force: true });
   }
 }

@@ -124,6 +124,38 @@ describe('eSIM QR code', () => {
     expect(coverage).toBeLessThan(0.15);
   });
 
+  it("should keep a partner's square logo small enough to scan (doitac-3010 #004)", async () => {
+    // A square logo used to grow to 58% × 58% of the code — a third of it,
+    // and phones could not read the QR in anh Thọ's test email.
+    const square = await sharp({
+      create: { width: 500, height: 500, channels: 3, background: '#1d4ed8' },
+    })
+      .png()
+      .toBuffer();
+    const branded = await compositeLogo(
+      await sharp({
+        create: {
+          width: QR_SIZE,
+          height: QR_SIZE,
+          channels: 3,
+          background: '#000000',
+        },
+      })
+        .png()
+        .toBuffer(),
+      square,
+    );
+
+    const { data, info } = await sharp(branded)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let covered = 0;
+    for (let i = 0; i < data.length; i += info.channels) {
+      if (data[i] > 20 || data[i + 1] > 20 || data[i + 2] > 20) covered += 1;
+    }
+    expect(covered / (info.width * info.height)).toBeLessThan(0.1);
+  });
+
   it('should still deliver a plain QR when the logo cannot be composited', async () => {
     const plain = await renderEsimQrCode(LPA);
     const broken = await compositeLogo(

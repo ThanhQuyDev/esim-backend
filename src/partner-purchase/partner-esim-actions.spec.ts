@@ -105,6 +105,7 @@ describe('Partner eSIM actions (doitac-1410 #039)', () => {
     });
     expect(ordersService.resendEsimEmail).toHaveBeenCalledWith(77, {
       onlyIccid: '8900',
+      force: true,
     });
   });
 
@@ -187,7 +188,9 @@ describe('Partner eSIM actions (doitac-1410 #039)', () => {
     await expect(service.resendPurchaseEmail(11, 'PTN-1')).resolves.toEqual({
       sent: 3,
     });
-    expect(ordersService.resendEsimEmail).toHaveBeenCalledWith(77);
+    expect(ordersService.resendEsimEmail).toHaveBeenCalledWith(77, {
+      force: true,
+    });
   });
 
   it('should not resend a topup order, which has no eSIM of its own', async () => {

@@ -45,6 +45,23 @@ export async function loadPartnerQrLogo(
     const logoUrl = row?.brandInfo
       ? readPartnerBrand(row.brandInfo).logoUrl
       : '';
+    return await fetchPartnerLogo(logoUrl, opts, fetchImpl);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A partner logo by its URL, under the same rules: only a file our own upload
+ * stored, small and quick, cached. Also what the email preview of "Cấu hình
+ * thương hiệu" draws in its QR code (doitac-3010 #004).
+ */
+export async function fetchPartnerLogo(
+  logoUrl: string | null | undefined,
+  opts: { backendDomain?: string; s3Bucket?: string; s3Region?: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<Buffer | null> {
+  try {
     if (!logoUrl || !isOwnFileUrl(logoUrl, opts)) return null;
 
     const hit = cache.get(logoUrl);

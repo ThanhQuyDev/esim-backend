@@ -33,6 +33,9 @@ function mailService(order: Record<string, unknown> | null) {
     queries.push({ sql, params });
     if (sql.includes('FROM "order" o'))
       return Promise.resolve(order ? [order] : []);
+    // First automatic send of this eSIM (doitac-3010 #004).
+    if (sql.includes('SET "purchaseEmailSentAt" = now()'))
+      return Promise.resolve([[{ id: 7 }], 1]);
     return Promise.resolve([]);
   });
   const service = new MailService(
