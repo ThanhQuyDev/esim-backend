@@ -3160,6 +3160,12 @@ export class OrdersService {
     // amount at what it is actually worth so a slip cannot refund more than was
     // paid for it.
     const isPartial = !!(dto.orderItemIds?.length || dto.esimIds?.length);
+    // How many eSIMs this refund gives back is counted as the difference,
+    // before and after: several steps mark eSIMs refunded on the way (the
+    // supplier cancel of local stock, the wallet when the order ends fully
+    // refunded), and counting only those still unmarked at the end gave
+    // "Khách hoàn 3 eSIM" for a refund of 4 (doitac-3010 #011).
+    const refundedBefore = await this.countRefundedEsims(order.id);
     let selectedItemIds: number[] = [];
     let selectedEsims: Esim[] = [];
     let orderItems: OrderItem[] = [];
@@ -3348,9 +3354,13 @@ export class OrdersService {
 
     if (refund?.id) {
       try {
+        const counted = Math.max(
+          0,
+          (await this.countRefundedEsims(order.id)) - refundedBefore,
+        );
         await this.dataSource.query(
           `UPDATE order_refund SET "esimCount" = $1 WHERE id = $2`,
-          [refundedEsimCount, refund.id],
+          [counted || refundedEsimCount, refund.id],
         );
       } catch (err) {
         this.logger.error(
@@ -3698,6 +3708,16 @@ export class OrdersService {
    * callback cannot resurrect one of these.
    */
   /** Marks the eSIMs refunded and returns how many it marked. */
+  /** eSIMs of the order already given back. */
+  private async countRefundedEsims(orderId: number): Promise<number> {
+    const items = await this.orderItemsService.findByOrderId(orderId);
+    if (!items.length) return 0;
+    const esims = await this.esimsService.findByOrderItemIds(
+      items.map((item) => Number(item.id)),
+    );
+    return esims.filter((esim) => esim.status === 'refunded').length;
+  }
+
   private async markRefundedEsims(
     orderId: number,
     onlyItemIds?: number[],
