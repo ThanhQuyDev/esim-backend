@@ -1304,6 +1304,21 @@ export class PartnersService {
    * A marketing partner is the affiliate programme. A distribution partner buys
    * stock, and only earns commission as well when esim.vn has granted it.
    */
+  /**
+   * A partner on "Tạm khoá" or "Khoá tài khoản" makes nothing new (doitac-3010
+   * #009): their links and codes are suspended with the account, and a new
+   * one used to come out "Hoạt động", as if the lock did not apply to it.
+   */
+  private assertPartnerActive(partner: PartnerEntity, what: string): void {
+    if (!partner.status || partner.status === PartnerStatusEnum.ACTIVE) return;
+    throw new ForbiddenException(
+      partner.status === PartnerStatusEnum.HOLD ||
+        partner.status === PartnerStatusEnum.DISABLED
+        ? `Tài khoản của bạn đang bị tạm khoá nên không thể tạo thêm ${what} mới. Vui lòng liên hệ admin để được hỗ trợ.`
+        : `Tài khoản của bạn chưa được duyệt nên chưa thể tạo ${what}.`,
+    );
+  }
+
   private assertMayAffiliate(partner: PartnerEntity, what: string): void {
     if (partner.partnerType === PartnerTypeEnum.KOL) return;
     if (partner.canAffiliate) return;
@@ -2806,6 +2821,7 @@ export class PartnersService {
     // A distribution partner may create links too, once esim.vn has granted
     // them the affiliate programme (#048).
     this.assertMayAffiliate(partner, 'link tiếp thị');
+    this.assertPartnerActive(partner, 'liên kết');
 
     // A memorable code is the whole point when it has to be read aloud in a
     // video, but it is a privilege an admin grants per partner (#014) — every
@@ -5178,11 +5194,32 @@ export class PartnersService {
 
   /** A partner's status history, newest first (#060). */
   async getStatusHistory(partnerId: number, limit = 50) {
-    return this.statusChangeRepository.find({
-      where: { partnerId },
-      order: { createdAt: 'DESC' },
-      take: Math.min(Math.max(limit, 1), 200),
-    });
+    // With who did it, by name (doitac-3010 #009): the reasons were saved but
+    // nowhere to be read.
+    const rows: Record<string, any>[] = await this.dataSource.query(
+      `SELECT sc.id, sc."partnerId", sc."fromStatus", sc."toStatus", sc.reason,
+              sc."changedByAdminId", sc."createdAt",
+              NULLIF(TRIM(CONCAT_WS(' ', u."firstName", u."lastName")), '')
+                AS "changedByName",
+              u.email AS "changedByEmail"
+         FROM partner_status_change sc
+         LEFT JOIN "user" u ON u.id = sc."changedByAdminId"
+        WHERE sc."partnerId" = $1
+        ORDER BY sc."createdAt" DESC
+        LIMIT $2`,
+      [partnerId, Math.min(Math.max(limit, 1), 200)],
+    );
+    return rows.map((r) => ({
+      id: Number(r.id),
+      partnerId: Number(r.partnerId),
+      fromStatus: r.fromStatus ?? null,
+      toStatus: String(r.toStatus),
+      reason: r.reason ?? null,
+      changedByAdminId:
+        r.changedByAdminId == null ? null : Number(r.changedByAdminId),
+      changedByName: r.changedByName ?? r.changedByEmail ?? null,
+      createdAt: r.createdAt,
+    }));
   }
 
   /**
@@ -6872,6 +6909,7 @@ export class PartnersService {
   async createMyCoupon(partnerId: number, dto: CreatePartnerCouponDto) {
     const partner = await this.getPartnerOrThrowById(partnerId);
     this.assertMayAffiliate(partner, 'mã giảm giá');
+    this.assertPartnerActive(partner, 'mã giảm giá');
 
     const tier = partner.tierCode
       ? await this.tierRepository.findOne({
