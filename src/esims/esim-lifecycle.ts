@@ -38,6 +38,10 @@ export function esimLifecycleStatus(
     status?: string | null;
     activatedAt?: Date | string | null;
     expiresAt?: Date | string | null;
+    /** Set once the eSIM belongs to an order. */
+    orderItemId?: number | null;
+    /** MB used, as the usage refresh stores it. */
+    dataUsed?: string | number | null;
   },
   plan?: {
     isLocalInventory?: boolean | null;
@@ -48,7 +52,9 @@ export function esimLifecycleStatus(
   const status = (esim.status ?? '').toLowerCase();
   if (status === 'refunded') return 'refunded';
   if (DEACTIVATED.includes(status)) return 'deactivated';
-  if (status === 'available') return 'available';
+  // A supplier's webhook stores a delivered eSIM as "available"; on an order
+  // it is sold, not stock waiting to be sold (doitac-3010 #006).
+  if (status === 'available' && esim.orderItemId == null) return 'available';
   if (status === 'expired') return 'expired';
 
   const expires = esim.expiresAt ? new Date(esim.expiresAt) : null;
@@ -62,6 +68,10 @@ export function esimLifecycleStatus(
   }
   if (plan?.isLocalInventory) return 'active';
   if (esim.activatedAt || status === 'active') return 'active';
+  // Data used means it is connected, even before the supplier reports an
+  // activation date — it read "Chưa kích hoạt" with data spent (doitac-3010
+  // #006).
+  if (Number(esim.dataUsed) > 0) return 'active';
   return 'sold';
 }
 
@@ -72,10 +82,16 @@ export function esimLifecycleStatus(
 export const ESIM_LIFECYCLE_SQL = `(CASE
   WHEN lower(esim.status) = 'refunded' THEN 'refunded'
   WHEN lower(esim.status) IN ('deactivated','cancelled','canceled','revoked') THEN 'deactivated'
-  WHEN lower(esim.status) = 'available' THEN 'available'
+  WHEN lower(esim.status) = 'available' AND esim."orderItemId" IS NULL THEN 'available'
   WHEN lower(esim.status) = 'expired' THEN 'expired'
   WHEN esim."expiresAt" IS NOT NULL AND esim."expiresAt" < now() THEN 'expired'
   WHEN COALESCE((SELECT lp."isLocalInventory" FROM "plan" lp WHERE lp.id = esim."planId"), false) THEN 'active'
   WHEN esim."activatedAt" IS NOT NULL OR lower(esim.status) = 'active' THEN 'active'
+  WHEN esim."dataUsed" ~ '^[0-9]+(\\.[0-9]+)?$' AND esim."dataUsed"::numeric > 0 THEN 'active'
   ELSE 'sold'
 END)`;
+
+/** {@link ESIM_LIFECYCLE_SQL} over another alias of the `esim` table. */
+export function esimLifecycleSql(alias: string): string {
+  return ESIM_LIFECYCLE_SQL.replace(/\besim\./g, `${alias}.`);
+}

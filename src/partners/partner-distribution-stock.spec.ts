@@ -446,7 +446,10 @@ describe('PartnersService.getMyEsimDetail (doitac-1410 #039)', () => {
           owned ? [{ esimId: 3, orderId: 77, orderNumber: 'PTN-1' }] : [],
         );
       }
-      if (sql.includes(`"orderType" = 'TOPUP'`)) return Promise.resolve(topups);
+      // The partner's own top-ups list; the eSIM query itself also reads
+      // top-ups, for the whole allowance (doitac-3010 #006).
+      if (sql.includes('SELECT o."orderNumber", o.status'))
+        return Promise.resolve(topups);
       return Promise.resolve([ESIM_ROW]);
     });
     const service = Object.create(PartnersService.prototype) as PartnersService;

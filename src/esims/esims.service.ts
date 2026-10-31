@@ -1,3 +1,4 @@
+import { DataSource } from 'typeorm';
 import { PlansService } from '../plans/plans.service';
 import { derivedExpiry } from './daily-cycle';
 import {
@@ -101,6 +102,16 @@ export interface DataUsageResult {
   usageAvailable?: boolean;
 }
 
+/** "5 GB" / "500 MB" — a top-up's data as the order stores it — in MB. */
+export function topupDataMb(text: string | null | undefined): number {
+  const m = String(text ?? '')
+    .replace(',', '.')
+    .match(/([0-9]+(?:\.[0-9]+)?)\s*(GB|MB)/i);
+  if (!m) return 0;
+  const n = Number(m[1]);
+  return m[2].toUpperCase() === 'GB' ? Math.round(n * 1024) : Math.round(n);
+}
+
 @Injectable()
 export class EsimsService {
   private readonly logger = new Logger(EsimsService.name);
@@ -115,6 +126,8 @@ export class EsimsService {
     @Inject(forwardRef(() => BillionService))
     private readonly billionService: BillionService,
     @Optional() private readonly plansService?: PlansService,
+    // The plan and the top-ups behind an eSIM's total (doitac-3010 #006).
+    @Optional() private readonly dataSource?: DataSource,
   ) {}
 
   /**
@@ -764,10 +777,102 @@ export class EsimsService {
    * expiry dates on the order screen stayed empty even after the provider
    * started reporting them.
    */
+  /**
+   * What a fixed-data eSIM holds in all: its plan plus every top-up that went
+   * through (doitac-3010 #006). Null when that is not a fixed amount (a day
+   * pass, unlimited) or cannot be read.
+   */
+  async allowanceMb(
+    esim: Pick<Esim, 'iccid' | 'planId'>,
+  ): Promise<{ planMb: number; totalMb: number } | null> {
+    if (!this.dataSource || !esim.planId) return null;
+    try {
+      const [plan] = await this.dataSource.query(
+        `SELECT type, "dataMb" FROM plan WHERE id = $1`,
+        [esim.planId],
+      );
+      const planMb = Number(plan?.dataMb ?? 0);
+      if (!plan || plan.type !== 'fixed' || !(planMb > 0)) return null;
+      const topups: { topupDataText: string | null }[] =
+        await this.dataSource.query(
+          `SELECT "topupDataText" FROM "order"
+            WHERE "targetIccid" = $1 AND "orderType" = 'TOPUP'
+              AND status = 'completed' AND "deletedAt" IS NULL
+              AND COALESCE("topupIsUnlimited", false) = false`,
+          [esim.iccid],
+        );
+      const added = topups.reduce(
+        (sum, t) => sum + topupDataMb(t.topupDataText),
+        0,
+      );
+      return { planMb, totalMb: planMb + added };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * A supplier reports the package running now, not the eSIM's whole
+   * allowance: a 20 GB eSIM topped up with 5 GB read "100 MB / 5 GB" (doitac-3010
+   * #006). The total is never below the plan plus its top-ups. While the
+   * supplier still reports the plan's own package its "used" stands; once it
+   * reports a smaller one (a top-up), what is used is the whole allowance less
+   * what that package has left.
+   */
+  private async applyAllowanceFloor(
+    esim: Esim,
+    result: DataUsageResult,
+  ): Promise<void> {
+    if (result.isUnlimited) return;
+    const allowance = await this.allowanceMb(esim);
+    if (!allowance || result.total >= allowance.totalMb) return;
+    const remaining =
+      result.remaining ?? Math.max(0, result.total - result.dataUsed);
+    const used =
+      result.total >= allowance.planMb
+        ? result.dataUsed
+        : Math.max(0, allowance.totalMb - remaining);
+    result.total = allowance.totalMb;
+    result.dataUsed = Math.round(used * 100) / 100;
+    result.remaining = Math.max(0, allowance.totalMb - result.dataUsed);
+  }
+
+  /**
+   * A top-up went through (doitac-3010 #006): its data joins the eSIM's total
+   * and the eSIM lasts at least the top-up's days from now. Before, the order
+   * was marked done and the eSIM page showed neither.
+   */
+  async applyCompletedTopup(
+    iccid: string,
+    topup: { durationDays?: number | null },
+    now: Date = new Date(),
+  ): Promise<void> {
+    const esim = await this.findByIccid(iccid);
+    if (!esim) return;
+    const patch: Record<string, unknown> = {};
+    const allowance = await this.allowanceMb(esim);
+    const stored = Number(esim.dataTotal);
+    if (allowance && !(stored >= allowance.totalMb)) {
+      patch.dataTotal = String(allowance.totalMb);
+    }
+    const days = Number(topup.durationDays ?? 0);
+    // An eSIM not switched on yet has no clock to extend.
+    if (days > 0 && (esim.expiresAt || esim.activatedAt)) {
+      const until = new Date(now.getTime() + days * 86_400_000);
+      if (!esim.expiresAt || esim.expiresAt.getTime() < until.getTime()) {
+        patch.expiresAt = until;
+      }
+    }
+    if (Object.keys(patch).length) {
+      await this.esimsRepository.update(esim.id, patch as never);
+    }
+  }
+
   private async persistUsageSnapshot(
     esim: Esim,
     result: DataUsageResult,
   ): Promise<void> {
+    await this.applyAllowanceFloor(esim, result);
     const patch: Record<string, unknown> = {
       dataUsed: String(result.dataUsed),
     };

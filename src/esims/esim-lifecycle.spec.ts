@@ -60,3 +60,31 @@ describe('eSIM lifecycle status (#024, test round 4)', () => {
     ).toEqual({});
   });
 });
+
+describe('eSIMs a supplier delivered as "available" (doitac-3010 #006)', () => {
+  it('should call an ordered eSIM sold, not stock', () => {
+    expect(
+      esimLifecycleStatus({ status: 'available', orderItemId: 5 }, travel, NOW),
+    ).toBe('sold');
+    expect(esimLifecycleStatus({ status: 'available' }, travel, NOW)).toBe(
+      'available',
+    );
+  });
+
+  it('should call an eSIM with data spent in use, even with no activation date', () => {
+    expect(
+      esimLifecycleStatus(
+        { status: 'available', orderItemId: 5, dataUsed: '303.98' },
+        travel,
+        NOW,
+      ),
+    ).toBe('active');
+    expect(
+      esimLifecycleStatus(
+        { status: 'sold', orderItemId: 5, dataUsed: '0' },
+        travel,
+        NOW,
+      ),
+    ).toBe('sold');
+  });
+});

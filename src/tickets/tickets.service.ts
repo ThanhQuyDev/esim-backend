@@ -494,6 +494,48 @@ export class TicketsService {
    * admin merely re-reads must not be dragged back into the queue, and a reply is
    * what reopens one.
    */
+  /**
+   * Tickets about the same eSIM — or, for a ticket naming no eSIM, the same
+   * order — newest first, without this one (doitac-3010 #006).
+   */
+  async findRelated(id: number): Promise<
+    {
+      id: number;
+      ticketNumber: string;
+      subject: string;
+      status: string;
+      iccid: string | null;
+      orderId: string | null;
+      createdAt: Date;
+    }[]
+  > {
+    if (!this.dataSource) return [];
+    const [ticket] = await this.dataSource.query(
+      `SELECT id, iccid, "orderId" FROM ticket WHERE id = $1`,
+      [id],
+    );
+    if (!ticket || (!ticket.iccid && !ticket.orderId)) return [];
+    const rows: Record<string, any>[] = await this.dataSource.query(
+      `SELECT id, subject, status, iccid, "orderId", "createdAt"
+         FROM ticket
+        WHERE id <> $1
+          AND (CASE WHEN $2::text IS NOT NULL THEN iccid = $2
+                    ELSE "orderId" = $3 END)
+        ORDER BY "createdAt" DESC
+        LIMIT 50`,
+      [id, ticket.iccid ?? null, ticket.orderId ?? null],
+    );
+    return rows.map((r) => ({
+      id: Number(r.id),
+      ticketNumber: ticketNumberFor(Number(r.id)),
+      subject: String(r.subject ?? ''),
+      status: String(r.status ?? ''),
+      iccid: r.iccid ?? null,
+      orderId: r.orderId ?? null,
+      createdAt: r.createdAt,
+    }));
+  }
+
   async findByIdForAdmin(id: Ticket['id']): Promise<Ticket | null> {
     const ticket = await this.ticketRepository.findById(id);
     if (!ticket) return null;

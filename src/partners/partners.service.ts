@@ -1,3 +1,5 @@
+import { topupDataMb } from '../esims/esims.service';
+import { esimLifecycleSql } from '../esims/esim-lifecycle';
 import { fetchPartnerLogo } from '../esims/partner-qr-logo';
 import { renderEsimQrCode } from '../esims/esim-qrcode';
 import { downloadFilename } from '../utils/download-filename';
@@ -675,6 +677,46 @@ function adminLinkState(row: Record<string, any>): string {
 
 /** Repeat opens of a link from one device inside this window are one click (vande #079). */
 export const DUPLICATE_CLICK_WINDOW_MS = 30_000;
+
+/**
+ * The "Báo lỗi" / "Yêu cầu hoàn tiền" still open on eSIM `e` — its kind, or
+ * null (doitac-3010 #006). Open means its ticket is not "Đã giải quyết" or
+ * closed yet: a refund done by the admin leaves "Đang xem xét hoàn tiền"
+ * showing until the ticket is resolved, and a ticket resolved without a
+ * refund frees the buttons again. A report with no ticket counts while it is
+ * pending.
+ */
+export const OPEN_ESIM_REPORT_SQL = `(SELECT fr.kind FROM partner_esim_fault_report fr
+                LEFT JOIN ticket ft ON ft.id = fr."ticketId"
+                WHERE fr.iccid = e.iccid
+                  AND (CASE WHEN fr."ticketId" IS NOT NULL AND ft.id IS NOT NULL
+                            THEN ft.status NOT IN ('resolved', 'closed')
+                            ELSE fr.status = 'pending' END)
+                ORDER BY fr.id DESC LIMIT 1)`;
+
+/**
+ * What an eSIM holds, for the partner's eSIM pages (doitac-3010 #006): what
+ * the usage refresh stored, but never less than a fixed plan plus its
+ * completed top-ups — a supplier reports only the package running now, so a
+ * 20 GB eSIM topped up with 5 GB read "100 MB / 5 GB". An older webhook
+ * stored "5GB" rather than MB. `row` carries dataTotal, planType, dataMb and
+ * topupData (the top-ups' data texts).
+ */
+function esimAllowanceTotal(row: Record<string, any>): number | null {
+  const stored = /gb$/i.test(String(row.dataTotal ?? ''))
+    ? topupDataMb(String(row.dataTotal))
+    : Number(row.dataTotal);
+  const allowance =
+    row.planType === 'fixed' && Number(row.dataMb) > 0
+      ? Number(row.dataMb) +
+        ((row.topupData as (string | null)[] | null) ?? []).reduce(
+          (sum: number, text) => sum + topupDataMb(text),
+          0,
+        )
+      : 0;
+  if (row.dataTotal == null && !allowance) return null;
+  return Math.max(Number.isFinite(stored) ? stored : 0, allowance);
+}
 
 @Injectable()
 export class PartnersService {
@@ -8086,7 +8128,10 @@ export class PartnersService {
     );
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
     const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
-    const status = filters.status?.trim() || null;
+    // "Chưa kích hoạt": every eSIM here is on an order, so it is "sold" —
+    // an older portal still sends "available" (doitac-3010 #006).
+    const rawStatus = filters.status?.trim() || null;
+    const status = rawStatus === 'available' ? 'sold' : rawStatus;
     const planTypes =
       filters.planType
         ?.split(',')
@@ -8102,7 +8147,10 @@ export class PartnersService {
 
     const rows = await this.dataSource.query(
       `SELECT e.iccid,
-              e.status,
+              -- Worked out like the admin's eSIM pages: a webhook stores a
+              -- delivered eSIM as "available", so the stored value read
+              -- "Chưa kích hoạt" on eSIMs in use (doitac-3010 #006).
+              ${esimLifecycleSql('e')} AS status,
               p.name AS "planName",
               COALESCE(d.name, r.name, p."countryCode") AS destination,
               o."orderNumber",
@@ -8118,13 +8166,17 @@ export class PartnersService {
               p.type AS "planType",
               COALESCE(p."topUp", false) AS "topUp",
               p.id AS "planId",
+              p."dataMb",
+              (SELECT array_agg(t."topupDataText") FROM "order" t
+                WHERE t."orderType" = 'TOPUP' AND t."targetIccid" = e.iccid
+                  AND t.status = 'completed' AND t."deletedAt" IS NULL
+                  AND COALESCE(t."topupIsUnlimited", false) = false)
+                AS "topupData",
               p."durationDays",
               (COALESCE(p.sms, 0) > 0 OR COALESCE(p.call, 0) > 0) AS "hasCallSms",
               p.provider,
               p."operatorName",
-              (SELECT fr.kind FROM partner_esim_fault_report fr
-                WHERE fr.iccid = e.iccid AND fr.status = 'pending'
-                ORDER BY fr.id DESC LIMIT 1) AS "openReport"
+              ${OPEN_ESIM_REPORT_SQL} AS "openReport"
        FROM esim e
        JOIN order_item oi ON oi.id = e."orderItemId"
        JOIN "order" o ON o.id = oi."orderId"
@@ -8133,7 +8185,7 @@ export class PartnersService {
        LEFT JOIN region r ON r.id = p."regionId"
        WHERE o."userId" = $1
          AND o."deletedAt" IS NULL
-         AND ($2::text IS NULL OR e.status = $2)
+         AND ($2::text IS NULL OR ${esimLifecycleSql('e')} = $2)
          AND (
            $3::text IS NULL
            OR e.iccid ILIKE '%' || $3 || '%'
@@ -8198,7 +8250,8 @@ export class PartnersService {
       orderNumber: row.orderNumber ?? null,
       costVnd: Number(row.costVnd ?? 0),
       dataUsed: row.dataUsed == null ? null : Number(row.dataUsed),
-      dataTotal: row.dataTotal == null ? null : Number(row.dataTotal),
+      // Same whole allowance as the eSIM page (doitac-3010 #006).
+      dataTotal: esimAllowanceTotal(row),
       activatedAt: row.activatedAt ?? null,
       expiresAt: row.expiresAt ?? null,
       createdAt: row.createdAt ?? null,
@@ -8463,7 +8516,8 @@ export class PartnersService {
     const { esimId } = await this.assertOwnsEsim(partnerId, iccid);
 
     const [row] = await this.dataSource.query(
-      `SELECT e.iccid, e.status, e."apnValue" AS apn, e."smdpAddress",
+      `SELECT e.iccid, ${esimLifecycleSql('e')} AS status,
+              e."apnValue" AS apn, e."smdpAddress",
               e."activationCode", e.lpa, e."directAppleInstallationUrl",
               e."qrAccessToken", e."dataUsed", e."dataTotal",
               e."activatedAt", e."expiresAt", e."createdAt", e."updatedAt",
@@ -8474,10 +8528,17 @@ export class PartnersService {
               p."dataMb", p."durationDays", p.call, p.sms, p.speed,
               p."ipExport", p."isNonHkIp", p."dailyResetPolicy",
               p."dailyResetUtcOffset", COALESCE(p."topUp", false) AS "topUp",
+              p."fupSpeed", p."isKyc", p."hotSpot", p."hotSpotAllow",
+              e."isRoaming", e."phoneNumber", e.eid, e."deviceModel",
               COALESCE(d.name, r.name, p."countryCode") AS destination,
-              (SELECT fr.kind FROM partner_esim_fault_report fr
-                WHERE fr.iccid = e.iccid AND fr.status = 'pending'
-                ORDER BY fr.id DESC LIMIT 1) AS "openReport"
+              ${OPEN_ESIM_REPORT_SQL} AS "openReport",
+              -- Every top-up that went through, the customer's included: they
+              -- all add to what the eSIM holds (doitac-3010 #006).
+              (SELECT array_agg(t."topupDataText") FROM "order" t
+                WHERE t."orderType" = 'TOPUP' AND t."targetIccid" = e.iccid
+                  AND t.status = 'completed' AND t."deletedAt" IS NULL
+                  AND COALESCE(t."topupIsUnlimited", false) = false)
+                AS "topupData"
          FROM esim e
          JOIN order_item oi ON oi.id = e."orderItemId"
          JOIN "order" o ON o.id = oi."orderId"
@@ -8503,6 +8564,28 @@ export class PartnersService {
 
     const costVnd = Number(row.costVnd ?? 0);
     const lpa: string | null = row.lpa ?? null;
+
+    // The whole allowance, never the package the supplier happens to report
+    // (doitac-3010 #006).
+    const dataTotal = esimAllowanceTotal(row);
+
+    // TikTok & AI judged as on the price list (doitac-1410 #038).
+    let tiktokAi: boolean | null = null;
+    if (this.plansService && row.planId) {
+      try {
+        const plan = await this.plansService.findById(Number(row.planId));
+        if (plan) {
+          const [judged] = await this.plansService.withAppSupport([plan]);
+          tiktokAi = judged?.appSupport
+            ? Boolean(
+                judged.appSupport.tiktokAllDevices && judged.appSupport.chatGpt,
+              )
+            : null;
+        }
+      } catch {
+        tiktokAi = null;
+      }
+    }
     return {
       iccid: row.iccid as string,
       status: (row.status as string) ?? null,
@@ -8531,7 +8614,19 @@ export class PartnersService {
       expiresAt: row.expiresAt ?? null,
       updatedAt: row.updatedAt ?? null,
       dataUsed: row.dataUsed == null ? null : Number(row.dataUsed),
-      dataTotal: row.dataTotal == null ? null : Number(row.dataTotal),
+      dataTotal,
+      // doitac-3010 #006, as on the admin's eSIM page:
+      /** "Tốc độ sau khi hết data". */
+      throttleSpeed: (row.fupSpeed as string) ?? null,
+      kycRequired: Boolean(row.isKyc),
+      hotspot: row.hotSpot == null ? null : Boolean(row.hotSpot),
+      hotspotAllow: (row.hotSpotAllow as string) ?? null,
+      roaming: row.isRoaming == null ? null : Boolean(row.isRoaming),
+      phoneNumber: (row.phoneNumber as string) ?? null,
+      eid: (row.eid as string) ?? null,
+      deviceModel: (row.deviceModel as string) ?? null,
+      /** Null when the APN is not known yet — "không rõ", not "no". */
+      tiktokAi,
       smdpAddress: (row.smdpAddress as string) ?? null,
       activationCode: (row.activationCode as string) ?? null,
       lpa,
@@ -9046,11 +9141,10 @@ export class PartnersService {
       [orderId],
     );
     const esims = await this.dataSource.query(
-      `SELECT e."orderItemId", e.iccid, e.status, e."activatedAt",
+      `SELECT e."orderItemId", e.iccid,
+              ${esimLifecycleSql('e')} AS status, e."activatedAt",
               e."expiresAt", e."dataUsed", e."dataTotal",
-              (SELECT fr.kind FROM partner_esim_fault_report fr
-                WHERE fr.iccid = e.iccid AND fr.status = 'pending'
-                ORDER BY fr.id DESC LIMIT 1) AS "openReport"
+              ${OPEN_ESIM_REPORT_SQL} AS "openReport"
          FROM esim e
          JOIN order_item oi ON oi.id = e."orderItemId"
         WHERE oi."orderId" = $1 AND e."deletedAt" IS NULL
@@ -10091,14 +10185,28 @@ export class PartnersService {
       );
     }
 
-    const open = await this.faultReportRepository.findOne({
-      where: { iccid, status: PartnerEsimFaultStatusEnum.PENDING },
-    });
-    if (open) {
+    // The same rule as the buttons (doitac-3010 #006): a resolved ticket
+    // ends the request, so the partner can report the eSIM again.
+    const [open] = await this.dataSource.query(
+      `SELECT ${OPEN_ESIM_REPORT_SQL} AS kind FROM esim e WHERE e.iccid = $1`,
+      [iccid],
+    );
+    if (open?.kind) {
       throw new BadRequestException(
         `eSIM ${iccid} đã có phiếu báo lỗi đang chờ esim.vn xử lý.`,
       );
     }
+    // A request whose ticket was resolved without a refund still reads
+    // "pending" — close it, as only one may be open per eSIM.
+    await this.dataSource.query(
+      `UPDATE partner_esim_fault_report fr
+          SET status = '${PartnerEsimFaultStatusEnum.REJECTED}',
+              "reviewedAt" = COALESCE(fr."reviewedAt", now()),
+              "adminNote" = COALESCE(fr."adminNote", 'Ticket đã giải quyết')
+        WHERE fr.iccid = $1
+          AND fr.status = '${PartnerEsimFaultStatusEnum.PENDING}'`,
+      [iccid],
+    );
 
     const attachments = (input.attachments ?? []).filter(Boolean).slice(0, 10);
     const report = await this.faultReportRepository.save(

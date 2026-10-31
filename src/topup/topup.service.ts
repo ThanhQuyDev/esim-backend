@@ -323,6 +323,44 @@ export class TopupService {
     provider: TopupProvider;
     packages: TopupPackageDto[];
   }> {
+    const list = await this.listProviderPackages(iccid);
+    // "Seychelles - 5 GB - 30 days": supplier names leave the place out, so
+    // the topup list could not be checked against the eSIM (doitac-3010 #006).
+    const place = await this.destinationNameFor(iccid);
+    if (!place) return list;
+    const prefix = place.toLowerCase();
+    return {
+      ...list,
+      packages: list.packages.map((pkg) =>
+        String(pkg.name ?? '')
+          .toLowerCase()
+          .startsWith(prefix)
+          ? pkg
+          : { ...pkg, name: `${place} - ${pkg.name}` },
+      ),
+    };
+  }
+
+  /** The country or region of the plan an eSIM was bought on. */
+  private async destinationNameFor(iccid: string): Promise<string | null> {
+    try {
+      const esim = await this.esimsService.findByIccid(iccid);
+      if (!esim?.planId) return null;
+      const plan = (await this.plansService.findById(esim.planId)) as {
+        destination?: { name?: string | null } | null;
+        region?: { name?: string | null } | null;
+      } | null;
+      return plan?.destination?.name || plan?.region?.name || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async listProviderPackages(iccid: string): Promise<{
+    iccid: string;
+    provider: TopupProvider;
+    packages: TopupPackageDto[];
+  }> {
     const { provider, esim } = await this.resolveProviderForIccid(iccid);
 
     // Providers we catalogue but cannot recharge (e.g. MicroEsim) return an
@@ -810,6 +848,16 @@ export class TopupService {
       await this.orderRepository.update(order.id, {
         status: TOPUP_ORDER_STATUS.COMPLETED,
       });
+      // The eSIM gains the top-up's data and days (doitac-3010 #006).
+      await this.esimsService
+        .applyCompletedTopup(iccid, {
+          durationDays: order.topupDurationDays ?? null,
+        })
+        .catch((err: unknown) =>
+          this.logger.error(
+            `executeTopup: eSIM ${iccid} not updated after ${orderNumber}: ${(err as Error).message}`,
+          ),
+        );
 
       this.logger.log(
         `Topup executed successfully: orderNumber=${orderNumber} provider=${provider}`,

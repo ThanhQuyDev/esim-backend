@@ -162,6 +162,20 @@ export class TicketsController {
     };
   }
 
+  /**
+   * The other tickets about the same eSIM, or the same order when the ticket
+   * names no eSIM (doitac-3010 #006): from the second "Báo lỗi" / "Yêu cầu
+   * hoàn tiền" on, the admin sees the earlier ones without searching.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get(':id/related')
+  @ApiParam({ name: 'id', type: Number })
+  findRelated(@Param('id') id: number) {
+    return this.ticketsService.findRelated(Number(id));
+  }
+
   @ApiBearerAuth()
   @Roles(RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
