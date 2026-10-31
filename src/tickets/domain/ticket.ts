@@ -68,6 +68,10 @@ export class Ticket {
   @ApiPropertyOptional({ type: String, nullable: true })
   lastReplyName?: string | null;
 
+  /** When the customer last opened the conversation (doitac-3010 #012). */
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  customerSeenAt?: Date | null;
+
   @ApiProperty()
   createdAt: Date;
 

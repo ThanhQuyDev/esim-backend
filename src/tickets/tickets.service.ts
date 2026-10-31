@@ -94,6 +94,16 @@ export class TicketsService {
   ): Promise<TicketMessageEntity[]> {
     await this.assertCanSeeTicket(ticketId, requester);
 
+    // The customer or partner has now read what support wrote: the
+    // "Phản hồi mới" badge on their list goes (doitac-3010 #012).
+    if (!requester.isAdmin && this.dataSource) {
+      await this.dataSource
+        .query(`UPDATE ticket SET "customerSeenAt" = now() WHERE id = $1`, [
+          ticketId,
+        ])
+        .catch(() => undefined);
+    }
+
     return this.messageRepository.find({
       where: { ticketId },
       order: { createdAt: 'ASC' },

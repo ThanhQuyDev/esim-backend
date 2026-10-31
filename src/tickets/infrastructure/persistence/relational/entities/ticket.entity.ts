@@ -73,6 +73,13 @@ export class TicketEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   lastReplyName: string | null;
 
+  /**
+   * When the customer or partner last opened the conversation (doitac-3010
+   * #012): a reply from support after it is "Phản hồi mới" on their list.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  customerSeenAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

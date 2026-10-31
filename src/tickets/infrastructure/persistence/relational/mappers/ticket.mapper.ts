@@ -20,6 +20,7 @@ export class TicketMapper {
     domainEntity.fromPartner = raw.fromPartner ?? false;
     domainEntity.lastReplyRole =
       (raw.lastReplyRole as 'customer' | 'admin' | null) ?? null;
+    domainEntity.customerSeenAt = raw.customerSeenAt ?? null;
     domainEntity.lastReplyName = raw.lastReplyName ?? null;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
@@ -54,6 +55,9 @@ export class TicketMapper {
     }
     if (domainEntity.lastReplyRole !== undefined) {
       persistenceEntity.lastReplyRole = domainEntity.lastReplyRole;
+    }
+    if (domainEntity.customerSeenAt !== undefined) {
+      persistenceEntity.customerSeenAt = domainEntity.customerSeenAt;
     }
     if (domainEntity.lastReplyName !== undefined) {
       persistenceEntity.lastReplyName = domainEntity.lastReplyName;
