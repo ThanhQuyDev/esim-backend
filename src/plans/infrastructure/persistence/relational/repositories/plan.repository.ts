@@ -783,10 +783,15 @@ export class PlansRelationalRepository implements PlanRepository {
     return Number(affected) || 0;
   }
 
-  async deactivateAllProviderPlans(provider: string): Promise<void> {
+  async deactivateAllProviderPlans(
+    provider: string,
+    keepSlugs: string[] = [],
+  ): Promise<void> {
     await this.plansRepository.query(
-      `UPDATE "plan" SET "isActive" = false WHERE "provider" = $1 AND "deletedAt" IS NULL`,
-      [provider],
+      `UPDATE "plan" SET "isActive" = false
+        WHERE "provider" = $1 AND "deletedAt" IS NULL
+          AND NOT ("slug" = ANY($2::text[]))`,
+      [provider, keepSlugs],
     );
   }
 

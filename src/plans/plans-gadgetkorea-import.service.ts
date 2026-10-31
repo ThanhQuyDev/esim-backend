@@ -1,4 +1,11 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Workbook } from 'exceljs';
 import { PlansService } from './plans.service';
 import { parseValidityDays } from './plan-activation';
@@ -146,6 +153,21 @@ export function assertLooksLikeOptionId(value: string): void {
   }
 }
 
+/** A Gadget price file being imported in the background (doitac-3010 #008). */
+export interface ImportJob {
+  id: string;
+  status: 'running' | 'done' | 'failed';
+  /** Rows read so far, and in all. */
+  done: number;
+  total: number;
+  startedAt: string;
+  finishedAt: string | null;
+  result:
+    | (ImportResult & { updated: number; destinationNotFound: string[] })
+    | null;
+  error: string | null;
+}
+
 @Injectable()
 export class PlansGadgetkoreaImportService {
   private readonly logger = new Logger(PlansGadgetkoreaImportService.name);
@@ -156,8 +178,68 @@ export class PlansGadgetkoreaImportService {
     private readonly regionsService: RegionsService,
   ) {}
 
+  /**
+   * The import as a background job (doitac-3010 #008). A full price file is
+   * ~2 500 plans and takes the better part of a minute — longer than the
+   * admin's proxy waits (Vercel on beta, nginx on prod), so the page reported
+   * an error while the import carried on unseen. Now the upload answers at
+   * once and the page asks how far it has got.
+   */
+  startImportJob(fileBuffer: Buffer): ImportJob {
+    const running = [...this.jobs.values()].find((j) => j.status === 'running');
+    if (running) {
+      throw new ConflictException(
+        'Đang có một lần nhập file Gadget chưa xong, vui lòng chờ hoàn tất rồi nhập tiếp.',
+      );
+    }
+    const job: ImportJob = {
+      id: randomUUID(),
+      status: 'running',
+      done: 0,
+      total: 0,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      result: null,
+      error: null,
+    };
+    this.jobs.set(job.id, job);
+    // Keep only the last few, so the map cannot grow for ever.
+    for (const id of [...this.jobs.keys()].slice(0, -10)) this.jobs.delete(id);
+
+    void this.importFromExcel(fileBuffer, (done, total) => {
+      job.done = done;
+      job.total = total;
+    })
+      .then((result) => {
+        job.result = result;
+        job.status = 'done';
+      })
+      .catch((err: unknown) => {
+        job.error =
+          (err as { message?: string })?.message || 'Nhập file thất bại.';
+        job.status = 'failed';
+        this.logger.error(`Gadget import job ${job.id} failed: ${job.error}`);
+      })
+      .finally(() => {
+        job.finishedAt = new Date().toISOString();
+      });
+    return job;
+  }
+
+  getImportJob(id: string): ImportJob {
+    const job = this.jobs.get(id);
+    if (!job) {
+      throw new NotFoundException('Không tìm thấy lần nhập file này.');
+    }
+    return job;
+  }
+
+  private readonly jobs = new Map<string, ImportJob>();
+
   async importFromExcel(
     fileBuffer: Buffer,
+    /** Rows handled so far, of all the rows in the sheets read. */
+    onProgress?: (done: number, total: number) => void,
   ): Promise<
     ImportResult & { updated: number; destinationNotFound: string[] }
   > {
@@ -197,7 +279,17 @@ export class PlansGadgetkoreaImportService {
       );
     }
 
-    await this.plansService.deactivateAllProviderPlans(PROVIDER);
+    const rowsToRead = targetSheets.reduce(
+      (sum, ws) => sum + Math.max(0, ws.rowCount - 1),
+      0,
+    );
+    let rowsRead = 0;
+    onProgress?.(0, rowsToRead);
+
+    // Plans this file brings — the others go off sale at the end, not all of
+    // them at the start: the import takes about a minute, and for that minute
+    // the storefront showed no Gadget plan at all (doitac-3010 #008).
+    const importedSlugs = new Set<string>();
 
     for (const ws of targetSheets) {
       const planType = SHEET_TYPE_MAP[ws.name];
@@ -209,6 +301,7 @@ export class PlansGadgetkoreaImportService {
       const COL = resolveGadgetColumns(header);
 
       for (let rowNum = 2; rowNum <= ws.rowCount; rowNum++) {
+        onProgress?.(++rowsRead, rowsToRead);
         const row = ws.getRow(rowNum);
         if (this.isEmptyRow(row)) continue;
 
@@ -365,6 +458,7 @@ export class PlansGadgetkoreaImportService {
           const existing = await this.plansService.findBySlug(slug);
           // Priced as it is written, never left at cost (vande #078).
           await this.plansService.saveSyncedPlan(existing?.id, planData);
+          importedSlugs.add(slug);
           if (existing) result.updated++;
           else result.created++;
         } catch (error: any) {
@@ -382,6 +476,12 @@ export class PlansGadgetkoreaImportService {
 
     // Price the last imported plans before ranking them (vande #078).
     await this.plansService.flushSyncedPlans();
+    // A file that brought nothing must not empty the catalogue.
+    if (importedSlugs.size > 0) {
+      await this.plansService.deactivateAllProviderPlans(PROVIDER, [
+        ...importedSlugs,
+      ]);
+    }
     await this.plansService.markCheapestPlans();
     await this.plansService.updateVndPrices();
 

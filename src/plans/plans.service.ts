@@ -987,8 +987,11 @@ export class PlansService implements OnApplicationBootstrap {
     );
   }
 
-  async deactivateAllProviderPlans(provider: string): Promise<void> {
-    await this.plansRepository.deactivateAllProviderPlans(provider);
+  async deactivateAllProviderPlans(
+    provider: string,
+    keepSlugs: string[] = [],
+  ): Promise<void> {
+    await this.plansRepository.deactivateAllProviderPlans(provider, keepSlugs);
   }
 
   async refreshProviders(): Promise<void> {

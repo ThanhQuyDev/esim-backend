@@ -423,6 +423,16 @@ export class PlansController {
     );
   }
 
+  /** How far a background Gadget import has got (doitac-3010 #008). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('import-gadgetkorea/jobs/:id')
+  @HttpCode(HttpStatus.OK)
+  importGadgetkoreaJob(@Param('id') id: string) {
+    return this.plansGadgetkoreaImportService.getImportJob(id);
+  }
+
   @ApiBearerAuth()
   @Roles(RoleEnum.admin)
   @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -471,7 +481,10 @@ export class PlansController {
       },
     },
   })
-  async importGadgetkorea(@UploadedFile() file: Express.Multer.File) {
+  async importGadgetkorea(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('async') async?: string,
+  ) {
     if (!file) {
       throw new BadRequestException('Excel file is required');
     }
@@ -487,6 +500,14 @@ export class PlansController {
       );
     }
 
+    // `?async=1`: answer at once and run in the background (doitac-3010
+    // #008) — the admin page then asks GET …/import-gadgetkorea/jobs/:id.
+    if (async === '1' || async === 'true') {
+      const job = this.plansGadgetkoreaImportService.startImportJob(
+        file.buffer,
+      );
+      return { jobId: job.id, status: job.status };
+    }
     return this.plansGadgetkoreaImportService.importFromExcel(file.buffer);
   }
 }

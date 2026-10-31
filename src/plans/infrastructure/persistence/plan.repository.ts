@@ -128,7 +128,11 @@ export abstract class PlanRepository {
     syncStartedAt: Date,
   ): Promise<number>;
 
-  abstract deactivateAllProviderPlans(provider: string): Promise<void>;
+  /** Every plan of `provider` off sale, but the slugs in `keepSlugs`. */
+  abstract deactivateAllProviderPlans(
+    provider: string,
+    keepSlugs?: string[],
+  ): Promise<void>;
 
   abstract findAllForExport(
     filterOptions?: FilterPlanDto | null,
