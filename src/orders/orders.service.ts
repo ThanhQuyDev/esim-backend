@@ -269,6 +269,9 @@ export function checkoutDeliveryEmail(
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : null;
 }
 
+/** "Đặt đơn hộ khách": an order an admin places and marks paid. */
+const ADMIN_MANUAL_PAYMENT = 'admin_manual';
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -563,15 +566,21 @@ export class OrdersService {
     );
 
     const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
-    const attribution = await this.resolvePartnerAttribution(
-      dto.partnerLinkCode,
-      dto.partnerLinkClickedAt,
-      pricing.couponCode,
-      userId,
-      dto.partnerClickId,
-      clientIpHash,
-      clientUserAgent,
-    );
+    // An order an admin places for a customer is a direct sale (doitac-3010
+    // #003): no partner, rate or commission, even when the customer once came
+    // through a partner's link.
+    const attribution =
+      dto.paymentMethod === ADMIN_MANUAL_PAYMENT
+        ? { partnerLinkCode: null, attributedPartnerId: null, linkId: null }
+        : await this.resolvePartnerAttribution(
+            dto.partnerLinkCode,
+            dto.partnerLinkClickedAt,
+            pricing.couponCode,
+            userId,
+            dto.partnerClickId,
+            clientIpHash,
+            clientUserAgent,
+          );
 
     // Same device or network as another order for this partner still earns the
     // commission, but is flagged for review (#036).
@@ -892,15 +901,21 @@ export class OrdersService {
     );
 
     const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
-    const attribution = await this.resolvePartnerAttribution(
-      dto.partnerLinkCode,
-      dto.partnerLinkClickedAt,
-      pricing.couponCode,
-      userId,
-      dto.partnerClickId,
-      clientIpHash,
-      clientUserAgent,
-    );
+    // An order an admin places for a customer is a direct sale (doitac-3010
+    // #003): no partner, rate or commission, even when the customer once came
+    // through a partner's link.
+    const attribution =
+      dto.paymentMethod === ADMIN_MANUAL_PAYMENT
+        ? { partnerLinkCode: null, attributedPartnerId: null, linkId: null }
+        : await this.resolvePartnerAttribution(
+            dto.partnerLinkCode,
+            dto.partnerLinkClickedAt,
+            pricing.couponCode,
+            userId,
+            dto.partnerClickId,
+            clientIpHash,
+            clientUserAgent,
+          );
 
     // Same device and network as another order for this partner still earns
     // the commission, but is flagged for an admin to look at (#036).
@@ -1823,7 +1838,7 @@ export class OrdersService {
         quantity,
         ...(periodNum ? { periodNum } : {}),
       })),
-      paymentMethod: 'admin_manual',
+      paymentMethod: ADMIN_MANUAL_PAYMENT,
     };
 
     // 4. Create the pending order at the real USD→VND rate.
@@ -1857,7 +1872,7 @@ export class OrdersService {
     // Mute auto invoice email — admin manually triggers it after verifying
     // the offline payment using `resendEsimEmail`.
     await this.finalizePaidOrder(order.id, {
-      paymentMethod: 'admin_manual',
+      paymentMethod: ADMIN_MANUAL_PAYMENT,
       paymentId: `ADMIN-${adminUserId}`,
       mutedEmail: true,
     });
