@@ -2370,14 +2370,30 @@ export class OrdersService {
         )
       : allItems;
 
-    const esims = (
+    const provisioned = (
       await this.esimsService.findByOrderItemIds(orderItems.map((i) => i.id))
     ).filter(
       // "Gửi lại email eSIM" from one eSIM's page mails that eSIM only
       // (doitac-1410 #039).
       (esim) => !options.onlyIccid || esim.iccid === options.onlyIccid,
     );
+    // A refunded eSIM is no longer the customer's: resending its QR code
+    // would hand back what was paid back (doitac-3010 #005) — whether the
+    // eSIM was refunded alone or with its whole line.
+    const refundedItemIds = new Set(
+      orderItems
+        .filter((item) => item.status === 'refunded')
+        .map((item) => Number(item.id)),
+    );
+    const esims = provisioned.filter(
+      (esim) =>
+        esim.status !== 'refunded' &&
+        !refundedItemIds.has(Number(esim.orderItemId)),
+    );
 
+    if (provisioned.length > 0 && esims.length === 0) {
+      return { sent: 0, skippedReason: 'all-esims-refunded' };
+    }
     if (esims.length === 0) {
       this.logger.warn(
         `resendEsimEmail: no esims provisioned yet for order ${orderId}`,

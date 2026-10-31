@@ -9035,6 +9035,7 @@ export class PartnersService {
       `SELECT oi.id, oi.quantity, oi."vndPrice", p.name AS "planName",
               p.provider, p."operatorName", p."dataMb", p.call, p.sms,
               p."durationDays", p.speed, p.type,
+              p.slug, p."isKyc", p."topUp", p."fupSpeed",
               COALESCE(d.name, r.name, p."countryCode") AS destination
          FROM order_item oi
          LEFT JOIN plan p ON p.id = oi."planId"
@@ -9079,6 +9080,13 @@ export class PartnersService {
         operatorName: (line.operatorName as string) ?? null,
         speed: (line.speed as string) ?? null,
         type: (line.type as string) ?? null,
+        // doitac-3010 #005: like the admin's order page.
+        /** "Mã gói cước": our own code, to look the plan up on our side. */
+        planCode: (line.slug as string) ?? null,
+        kycRequired: Boolean(line.isKyc),
+        topUp: Boolean(line.topUp),
+        /** "Tốc độ sau khi hết data". */
+        throttleSpeed: (line.fupSpeed as string) ?? null,
         refundable: planRefundSupported({
           provider: line.provider,
           name: line.planName,

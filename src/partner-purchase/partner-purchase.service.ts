@@ -50,6 +50,12 @@ export class PartnerPurchaseService {
       onlyIccid: iccid,
       force: true,
     });
+    if (result.skippedReason === 'all-esims-refunded') {
+      // doitac-3010 #005: a refunded eSIM's QR code is not sent again.
+      throw new BadRequestException(
+        'eSIM đã hoàn tiền nên không gửi lại email eSIM.',
+      );
+    }
     if (!result.sent) {
       throw new BadRequestException(
         'Chưa gửi được email: eSIM chưa được cấp hoặc đơn chưa có email nhận.',
@@ -76,6 +82,12 @@ export class PartnerPurchaseService {
     const result = await this.ordersService.resendEsimEmail(orderId, {
       force: true,
     });
+    if (result.skippedReason === 'all-esims-refunded') {
+      // doitac-3010 #005: a refunded eSIM's QR code is not sent again.
+      throw new BadRequestException(
+        'eSIM đã hoàn tiền nên không gửi lại email eSIM.',
+      );
+    }
     if (!result.sent) {
       throw new BadRequestException(
         'Chưa gửi được email: đơn chưa có eSIM nào được cấp.',
