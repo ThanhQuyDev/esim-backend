@@ -58,10 +58,10 @@ describe('PartnersService — naming your own link code (#014)', () => {
 
     await service.createLink(5, { label: 'TikTok', code: 'VanA2026' });
 
-    // Normalised to one case: /go/vana2026 and /go/VANA2026 are the same link
-    // to anyone typing it off a video.
+    // Kept as typed (doitac-3010 #015); /go/vana2026 and /go/VANA2026 still
+    // reach it, as the code is compared without case.
     expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'VANA2026', partnerId: 5 }),
+      expect.objectContaining({ code: 'VanA2026', partnerId: 5 }),
     );
   });
 

@@ -279,7 +279,7 @@ describe('marketing links (doitac-1410 #018)', () => {
       });
 
       await expect(service.restoreMyLink(9, 5)).rejects.toThrow(
-        'đã khôi phục 1 lần',
+        'đã được khôi phục 1 lần trong 30 ngày qua',
       );
       expect(restore).not.toHaveBeenCalled();
     });

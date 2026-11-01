@@ -78,7 +78,14 @@ import {
   ledgerDescription,
   ledgerKindOf,
 } from './partner-ledger';
-import { In, DataSource, EntityManager, MoreThan, Repository } from 'typeorm';
+import {
+  In,
+  DataSource,
+  EntityManager,
+  MoreThan,
+  Raw,
+  Repository,
+} from 'typeorm';
 import { AllConfigType } from '../config/config.type';
 import { MailService } from '../mail/mail.service';
 import { OnepayService } from '../payment/onepay.service';
@@ -148,6 +155,7 @@ import {
 } from './dto/admin-partner.dto';
 import {
   CreatePartnerLinkDto,
+  PARTNER_LINK_CODE_MIN_LENGTH,
   DecideLinkRestoreDto,
   QueryMyLinksDto,
   SetLinkSuspensionDto,
@@ -716,6 +724,29 @@ function esimAllowanceTotal(row: Record<string, any>): number | null {
       : 0;
   if (row.dataTotal == null && !allowance) return null;
   return Math.max(Number.isFinite(stored) ? stored : 0, allowance);
+}
+
+/**
+ * A link code compared without case (doitac-3010 #015): codes are kept as
+ * typed, and "Vana2026" is the same link as "VANA2026".
+ */
+function sameLinkCode(code: string) {
+  return Raw((column) => `UPPER(${column}) = UPPER(:linkCode)`, {
+    linkCode: code.trim(),
+  });
+}
+
+/** A link's state as the admin reads it, for "đang ở trạng thái …". */
+function linkStatusText(link: { status: string; deletedAt?: Date | null }) {
+  if (link.deletedAt) return 'Đã xóa';
+  switch (link.status) {
+    case PartnerLinkStatusEnum.ACTIVE:
+      return 'Hoạt động';
+    case PartnerLinkStatusEnum.SUSPENDED:
+      return 'Bị đình chỉ';
+    default:
+      return 'Tạm tắt';
+  }
 }
 
 @Injectable()
@@ -2071,7 +2102,7 @@ export class PartnersService {
     if (!row?.canSelfRestore) {
       throw new BadRequestException(
         row && row.restoreCount > 0
-          ? 'Link này đã khôi phục 1 lần trước đó. Từ lần khôi phục thứ hai, vui lòng gửi yêu cầu để admin duyệt.'
+          ? 'Link này đã được khôi phục 1 lần trong 30 ngày qua. Từ lần khôi phục thứ hai trong vòng 30 ngày, vui lòng gửi yêu cầu để admin duyệt.'
           : `Đã quá ${LINK_RESTORE_DAYS} ngày kể từ khi xóa, vui lòng gửi yêu cầu khôi phục để esim.vn hỗ trợ.`,
       );
     }
@@ -2836,9 +2867,19 @@ export class PartnersService {
         );
       }
 
-      const code = dto.code.trim().toUpperCase();
+      // Kept as typed — "vana-2026" stays lower case — and compared without
+      // case, so "VANA-2026" is the same code (doitac-3010 #015).
+      const code = dto.code.trim();
+      if (code.length < PARTNER_LINK_CODE_MIN_LENGTH) {
+        throw new UnprocessableEntityException({
+          status: HttpStatus.UNPROCESSABLE_ENTITY,
+          errors: {
+            code: `Mã giới thiệu cần từ ${PARTNER_LINK_CODE_MIN_LENGTH} ký tự trở lên.`,
+          },
+        });
+      }
       const taken = await this.linkRepository.findOne({
-        where: { code },
+        where: { code: sameLinkCode(code) },
         withDeleted: true,
       });
       if (taken) {
@@ -3503,11 +3544,19 @@ export class PartnersService {
     adminId: number | null = null,
   ) {
     const partner = await this.getPartnerOrThrowById(partnerId);
-    const code = dto.code?.trim().toUpperCase() || this.generateLinkCode();
+    // As typed, from 2 characters, "-", "_" and "." allowed (doitac-3010
+    // #015). A deleted link keeps its name for ever: the check used to skip
+    // deleted links, and the database then refused the save in English.
+    const code = dto.code?.trim() || this.generateLinkCode();
 
-    const taken = await this.linkRepository.findOne({ where: { code } });
+    const taken = await this.linkRepository.findOne({
+      where: { code: sameLinkCode(code) },
+      withDeleted: true,
+    });
     if (taken) {
-      throw new BadRequestException(`Mã link "${code}" đã được dùng.`);
+      throw new BadRequestException(
+        `Link tiếp thị "${taken.code}" đã tồn tại trên hệ thống và đang ở trạng thái "${linkStatusText(taken)}" nên không được phép tạo mới. Tên link đã dùng được giữ chỗ vĩnh viễn, vui lòng chọn tên khác.`,
+      );
     }
 
     const link = await this.linkRepository.save(
@@ -6333,7 +6382,7 @@ export class PartnersService {
     clickToken: string;
   } | null> {
     const link = await this.linkRepository.findOne({
-      where: { code, status: PartnerLinkStatusEnum.ACTIVE },
+      where: { code: sameLinkCode(code), status: PartnerLinkStatusEnum.ACTIVE },
     });
     if (!link) return null;
 
@@ -6404,7 +6453,7 @@ export class PartnersService {
     code: string,
   ): Promise<{ targetPath: string | null } | null> {
     const link = await this.linkRepository.findOne({
-      where: { code, status: PartnerLinkStatusEnum.ACTIVE },
+      where: { code: sameLinkCode(code), status: PartnerLinkStatusEnum.ACTIVE },
     });
     return link ? { targetPath: link.targetPath ?? null } : null;
   }
@@ -12028,7 +12077,7 @@ export class PartnersService {
     clickedAt?: Date | null,
   ): Promise<{ partnerId: number; linkId: number } | null> {
     const link = await this.linkRepository.findOne({
-      where: { code, status: PartnerLinkStatusEnum.ACTIVE },
+      where: { code: sameLinkCode(code), status: PartnerLinkStatusEnum.ACTIVE },
     });
     if (!link) return null;
 

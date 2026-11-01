@@ -17,6 +17,8 @@ import {
 /** Bounds for a code a partner names themselves (#014). */
 export const PARTNER_LINK_CODE_MIN_LENGTH = 8;
 export const PARTNER_LINK_CODE_MAX_LENGTH = 50;
+/** An admin may name a link from 2 characters (doitac-3010 #015). */
+export const ADMIN_LINK_CODE_MIN_LENGTH = 2;
 
 export class CreatePartnerLinkDto {
   @ApiProperty({ example: 'Chiến dịch TikTok tháng 9' })
@@ -27,15 +29,20 @@ export class CreatePartnerLinkDto {
   @ApiPropertyOptional({
     example: 'VANA2026',
     description:
-      'Referral code the partner picks for themselves — 8 to 50 characters, letters and/or digits. Only partners an admin has allowed may send this; leave empty to have one generated.',
+      'Referral code — letters, digits, "-", "_" or "."; 8 to 50 characters for a partner, from 2 for an admin; kept as typed, compared without case. Only partners an admin has allowed may send this; leave empty to have one generated.',
   })
   @IsOptional()
   @IsString()
-  @MinLength(PARTNER_LINK_CODE_MIN_LENGTH)
-  @MaxLength(PARTNER_LINK_CODE_MAX_LENGTH)
-  @Matches(/^[A-Za-z0-9]+$/, {
+  // 2 here, for an admin creating one; a partner's own needs 8 (the service).
+  @MinLength(ADMIN_LINK_CODE_MIN_LENGTH, {
+    message: `Mã giới thiệu cần từ ${ADMIN_LINK_CODE_MIN_LENGTH} ký tự trở lên.`,
+  })
+  @MaxLength(PARTNER_LINK_CODE_MAX_LENGTH, {
+    message: `Mã giới thiệu tối đa ${PARTNER_LINK_CODE_MAX_LENGTH} ký tự.`,
+  })
+  @Matches(/^[A-Za-z0-9._-]+$/, {
     message:
-      'Mã giới thiệu chỉ gồm chữ và số, không dấu và không khoảng trắng.',
+      'Mã giới thiệu chỉ gồm chữ, số và các dấu "-", "_", ".", không dấu và không khoảng trắng.',
   })
   code?: string;
 

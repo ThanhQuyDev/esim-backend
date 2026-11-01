@@ -141,7 +141,7 @@ describe('PartnersService.adminCreateLinkForPartner (doitac-1410 #053)', () => {
       1,
     );
     expect(logLinkEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 12, code: 'TIKTOK2026' }),
+      expect.objectContaining({ id: 12, code: 'tiktok2026' }),
       'created',
       'admin',
       1,
