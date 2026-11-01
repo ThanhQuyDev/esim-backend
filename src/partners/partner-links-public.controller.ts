@@ -8,7 +8,13 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { PartnersService } from './partners.service';
 
 /**
@@ -37,6 +43,14 @@ export class RecordClickDto {
   @IsString()
   @MaxLength(128)
   visitorId?: string;
+
+  /** What the storefront saw of the request (doitac-3010 #020). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
+  botFlags?: string[];
 }
 
 /** The landing page's confirmation of a click (doitac-3010 #018). */

@@ -14,6 +14,8 @@ function buildService(recent: { clickId: string } | null) {
   const repos = {
     linkClickRepository: {
       findOne: jest.fn().mockResolvedValue(recent),
+      // Clicks from the same network lately (doitac-3010 #020).
+      count: jest.fn().mockResolvedValue(0),
       save: jest.fn().mockResolvedValue(undefined),
       create: jest.fn().mockImplementation((row: object) => row),
     },

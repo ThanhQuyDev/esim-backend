@@ -43,6 +43,14 @@ import {
 import type { PartnerDocument } from './infrastructure/persistence/relational/entities/partner.entity';
 import { partnerDeviceFingerprint } from './partner-device-fingerprint';
 import {
+  CLICK_BOT_SUSPECT_SCORE,
+  CLICK_RATE_HARD_LIMIT,
+  CLICK_RATE_SOFT_LIMIT,
+  CLICK_RATE_WINDOW_MS,
+  clickBotScore,
+  knownBotFlags,
+} from './partner-click-bot-score';
+import {
   ATTRIBUTION_REJECT_REASONS,
   AttributionRejectReason,
   isClickToken,
@@ -6426,11 +6434,14 @@ export class PartnersService {
       userAgent?: string | null;
       referrer?: string | null;
       visitorId?: string | null;
+      /** What the storefront saw of the request (doitac-3010 #020). */
+      botFlags?: readonly unknown[] | null;
     },
   ): Promise<{
     targetPath: string | null;
-    clickId: string;
-    clickToken: string;
+    /** Null when the hit was not recorded (too many from one network). */
+    clickId: string | null;
+    clickToken: string | null;
   } | null> {
     const link = await this.linkRepository.findOne({
       where: { code: sameLinkCode(code), status: PartnerLinkStatusEnum.ACTIVE },
@@ -6460,6 +6471,33 @@ export class PartnersService {
       }
     }
 
+    // How often this network has been clicking (doitac-3010 #020): a person
+    // opens a few links, a script opens hundreds. Past the hard limit the hit
+    // is sent on its way but not counted at all — no click, no cookie.
+    const botFlags = knownBotFlags(meta.botFlags);
+    if (meta.ipHash) {
+      const recentFromNetwork = await this.linkClickRepository.count({
+        where: {
+          ipHash: meta.ipHash,
+          clickedAt: MoreThan(new Date(Date.now() - CLICK_RATE_WINDOW_MS)),
+        },
+      });
+      if (recentFromNetwork >= CLICK_RATE_HARD_LIMIT) {
+        this.logger?.warn(
+          `Link ${link.id}: click not recorded, ${recentFromNetwork} clicks from one network in 10 minutes`,
+        );
+        return {
+          targetPath: link.targetPath ?? null,
+          clickId: null,
+          clickToken: null,
+        };
+      }
+      if (recentFromNetwork >= CLICK_RATE_SOFT_LIMIT) {
+        botFlags.push('high_rate');
+      }
+    }
+    const botScore = clickBotScore(botFlags);
+
     // Minted here, on the server, and handed back so the redirect can carry it
     // in the URL (#039). 32 hex characters: guessing one would mean guessing a
     // click that really happened.
@@ -6475,6 +6513,8 @@ export class PartnersService {
         clickId,
         deviceHash,
         signed: true,
+        botScore,
+        botFlags: botFlags.length ? botFlags.join(',') : null,
       }),
     );
     await this.linkRepository.increment({ id: link.id }, 'clickCount', 1);
@@ -6500,6 +6540,27 @@ export class PartnersService {
   }
 
   /** Where an active link points, with no click recorded (doitac-1410 #026). */
+  /**
+   * Whether the click an order came through looked like a bot (doitac-3010
+   * #020): its score and reasons, or null for a human-looking click, a click
+   * from before scoring, or no click at all.
+   */
+  async clickBotSignals(
+    clickValue?: string | null,
+  ): Promise<{ score: number; flags: string[] } | null> {
+    const id = this.clickIdOf(clickValue);
+    if (!id) return null;
+    const click = await this.linkClickRepository.findOne({
+      where: { clickId: id },
+    });
+    const score = Number(click?.botScore ?? 0);
+    if (score < CLICK_BOT_SUSPECT_SCORE) return null;
+    return {
+      score,
+      flags: (click?.botFlags ?? '').split(',').filter(Boolean),
+    };
+  }
+
   /**
    * The landing page saying it was really shown (doitac-3010 #018, rule 2).
    *

@@ -404,6 +404,18 @@ export class OrdersService {
     });
     if (shape && shape !== SessionShapeEnum.NATURAL) warnings.push(shape);
 
+    // How the click itself looked (doitac-3010 #020): a bot dressed as a
+    // browser gets past the redirect, but its score follows it to the order.
+    try {
+      if (await this.partnersService.clickBotSignals(clickId)) {
+        warnings.push('bot_click');
+      }
+    } catch (err) {
+      this.logger?.error(
+        `resolveFraudSignals: click bot check failed: ${(err as Error).message}`,
+      );
+    }
+
     return {
       visitorId,
       ipHash,

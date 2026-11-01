@@ -65,6 +65,14 @@ export class PartnerLinkClickEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   signed?: boolean;
 
+  /** How bot-like the click looked, 0–100 (doitac-3010 #020). */
+  @Column({ type: 'smallint', default: 0 })
+  botScore?: number;
+
+  /** The reasons behind {@link botScore}, comma-separated. */
+  @Column({ type: String, length: 200, nullable: true })
+  botFlags?: string | null;
+
   /** When the landing page confirmed it was shown (doitac-3010 #018). */
   @Column({ type: 'timestamp', nullable: true })
   confirmedAt?: Date | null;
