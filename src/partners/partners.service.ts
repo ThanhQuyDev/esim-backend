@@ -9692,15 +9692,29 @@ export class PartnersService {
   ): Promise<{
     plans: {
       id: number;
+      /** The standard name (doitac-3010 #026). */
       name: string;
+      /** The supplier's own name for it. */
+      supplierName: string;
       slug: string;
       destinationName: string | null;
+      destinationFlagUrl: string | null;
+      region: {
+        name: string | null;
+        avatarUrl: string | null;
+        countries: { name: string; flagUrl: string | null }[];
+      } | null;
       durationDays: number;
       dataMb: number;
       type: string | null;
       topUp: boolean;
       hasCallSms: boolean;
       tiktokAi: boolean;
+      /** False when neither the APN table nor the exit IP tells. */
+      tiktokAiKnown: boolean;
+      isKyc: boolean;
+      hotSpot: boolean | null;
+      hotSpotAllow: string | null;
       // doitac-1410 #034:
       /** "Tốc độ sau giảm tốc". */
       throttleSpeed: string | null;
@@ -9792,14 +9806,31 @@ export class PartnersService {
           markupPercent,
         );
         const destination = plan.destination as
-          | { name?: string; titleVi?: string | null }
+          | { name?: string; titleVi?: string | null; flagUrl?: string | null }
           | undefined;
         const region = plan.region as
-          | { name?: string; titleVi?: string | null }
+          | {
+              name?: string;
+              titleVi?: string | null;
+              avatarUrl?: string | null;
+              destinations?: {
+                id?: number;
+                name?: string;
+                titleVi?: string | null;
+                flagUrl?: string | null;
+              }[];
+            }
           | undefined;
+        const appSupport = plan.appSupport as
+          | { known?: boolean; tiktokAllDevices?: boolean; chatGpt?: boolean }
+          | undefined;
+        const suggestedRetailVnd = partnerSuggestedRetailVnd(unitPriceVnd);
         return {
           id: Number(plan.id),
-          name: String(plan.name),
+          // The standard name, as the admin shows it — "Vietnam - Total 5 GB -
+          // 7 days" (doitac-3010 #026).
+          name: String(plan.standardName || plan.name),
+          supplierName: String(plan.name),
           slug: String(plan.slug),
           destinationName:
             destination?.titleVi ||
@@ -9807,23 +9838,41 @@ export class PartnersService {
             region?.titleVi ||
             region?.name ||
             null,
+          // A country's flag, or a region with its countries (doitac-3010 #026).
+          destinationFlagUrl: destination?.flagUrl ?? null,
+          region: region
+            ? {
+                name: region.titleVi || region.name || null,
+                avatarUrl: region.avatarUrl ?? null,
+                countries: (region.destinations ?? []).map((d) => ({
+                  name: d.titleVi || d.name || '',
+                  flagUrl: d.flagUrl ?? null,
+                })),
+              }
+            : null,
           durationDays: Number(plan.durationDays ?? 0),
           dataMb: Number(plan.dataMb ?? 0),
           type: plan.type ?? null,
           topUp: Boolean(plan.topUp),
           hasCallSms: Number(plan.sms ?? 0) > 0 || Number(plan.call ?? 0) > 0,
           tiktokAi: Boolean(
-            plan.appSupport?.tiktokAllDevices && plan.appSupport?.chatGpt,
+            appSupport?.tiktokAllDevices && appSupport?.chatGpt,
           ),
+          // Without an APN entry or a local exit IP nobody knows: "Không rõ",
+          // never "Không" — only China blocks TikTok and AI (doitac-3010 #026).
+          tiktokAiKnown: Boolean(appSupport?.known || plan.isNonHkIp),
+          isKyc: Boolean(plan.isKyc),
+          hotSpot: plan.hotSpot ?? null,
+          hotSpotAllow: plan.hotSpotAllow ?? null,
           throttleSpeed: plan.fupSpeed ?? null,
           sms: plan.sms ?? null,
           call: plan.call ?? null,
           refundable: planRefundSupported(plan),
           isAbleMultidate: Boolean(plan.isAbleMultidate),
           isCheapest: Boolean(plan.isCheapest),
-          suggestedRetailVnd: partnerSuggestedRetailVnd(unitPriceVnd),
+          suggestedRetailVnd,
           unitPriceUsd: toUsd(unitPriceVnd),
-          suggestedRetailUsd: toUsd(partnerSuggestedRetailVnd(unitPriceVnd)),
+          suggestedRetailUsd: toUsd(suggestedRetailVnd),
           apn: plan.apn ?? null,
           ipExport: plan.ipExport ?? null,
           isNonHkIp: Boolean(plan.isNonHkIp),
@@ -9910,7 +9959,14 @@ export class PartnersService {
     quantity: number,
     /** Days of a day pass (vande #014). */
     periodNum?: number | null,
-  ): Promise<PartnerPurchaseQuote & { rejection: string | null }> {
+  ): Promise<
+    PartnerPurchaseQuote & {
+      rejection: string | null;
+      suggestedRetailUnitVnd: number;
+      suggestedRetailTotalVnd: number;
+      suggestedMarginVnd: number;
+    }
+  > {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const plan = await this.dataSource.query(
       `SELECT "vndPrice", "vndCostPrice", "isAbleMultidate" FROM plan
@@ -9943,8 +9999,19 @@ export class PartnersService {
       quantity,
     });
 
+    // "Doanh thu bán ra (giá bán lẻ đề xuất)" in the order dialog is the
+    // retail price the price list shows the partner, not the storefront's
+    // own price (doitac-3010 #026).
+    const suggestedRetailUnitVnd = partnerSuggestedRetailVnd(
+      quote.unitPriceVnd,
+    );
+    const suggestedRetailTotalVnd = suggestedRetailUnitVnd * quote.quantity;
+
     return {
       ...quote,
+      suggestedRetailUnitVnd,
+      suggestedRetailTotalVnd,
+      suggestedMarginVnd: suggestedRetailTotalVnd - quote.totalVnd,
       rejection: partnerPurchaseRejection(
         {
           partnerType: partner.partnerType,

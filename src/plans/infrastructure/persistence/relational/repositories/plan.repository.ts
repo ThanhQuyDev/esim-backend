@@ -72,7 +72,7 @@ export class PlansRelationalRepository implements PlanRepository {
 
       if (filterOptions?.search) {
         qb.where(
-          '(plan.name ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
+          '(plan.name ILIKE :search OR plan."standardName" ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
           { search: `%${filterOptions.search}%` },
         );
       }
@@ -807,7 +807,7 @@ export class PlansRelationalRepository implements PlanRepository {
 
     if (filterOptions?.search) {
       qb.where(
-        '(plan.name ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
+        '(plan.name ILIKE :search OR plan."standardName" ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
         { search: `%${filterOptions.search}%` },
       );
     }
