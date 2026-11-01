@@ -2754,7 +2754,8 @@ export class PartnersService {
    */
   async adminListLinks(query: AdminLinkListQuery = {}) {
     const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
+    // Up to 200 a page, as the admin tables offer (doitac-3010 #036).
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 200);
     const params: unknown[] = [];
     const where: string[] = ['p."deletedAt" IS NULL'];
     const add = (sql: string, ...values: unknown[]) => {
