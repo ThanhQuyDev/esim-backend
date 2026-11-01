@@ -613,6 +613,16 @@ export function vnMonth(offset = 0, now = new Date()): string {
 }
 
 /**
+ * 0:00 Vietnam time on the 1st of the month `offset` months after `period`
+ * ("YYYY-MM"), as a UTC instant — when a monthly review's result takes
+ * effect (doitac-3010 #030).
+ */
+export function vnMonthStartUtc(period: string, offset = 0): Date {
+  const [year, month] = period.split('-').map(Number);
+  return new Date(Date.UTC(year!, month! - 1 + offset, 1) - VN_OFFSET_MS);
+}
+
+/**
  * `column` falls inside the Vietnamese month whose first day (`YYYY-MM-01`)
  * is bound to `param` — cut on Hanoi midnight, like VN_MONTH_START_SQL.
  */
@@ -7415,8 +7425,8 @@ export class PartnersService {
     }));
   }
 
-  /** A partner's own tier review history, newest first. */
-  async getMyTierEvaluations(partnerId: number, limit = 20) {
+  /** A partner's own tier review history, newest first — all of it, paged in the portal (doitac-3010 #030). */
+  async getMyTierEvaluations(partnerId: number, limit = 1000) {
     return this.tierEvaluationRepository.find({
       where: { partnerId },
       order: { evaluatedAt: 'DESC' },
@@ -8222,12 +8232,14 @@ export class PartnersService {
    * one good stretch kept a partner on a high rate for good without selling
    * again. Now each month starts from what was sold in the month before.
    *
-   * Runs at 00:10 on the 1st, Vietnam time, for the month just ended. The cron
-   * skips partners already reviewed for that month (a restart, a second
-   * instance); the admin "Xét hạng" button passes `rerun` to review everybody
-   * again, e.g. after changing thresholds.
+   * The books close at 23:59:59 on the month's last day and a new tier takes
+   * effect from 0:00 on the 1st, Vietnam time (doitac-3010 #030): the review
+   * runs then, for the month just ended, and dates the change to that
+   * midnight. The cron skips partners already reviewed for that month (a
+   * restart, a second instance); the admin "Xét hạng" button passes `rerun` to
+   * review everybody again, e.g. after changing thresholds.
    */
-  @Cron('10 0 1 * *', { timeZone: 'Asia/Ho_Chi_Minh' })
+  @Cron('0 0 1 * *', { timeZone: 'Asia/Ho_Chi_Minh' })
   async runMonthlyTierReview(
     opts: { period?: string; rerun?: boolean } = {},
   ): Promise<void> {
@@ -8262,15 +8274,23 @@ export class PartnersService {
         );
         if (flags?.reviewed && !opts.rerun) continue;
 
-        // A distribution partner also qualifies on what they are holding on
-        // deposit right now (#073) — either route alone is enough.
+        // A distribution partner also qualifies on what they deposited over
+        // the month — from the 1st to 23:59:59 on the last day, not whatever
+        // the wallet holds when the review runs (#073, doitac-3010 #030).
+        // Either route alone is enough. Only money they sent counts, not a
+        // promotion's bonus.
         const depositVnd = distribution
           ? Number(
               (
-                await this.walletRepository.findOne({
-                  where: { partnerId: partner.id },
-                })
-              )?.balanceVnd ?? 0,
+                await this.dataSource.query(
+                  `SELECT COALESCE(SUM(t."amountVnd"), 0) AS "depositVnd"
+                     FROM partner_wallet_transaction t
+                    WHERE t."partnerId" = $1
+                      AND t.type = '${PartnerWalletTransactionTypeEnum.DEPOSIT}'
+                      AND ${vnMonthSql('t."createdAt"', '$2')}`,
+                  [partner.id, `${period}-01`],
+                )
+              )[0]?.depositVnd ?? 0,
             )
           : 0;
 
@@ -8327,8 +8347,9 @@ export class PartnersService {
         const tierBefore = partner.tierCode ?? null;
         if (result !== 'unchanged') {
           partner.tierCode = earned!.tierCode;
-          // From this moment on, not backwards (#042).
-          partner.tierEffectiveFrom = new Date();
+          // From 0:00 on the 1st, Vietnam time — the moment the month closed
+          // (doitac-3010 #030); never backwards past it (#042).
+          partner.tierEffectiveFrom = vnMonthStartUtc(period, 1);
           await this.partnerRepository.save(partner);
           if (result === 'promoted') promoted++;
           else demoted++;
@@ -8340,6 +8361,7 @@ export class PartnersService {
             period,
             revenueVnd,
             validOrders,
+            depositVnd,
             tierBefore: currentTier?.tierCode ?? tierBefore,
             tierAfter: partner.tierCode ?? null,
             result,

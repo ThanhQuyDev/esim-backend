@@ -38,6 +38,13 @@ export class PartnerTierEvaluationEntity {
   @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
   revenueVnd!: number;
 
+  /**
+   * What a distribution partner deposited over the month — the second route
+   * to a tier (doitac-3010 #030).
+   */
+  @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
+  depositVnd!: number;
+
   @Column({ type: 'int', default: 0 })
   validOrders!: number;
 

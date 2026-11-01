@@ -75,15 +75,16 @@ function buildService({
       save: jest.fn().mockResolvedValue({}),
     },
     dataSource: {
-      query: jest
-        .fn()
-        .mockImplementation((sql: string) =>
-          Promise.resolve(
-            sql.includes('"reviewed"')
-              ? [flags]
+      query: jest.fn().mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('"reviewed"')
+            ? [flags]
+            : // Deposits made over the month (doitac-3010 #030).
+              sql.includes('partner_wallet_transaction')
+              ? [{ depositVnd: balanceVnd }]
               : [{ revenueVnd, validOrders: '4' }],
-          ),
         ),
+      ),
     },
   });
 
@@ -200,12 +201,48 @@ describe('PartnersService.runMonthlyTierReview (#072, #073)', () => {
 
     await service.runMonthlyTierReview();
 
-    const wallet = (
-      service as unknown as {
-        walletRepository: { findOne: jest.Mock };
-      }
-    ).walletRepository;
-    expect(wallet.findOne).not.toHaveBeenCalled();
+    const query = (service as unknown as { dataSource: { query: jest.Mock } })
+      .dataSource.query;
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes('partner_wallet_transaction'),
+      ),
+    ).toBe(false);
+  });
+
+  // doitac-3010 #030
+  it("should judge deposits on the month's own, not on today's balance", async () => {
+    const { service, savedPartners } = buildService({
+      partner: {
+        id: 8,
+        partnerType: PartnerTypeEnum.DISTRIBUTION,
+        tierCode: 'BRONZE',
+      },
+      balanceVnd: '100000000',
+      currentTier: { tierCode: 'BRONZE', minVolumeVnd: '0', isInternal: false },
+    });
+
+    await service.runMonthlyTierReview({ period: '2026-10' });
+
+    const s = service as unknown as {
+      dataSource: { query: jest.Mock };
+      walletRepository: { findOne: jest.Mock };
+      tierEvaluationRepository: { save: jest.Mock };
+    };
+    const call = s.dataSource.query.mock.calls.find(([sql]) =>
+      String(sql).includes('partner_wallet_transaction'),
+    )!;
+    expect(call[0]).toContain("t.type = 'deposit'");
+    expect(call[1]).toEqual([8, '2026-10-01']);
+    expect(s.walletRepository.findOne).not.toHaveBeenCalled();
+    expect(s.tierEvaluationRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ period: '2026-10', depositVnd: 100000000 }),
+    );
+    // The new tier counts from 0:00 on 1 November in Vietnam.
+    expect(savedPartners[0]).toMatchObject({
+      tierCode: 'GOLD',
+      tierEffectiveFrom: new Date('2026-10-31T17:00:00.000Z'),
+    });
   });
 });
 
