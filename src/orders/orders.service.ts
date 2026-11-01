@@ -3074,6 +3074,9 @@ export class OrdersService {
             address: invoice.address,
             invoicePhone: invoice.invoicePhone,
             invoiceEmail: invoice.invoiceEmail,
+            // "Số hóa đơn VAT" (doitac-3010 #044).
+            invoiceNumber: invoice.invoiceNumber ?? null,
+            buyerType: invoice.buyerType ?? 'company',
             createdAt: invoice.createdAt,
             updatedAt: invoice.updatedAt,
           }

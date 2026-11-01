@@ -222,6 +222,14 @@ export class AdminOrderInvoiceDto {
   @ApiProperty({ type: String, example: 'finance@example.com' })
   invoiceEmail: string;
 
+  /** "Số hóa đơn VAT" (doitac-3010 #044). */
+  @ApiPropertyOptional({ type: String, nullable: true, example: '0001234' })
+  invoiceNumber?: string | null;
+
+  /** `company` or `consumer` (doitac-3010 #044). */
+  @ApiPropertyOptional({ type: String, example: 'company' })
+  buyerType?: string;
+
   @ApiProperty()
   createdAt: Date;
 

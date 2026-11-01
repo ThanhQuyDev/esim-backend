@@ -55,6 +55,17 @@ export class InvoiceEntity extends EntityRelationalHelper {
   })
   companyName: string;
 
+  /** "Số hóa đơn VAT" the invoice was issued under (doitac-3010 #044). */
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  invoiceNumber?: string | null;
+
+  /**
+   * `company` — requested with company details; `consumer` — issued to the
+   * buyer as a consumer, no details needed (doitac-3010 #044).
+   */
+  @Column({ type: 'varchar', length: 16, default: 'company' })
+  buyerType: string;
+
   @Index({ unique: true })
   @Column({ type: Number, nullable: false })
   orderId: number;

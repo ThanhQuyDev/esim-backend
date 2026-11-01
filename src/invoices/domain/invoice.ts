@@ -38,6 +38,14 @@ export class Invoice {
   })
   companyName: string;
 
+  /** "Số hóa đơn VAT" (doitac-3010 #044). */
+  @ApiProperty({ type: String, nullable: true, example: '0001234' })
+  invoiceNumber?: string | null;
+
+  /** `company` or `consumer` (doitac-3010 #044). */
+  @ApiProperty({ type: String, example: 'company' })
+  buyerType?: string;
+
   @ApiProperty({ type: Number, nullable: false })
   orderId: number;
 

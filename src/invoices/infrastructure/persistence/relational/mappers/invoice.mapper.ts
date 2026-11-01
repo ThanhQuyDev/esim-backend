@@ -20,6 +20,8 @@ export class InvoiceMapper {
     domainEntity.companyName = raw.companyName;
 
     domainEntity.orderId = raw.orderId;
+    domainEntity.invoiceNumber = raw.invoiceNumber ?? null;
+    domainEntity.buyerType = raw.buyerType ?? 'company';
 
     if (raw.order) {
       domainEntity.order = OrderMapper.toDomain(raw.order);
@@ -48,6 +50,12 @@ export class InvoiceMapper {
 
     if (domainEntity.orderId !== undefined) {
       persistenceEntity.orderId = domainEntity.orderId;
+    }
+    if (domainEntity.invoiceNumber !== undefined) {
+      persistenceEntity.invoiceNumber = domainEntity.invoiceNumber;
+    }
+    if (domainEntity.buyerType !== undefined) {
+      persistenceEntity.buyerType = domainEntity.buyerType;
     }
 
     if (domainEntity.order) {

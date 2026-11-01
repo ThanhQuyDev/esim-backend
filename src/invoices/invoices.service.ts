@@ -36,6 +36,14 @@ export const NON_INVOICEABLE_ORDER_STATUSES = new Set([
   'cancelled',
 ]);
 
+/** A typed "Số hóa đơn VAT", trimmed; empty → null (doitac-3010 #044). */
+export function normalizeInvoiceNumber(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = String(value ?? '').trim();
+  return trimmed ? trimmed.slice(0, 50) : null;
+}
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
@@ -137,10 +145,29 @@ export class InvoicesService {
       updateInvoiceDto.status === InvoiceStatus.ISSUED &&
       previousInvoice?.status !== InvoiceStatus.ISSUED;
 
+    // "Số hóa đơn VAT" is what the issue is tracked by (doitac-3010 #044): no
+    // invoice goes to ISSUED without one.
+    const invoiceNumber = normalizeInvoiceNumber(
+      updateInvoiceDto.invoiceNumber,
+    );
+    if (
+      isTransitioningToIssued &&
+      !invoiceNumber &&
+      !normalizeInvoiceNumber(previousInvoice?.invoiceNumber)
+    ) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { invoiceNumber: 'Nhập số hóa đơn VAT trước khi phát hành.' },
+        message: 'Nhập số hóa đơn VAT trước khi phát hành.',
+      });
+    }
+
     const updated = await this.invoiceRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
       status: updateInvoiceDto.status,
+
+      ...(invoiceNumber && { invoiceNumber }),
 
       invoicePhone: updateInvoiceDto.invoicePhone,
 
@@ -217,6 +244,55 @@ export class InvoicesService {
 
   remove(id: Invoice['id']) {
     return this.invoiceRepository.remove(id);
+  }
+
+  /**
+   * A VAT invoice issued to the buyer as a consumer (doitac-3010 #044): any
+   * order the business can invoice, with only the number — no company
+   * details, so no email goes out. Issued at once.
+   */
+  async issueConsumerInvoice(
+    orderId: number,
+    invoiceNumberInput: string,
+  ): Promise<Invoice> {
+    const invoiceNumber = normalizeInvoiceNumber(invoiceNumberInput);
+    if (!invoiceNumber) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { invoiceNumber: 'Nhập số hóa đơn VAT.' },
+        message: 'Nhập số hóa đơn VAT.',
+      });
+    }
+    const order = await this.orderService.findById(orderId);
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+    if (
+      NON_INVOICEABLE_ORDER_STATUSES.has((order.status ?? '').toLowerCase())
+    ) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { order: `cannotInvoiceOrderWithStatus:${order.status}` },
+      });
+    }
+    const existing = await this.invoiceRepository.findByOrderId(orderId);
+    if (existing) {
+      throw new ConflictException(
+        `Invoice already exists for order ${orderId}`,
+      );
+    }
+    return this.invoiceRepository.create({
+      status: InvoiceStatus.ISSUED,
+      buyerType: 'consumer',
+      invoiceNumber,
+      companyName: '',
+      taxCode: '',
+      address: '',
+      invoicePhone: '',
+      invoiceEmail: '',
+      orderId: order.id,
+      order,
+    });
   }
 
   /**

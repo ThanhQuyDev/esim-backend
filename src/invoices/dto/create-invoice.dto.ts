@@ -11,11 +11,14 @@ import {
   ValidateNested,
   IsNotEmptyObject,
   IsString,
+  IsOptional,
+  MaxLength,
 } from 'class-validator';
 
 import {
   // decorators here
   ApiProperty,
+  ApiPropertyOptional,
 } from '@nestjs/swagger';
 
 export class CreateInvoiceDto {
@@ -71,4 +74,11 @@ export class CreateInvoiceDto {
   order: OrderDto;
 
   // Don't forget to use the class-validator decorators in the DTO properties.
+
+  /** "Số hóa đơn VAT", required to issue (doitac-3010 #044). */
+  @ApiPropertyOptional({ type: String, example: '0001234', maxLength: 50 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  invoiceNumber?: string;
 }

@@ -21,6 +21,7 @@ import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceForOrderDto } from './dto/create-invoice-for-order.dto';
+import { IssueConsumerInvoiceDto } from './dto/issue-consumer-invoice.dto';
 import { Invoice } from './domain/invoice';
 
 /**
@@ -55,5 +56,24 @@ export class AdminInvoicesController {
     @Body() dto: CreateInvoiceForOrderDto,
   ): Promise<Invoice> {
     return this.invoicesService.createForOrder(orderId, dto);
+  }
+
+  /**
+   * "Số hóa đơn VAT" for any order (doitac-3010 #044): a consumer invoice,
+   * issued at once with only its number.
+   */
+  @Post(':orderId/invoices/consumer')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Issue a consumer VAT invoice with its number' })
+  @ApiParam({ name: 'orderId', type: Number, required: true })
+  @ApiCreatedResponse({ type: Invoice })
+  issueConsumerInvoice(
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @Body() dto: IssueConsumerInvoiceDto,
+  ): Promise<Invoice> {
+    return this.invoicesService.issueConsumerInvoice(
+      orderId,
+      dto.invoiceNumber,
+    );
   }
 }
