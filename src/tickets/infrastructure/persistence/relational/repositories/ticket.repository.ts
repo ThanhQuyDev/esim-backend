@@ -52,10 +52,15 @@ export class TicketsRelationalRepository implements TicketRepository {
       });
     }
 
-    if (filterOptions?.search) {
+    // The same one box also finds the order number and the ICCID
+    // (doitac-3010 #045); a pasted "#ORD-…" still matches.
+    const search = filterOptions?.search?.trim().replace(/^#+\s*/, '');
+    if (search) {
       qb.andWhere(
-        '(ticket."customerEmail" ILIKE :search OR ticket.subject ILIKE :search)',
-        { search: `%${filterOptions.search}%` },
+        `(ticket."customerEmail" ILIKE :search OR ticket.subject ILIKE :search
+          OR ticket."orderId" ILIKE :search OR ticket.iccid ILIKE :search
+          OR ticket."ticketNumber" ILIKE :search)`,
+        { search: `%${search}%` },
       );
     }
 
