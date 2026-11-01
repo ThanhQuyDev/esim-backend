@@ -685,7 +685,9 @@ export class MailService {
     };
 
     return {
-      subject: Handlebars.compile(template.subject)(context),
+      subject: Handlebars.compile(template.subject, { noEscape: true })(
+        context,
+      ),
       html: Handlebars.compile(template.htmlBody, { strict: false })(context),
     };
   }
@@ -836,7 +838,9 @@ export class MailService {
       subject: template.subject,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const subjectCompiled = Handlebars.compile(template.subject, {
+      noEscape: true,
+    })(context);
     const htmlCompiled = Handlebars.compile(template.htmlBody, {
       strict: false,
     })(context);
@@ -906,7 +910,9 @@ export class MailService {
       subject: template.subject,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const subjectCompiled = Handlebars.compile(template.subject, {
+      noEscape: true,
+    })(context);
     const htmlCompiled = Handlebars.compile(template.htmlBody, {
       strict: false,
     })(context);
@@ -957,7 +963,9 @@ export class MailService {
       subject: template.subject,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const subjectCompiled = Handlebars.compile(template.subject, {
+      noEscape: true,
+    })(context);
     const htmlCompiled = Handlebars.compile(template.htmlBody, {
       strict: false,
     })(context);
@@ -1013,7 +1021,9 @@ export class MailService {
       subject: template.subject,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const subjectCompiled = Handlebars.compile(template.subject, {
+      noEscape: true,
+    })(context);
     const htmlCompiled = Handlebars.compile(template.htmlBody, {
       strict: false,
     })(context);
@@ -1063,7 +1073,9 @@ export class MailService {
       subject: template.subject,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const subjectCompiled = Handlebars.compile(template.subject, {
+      noEscape: true,
+    })(context);
     const htmlCompiled = Handlebars.compile(template.htmlBody, {
       strict: false,
     })(context);
@@ -1107,7 +1119,9 @@ ${notificationBodyText(data.body)}`,
       subject: data.subject,
     };
     return {
-      subject: Handlebars.compile(template.subject)(context),
+      subject: Handlebars.compile(template.subject, { noEscape: true })(
+        context,
+      ),
       html: Handlebars.compile(template.htmlBody, { strict: false })(context),
       text: `${data.subject}
 
@@ -1187,7 +1201,9 @@ ${notificationBodyText(data.body)}`,
         : `${SITE_URL}/help-center/support`,
     };
 
-    const ownSubject = Handlebars.compile(template.subject)(context);
+    const ownSubject = Handlebars.compile(template.subject, { noEscape: true })(
+      context,
+    );
 
     // One email thread per ticket (#041, test round 4): the acknowledgement
     // carries the ticket's thread id, and every later email replies to it under
@@ -1300,7 +1316,9 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
       subject: template.subject,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const subjectCompiled = Handlebars.compile(template.subject, {
+      noEscape: true,
+    })(context);
     const htmlCompiled = Handlebars.compile(template.htmlBody, {
       strict: false,
     })(context);
@@ -1359,7 +1377,9 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
       subject: template.subject,
     };
 
-    const subjectCompiled = Handlebars.compile(template.subject)(context);
+    const subjectCompiled = Handlebars.compile(template.subject, {
+      noEscape: true,
+    })(context);
     const htmlCompiled = Handlebars.compile(template.htmlBody, {
       strict: false,
     })(context);

@@ -2138,7 +2138,7 @@ export class PartnersService {
     await this.notifyOnePartner(
       link.partnerId,
       `Link "${link.label}" đã được khôi phục`,
-      `esim.vn đã khôi phục link esim.vn/go/${link.code}. Lý do: ${note}`,
+      `esim.vn đã khôi phục link https://esim.vn/go/${link.code}. Lý do: ${note}`,
       adminId,
     );
     const [updated] = await this.getMyLinksByIds(link.partnerId, [linkId], {});
@@ -2378,8 +2378,8 @@ export class PartnersService {
         ? `Link "${link.label}" đã được khôi phục`
         : `Yêu cầu khôi phục link "${link.label}" chưa được duyệt`,
       dto.approve
-        ? `esim.vn đã khôi phục link esim.vn/go/${link.code} theo yêu cầu của bạn.${note ? ` Ghi chú: ${note}` : ''}`
-        : `esim.vn chưa duyệt yêu cầu khôi phục link esim.vn/go/${link.code}.${note ? ` Lý do: ${note}` : ''}`,
+        ? `esim.vn đã khôi phục link https://esim.vn/go/${link.code} theo yêu cầu của bạn.${note ? ` Ghi chú: ${note}` : ''}`
+        : `esim.vn chưa duyệt yêu cầu khôi phục link https://esim.vn/go/${link.code}.${note ? ` Lý do: ${note}` : ''}`,
       adminId,
     );
     const [updated] = await this.getMyLinksByIds(link.partnerId, [linkId], {});
@@ -2764,12 +2764,14 @@ export class PartnersService {
       { reason },
     );
 
+    // No quotes in the subject — they arrived as "&quot;" — and the link
+    // written in full, https:// included (doitac-3010 #014).
     const title = dto.suspended
-      ? `Link tiếp thị "${link.label}" bị đình chỉ`
-      : `Link tiếp thị "${link.label}" đã được gỡ đình chỉ`;
+      ? `Link tiếp thị: ${link.label} của bạn đã bị đình chỉ`
+      : `Link tiếp thị: ${link.label} của bạn đã được gỡ đình chỉ`;
     const body = dto.suspended
-      ? `esim.vn đã đình chỉ link esim.vn/go/${link.code}. Lý do: ${reason}\nTừ lúc này lượt nhấp mới không được ghi nhận cho bạn. Nếu bạn cho rằng chưa đúng, hãy bấm "Gửi kháng nghị" ở trang Link tiếp thị.`
-      : `esim.vn đã gỡ đình chỉ link esim.vn/go/${link.code}. Lý do: ${reason}\nLink hoạt động lại như trước khi bị đình chỉ.`;
+      ? `esim.vn đã đình chỉ link https://esim.vn/go/${link.code}. Lý do: ${reason}\nTừ lúc này lượt nhấp mới không được ghi nhận cho bạn. Nếu bạn cho rằng chưa đúng, hãy bấm "Gửi kháng nghị" ở trang Link tiếp thị.`
+      : `esim.vn đã gỡ đình chỉ link https://esim.vn/go/${link.code}. Lý do: ${reason}\nLink hoạt động lại như trước khi bị đình chỉ.`;
     await this.notifyOnePartner(link.partnerId, title, body, adminId);
 
     const [updated] = await this.getMyLinksByIds(link.partnerId, [linkId], {});
