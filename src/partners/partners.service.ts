@@ -4023,7 +4023,8 @@ export class PartnersService {
     // The file takes every matching order, the screen one page (#058).
     const limit = query.unbounded
       ? 5000
-      : Math.min(Math.max(Number(query.limit) || 50, 1), 200);
+      : // Up to 1000, paged on the screen (doitac-3010 #039).
+        Math.min(Math.max(Number(query.limit) || 50, 1), 1000);
 
     if (query.partnerType === PartnerTypeEnum.DISTRIBUTION) {
       return this.getMyPurchases(partnerId, {
@@ -6987,9 +6988,19 @@ export class PartnersService {
          -- partner's referral (#025).
          AND o."orderType" <> '${TOPUP_ORDER_TYPE}'
          AND ($3::text IS NULL OR o.status = $3)
+         -- doitac-3010 #039: one box for the order, ICCID, email and product.
          AND ($4::text IS NULL
               OR o."orderNumber" ILIKE '%' || $4 || '%'
-              OR o."couponCode" ILIKE '%' || $4 || '%')
+              OR o."couponCode" ILIKE '%' || $4 || '%'
+              OR o."deliveryEmail" ILIKE '%' || $4 || '%'
+              OR EXISTS (SELECT 1 FROM "user" su
+                          WHERE su.id = o."userId" AND su.email ILIKE '%' || $4 || '%')
+              OR EXISTS (SELECT 1 FROM order_item si JOIN plan sp ON sp.id = si."planId"
+                          WHERE si."orderId" = o.id
+                            AND (sp.name ILIKE '%' || $4 || '%'
+                                 OR sp."standardName" ILIKE '%' || $4 || '%'))
+              OR EXISTS (SELECT 1 FROM order_item si JOIN esim se ON se."orderItemId" = si.id
+                          WHERE si."orderId" = o.id AND se.iccid ILIKE '%' || $4 || '%'))
          AND ($5::timestamptz IS NULL OR o."createdAt" >= $5)
          AND ($6::timestamptz IS NULL OR o."createdAt" < $6)
          -- doitac-1410 #058. EXISTS, so an order still lists every product.
@@ -9748,7 +9759,7 @@ export class PartnersService {
       [orderId],
     );
     const esims = await this.dataSource.query(
-      `SELECT e."orderItemId", e.iccid,
+      `SELECT e.id, e."orderItemId", e.iccid,
               ${esimLifecycleSql('e')} AS status, e."activatedAt",
               e."expiresAt", e."dataUsed", e."dataTotal",
               ${OPEN_ESIM_REPORT_SQL} AS "openReport"
@@ -9796,6 +9807,8 @@ export class PartnersService {
         esims: (esims as Record<string, any>[])
           .filter((e) => Number(e.orderItemId) === Number(line.id))
           .map((e) => ({
+            // The admin opens the eSIM by id (doitac-3010 #039).
+            esimId: Number(e.id),
             iccid: String(e.iccid),
             status: (e.status as string) ?? null,
             activatedAt: e.activatedAt ?? null,

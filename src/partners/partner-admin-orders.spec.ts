@@ -56,12 +56,13 @@ describe('PartnersService.adminListPartnerOrders (#071)', () => {
     });
   });
 
+  // Capped at 1000, paged on the screen (doitac-3010 #039).
   it('should refuse to fetch an unbounded page', async () => {
     const { service, getMyOrders } = buildService();
 
     await service.adminListPartnerOrders({ limit: 100_000 });
 
-    expect(getMyOrders).toHaveBeenCalledWith(null, 200, expect.any(Object));
+    expect(getMyOrders).toHaveBeenCalledWith(null, 1000, expect.any(Object));
   });
 });
 
