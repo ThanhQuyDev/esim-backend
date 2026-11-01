@@ -178,6 +178,8 @@ describe('PartnersService.getMyPurchases (#046)', () => {
         deliveryEmail: null,
         topupPackageName: null,
         targetIccid: null,
+        esims: [],
+        openReport: null,
       },
     ]);
   });
@@ -259,7 +261,7 @@ describe('PartnersService.getMyPurchases (#046)', () => {
     await service.getMyPurchases(8, { limit: 5_000 });
 
     const [, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(params[3]).toBe(200);
+    expect(params[3]).toBe(5000);
   });
 });
 

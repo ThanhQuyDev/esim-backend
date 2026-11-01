@@ -208,6 +208,47 @@ import { couponSourceLabel } from './partner-coupon-label';
  * card gets a URL to open. The three amounts are always there, because the
  * amount paid and the amount credited are different numbers for a card.
  */
+/** One month on "Đơn hàng" (doitac-3010 #029). */
+export type PurchaseMonthFigures = {
+  orders: number;
+  paidVnd: number;
+  esims: number;
+  refundedVnd: number;
+};
+
+/**
+ * An order's eSIMs as the order list needs them (doitac-3010 #029): which can
+ * still ask for a refund, and the request open on any of them — a refund
+ * outranks a fault, as it is the one the partner waits on for money.
+ */
+export function purchaseEsims(raw: unknown): {
+  esims: {
+    iccid: string;
+    refundable: boolean;
+    openReport: 'fault' | 'refund' | null;
+  }[];
+  openReport: 'fault' | 'refund' | null;
+} {
+  const list = (Array.isArray(raw) ? raw : []) as Record<string, unknown>[];
+  const esims = list
+    .filter((e) => typeof e.iccid === 'string' && e.iccid)
+    .map((e) => ({
+      iccid: String(e.iccid),
+      refundable: planRefundSupported({
+        provider: (e.provider as string) ?? null,
+        name: (e.name as string) ?? null,
+        operatorName: (e.operatorName as string) ?? null,
+      }),
+      openReport: (e.openReport as 'fault' | 'refund' | null) ?? null,
+    }));
+  const openReport = esims.some((e) => e.openReport === 'refund')
+    ? 'refund'
+    : esims.some((e) => e.openReport === 'fault')
+      ? 'fault'
+      : null;
+  return { esims, openReport };
+}
+
 /** One month on "Quản lý eSIM" (doitac-3010 #028). */
 export type EsimMonthFigures = {
   /** eSIMs issued in the month. */
@@ -9136,6 +9177,14 @@ export class PartnersService {
       /** A topup order's package and the eSIM it went to. */
       topupPackageName: string | null;
       targetIccid: string | null;
+      /** The order's eSIMs, for "Báo lỗi" from the order list (doitac-3010 #029). */
+      esims: {
+        iccid: string;
+        refundable: boolean;
+        openReport: 'fault' | 'refund' | null;
+      }[];
+      /** A fault or refund request still open on one of its eSIMs. */
+      openReport: 'fault' | 'refund' | null;
     }[]
   > {
     // A null partner is the admin's view of every distribution partner at once
@@ -9146,7 +9195,8 @@ export class PartnersService {
       : null;
     const limit = Math.min(
       Math.max(filters.limit ?? 50, 1),
-      filters.unbounded ? 50_000 : 200,
+      // The whole history, paged in the portal (doitac-3010 #029).
+      filters.unbounded ? 50_000 : 5_000,
     );
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
     const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
@@ -9194,10 +9244,24 @@ export class PartnersService {
               o."deliveryEmail",
               o."topupPackageName",
               o."targetIccid",
+              (
+                SELECT COALESCE(json_agg(json_build_object(
+                         'iccid', e.iccid,
+                         'provider', ep.provider,
+                         'name', ep.name,
+                         'operatorName', ep."operatorName",
+                         'openReport', ${OPEN_ESIM_REPORT_SQL}
+                       ) ORDER BY e.id), '[]')
+                  FROM esim e
+                  JOIN order_item eoi ON eoi.id = e."orderItemId"
+                  LEFT JOIN plan ep ON ep.id = eoi."planId"
+                 WHERE eoi."orderId" = o.id AND e.iccid IS NOT NULL
+              ) AS esims,
               COALESCE(
                 json_agg(
                   json_build_object(
-                    'planName', p.name,
+                    -- The standard name, as the admin shows it (doitac-3010 #029).
+                    'planName', COALESCE(NULLIF(p."standardName", ''), p.name),
                     'quantity', oi.quantity,
                     'vndPrice', oi."vndPrice"
                   ) ORDER BY oi.id
@@ -9219,10 +9283,21 @@ export class PartnersService {
        WHERE ($1::int IS NULL OR o."userId" = $1)
          AND o."deletedAt" IS NULL
          AND ($2::text IS NULL OR o.status = $2)
+         -- One box for the order number, the customer's email, an ICCID or
+         -- a plan name (doitac-3010 #029); EXISTS so a matching order still
+         -- lists all its products.
          AND (
            $3::text IS NULL
            OR o."orderNumber" ILIKE '%' || $3 || '%'
-           OR p.name ILIKE '%' || $3 || '%'
+           OR o."deliveryEmail" ILIKE '%' || $3 || '%'
+           OR o."targetIccid" ILIKE '%' || $3 || '%'
+           OR o."topupPackageName" ILIKE '%' || $3 || '%'
+           OR EXISTS (SELECT 1 FROM order_item si JOIN plan sp ON sp.id = si."planId"
+                       WHERE si."orderId" = o.id
+                         AND (sp.name ILIKE '%' || $3 || '%'
+                              OR sp."standardName" ILIKE '%' || $3 || '%'))
+           OR EXISTS (SELECT 1 FROM order_item si JOIN esim se ON se."orderItemId" = si.id
+                       WHERE si."orderId" = o.id AND se.iccid ILIKE '%' || $3 || '%')
          )
          -- doitac-1410 #041. EXISTS rather than a WHERE on the joined line,
          -- so an order still lists all its products when one of them matches.
@@ -9231,7 +9306,9 @@ export class PartnersService {
            $6::text IS NULL
            OR o."topupPackageName" ILIKE '%' || $6 || '%'
            OR EXISTS (SELECT 1 FROM order_item fi JOIN plan fp ON fp.id = fi."planId"
-                       WHERE fi."orderId" = o.id AND fp.name ILIKE '%' || $6 || '%')
+                       WHERE fi."orderId" = o.id
+                         AND (fp.name ILIKE '%' || $6 || '%'
+                              OR fp."standardName" ILIKE '%' || $6 || '%'))
          )
          AND (
            $7::text IS NULL
@@ -9287,7 +9364,57 @@ export class PartnersService {
       deliveryEmail: row.deliveryEmail ?? null,
       topupPackageName: row.topupPackageName ?? null,
       targetIccid: row.targetIccid ?? null,
+      ...purchaseEsims(row.esims),
     }));
+  }
+
+  /**
+   * The line on top of "Đơn hàng" (doitac-3010 #029): this month against last
+   * month, in Vietnamese calendar months.
+   */
+  async getMyPurchaseSummary(
+    partnerId: number,
+    now: Date = new Date(),
+  ): Promise<{
+    thisMonth: PurchaseMonthFigures;
+    lastMonth: PurchaseMonthFigures;
+  }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    const vn = new Date(now.getTime() + 7 * 3_600_000);
+    const monthStart = (offset: number) =>
+      new Date(
+        Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth() + offset, 1) -
+          7 * 3_600_000,
+      );
+    const lastStart = monthStart(-1);
+    const thisStart = monthStart(0);
+    const nextStart = monthStart(1);
+
+    const rows = (await this.dataSource.query(
+      `SELECT CASE WHEN o."createdAt" >= $2 THEN 'this' ELSE 'last' END AS month,
+              COUNT(*)::int AS orders,
+              COALESCE(SUM(${ORDER_REVENUE_SQL}), 0) AS "paidVnd",
+              COALESCE(SUM(COALESCE(o."refundedAmountVnd", 0)), 0) AS "refundedVnd",
+              COALESCE(SUM((SELECT count(*) FROM esim e
+                              JOIN order_item eoi ON eoi.id = e."orderItemId"
+                             WHERE eoi."orderId" = o.id)), 0) AS esims
+         FROM "order" o
+        WHERE o."userId" = $1 AND o."deletedAt" IS NULL
+          AND o."createdAt" >= $4 AND o."createdAt" < $3
+        GROUP BY 1`,
+      [partner.userId, thisStart, nextStart, lastStart],
+    )) as Record<string, string | number>[];
+
+    const figures = (month: 'this' | 'last'): PurchaseMonthFigures => {
+      const row = rows.find((r) => r.month === month);
+      return {
+        orders: Number(row?.orders ?? 0),
+        paidVnd: Number(row?.paidVnd ?? 0),
+        esims: Number(row?.esims ?? 0),
+        refundedVnd: Number(row?.refundedVnd ?? 0),
+      };
+    };
+    return { thisMonth: figures('this'), lastMonth: figures('last') };
   }
 
   /**

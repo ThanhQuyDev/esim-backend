@@ -544,6 +544,17 @@ export class PartnersController {
     return this.partnersService.getMyEsimDetail(partner.id, iccid);
   }
 
+  /** This month against last month on Đơn hàng (doitac-3010 #029). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/purchases/summary')
+  @HttpCode(HttpStatus.OK)
+  async getMyPurchaseSummary(@Request() req: { user: { id: number } }) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyPurchaseSummary(partner.id);
+  }
+
   /** The orders a distribution partner placed themselves (#046). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
@@ -695,6 +706,8 @@ export class PartnersController {
       partner.id,
       {
         status: query.status,
+        // The one search box of the list (doitac-3010 #029).
+        search: query.search,
         orderNumber: query.orderNumber,
         planName: query.planName,
         iccid: query.iccid,
