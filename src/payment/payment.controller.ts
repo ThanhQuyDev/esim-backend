@@ -8,7 +8,6 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
-  Ip,
   Headers,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -16,6 +15,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
 import { SubmitOrderDto } from '../orders/dto/submit-order.dto';
+import { clientIp } from '../tickets/ticket-spam-guard';
 
 @ApiTags('Payment')
 @Controller({ path: 'payment', version: '1' })
@@ -36,12 +36,19 @@ export class PaymentController {
     },
   })
   checkout(
-    @Request() req: { user: { id: number } },
+    @Request() req: { user: { id: number } } & Parameters<typeof clientIp>[0],
     @Body() dto: SubmitOrderDto,
-    @Ip() ip: string,
     @Headers('user-agent') userAgent?: string,
   ): Promise<{ paymentUrl: string; orderNumber: string }> {
-    return this.paymentService.createCheckout(req.user.id, dto, ip, userAgent);
+    // The buyer's address from nginx's X-Real-IP, not `@Ip()`: behind the
+    // proxy that is always 127.0.0.1, which left "Vị trí & IP" empty and put
+    // every order on one network for the fraud flags (doitac-3010 #049).
+    return this.paymentService.createCheckout(
+      req.user.id,
+      dto,
+      clientIp(req),
+      userAgent,
+    );
   }
 
   /**
@@ -72,15 +79,15 @@ export class PaymentController {
     },
   })
   bankTransfer(
-    @Request() req: { user: { id: number } },
+    @Request() req: { user: { id: number } } & Parameters<typeof clientIp>[0],
     @Body() dto: SubmitOrderDto,
-    @Ip() ip: string,
     @Headers('user-agent') userAgent?: string,
   ) {
+    // The buyer's real address, as for the card checkout (doitac-3010 #049).
     return this.paymentService.createBankTransferCheckout(
       req.user.id,
       dto,
-      ip,
+      clientIp(req),
       userAgent,
     );
   }
