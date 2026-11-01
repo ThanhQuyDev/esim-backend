@@ -20,6 +20,7 @@ export class OrderMapper {
     domainEntity.topupDataText = raw.topupDataText ?? null;
     domainEntity.topupDurationDays = raw.topupDurationDays ?? null;
     domainEntity.topupIsUnlimited = !!raw.topupIsUnlimited;
+    domainEntity.topupPeriodNum = raw.topupPeriodNum ?? null;
     domainEntity.totalAmount = Number(raw.totalAmount);
     domainEntity.currency = raw.currency;
     domainEntity.paymentMethod = raw.paymentMethod;
@@ -106,6 +107,9 @@ export class OrderMapper {
     }
     if (domainEntity.topupDurationDays !== undefined) {
       persistenceEntity.topupDurationDays = domainEntity.topupDurationDays;
+    }
+    if (domainEntity.topupPeriodNum !== undefined) {
+      persistenceEntity.topupPeriodNum = domainEntity.topupPeriodNum;
     }
     if (domainEntity.topupIsUnlimited !== undefined) {
       persistenceEntity.topupIsUnlimited = domainEntity.topupIsUnlimited;

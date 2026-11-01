@@ -98,4 +98,11 @@ export class TopupPackageDto {
       'Add-on only: boost = high speed for one day, upgrade = bigger plan for the days left, extra = more total data.',
   })
   addonKind?: 'boost' | 'upgrade' | 'extra';
+
+  /**
+   * A day pass (eSIM Access dataType 2): `durationDays` is one day and the
+   * top-up can be bought for several (doitac-3010 #050).
+   */
+  @ApiPropertyOptional({ type: Boolean })
+  isDayPass?: boolean;
 }

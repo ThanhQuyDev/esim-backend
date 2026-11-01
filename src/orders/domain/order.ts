@@ -75,6 +75,10 @@ export class Order {
   @ApiPropertyOptional({ type: Boolean, example: false })
   topupIsUnlimited?: boolean;
 
+  /** Days bought on a day-pass top-up (doitac-3010 #050). */
+  @ApiPropertyOptional({ type: Number, example: 5 })
+  topupPeriodNum?: number | null;
+
   @ApiProperty({
     type: Number,
     example: 99.99,

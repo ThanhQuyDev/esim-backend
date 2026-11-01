@@ -133,6 +133,19 @@ function formatDataLabel(bytes: number): string {
   return `${Math.round(mb)} MB`;
 }
 
+/**
+ * Days a top-up buys (doitac-3010 #050): the chosen number for a day pass,
+ * 1–365; 1 for any other package, whatever was sent.
+ */
+export function topupDays(
+  pkg: { isDayPass?: boolean },
+  periodNum?: number | null,
+): number {
+  if (!pkg?.isDayPass) return 1;
+  const days = Math.trunc(Number(periodNum) || 1);
+  return Math.min(365, Math.max(1, days));
+}
+
 @Injectable()
 export class TopupService {
   private readonly logger = new Logger(TopupService.name);
@@ -433,6 +446,8 @@ export class TopupService {
   private async createPendingTopupOrder(
     userId: number,
     dto: TopupCheckoutDto,
+    /** Days for a day-pass package (doitac-3010 #050); 1 otherwise. */
+    periodNum?: number | null,
   ): Promise<{ order: Order; vndAmount: number }> {
     const { provider } = await this.resolveProviderForIccid(dto.iccid);
     if (provider !== dto.provider) {
@@ -473,13 +488,25 @@ export class TopupService {
     // `pkg` comes from `listPackages`, where every price has already been
     // through the margin tiers (#086) — this is only the belt-and-braces
     // path for a package that somehow arrived without a VND figure.
+    // A day pass bought for N days: the whole cost through the margin tiers,
+    // as a multi-day plan is priced (doitac-3010 #050, vande #014).
+    const days = topupDays(pkg, periodNum);
+    const rateForDays =
+      days > 1
+        ? await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)
+        : 0;
     const vndAmount =
-      pkg.vndPrice && pkg.vndPrice > 0
-        ? pkg.vndPrice
-        : roundVndToThousands(
-            (await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)) *
-              pkg.retailPrice,
-          );
+      days > 1
+        ? await this.profitMarginsService.calculateRetailVndFromCostUsd(
+            (Number(pkg.price) || 0) * days,
+            rateForDays,
+          )
+        : pkg.vndPrice && pkg.vndPrice > 0
+          ? pkg.vndPrice
+          : roundVndToThousands(
+              (await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)) *
+                pkg.retailPrice,
+            );
 
     // Readable date-time code like a purchase (#051, test round 4):
     // TOPUP-yyMMddHHmmssSSS-XXXXXX. The prefix is what payment routing reads.
@@ -490,7 +517,8 @@ export class TopupService {
     // pure profit.
     const vndCostPrice = roundVndToThousands(
       (await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)) *
-        (Number(pkg.price) || 0),
+        (Number(pkg.price) || 0) *
+        days,
     );
 
     const order = await this.orderRepository.create({
@@ -506,11 +534,18 @@ export class TopupService {
       topupPackageName:
         pkg.kind === 'addon' && pkg.addonKind
           ? `Mua thêm dung lượng (${ADDON_KIND_LABEL[pkg.addonKind]}) – ${pkg.name}`
-          : (pkg.name ?? null),
+          : days > 1
+            ? `${pkg.name ?? pkg.packageId} × ${days} ngày`
+            : (pkg.name ?? null),
       topupDataText: pkg.dataAmountText ?? null,
-      topupDurationDays: pkg.durationDays ?? null,
+      topupDurationDays:
+        days > 1 ? (pkg.durationDays || 1) * days : (pkg.durationDays ?? null),
       topupIsUnlimited: !!pkg.isUnlimited,
-      totalAmount: pkg.retailPrice,
+      topupPeriodNum: days > 1 ? days : null,
+      totalAmount:
+        days > 1 && rateForDays > 0
+          ? Math.round((vndAmount / rateForDays) * 100) / 100
+          : pkg.retailPrice,
       currency: 'USD',
       paymentMethod: dto.paymentMethod,
       paymentId: null,
@@ -686,6 +721,8 @@ export class TopupService {
         provider: dto.provider,
         paymentMethod: TopupPaymentMethod.ONEPAY,
       } as TopupCheckoutDto,
+      // Days for a day-pass package (doitac-3010 #050).
+      dto.periodNum ?? null,
     );
 
     // The order table has no free-text note column, so the audit trail goes
@@ -797,6 +834,8 @@ export class TopupService {
           iccid,
           packageCode: providerPackageId,
           transactionId: orderNumber,
+          // The days of a day-pass top-up (doitac-3010 #050).
+          periodNum: order.topupPeriodNum ?? null,
         });
       } else if (provider === TopupProvider.GADGET_KOREA) {
         const esim = await this.esimsService.findByIccid(iccid);
@@ -1219,6 +1258,8 @@ export class TopupService {
       price: costPriceUsd,
       retailPrice: retailPriceUsd,
       vndPrice,
+      // "1 GB/ngày": bought for several days (doitac-3010 #050).
+      isDayPass: pkg.dataType === 2,
     };
   }
 

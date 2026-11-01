@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Length,
+  Max,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -122,4 +125,12 @@ export class AdminManualTopupDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  /** Days for a day-pass package, 1–365 (doitac-3010 #050). */
+  @ApiPropertyOptional({ type: Number, example: 5, minimum: 1, maximum: 365 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  periodNum?: number;
 }

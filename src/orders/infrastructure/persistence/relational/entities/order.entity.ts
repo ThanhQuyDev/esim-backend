@@ -75,6 +75,10 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   topupIsUnlimited!: boolean;
 
+  /** Days bought on a day-pass top-up, sent as `periodNum` (doitac-3010 #050). */
+  @Column({ type: 'int', nullable: true })
+  topupPeriodNum?: number | null;
+
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   totalAmount!: number;
 

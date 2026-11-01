@@ -705,6 +705,8 @@ export class EsimAccessService {
     iccid: string;
     packageCode: string;
     transactionId: string;
+    /** Days for a day-pass package (doitac-3010 #050). */
+    periodNum?: number | null;
   }): Promise<EsimAccessTopupResponse['obj']> {
     const baseUrl = this.configService.getOrThrow('esimAccess.baseUrl', {
       infer: true,
@@ -717,6 +719,9 @@ export class EsimAccessService {
       iccid: params.iccid,
       packageCode: params.packageCode,
       transactionId: params.transactionId,
+      ...(params.periodNum && params.periodNum > 1
+        ? { periodNum: params.periodNum }
+        : {}),
     };
 
     this.logger.log(
