@@ -5661,7 +5661,8 @@ export class PartnersService {
     const idOnly = /^#?\d{1,5}$/.test(raw);
     const search = raw && !idOnly ? raw : null;
     const partnerId = idOnly ? Number(raw.replace(/^#/, '')) : null;
-    const limit = Math.min(Math.max(Number(query.limit) || 200, 1), 500);
+    // The whole list, paged in the admin (doitac-3010 #038).
+    const limit = Math.min(Math.max(Number(query.limit) || 200, 1), 1000);
     const period = /^\d{4}-\d{2}$/.test(query.period ?? '')
       ? query.period!
       : null;
@@ -6134,7 +6135,8 @@ export class PartnersService {
     limit?: number;
   }): Promise<{ data: AdminPayoutRow[]; totalCount: number }> {
     const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
+    // The whole list, paged in the admin (doitac-3010 #038).
+    const limit = Math.min(1000, Math.max(1, Number(query.limit) || 50));
 
     // A short number is a partner ID and nothing else: "9" also sits in every
     // phone number, so matching it as text listed every request (doitac-1410
