@@ -9848,31 +9848,54 @@ export class PartnersService {
    * The places the price list has plans for, for its "Điểm đến" box
    * (doitac-1410 #033): only those with a plan the partner can buy.
    */
-  async getCatalogueLocations(): Promise<{ value: string; label: string }[]> {
-    const rows: { value: string; label: string; region: boolean }[] =
-      await this.dataSource.query(
-        `SELECT DISTINCT 'r:' || r.id AS value,
-                COALESCE(NULLIF(r."titleVi", ''), r.name) AS label, true AS region
-           FROM plan p JOIN region r ON r.id = p."regionId"
-          WHERE p."isActive" AND p."deletedAt" IS NULL
-            AND NOT COALESCE(p."isDomesticEsim", false)
-         UNION
-         SELECT DISTINCT 'd:' || d.id AS value,
-                COALESCE(NULLIF(d."titleVi", ''), d.name) AS label, false AS region
-           FROM plan p JOIN destination d ON d.id = p."destinationId"
-          WHERE p."isActive" AND p."deletedAt" IS NULL
-            AND NOT COALESCE(p."isDomesticEsim", false)`,
-      );
+  async getCatalogueLocations(): Promise<
+    { value: string; label: string; keywords: string[] }[]
+  > {
+    const rows: {
+      value: string;
+      name: string;
+      titleVi: string | null;
+      region: boolean;
+    }[] = await this.dataSource.query(
+      `SELECT DISTINCT 'r:' || r.id AS value, r.name, r."titleVi", true AS region
+         FROM plan p JOIN region r ON r.id = p."regionId"
+        WHERE p."isActive" AND p."deletedAt" IS NULL
+          AND NOT COALESCE(p."isDomesticEsim", false)
+       UNION
+       SELECT DISTINCT 'd:' || d.id AS value, d.name, d."titleVi", false AS region
+         FROM plan p JOIN destination d ON d.id = p."destinationId"
+        WHERE p."isActive" AND p."deletedAt" IS NULL
+          AND NOT COALESCE(p."isDomesticEsim", false)`,
+    );
+    // As the admin's picker shows them (doitac-3010 #025): the Vietnamese
+    // name with the English one beside it, found by either — and by the
+    // Vietnamese typed without its marks.
+    const plain = (word: string) =>
+      word
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D');
     return rows
+      .map((r) => {
+        const vi = r.titleVi?.trim();
+        const name =
+          vi && vi !== r.name ? `${vi} (${r.name})` : (r.name ?? vi ?? '');
+        const words = [vi, r.name].filter((w): w is string => !!w?.trim());
+        return {
+          value: r.value,
+          label: r.region ? `Khu vực: ${name}` : name,
+          keywords: [...new Set([...words, ...words.map(plain)])],
+          region: r.region,
+          sortKey: vi || r.name,
+        };
+      })
       .sort(
         (a, b) =>
           Number(b.region) - Number(a.region) ||
-          a.label.localeCompare(b.label, 'vi'),
+          a.sortKey.localeCompare(b.sortKey, 'vi'),
       )
-      .map((r) => ({
-        value: r.value,
-        label: r.region ? `Khu vực: ${r.label}` : r.label,
-      }));
+      .map(({ value, label, keywords }) => ({ value, label, keywords }));
   }
 
   /**
