@@ -40,6 +40,8 @@ describe('PartnersService — exporting the link list (#017)', () => {
       'Trang đích',
       'Link tiếp thị',
       'Số lượt click',
+      'Click hợp lệ',
+      'Tỷ lệ rớt trước trang đích (%)',
       'Tổng đơn hàng',
       'Tổng hoa hồng (VND)',
       'Trạng thái',
@@ -53,6 +55,8 @@ describe('PartnersService — exporting the link list (#017)', () => {
         code: 'VANA2026',
         targetPath: '/esim-nhat-ban?utm_source=youtube',
         clickCount: 120,
+        // 30 of them never reached the page (doitac-3010 #018).
+        validClickCount: 90,
         conversionCount: 8,
         totalCommissionVnd: 640000,
         status: PartnerLinkStatusEnum.ACTIVE,
@@ -76,11 +80,13 @@ describe('PartnersService — exporting the link list (#017)', () => {
       '/esim-nhat-ban',
       'esim.vn/go/VANA2026',
       120,
+      90,
+      25,
       8,
       640000,
       'Đang hoạt động',
     ]);
     expect(rows[2][1]).toBe('Trang chủ');
-    expect(rows[2][6]).toBe('Đã tắt');
+    expect(rows[2][8]).toBe('Đã tắt');
   });
 });

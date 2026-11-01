@@ -65,6 +65,10 @@ export class PartnerLinkClickEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   signed?: boolean;
 
+  /** When the landing page confirmed it was shown (doitac-3010 #018). */
+  @Column({ type: 'timestamp', nullable: true })
+  confirmedAt?: Date | null;
+
   @CreateDateColumn()
   clickedAt!: Date;
 }

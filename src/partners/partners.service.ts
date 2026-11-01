@@ -82,6 +82,7 @@ import {
 } from './partner-ledger';
 import {
   In,
+  IsNull,
   DataSource,
   EntityManager,
   MoreThan,
@@ -687,6 +688,27 @@ function adminLinkState(row: Record<string, any>): string {
 
 /** Repeat opens of a link from one device inside this window are one click (vande #079). */
 export const DUPLICATE_CLICK_WINDOW_MS = 30_000;
+
+/**
+ * How long after the click its landing page may still confirm it (doitac-3010
+ * #018). A real visitor's page shows within seconds; this only has to cover a
+ * slow phone on a bad network.
+ */
+export const CLICK_CONFIRM_WINDOW_MS = 15 * 60_000;
+
+/**
+ * The share of raw clicks whose landing page never showed (doitac-3010 #018):
+ * bots, prefetches, people who closed the tab during the redirect. Null when
+ * there is no click to divide by.
+ */
+export function landingDropRate(
+  rawClicks: number,
+  validClicks: number,
+): number | null {
+  if (!rawClicks) return null;
+  const dropped = Math.max(0, rawClicks - validClicks);
+  return Math.round((dropped / rawClicks) * 1000) / 10;
+}
 
 /**
  * The "Báo lỗi" / "Yêu cầu hoàn tiền" still open on eSIM `e` — its kind, or
@@ -1912,6 +1934,7 @@ export class PartnersService {
     const rows = await this.dataSource.query(
       `SELECT l.*,
               COALESCE(ck.n, 0)::int AS "periodClicks",
+              COALESCE(ck.valid, 0)::int AS "periodValidClicks",
               COALESCE(co.orders, 0)::int AS "periodOrders",
               COALESCE(co.commission, 0) AS "periodCommissionVnd",
               ev."lastChangedAt",
@@ -1920,7 +1943,9 @@ export class PartnersService {
               COALESCE(ev.edits, 0)::int AS "editCount"
          FROM partner_link l
          LEFT JOIN LATERAL (
-           SELECT COUNT(*) AS n FROM partner_link_click c
+           SELECT COUNT(*) AS n,
+                  COUNT(*) FILTER (WHERE c."confirmedAt" IS NOT NULL) AS valid
+             FROM partner_link_click c
             WHERE c."linkId" = l.id AND c."clickedAt" >= $2 AND c."clickedAt" < $3
          ) ck ON TRUE
          LEFT JOIN LATERAL (
@@ -1960,11 +1985,22 @@ export class PartnersService {
       targetPath: row.targetPath ?? null,
       status: row.status,
       clickCount: Number(row.clickCount ?? 0),
+      // Raw hits against pages really shown (doitac-3010 #018).
+      validClickCount: Number(row.validClickCount ?? 0),
+      landingDropRate: landingDropRate(
+        Number(row.clickCount ?? 0),
+        Number(row.validClickCount ?? 0),
+      ),
       conversionCount: Number(row.conversionCount ?? 0),
       // A decimal column comes back as text; summed as text in the browser it
       // read a million times too large (doitac-1410 #018).
       totalCommissionVnd: Number(row.totalCommissionVnd ?? 0),
       periodClicks: Number(row.periodClicks ?? 0),
+      periodValidClicks: Number(row.periodValidClicks ?? 0),
+      periodLandingDropRate: landingDropRate(
+        Number(row.periodClicks ?? 0),
+        Number(row.periodValidClicks ?? 0),
+      ),
       periodOrders: Number(row.periodOrders ?? 0),
       periodCommissionVnd: Number(row.periodCommissionVnd ?? 0),
       editCount: Number(row.editCount ?? 0),
@@ -2626,7 +2662,7 @@ export class PartnersService {
     const rows = await this.dataSource.query(
       `SELECT l.id, l.code, l.label, l."targetPath", l.status, l."deletedAt",
               l."appealedAt", l."restoreRequestedAt", l."suspendedReason",
-              l."createdAt", l."updatedAt", l."clickCount",
+              l."createdAt", l."updatedAt", l."clickCount", l."validClickCount",
               p.id AS "partnerId", p."contactName", p."companyName", p."legalType",
               ev."lastChangedAt", ev."lastActor", ev."createdBy",
               COALESCE(ev.edits, 0) AS edits,
@@ -2666,6 +2702,11 @@ export class PartnersService {
         updatedBy: (r.lastActor as string) ?? 'partner',
         editCount: Number(r.edits ?? 0),
         clicks: Number(r.clickCount ?? 0),
+        validClicks: Number(r.validClickCount ?? 0),
+        landingDropRate: landingDropRate(
+          Number(r.clickCount ?? 0),
+          Number(r.validClickCount ?? 0),
+        ),
         orders: Number(r.orders ?? 0),
         commissionVnd: Number(r.commissionVnd ?? 0),
       })),
@@ -3009,6 +3050,8 @@ export class PartnersService {
       { header: 'Trang đích', key: 'landing', width: 32 },
       { header: 'Link tiếp thị', key: 'link', width: 30 },
       { header: 'Số lượt click', key: 'clicks', width: 14 },
+      { header: 'Click hợp lệ', key: 'validClicks', width: 14 },
+      { header: 'Tỷ lệ rớt trước trang đích (%)', key: 'dropRate', width: 18 },
       { header: 'Tổng đơn hàng', key: 'orders', width: 14 },
       { header: 'Tổng hoa hồng (VND)', key: 'commission', width: 20 },
       { header: 'Trạng thái', key: 'status', width: 18 },
@@ -3023,6 +3066,12 @@ export class PartnersService {
         landing: (link.targetPath ?? '').split('?')[0] || 'Trang chủ',
         link: `esim.vn/go/${link.code}`,
         clicks: Number(link.clickCount ?? 0),
+        validClicks: Number(link.validClickCount ?? 0),
+        dropRate:
+          landingDropRate(
+            Number(link.clickCount ?? 0),
+            Number(link.validClickCount ?? 0),
+          ) ?? '',
         orders: Number(link.conversionCount ?? 0),
         commission: Number(link.totalCommissionVnd ?? 0),
         status:
@@ -6451,6 +6500,54 @@ export class PartnersService {
   }
 
   /** Where an active link points, with no click recorded (doitac-1410 #026). */
+  /**
+   * The landing page saying it was really shown (doitac-3010 #018, rule 2).
+   *
+   * The /go redirect counts a raw click the moment it is hit — and a HEAD, a
+   * bot or a prefetch hits it too. Only a page that loaded in a real browser
+   * calls this, with the signed click from its own cookie, so only this makes
+   * the click valid. Once per click, within a few minutes of it, and from the
+   * browser that clicked.
+   */
+  async confirmClick(
+    clickToken: string | null | undefined,
+    meta: { userAgent?: string | null } = {},
+  ): Promise<{ confirmed: boolean; reason?: string }> {
+    const id = isClickToken(clickToken) ? verifyClickToken(clickToken) : null;
+    if (!id) return { confirmed: false, reason: 'invalid_token' };
+
+    const click = await this.linkClickRepository.findOne({
+      where: { clickId: id },
+    });
+    if (!click || !click.signed) {
+      return { confirmed: false, reason: 'unknown_click' };
+    }
+    if (click.confirmedAt) return { confirmed: false, reason: 'already' };
+    if (Date.now() - click.clickedAt.getTime() > CLICK_CONFIRM_WINDOW_MS) {
+      return { confirmed: false, reason: 'too_late' };
+    }
+    if (
+      click.userAgent &&
+      meta.userAgent &&
+      click.userAgent.trim() !== meta.userAgent.trim()
+    ) {
+      return { confirmed: false, reason: 'other_browser' };
+    }
+
+    // Conditional, so two tabs confirming at once count once.
+    const result = await this.linkClickRepository.update(
+      { id: click.id, confirmedAt: IsNull() },
+      { confirmedAt: new Date() },
+    );
+    if (!result.affected) return { confirmed: false, reason: 'already' };
+    await this.linkRepository.increment(
+      { id: click.linkId },
+      'validClickCount',
+      1,
+    );
+    return { confirmed: true };
+  }
+
   async linkTarget(
     code: string,
   ): Promise<{ targetPath: string | null } | null> {

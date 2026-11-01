@@ -39,6 +39,18 @@ export class RecordClickDto {
   visitorId?: string;
 }
 
+/** The landing page's confirmation of a click (doitac-3010 #018). */
+export class ConfirmClickDto {
+  @IsString()
+  @MaxLength(200)
+  clickToken!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  userAgent?: string;
+}
+
 @ApiTags('Partner Links (Public)')
 @Controller({ path: 'partner-links', version: '1' })
 export class PartnerLinksPublicController {
@@ -53,6 +65,18 @@ export class PartnerLinksPublicController {
   @HttpCode(HttpStatus.OK)
   recordClick(@Param('code') code: string, @Body() dto: RecordClickDto) {
     return this.partnersService.recordClick(code, dto);
+  }
+
+  /**
+   * The landing page confirming it was really shown (doitac-3010 #018). Only
+   * this makes a raw /go hit a valid click.
+   */
+  @Post('clicks/confirm')
+  @HttpCode(HttpStatus.OK)
+  confirmClick(@Body() dto: ConfirmClickDto) {
+    return this.partnersService.confirmClick(dto.clickToken, {
+      userAgent: dto.userAgent ?? null,
+    });
   }
 
   /**

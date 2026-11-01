@@ -78,6 +78,14 @@ export class PartnerLinkEntity extends EntityRelationalHelper {
   @Column({ type: 'int', default: 0 })
   clickCount!: number;
 
+  /**
+   * Clicks whose landing page really showed (doitac-3010 #018, rule 2).
+   * `clickCount` is every raw hit of /go; this one only counts the visits the
+   * page itself confirmed, which a HEAD, a bot or a prefetch never does.
+   */
+  @Column({ type: 'int', default: 0 })
+  validClickCount!: number;
+
   @Column({ type: 'int', default: 0 })
   conversionCount!: number;
 
