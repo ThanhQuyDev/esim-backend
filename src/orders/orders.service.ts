@@ -82,7 +82,10 @@ import {
 } from '../wallets/tier/tier.enum';
 import { InvoiceRepository } from '../invoices/infrastructure/persistence/invoice.repository';
 import { InvoiceStatus } from '../invoices/invoices.enum';
-import { PartnersService } from '../partners/partners.service';
+import {
+  PartnersService,
+  type AttributionTrace,
+} from '../partners/partners.service';
 import { SessionShapeEnum } from '../partners/partners.enum';
 import { generateOrderNumber } from '../utils/order-number';
 import { parseOrderImportFile } from '../utils/order-import-file';
@@ -330,6 +333,7 @@ export class OrdersService {
     partnerLinkCode: string | null;
     attributedPartnerId: number | null;
     linkId: number | null;
+    trace?: AttributionTrace;
   }> {
     // The precedence rules themselves (#033, #034, #035, #038) live in
     // PartnersService, where they can be read — and tested — in one piece.
@@ -650,6 +654,14 @@ export class OrdersService {
       refundStatus: null,
       refundedAmountVnd: 0,
     });
+
+    // Which clicks and codes were weighed for the partner (doitac-3010 #022).
+    if ('trace' in attribution) {
+      await this.partnersService.saveAttributionTrace(
+        order.id,
+        attribution.trace,
+      );
+    }
 
     if (pricing.referral) {
       await this.walletsService.createOrderReferral(
@@ -994,6 +1006,14 @@ export class OrdersService {
       refundStatus: null,
       refundedAmountVnd: 0,
     });
+
+    // Which clicks and codes were weighed for the partner (doitac-3010 #022).
+    if ('trace' in attribution) {
+      await this.partnersService.saveAttributionTrace(
+        order.id,
+        attribution.trace,
+      );
+    }
 
     if (pricing.referral) {
       await this.walletsService.createOrderReferral(
@@ -2947,6 +2967,10 @@ export class OrdersService {
           }
         : null,
       attributionWarning: order.attributionWarning ?? null,
+      // Every click and code weighed for the partner (doitac-3010 #022).
+      attributionTrace: await this.partnersService
+        .findAttributionTrace(order.id)
+        .catch(() => null),
       discountAmount: order.discountAmount,
       couponDiscountVndAmount: order.couponDiscountVndAmount ?? 0,
       vndPrice: order.vndPrice,

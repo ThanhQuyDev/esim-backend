@@ -89,7 +89,7 @@ describe('PartnersService.resolveDeviceForAttribution (#039)', () => {
 
     await expect(
       service.resolveDeviceForAttribution('a'.repeat(64), UA),
-    ).resolves.toEqual({ partnerId: 8, linkId: 11 });
+    ).resolves.toMatchObject({ partnerId: 8, linkId: 11 });
     // Newest click for the device, not just any of them.
     expect(findClick).toHaveBeenCalledWith(
       expect.objectContaining({ order: { clickedAt: 'DESC' } }),
@@ -153,7 +153,7 @@ describe('PartnersService.resolveOrderAttribution — the device comes last (#03
         ipHash: 'a'.repeat(64),
         userAgent: UA,
       }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       partnerLinkCode: null,
       attributedPartnerId: 8,
       linkId: 11,

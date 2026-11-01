@@ -98,7 +98,7 @@ describe('PartnersService.resolveClickForAttribution (#039)', () => {
 
     await expect(
       service.resolveClickForAttribution('a'.repeat(32)),
-    ).resolves.toEqual({ partnerId: 8, linkId: 11 });
+    ).resolves.toMatchObject({ partnerId: 8, linkId: 11 });
   });
 
   it('should read the click date from the log, not from the browser', async () => {
@@ -188,7 +188,7 @@ describe('PartnersService.resolveOrderAttribution — the click id outranks the 
 
     await expect(
       service.resolveOrderAttribution({ clickId: 'a'.repeat(32) }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       partnerLinkCode: 'VANA2026',
       attributedPartnerId: 8,
       linkId: 11,

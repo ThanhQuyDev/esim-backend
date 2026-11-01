@@ -91,6 +91,7 @@ import {
 import {
   In,
   IsNull,
+  Not,
   DataSource,
   EntityManager,
   MoreThan,
@@ -703,6 +704,53 @@ export const DUPLICATE_CLICK_WINDOW_MS = 30_000;
  * slow phone on a bad network.
  */
 export const CLICK_CONFIRM_WINDOW_MS = 15 * 60_000;
+
+/**
+ * A content link clicked this recently is not overridden by a partner's code
+ * typed at checkout (doitac-3010 #022, rule 6).
+ */
+export const RECENT_LINK_BEATS_COUPON_MS = 30 * 60_000;
+
+/** Which rule picked an order's partner (doitac-3010 #022). */
+export type AttributionRule =
+  | 'none'
+  | 'link_click'
+  | 'link_cookie_code'
+  | 'link_account'
+  | 'link_device'
+  | 'coupon_only'
+  | 'same_partner'
+  | 'public_code_no_override'
+  | 'recent_link_beats_coupon'
+  | 'coupon_beats_link';
+
+/** One signal weighed for an order's partner (doitac-3010 #022). */
+export type AttributionCandidate = {
+  source:
+    | 'coupon'
+    | 'click'
+    | 'cookie_code'
+    | 'account'
+    | 'device'
+    | 'device_click';
+  partnerId: number | null;
+  linkId: number | null;
+  /** The link's code, or the coupon code. */
+  code?: string | null;
+  isPublic?: boolean;
+  clickId?: string | null;
+  clickedAt?: string | null;
+  confirmed?: boolean;
+  botScore?: number;
+  outcome: 'won' | 'lost' | 'rejected' | 'considered';
+  /** Why a signal was rejected. */
+  note?: string;
+};
+
+export type AttributionTrace = {
+  rule: AttributionRule;
+  candidates: AttributionCandidate[];
+};
 
 /**
  * The share of raw clicks whose landing page never showed (doitac-3010 #018):
@@ -12026,27 +12074,191 @@ export class PartnersService {
     partnerLinkCode: string | null;
     attributedPartnerId: number | null;
     linkId: number | null;
+    /** Every click and code weighed, and the rule that decided (doitac-3010 #022). */
+    trace?: AttributionTrace;
+  }> {
+    const candidates: AttributionCandidate[] = [];
+    const coupon = await this.couponForAttribution(params.couponCode);
+    const linkSide = await this.resolveLinkAttribution(params, candidates);
+    await this.addDeviceClicks(params, candidates);
+
+    // Which one wins (doitac-3010 #022, rule 6):
+    // - a code published for everyone ("mã chung") never takes an order away
+    //   from the link the customer came through;
+    // - a partner's own code beats an older link (#033), but not a content
+    //   link the customer clicked in the last 30 minutes — they were reading
+    //   that partner's post a moment ago;
+    // - with nothing else, the code's partner gets the order.
+    let couponWins = false;
+    let rule: AttributionRule;
+    if (!coupon) {
+      rule = linkSide.source ? `link_${linkSide.source}` : 'none';
+    } else if (!linkSide.attributedPartnerId) {
+      couponWins = true;
+      rule = 'coupon_only';
+    } else if (coupon.partnerId === linkSide.attributedPartnerId) {
+      rule = 'same_partner';
+    } else if (coupon.isPublic) {
+      rule = 'public_code_no_override';
+    } else if (
+      linkSide.source === 'click' &&
+      linkSide.clickedAt &&
+      Date.now() - linkSide.clickedAt.getTime() <= RECENT_LINK_BEATS_COUPON_MS
+    ) {
+      rule = 'recent_link_beats_coupon';
+    } else {
+      couponWins = true;
+      rule = 'coupon_beats_link';
+    }
+
+    if (coupon) {
+      if (couponWins) {
+        for (const c of candidates) if (c.outcome === 'won') c.outcome = 'lost';
+      }
+      candidates.unshift({
+        source: 'coupon',
+        partnerId: coupon.partnerId,
+        linkId: null,
+        code: coupon.code,
+        isPublic: coupon.isPublic,
+        outcome: couponWins ? 'won' : 'lost',
+      });
+    }
+
+    const result =
+      couponWins && coupon
+        ? {
+            partnerLinkCode: null,
+            attributedPartnerId: coupon.partnerId,
+            linkId: null,
+          }
+        : {
+            partnerLinkCode: linkSide.partnerLinkCode,
+            attributedPartnerId: linkSide.attributedPartnerId,
+            linkId: linkSide.linkId,
+          };
+    return { ...result, trace: { rule, candidates } };
+  }
+
+  /** A partner's code typed at checkout, and whether it is published for everyone. */
+  private async couponForAttribution(
+    code?: string | null,
+  ): Promise<{ partnerId: number; code: string; isPublic: boolean } | null> {
+    const partnerId = await this.resolvePartnerForCoupon(code);
+    if (!partnerId || !code) return null;
+    let isPublic = false;
+    try {
+      const coupon = await this.couponRepository.findOne({
+        where: { code: code.trim().toUpperCase() },
+      });
+      isPublic = Boolean(coupon?.isPublic);
+    } catch {
+      // Unknown counts as the partner's own code — the rule from before #022.
+    }
+    return { partnerId, code: code.trim().toUpperCase(), isPublic };
+  }
+
+  /**
+   * This device's confirmed clicks in the window (doitac-3010 #022), written
+   * into the order's trace so an admin can see every click that was there —
+   * not only the one that won. Best effort: the trace never blocks an order.
+   */
+  private async addDeviceClicks(
+    params: { ipHash?: string | null; userAgent?: string | null },
+    candidates: AttributionCandidate[],
+  ): Promise<void> {
+    const deviceHash = partnerDeviceFingerprint(
+      params.ipHash,
+      params.userAgent,
+    );
+    if (!deviceHash) return;
+    try {
+      const clicks = await this.linkClickRepository.find({
+        where: {
+          deviceHash,
+          confirmedAt: Not(IsNull()),
+          clickedAt: MoreThan(new Date(Date.now() - 30 * 86_400_000)),
+        },
+        order: { clickedAt: 'DESC' },
+        take: 10,
+      });
+      if (!clicks?.length) return;
+      const links = await this.linkRepository.find({
+        where: { id: In([...new Set(clicks.map((c) => c.linkId))]) },
+        withDeleted: true,
+      });
+      const linkById = new Map(links.map((l) => [l.id, l]));
+      const seen = new Set(
+        candidates.map((c) => c.clickId).filter(Boolean) as string[],
+      );
+      for (const click of clicks) {
+        if (click.clickId && seen.has(click.clickId)) continue;
+        const link = linkById.get(click.linkId);
+        candidates.push({
+          source: 'device_click',
+          partnerId: link?.partnerId ?? null,
+          linkId: click.linkId,
+          code: link?.code ?? null,
+          clickId: click.clickId ?? null,
+          clickedAt: click.clickedAt
+            ? new Date(click.clickedAt).toISOString()
+            : null,
+          confirmed: true,
+          botScore: Number(click.botScore ?? 0),
+          outcome: 'considered',
+        });
+      }
+    } catch (err) {
+      this.logger?.error(
+        `Attribution trace: device clicks not read: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Everything but the typed code: the signed click, the cookie's code, the
+   * account's bound link, the device (#033–#039, doitac-1410 #026). Each signal
+   * looked at is written to `candidates`.
+   */
+  private async resolveLinkAttribution(
+    params: {
+      linkCode?: string | null;
+      clickedAt?: string | null;
+      clickId?: string | null;
+      buyerUserId?: number | null;
+      ipHash?: string | null;
+      userAgent?: string | null;
+    },
+    candidates: AttributionCandidate[],
+  ): Promise<{
+    partnerLinkCode: string | null;
+    attributedPartnerId: number | null;
+    linkId: number | null;
+    source: 'click' | 'cookie_code' | 'account' | 'device' | null;
+    clickedAt: Date | null;
   }> {
     const none = {
       partnerLinkCode: null,
       attributedPartnerId: null,
       linkId: null,
+      source: null,
+      clickedAt: null,
     };
-
-    const couponPartnerId = await this.resolvePartnerForCoupon(
-      params.couponCode,
-    );
-    if (couponPartnerId) {
-      return { ...none, attributedPartnerId: couponPartnerId };
-    }
 
     const fromAccount = async () => {
       const bound = await this.resolveMemberAttribution(params.buyerUserId);
       if (bound) {
+        candidates.push({
+          source: 'account',
+          partnerId: bound.partnerId,
+          linkId: bound.linkId,
+          outcome: 'won',
+        });
         return {
           ...none,
           attributedPartnerId: bound.partnerId,
           linkId: bound.linkId,
+          source: 'account' as const,
         };
       }
 
@@ -12055,13 +12267,19 @@ export class PartnersService {
         params.ipHash,
         params.userAgent,
       );
-      return fromDevice
-        ? {
-            ...none,
-            attributedPartnerId: fromDevice.partnerId,
-            linkId: fromDevice.linkId,
-          }
-        : none;
+      if (!fromDevice) return none;
+      candidates.push({
+        source: 'device',
+        partnerId: fromDevice.partnerId,
+        linkId: fromDevice.linkId,
+        outcome: 'won',
+      });
+      return {
+        ...none,
+        attributedPartnerId: fromDevice.partnerId,
+        linkId: fromDevice.linkId,
+        source: 'device' as const,
+      };
     };
 
     // The server-minted click id outranks the cookie: same click, but this one
@@ -12077,15 +12295,37 @@ export class PartnersService {
           fromClick.linkId,
         ).catch(() => undefined);
       }
+      candidates.push({
+        source: 'click',
+        partnerId: fromClick.partnerId,
+        linkId: fromClick.linkId,
+        code: fromClick.linkCode,
+        clickId: fromClick.clickId ?? null,
+        clickedAt: fromClick.clickedAt
+          ? new Date(fromClick.clickedAt).toISOString()
+          : null,
+        confirmed: fromClick.confirmed,
+        botScore: fromClick.botScore,
+        outcome: 'won',
+      });
       return {
         // The code of the link the click was really on, not the one the
         // browser named (doitac-3010 #017).
         partnerLinkCode: fromClick.linkCode,
         attributedPartnerId: fromClick.partnerId,
         linkId: fromClick.linkId,
+        source: 'click',
+        clickedAt: fromClick.clickedAt ? new Date(fromClick.clickedAt) : null,
       };
     }
     if (fromClick.reason) {
+      candidates.push({
+        source: 'click',
+        partnerId: fromClick.partnerId ?? null,
+        linkId: fromClick.linkId ?? null,
+        outcome: 'rejected',
+        note: fromClick.reason,
+      });
       await this.logAttributionRejection({
         reason: fromClick.reason,
         clickValue: params.clickId,
@@ -12105,6 +12345,14 @@ export class PartnersService {
       parsed && !Number.isNaN(parsed.getTime()) ? parsed : null,
     );
     if (!resolved) {
+      candidates.push({
+        source: 'cookie_code',
+        partnerId: null,
+        linkId: null,
+        code: params.linkCode,
+        outcome: 'rejected',
+        note: 'code_not_attributable',
+      });
       await this.logAttributionRejection({
         reason: 'code_not_attributable',
         linkCode: params.linkCode,
@@ -12131,6 +12379,14 @@ export class PartnersService {
         since,
       ))
     ) {
+      candidates.push({
+        source: 'cookie_code',
+        partnerId: resolved.partnerId,
+        linkId: resolved.linkId,
+        code: params.linkCode,
+        outcome: 'rejected',
+        note: 'no_click_from_device',
+      });
       await this.logAttributionRejection({
         reason: 'no_click_from_device',
         linkCode: params.linkCode,
@@ -12153,11 +12409,51 @@ export class PartnersService {
       ).catch(() => undefined);
     }
 
+    candidates.push({
+      source: 'cookie_code',
+      partnerId: resolved.partnerId,
+      linkId: resolved.linkId,
+      code: params.linkCode,
+      outcome: 'won',
+    });
     return {
       partnerLinkCode: params.linkCode,
       attributedPartnerId: resolved.partnerId,
       linkId: resolved.linkId,
+      source: 'cookie_code',
+      clickedAt: null,
     };
+  }
+
+  /** Keep how an order's partner was chosen (doitac-3010 #022). Never blocks the order. */
+  async saveAttributionTrace(
+    orderId: number,
+    trace?: AttributionTrace | null,
+  ): Promise<void> {
+    if (!trace) return;
+    try {
+      await this.dataSource.query(
+        `INSERT INTO "order_attribution_trace" ("orderId", "rule", "candidates")
+         VALUES ($1, $2, $3::jsonb)
+         ON CONFLICT ("orderId") DO NOTHING`,
+        [orderId, trace.rule, JSON.stringify(trace.candidates)],
+      );
+    } catch (err) {
+      this.logger?.error(
+        `Order ${orderId} attribution trace not stored: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /** The trace of {@link saveAttributionTrace}, or null for older orders. */
+  async findAttributionTrace(
+    orderId: number,
+  ): Promise<AttributionTrace | null> {
+    const [row] = (await this.dataSource.query(
+      `SELECT "rule", "candidates" FROM "order_attribution_trace" WHERE "orderId" = $1`,
+      [orderId],
+    )) as { rule: AttributionRule; candidates: AttributionCandidate[] }[];
+    return row ? { rule: row.rule, candidates: row.candidates ?? [] } : null;
   }
 
   /**
@@ -12326,7 +12622,16 @@ export class PartnersService {
    * there — whatever else the browser sent is ignored.
    */
   async checkClickForAttribution(clickId?: string | null): Promise<
-    | { ok: true; partnerId: number; linkId: number; linkCode: string }
+    | {
+        ok: true;
+        partnerId: number;
+        linkId: number;
+        linkCode: string;
+        clickId?: string;
+        clickedAt?: Date;
+        confirmed?: boolean;
+        botScore?: number;
+      }
     | {
         ok: false;
         reason: AttributionRejectReason | null;
@@ -12393,6 +12698,10 @@ export class PartnersService {
       partnerId: partner.id,
       linkId: link.id,
       linkCode: link.code,
+      clickId: id,
+      clickedAt: click.clickedAt,
+      confirmed: Boolean(click.confirmedAt),
+      botScore: Number(click.botScore ?? 0),
     };
   }
 

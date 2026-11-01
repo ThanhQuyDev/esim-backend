@@ -1,3 +1,4 @@
+import type { AttributionTrace } from '../../partners/partners.service';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Esim } from '../../esims/domain/esim';
 import { Coupon } from '../../coupons/domain/coupon';
@@ -560,6 +561,13 @@ export class AdminOrderDetailDto {
    */
   @ApiPropertyOptional({ type: String, example: 'same_device_or_ip' })
   attributionWarning?: string | null;
+
+  /**
+   * Every click and code weighed for the partner, which won and by which rule
+   * (doitac-3010 #022). Null for orders placed before it was kept.
+   */
+  @ApiPropertyOptional()
+  attributionTrace?: AttributionTrace | null;
 
   @ApiProperty({ type: Number })
   discountAmount: number;

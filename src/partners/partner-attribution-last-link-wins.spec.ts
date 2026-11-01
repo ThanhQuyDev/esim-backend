@@ -54,7 +54,7 @@ describe('PartnersService — the later link wins (#038)', () => {
         clickedAt: new Date().toISOString(),
         buyerUserId: 42,
       }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       partnerLinkCode: 'PARTNER-B',
       attributedPartnerId: 2,
       linkId: 22,

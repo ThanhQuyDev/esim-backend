@@ -49,7 +49,7 @@ describe('PartnersService — which signal wins (#033, #034, #035)', () => {
         couponCode: 'PARTNERB10',
         buyerUserId: 42,
       }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       partnerLinkCode: null,
       attributedPartnerId: 8,
       linkId: null,
@@ -63,7 +63,7 @@ describe('PartnersService — which signal wins (#033, #034, #035)', () => {
 
     await expect(
       service.resolveOrderAttribution({ buyerUserId: 42 }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       partnerLinkCode: null,
       attributedPartnerId: null,
       linkId: null,
@@ -88,7 +88,7 @@ describe('PartnersService — which signal wins (#033, #034, #035)', () => {
 
     await expect(
       service.resolveOrderAttribution({ buyerUserId: 42 }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       partnerLinkCode: null,
       attributedPartnerId: 5,
       linkId: 7,

@@ -89,7 +89,7 @@ describe('Rule 1 — the server checks the click on every order (doitac-3010 #01
       // Whatever the browser claims, the click was on REALCODE.
       linkCode: 'SOMEONEELSE',
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       partnerLinkCode: 'REALCODE',
       attributedPartnerId: 8,
       linkId: 11,
