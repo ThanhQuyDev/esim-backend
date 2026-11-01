@@ -479,6 +479,20 @@ export class PartnersController {
   }
 
   /**
+   * This month against last month on Quản lý eSIM (doitac-3010 #028).
+   * Declared before `me/esims/:iccid` so "summary" is not read as an ICCID.
+   */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('me/esims/summary')
+  @HttpCode(HttpStatus.OK)
+  async getMyEsimSummary(@Request() req: { user: { id: number } }) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.partnersService.getMyEsimSummary(partner.id);
+  }
+
+  /**
    * "Xuất file" on Quản lý eSIM (doitac-1410 #040), with the list's filters.
    * Declared before `me/esims/:iccid` so "export" is not read as an ICCID.
    */

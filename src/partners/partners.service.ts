@@ -208,6 +208,16 @@ import { couponSourceLabel } from './partner-coupon-label';
  * card gets a URL to open. The three amounts are always there, because the
  * amount paid and the amount credited are different numbers for a card.
  */
+/** One month on "Quản lý eSIM" (doitac-3010 #028). */
+export type EsimMonthFigures = {
+  /** eSIMs issued in the month. */
+  count: number;
+  /** Of those, switched on (in use or used up). */
+  activated: number;
+  idle: number;
+  costVnd: number;
+};
+
 export type PartnerTopupInstruction = {
   id: number;
   amountVnd: number;
@@ -8444,6 +8454,8 @@ export class PartnersService {
       activatedAt: string | null;
       expiresAt: string | null;
       createdAt: string | null;
+      /** When the eSIM itself was issued, its QR code made (doitac-3010 #028). */
+      esimCreatedAt: string | null;
       planType: string | null;
       topUp: boolean;
       // doitac-1410 #038:
@@ -8458,7 +8470,8 @@ export class PartnersService {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const limit = Math.min(
       Math.max(filters.limit ?? 100, 1),
-      filters.unbounded ? 50_000 : 500,
+      // The whole stock, paged in the portal (doitac-3010 #028).
+      filters.unbounded ? 50_000 : 5_000,
     );
     // A pasted "#ORD-…" still finds the order (#057, test round 4).
     const search = filters.search?.trim().replace(/^#+\s*/, '') || null;
@@ -8485,7 +8498,14 @@ export class PartnersService {
               -- delivered eSIM as "available", so the stored value read
               -- "Chưa kích hoạt" on eSIMs in use (doitac-3010 #006).
               ${esimLifecycleSql('e')} AS status,
-              p.name AS "planName",
+              -- The standard name, as the admin shows it (doitac-3010 #028);
+              -- the supplier's own name still decides the refund rule.
+              COALESCE(NULLIF(p."standardName", ''), p.name) AS "planName",
+              p.name AS "supplierPlanName",
+              -- A supplier eSIM is made after the order; one from local stock
+              -- was imported before it — either way, issued to this order no
+              -- earlier than the order itself (doitac-3010 #028).
+              GREATEST(e."createdAt", o."createdAt") AS "esimCreatedAt",
               COALESCE(d.name, r.name, p."countryCode") AS destination,
               o."orderNumber",
               -- What this one eSIM cost. A partner purchase stores the unit
@@ -8525,6 +8545,7 @@ export class PartnersService {
            OR e.iccid ILIKE '%' || $3 || '%'
            OR o."orderNumber" ILIKE '%' || $3 || '%'
            OR p.name ILIKE '%' || $3 || '%'
+           OR p."standardName" ILIKE '%' || $3 || '%'
          )
          -- Plan type, top-up and the created range (doitac-1410 #037).
          AND ($5::text[] IS NULL OR p.type = ANY($5))
@@ -8589,6 +8610,7 @@ export class PartnersService {
       activatedAt: row.activatedAt ?? null,
       expiresAt: row.expiresAt ?? null,
       createdAt: row.createdAt ?? null,
+      esimCreatedAt: row.esimCreatedAt ?? null,
       planType: row.planType ?? null,
       topUp: Boolean(row.topUp),
       durationDays: row.durationDays == null ? null : Number(row.durationDays),
@@ -8596,11 +8618,69 @@ export class PartnersService {
       tiktokAi: tiktokByPlan.get(Number(row.planId)) ?? false,
       refundable: planRefundSupported({
         provider: row.provider,
-        name: row.planName,
+        name: row.supplierPlanName ?? row.planName,
         operatorName: row.operatorName,
       }),
       openReport: (row.openReport as 'fault' | 'refund' | null) ?? null,
     }));
+  }
+
+  /**
+   * The line on top of "Quản lý eSIM" (doitac-3010 #028): this month against
+   * last month, in Vietnamese calendar months, by when each eSIM was issued.
+   */
+  async getMyEsimSummary(
+    partnerId: number,
+    now: Date = new Date(),
+  ): Promise<{
+    thisMonth: EsimMonthFigures;
+    lastMonth: EsimMonthFigures;
+  }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    // Midnight on the 1st in Vietnam (UTC+7), as UTC instants.
+    const vn = new Date(now.getTime() + 7 * 3_600_000);
+    const monthStart = (offset: number) =>
+      new Date(
+        Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth() + offset, 1) -
+          7 * 3_600_000,
+      );
+    // When the eSIM was issued to the order: a stock eSIM was imported
+    // before it was sold.
+    const ISSUED = 'GREATEST(e."createdAt", o."createdAt")';
+    const lastStart = monthStart(-1);
+    const thisStart = monthStart(0);
+    const nextStart = monthStart(1);
+
+    const [row] = (await this.dataSource.query(
+      `SELECT ${['this', 'last']
+        .map((m) => {
+          const [from, to] = m === 'this' ? ['$2', '$3'] : ['$4', '$2'];
+          const inMonth = `${ISSUED} >= ${from} AND ${ISSUED} < ${to}`;
+          return `COUNT(*) FILTER (WHERE ${inMonth}) AS "${m}Count",
+              COUNT(*) FILTER (WHERE ${inMonth}
+                AND ${esimLifecycleSql('e')} IN ('active', 'expired')) AS "${m}Activated",
+              COALESCE(SUM(oi."vndPrice") FILTER (WHERE ${inMonth}), 0) AS "${m}Cost"`;
+        })
+        .join(', ')}
+         FROM esim e
+         JOIN order_item oi ON oi.id = e."orderItemId"
+         JOIN "order" o ON o.id = oi."orderId"
+        WHERE o."userId" = $1 AND o."deletedAt" IS NULL
+          AND ${ISSUED} >= $4 AND ${ISSUED} < $3`,
+      [partner.userId, thisStart, nextStart, lastStart],
+    )) as Record<string, string | number | null>[];
+
+    const figures = (m: 'this' | 'last'): EsimMonthFigures => {
+      const count = Number(row?.[`${m}Count`] ?? 0);
+      const activated = Number(row?.[`${m}Activated`] ?? 0);
+      return {
+        count,
+        activated,
+        idle: count - activated,
+        costVnd: Number(row?.[`${m}Cost`] ?? 0),
+      };
+    };
+    return { thisMonth: figures('this'), lastMonth: figures('last') };
   }
 
   /**

@@ -65,6 +65,7 @@ describe('PartnersService.getMyEsims (#046)', () => {
         activatedAt: '2026-09-20T03:00:00.000Z',
         expiresAt: '2026-10-20T03:00:00.000Z',
         createdAt: '2026-09-18T03:00:00.000Z',
+        esimCreatedAt: null,
         planType: null,
         topUp: false,
         // doitac-1410 #038
@@ -108,7 +109,7 @@ describe('PartnersService.getMyEsims (#046)', () => {
     await service.getMyEsims(8, { limit: 10_000 });
 
     const [, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(params[3]).toBe(500);
+    expect(params[3]).toBe(5000);
   });
 
   it('should treat an empty filter as no filter', async () => {
