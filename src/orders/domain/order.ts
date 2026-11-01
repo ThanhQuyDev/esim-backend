@@ -171,6 +171,13 @@ export class Order {
   /** "Vị trí & IP" of the buyer (vande #058). */
   buyerIp?: string | null;
   buyerLocation?: string | null;
+  /** Storefront language at checkout: "en" read prices in $ (doitac-3010 #043). */
+  checkoutLocale?: string | null;
+  /**
+   * "payment $" (doitac-3010 #043): an English ($) checkout that is still
+   * pending or failed — the order the admin counts to judge a USD gateway.
+   */
+  paymentUsdIssue?: boolean;
   /** Ordered in bulk from a file: mailed spaced out, or as a list (vande #057). */
   @ApiPropertyOptional({ type: String, enum: ['email', 'file'] })
   bulkMode?: 'email' | 'file' | null;

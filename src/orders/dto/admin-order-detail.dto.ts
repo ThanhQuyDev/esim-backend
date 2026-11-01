@@ -456,6 +456,16 @@ export class AdminOrderDetailDto {
   })
   buyerLocation?: string | null;
 
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'en' })
+  checkoutLocale?: string | null;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"payment $": checkout bằng bản tiếng Anh (giá $) mà đơn còn pending/failed (doitac-3010 #043).',
+  })
+  paymentUsdIssue?: boolean;
+
   /** Ordered in bulk from a file: mailed spaced out, or as a list (vande #057). */
   @ApiPropertyOptional({
     type: String,

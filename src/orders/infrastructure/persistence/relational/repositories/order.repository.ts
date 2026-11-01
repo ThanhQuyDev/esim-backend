@@ -86,7 +86,9 @@ export class OrdersRelationalRepository implements OrderRepository {
       // #017 — kind and the created-date range need SQL of their own.
       filterOptions?.kind ||
       filterOptions?.createdFrom ||
-      filterOptions?.createdTo
+      filterOptions?.createdTo ||
+      // English ($) checkouts (doitac-3010 #043).
+      filterOptions?.usdCheckout
     ) {
       return this.findManyWithAdvancedFilters(
         filterOptions,
@@ -179,6 +181,11 @@ export class OrdersRelationalRepository implements OrderRepository {
     } else if (filterOptions.kind === 'esim') {
       qb.andWhere(`COALESCE("order"."orderType", 'BUY_NEW') <> 'TOPUP'`);
       qb.andWhere(`NOT (${EARNED_COMMISSION})`);
+    }
+
+    // Checked out in English, prices in $ (doitac-3010 #043).
+    if (filterOptions.usdCheckout) {
+      qb.andWhere(`"order"."checkoutLocale" = 'en'`);
     }
 
     // #017 — created-date range, in VIETNAM days (#022, test round 4).

@@ -100,6 +100,7 @@ import {
   buildBulkEsimList,
   bulkEmailInterval,
 } from './bulk-esim-list';
+import { checkoutLocaleOf, isPaymentUsdIssue } from './payment-usd';
 
 const VND_ROUNDING_UNIT = 1000;
 
@@ -636,6 +637,8 @@ export class OrdersService {
       buyerIpHash: fraudSignals.ipHash,
       buyerIp: publicIp(clientIp),
       buyerLocation: await ipLocation(clientIp),
+      // English checkout = prices read in $ (doitac-3010 #043).
+      checkoutLocale: checkoutLocaleOf(dto.locale),
       buyerVisitorId: fraudSignals.visitorId,
       attributionWarning: fraudSignals.warning,
       // "Thiết bị" on the order and the overview chart (doitac-1410 #082, #083).
@@ -988,6 +991,8 @@ export class OrdersService {
       buyerIpHash: fraudSignals.ipHash,
       buyerIp: publicIp(clientIp),
       buyerLocation: await ipLocation(clientIp),
+      // English checkout = prices read in $ (doitac-3010 #043).
+      checkoutLocale: checkoutLocaleOf(dto.locale),
       buyerVisitorId: fraudSignals.visitorId,
       attributionWarning: fraudSignals.warning,
       // "Thiết bị" on the order and the overview chart (doitac-1410 #082, #083).
@@ -2912,6 +2917,9 @@ export class OrdersService {
       // "Vị trí & IP" (vande #058).
       buyerIp: order.buyerIp ?? null,
       buyerLocation: order.buyerLocation ?? null,
+      // "payment $" (doitac-3010 #043).
+      checkoutLocale: order.checkoutLocale ?? null,
+      paymentUsdIssue: isPaymentUsdIssue(order),
       // Ordered in bulk from a file (vande #057).
       bulkMode: order.bulkMode ?? null,
       bulkEmailIntervalSec: order.bulkEmailIntervalSec ?? null,

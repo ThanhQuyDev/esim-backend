@@ -124,6 +124,15 @@ export class FilterOrderDto {
   @IsIn(ORDER_KIND_VALUES)
   kind?: OrderKind;
 
+  /**
+   * Only orders checked out in English, prices read in $ (doitac-3010 #043).
+   * With status pending/failed: the "payment $" orders.
+   */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  usdCheckout?: boolean;
+
   @ApiPropertyOptional({
     type: String,
     format: 'date',

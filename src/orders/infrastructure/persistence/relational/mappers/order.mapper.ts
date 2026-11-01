@@ -1,5 +1,6 @@
 import { Order } from '../../../../domain/order';
 import { OrderEntity } from '../entities/order.entity';
+import { isPaymentUsdIssue } from '../../../../payment-usd';
 
 export class OrderMapper {
   static toDomain(raw: OrderEntity): Order {
@@ -46,6 +47,8 @@ export class OrderMapper {
     domainEntity.deliveryEmail = raw.deliveryEmail ?? null;
     domainEntity.buyerIp = raw.buyerIp ?? null;
     domainEntity.buyerLocation = raw.buyerLocation ?? null;
+    domainEntity.checkoutLocale = raw.checkoutLocale ?? null;
+    domainEntity.paymentUsdIssue = isPaymentUsdIssue(raw);
     domainEntity.bulkMode = raw.bulkMode ?? null;
     domainEntity.bulkBatch = raw.bulkBatch ?? null;
     domainEntity.bulkEmailIntervalSec = raw.bulkEmailIntervalSec ?? null;
@@ -135,6 +138,7 @@ export class OrderMapper {
     persistenceEntity.deliveryEmail = domainEntity.deliveryEmail;
     persistenceEntity.buyerIp = domainEntity.buyerIp;
     persistenceEntity.buyerLocation = domainEntity.buyerLocation;
+    persistenceEntity.checkoutLocale = domainEntity.checkoutLocale;
     persistenceEntity.bulkMode = domainEntity.bulkMode;
     persistenceEntity.bulkBatch = domainEntity.bulkBatch;
     persistenceEntity.bulkEmailIntervalSec = domainEntity.bulkEmailIntervalSec;

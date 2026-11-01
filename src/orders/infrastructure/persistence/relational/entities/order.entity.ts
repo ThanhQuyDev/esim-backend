@@ -172,6 +172,13 @@ export class OrderEntity extends EntityRelationalHelper {
   buyerLocation?: string | null;
 
   /**
+   * The storefront language at checkout, "vi" or "en" (doitac-3010 #043). An
+   * English checkout reads prices in $; null for an order from before.
+   */
+  @Column({ type: 'varchar', length: 5, nullable: true })
+  checkoutLocale?: string | null;
+
+  /**
    * Ordered in bulk from a file (vande #057): `email` — every eSIM mailed to
    * its customer, spaced `bulkEmailIntervalSec` apart; `file` — nothing
    * mailed, the eSIMs handed over as one downloadable list.
