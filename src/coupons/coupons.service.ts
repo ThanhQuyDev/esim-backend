@@ -24,6 +24,19 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
 
+/**
+ * A code that is taken, said in Vietnamese (doitac-3010 #016): the error used
+ * to carry only "codeAlreadyExists", and the CMS showed "API error: 422".
+ */
+function duplicateCodeError(code: string) {
+  const message = `Mã giảm giá "${code.trim().toUpperCase()}" đã tồn tại trên hệ thống (đang dùng hoặc đã xoá), vui lòng chọn mã khác.`;
+  return new UnprocessableEntityException({
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message,
+    errors: { code: message },
+  });
+}
+
 @Injectable()
 export class CouponsService {
   constructor(
@@ -33,15 +46,13 @@ export class CouponsService {
   ) {}
 
   async create(createCouponDto: CreateCouponDto): Promise<Coupon> {
+    // A deleted code counts too: the database keeps it unique, and the save
+    // then failed with an English error (doitac-3010 #016).
     const existing = await this.couponRepository.findByCode(
       createCouponDto.code.toUpperCase(),
+      { withDeleted: true },
     );
-    if (existing) {
-      throw new UnprocessableEntityException({
-        status: HttpStatus.UNPROCESSABLE_ENTITY,
-        errors: { code: 'codeAlreadyExists' },
-      });
-    }
+    if (existing) throw duplicateCodeError(createCouponDto.code);
 
     return this.couponRepository.create({
       code: createCouponDto.code.toUpperCase(),
@@ -95,12 +106,11 @@ export class CouponsService {
     const payload: Partial<Coupon> = {};
     if (updateCouponDto.code !== undefined) {
       const code = updateCouponDto.code.toUpperCase();
-      const existing = await this.couponRepository.findByCode(code);
+      const existing = await this.couponRepository.findByCode(code, {
+        withDeleted: true,
+      });
       if (existing && existing.id !== Number(id)) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: { code: 'codeAlreadyExists' },
-        });
+        throw duplicateCodeError(code);
       }
       payload.code = code;
     }

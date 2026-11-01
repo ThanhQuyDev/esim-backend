@@ -80,9 +80,13 @@ export class CouponsRelationalRepository implements CouponRepository {
     return entity ? CouponMapper.toDomain(entity) : null;
   }
 
-  async findByCode(code: string): Promise<NullableType<Coupon>> {
+  async findByCode(
+    code: string,
+    opts: { withDeleted?: boolean } = {},
+  ): Promise<NullableType<Coupon>> {
     const entity = await this.couponRepository.findOne({
       where: { code },
+      withDeleted: opts.withDeleted ?? false,
     });
     return entity ? CouponMapper.toDomain(entity) : null;
   }

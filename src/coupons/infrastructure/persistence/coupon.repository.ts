@@ -13,7 +13,10 @@ export abstract class CouponRepository {
     paginationOptions: IPaginationOptions;
   }): Promise<[Coupon[], number]>;
   abstract findById(id: Coupon['id']): Promise<NullableType<Coupon>>;
-  abstract findByCode(code: string): Promise<NullableType<Coupon>>;
+  abstract findByCode(
+    code: string,
+    opts?: { withDeleted?: boolean },
+  ): Promise<NullableType<Coupon>>;
   abstract update(id: Coupon['id'], payload: Partial<Coupon>): Promise<Coupon>;
   abstract incrementUsage(id: Coupon['id']): Promise<void>;
   abstract decrementUsage(id: Coupon['id']): Promise<void>;
