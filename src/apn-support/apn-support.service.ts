@@ -207,6 +207,30 @@ export class ApnSupportService {
   }
 
   /**
+   * Every plan APN value — as stored, trimmed and lower-cased — that runs
+   * TikTok on both platforms and ChatGPT, for the "TikTok & AI" filter
+   * (doitac-3010 #046). Judged like `judgePlan`, so "cmlink /
+   * internet.proximus.be / cmhk" counts through its best APN and the filter
+   * agrees with what the product page says.
+   */
+  async tiktokCapablePlanApns(): Promise<string[]> {
+    const capabilities = await this.capabilityMap();
+    const values = await this.apnRepository.distinctPlanApns();
+    const capable = new Set<string>();
+    for (const [apn, caps] of capabilities) {
+      if (fullTiktokAndGpt(caps)) capable.add(apn);
+    }
+    for (const raw of values) {
+      const apn = normalizeApn(raw);
+      if (!apn) continue;
+      const caps =
+        capabilities.get(apn) ?? combineCapabilities(raw, capabilities);
+      if (caps && fullTiktokAndGpt(caps)) capable.add(apn);
+    }
+    return [...capable];
+  }
+
+  /**
    * What one plan supports.
    *
    * esimaccess gives no APN at all, and says it in the package name instead — its
@@ -471,9 +495,13 @@ export function chinaApnCandidates(raw: string | null | undefined): string[] {
 }
 
 /**
- * What a plan supports when it may use any of several APNs: an app counts only
- * if EVERY candidate APN runs it, since we cannot tell which one the eSIM picks.
- * An APN missing from the table counts as "no". Null when none is in the table.
+ * What a plan supports when its APN lists several, "cmlink /
+ * internet.proximus.be / cmhk" (doitac-3010 #046): the APN that supports the
+ * most counts, as the business decided — the eSIM can be set to that APN, so
+ * a plan offering one full-support APN is a full-support plan. "Most" is
+ * counted over every app on both platforms; on a tie the first listed wins.
+ * An APN missing from the table counts as nothing. Null when none is in the
+ * table.
  */
 export function combineCapabilities(
   raw: string | null | undefined,
@@ -482,16 +510,34 @@ export function combineCapabilities(
   const candidates = chinaApnCandidates(raw)
     .map((name) => normalizeApn(name))
     .filter((name): name is string => !!name);
-  if (!candidates.length) return null;
-  const found = candidates.map((name) => capabilities.get(name));
-  if (found.every((caps) => !caps)) return null;
-
-  const combined = emptyCapabilities();
-  for (const app of Object.keys(combined) as (keyof ApnCapabilities)[]) {
-    combined[app] = {
-      ios: found.every((caps) => !!caps?.[app].ios),
-      android: found.every((caps) => !!caps?.[app].android),
-    };
+  let best: ApnCapabilities | null = null;
+  let bestScore = -1;
+  for (const name of candidates) {
+    const caps = capabilities.get(name);
+    if (!caps) continue;
+    const score = capabilityScore(caps);
+    if (score > bestScore) {
+      best = caps;
+      bestScore = score;
+    }
   }
-  return combined;
+  return best;
+}
+
+/** TikTok on both platforms and ChatGPT on both — "TikTok & AI". */
+function fullTiktokAndGpt(caps: ApnCapabilities): boolean {
+  return (
+    caps.tiktok.ios &&
+    caps.tiktok.android &&
+    caps.chatGpt.ios &&
+    caps.chatGpt.android
+  );
+}
+
+/** How much one APN supports: apps × platforms it runs on. */
+export function capabilityScore(caps: ApnCapabilities): number {
+  return (Object.keys(caps) as (keyof ApnCapabilities)[]).reduce(
+    (sum, app) => sum + Number(caps[app].ios) + Number(caps[app].android),
+    0,
+  );
 }

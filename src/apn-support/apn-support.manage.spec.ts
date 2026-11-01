@@ -157,10 +157,41 @@ describe('APN table management (#044)', () => {
       ).toEqual({ ios: true, android: true });
     });
 
-    it('should need every alternative APN to work', () => {
-      const combined = combineCapabilities('e-ideas / cmhk', TABLE);
-      expect(combined?.tiktok).toEqual({ ios: false, android: false });
+    // doitac-3010 #046: the best-supporting APN of the list counts.
+    it('should take the APN that supports the most', () => {
+      const combined = combineCapabilities('cmhk / e-ideas', TABLE);
+      expect(combined?.tiktok).toEqual({ ios: true, android: true });
       expect(combined?.chatGpt).toEqual({ ios: true, android: true });
+    });
+
+    it('should judge the example from the brief by internet.proximus.be', () => {
+      const full: ApnCapabilities = {
+        tiktok: { ios: true, android: true },
+        chatGpt: { ios: true, android: true },
+        gemini: { ios: true, android: true },
+        claude: { ios: true, android: true },
+      };
+      const partial: ApnCapabilities = {
+        tiktok: { ios: true, android: false },
+        chatGpt: { ios: true, android: true },
+        gemini: { ios: true, android: true },
+        claude: { ios: false, android: false },
+      };
+      const table = new Map<string, ApnCapabilities>([
+        ['cmlink', partial],
+        ['internet.proximus.be', full],
+        ['cmhk', partial],
+      ]);
+      expect(
+        combineCapabilities('cmlink / internet.proximus.be  / cmhk ', table),
+      ).toEqual(full);
+    });
+
+    it('should skip an APN missing from the table rather than count it as no', () => {
+      expect(combineCapabilities('foo / cmhk', TABLE)?.chatGpt).toEqual({
+        ios: true,
+        android: true,
+      });
     });
 
     it('should know nothing when no candidate is in the table', () => {

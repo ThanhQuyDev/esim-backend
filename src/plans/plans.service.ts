@@ -407,18 +407,11 @@ export class PlansService implements OnApplicationBootstrap {
 
   /** APNs that run TikTok on every device and ChatGPT, from the APN table. */
   private async tiktokCapableApns(): Promise<string[]> {
-    if (!this.apnSupportService?.capabilityMap) return [];
+    if (!this.apnSupportService?.tiktokCapablePlanApns) return [];
     try {
-      const capabilities = await this.apnSupportService.capabilityMap();
-      return [...capabilities]
-        .filter(
-          ([, caps]) =>
-            caps.tiktok.ios &&
-            caps.tiktok.android &&
-            caps.chatGpt.ios &&
-            caps.chatGpt.android,
-        )
-        .map(([apn]) => apn);
+      // Several APNs in one value count through the best one (doitac-3010
+      // #046), the same as the product page's verdict.
+      return await this.apnSupportService.tiktokCapablePlanApns();
     } catch {
       return [];
     }
