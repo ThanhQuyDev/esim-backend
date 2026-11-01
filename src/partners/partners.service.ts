@@ -1741,6 +1741,10 @@ export class PartnersService {
         ? (filters.kind as LedgerKind)
         : null;
     const types = kind ? LEDGER_TYPES[kind] : null;
+    // A purchase and a top-up share a stored type; the order tells them apart
+    // (doitac-3010 #024).
+    const topupOnly =
+      kind === 'topup' ? true : kind === 'purchase' ? false : null;
     const range =
       filters.from || filters.to
         ? resolveSummaryRange({
@@ -1754,7 +1758,9 @@ export class PartnersService {
     const rows: Array<Record<string, unknown>> = await this.dataSource.query(
       `SELECT t.id, t.type, t."amountVnd", t."balanceAfterVnd", t.reason,
               t."createdAt",
-              o."orderNumber",
+              o."orderNumber", o."orderType",
+              COALESCE(o."topupPackageName", o."topupDataText") AS "topupName",
+              o."targetIccid",
               (
                 SELECT string_agg(p.name || ' x' || oi.quantity, ', ' ORDER BY oi.id)
                 FROM order_item oi JOIN plan p ON p.id = oi."planId"
@@ -1777,9 +1783,19 @@ export class PartnersService {
               OR o."orderNumber" ILIKE '%' || $5 || '%'
               OR dr."bankTransferCode" ILIKE '%' || $5 || '%'
               OR ('WD-' || lpad(po.id::text, 6, '0')) ILIKE '%' || $5 || '%')
+         AND ($7::boolean IS NULL
+              OR (upper(COALESCE(o."orderType", '')) = 'TOPUP') = $7)
        ORDER BY t."createdAt" DESC, t.id DESC
        LIMIT $6`,
-      [partnerId, types, range?.from ?? null, range?.to ?? null, code, limit],
+      [
+        partnerId,
+        types,
+        range?.from ?? null,
+        range?.to ?? null,
+        code,
+        limit,
+        topupOnly,
+      ],
     );
 
     return rows.map((r) => {
@@ -1791,8 +1807,11 @@ export class PartnersService {
         payoutId: r.payoutId == null ? null : Number(r.payoutId),
         depositCode: (r.depositCode as string | null) ?? null,
         depositMethod: (r.depositMethod as string | null) ?? null,
+        orderType: (r.orderType as string | null) ?? null,
+        topupName: (r.topupName as string | null) ?? null,
+        targetIccid: (r.targetIccid as string | null) ?? null,
       };
-      const rowKind = ledgerKindOf(source.type);
+      const rowKind = ledgerKindOf(source.type, source.orderType);
       return {
         id: Number(r.id),
         createdAt: r.createdAt as Date,

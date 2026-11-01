@@ -148,3 +148,35 @@ describe('PartnersService.getMyLedger / export (doitac-1410 #031)', () => {
     ).toBe('WD-000008');
   });
 });
+
+describe('top-up lines (doitac-3010 #024)', () => {
+  const topup = {
+    ...base,
+    type: 'order_purchase',
+    orderNumber: 'PTN-9',
+    orderType: 'TOPUP',
+    topupName: '5 GB',
+    targetIccid: '8984000000000000001',
+  };
+
+  it('should call a paid top-up "Topup", not "Mua eSIM"', () => {
+    expect(ledgerKindOf(topup.type, topup.orderType)).toBe('topup');
+    expect(ledgerDescription(topup)).toBe(
+      'Topup 5 GB cho eSIM 8984000000000000001',
+    );
+    expect(ledgerCode(topup)).toBe('PTN-9');
+  });
+
+  it('should keep a refunded top-up a refund, saying it was a top-up', () => {
+    const refund = { ...topup, type: 'order_purchase_reversal' };
+    expect(ledgerKindOf(refund.type, refund.orderType)).toBe('refund');
+    expect(ledgerDescription(refund)).toBe(
+      'Hoàn tiền topup 5 GB cho eSIM 8984000000000000001',
+    );
+  });
+
+  it('should leave an ordinary purchase a purchase', () => {
+    expect(ledgerKindOf('order_purchase', 'NEW')).toBe('purchase');
+    expect(ledgerKindOf('order_purchase', null)).toBe('purchase');
+  });
+});

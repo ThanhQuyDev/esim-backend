@@ -210,11 +210,13 @@ export class PartnersController {
     @Query('to') to?: string,
   ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    // The whole history, paged in the portal (doitac-3010 #024).
     return this.partnersService.getMyLedger(partner.id, {
       code,
       kind,
       from,
       to,
+      limit: 5000,
     });
   }
 
@@ -283,7 +285,8 @@ export class PartnersController {
   @HttpCode(HttpStatus.OK)
   async getMyDepositRequests(@Request() req: { user: { id: number } }) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
-    return this.partnersService.getMyDepositRequests(partner.id);
+    // The whole history, paged in the portal (doitac-3010 #024).
+    return this.partnersService.getMyDepositRequests(partner.id, 1000);
   }
 
   /**
@@ -1202,6 +1205,7 @@ export class PartnersController {
   @HttpCode(HttpStatus.OK)
   async getMyPayouts(@Request() req: { user: { id: number } }) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
-    return this.partnersService.getMyPayouts(partner.id);
+    // The whole history, paged in the portal (doitac-3010 #024).
+    return this.partnersService.getMyPayouts(partner.id, 1000);
   }
 }

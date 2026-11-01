@@ -9,6 +9,7 @@
 
 export type LedgerKind =
   | 'purchase'
+  | 'topup'
   | 'refund'
   | 'deposit'
   | 'payout'
@@ -17,6 +18,8 @@ export type LedgerKind =
 
 export const LEDGER_KIND_LABEL: Record<LedgerKind, string> = {
   purchase: 'Mua eSIM',
+  // A top-up order is paid like a purchase but is not one (doitac-3010 #024).
+  topup: 'Topup',
   refund: 'Hoàn tiền',
   deposit: 'Nạp tiền',
   payout: 'Rút tiền',
@@ -24,9 +27,13 @@ export const LEDGER_KIND_LABEL: Record<LedgerKind, string> = {
   commission: 'Hoa hồng',
 };
 
-/** Which kind each stored type belongs to. */
+/**
+ * Which kind each stored type belongs to. A purchase and a top-up are both
+ * stored as `order_purchase`; the order's type tells them apart.
+ */
 export const LEDGER_TYPES: Record<LedgerKind, string[]> = {
   purchase: ['order_purchase'],
+  topup: ['order_purchase'],
   refund: ['order_purchase_reversal'],
   deposit: ['deposit', 'deposit_bonus'],
   payout: ['payout', 'payout_rejected'],
@@ -34,15 +41,28 @@ export const LEDGER_TYPES: Record<LedgerKind, string[]> = {
   commission: ['commission_earned', 'commission_reversed'],
 };
 
-export function ledgerKindOf(type: string): LedgerKind {
+export function ledgerKindOf(
+  type: string,
+  orderType?: string | null,
+): LedgerKind {
+  if (type === 'order_purchase' && isTopupOrder(orderType)) return 'topup';
   for (const [kind, types] of Object.entries(LEDGER_TYPES)) {
     if (types.includes(type)) return kind as LedgerKind;
   }
   return 'adjustment';
 }
 
+export function isTopupOrder(orderType?: string | null): boolean {
+  return (orderType ?? '').toUpperCase() === 'TOPUP';
+}
+
 export type LedgerRowSource = {
   type: string;
+  /** The order's type, for a line paid by an order (doitac-3010 #024). */
+  orderType?: string | null;
+  /** A top-up's package and the eSIM it went to. */
+  topupName?: string | null;
+  targetIccid?: string | null;
   reason: string | null;
   orderNumber: string | null;
   items: string | null;
@@ -64,6 +84,21 @@ export function ledgerCode(row: LedgerRowSource): string | null {
 export function ledgerDescription(row: LedgerRowSource): string {
   const items = row.items?.trim();
   const reason = row.reason?.trim();
+  if (isTopupOrder(row.orderType)) {
+    // "Topup 5 GB cho eSIM 8984…" (doitac-3010 #024).
+    const what = [
+      row.topupName?.trim() || items,
+      row.targetIccid ? `cho eSIM ${row.targetIccid}` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    if (row.type === 'order_purchase') {
+      return what ? `Topup ${what}` : (reason ?? 'Topup eSIM');
+    }
+    if (row.type === 'order_purchase_reversal') {
+      return what ? `Hoàn tiền topup ${what}` : (reason ?? 'Hoàn tiền topup');
+    }
+  }
   switch (row.type) {
     case 'order_purchase':
       return items ? `Mua eSIM ${items}` : (reason ?? 'Mua eSIM');
