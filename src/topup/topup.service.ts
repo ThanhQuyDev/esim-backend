@@ -256,7 +256,8 @@ export class TopupService {
   async checkoutForPartner(
     userId: number,
     input: { iccid: string; packageId: string },
-    priceFor: (costVnd: number) => Promise<number>,
+    /** `listVnd` is the web's price: an agent price stays at or below it. */
+    priceFor: (costVnd: number, listVnd: number) => Promise<number>,
     pay: (
       order: { id: number; orderNumber: string },
       amountVnd: number,
@@ -279,7 +280,7 @@ export class TopupService {
         'Gói topup này chưa có giá vốn, chưa thể bán cho đối tác.',
       );
     }
-    const amountVnd = await priceFor(costVnd);
+    const amountVnd = await priceFor(costVnd, Number(order.vndPrice ?? 0));
 
     await this.orderRepository.update(order.id, {
       vndPrice: amountVnd,

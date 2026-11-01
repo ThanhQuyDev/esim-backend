@@ -55,6 +55,18 @@ export class PartnerTierEntity extends EntityRelationalHelper {
   costMarkupPercent!: number;
 
   /**
+   * The markup by cost band, like the admin's Profit Margin Tier
+   * (doitac-3010 #040); `costMarkupPercent` covers a cost no band does.
+   */
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  costMarkupRanges!: {
+    fromVnd: number;
+    toVnd: number;
+    percent: number;
+    fixedVnd: number;
+  }[];
+
+  /**
    * A tier that is negotiated rather than earned (#074).
    *
    * Left out of the public ladder and of the weekly review; a partner only

@@ -62,6 +62,8 @@ import {
   partnerPurchaseQuote,
   partnerPurchaseRejection,
   partnerPurchaseUnitPriceVnd,
+  type CostMarkup,
+  type CostMarkupRange,
   partnerSuggestedRetailVnd,
   planRefundSupported,
   partnerLineDays,
@@ -561,12 +563,48 @@ const BANK_CHANGE_OTP_MAX_ATTEMPTS = 5;
  * A tier as a partner may see it: everything but the % added to cost price,
  * which is a trade secret and is never shown to a partner (doitac-1410 #006).
  */
-function withoutCostMarkup<T extends { costMarkupPercent?: unknown }>(
-  tier: T,
-): Omit<T, 'costMarkupPercent'> {
+function withoutCostMarkup<
+  T extends { costMarkupPercent?: unknown; costMarkupRanges?: unknown },
+>(tier: T): Omit<T, 'costMarkupPercent' | 'costMarkupRanges'> {
   const rest = { ...tier };
   delete rest.costMarkupPercent;
+  // The bands are the same secret (doitac-3010 #040).
+  delete rest.costMarkupRanges;
   return rest;
+}
+
+/**
+ * A tier's cost bands as saved (doitac-3010 #040): in price order, each "từ"
+ * no higher than its "đến", and no two bands covering the same cost — a cost
+ * in two bands would get whichever came first, which nobody reading the form
+ * could tell.
+ */
+export function normalizeCostMarkupRanges(
+  ranges: CostMarkupRange[] | null | undefined,
+): CostMarkupRange[] {
+  const sorted = (ranges ?? [])
+    .map((r) => ({
+      fromVnd: Math.max(0, Math.round(Number(r.fromVnd) || 0)),
+      toVnd: Math.max(0, Math.round(Number(r.toVnd) || 0)),
+      percent: Math.max(0, Number(r.percent) || 0),
+      fixedVnd: Math.max(0, Math.round(Number(r.fixedVnd) || 0)),
+    }))
+    .sort((a, b) => a.fromVnd - b.fromVnd);
+  const vnd = (n: number) => n.toLocaleString('vi-VN') + 'đ';
+  sorted.forEach((r, i) => {
+    if (r.fromVnd > r.toVnd) {
+      throw new BadRequestException(
+        `Khoảng giá ${vnd(r.fromVnd)} – ${vnd(r.toVnd)}: "Từ" phải nhỏ hơn hoặc bằng "Đến".`,
+      );
+    }
+    const prev = sorted[i - 1];
+    if (prev && r.fromVnd <= prev.toVnd) {
+      throw new BadRequestException(
+        `Khoảng giá ${vnd(r.fromVnd)} – ${vnd(r.toVnd)} trùng với khoảng ${vnd(prev.fromVnd)} – ${vnd(prev.toVnd)}.`,
+      );
+    }
+  });
+  return sorted;
 }
 
 /**
@@ -6458,6 +6496,8 @@ export class PartnersService {
         // The deposit route and the markup a distribution tier buys (#073).
         minDepositVnd: dto.minDepositVnd ?? 0,
         costMarkupPercent: dto.costMarkupPercent ?? 0,
+        // By cost band, like Profit Margin Tier (doitac-3010 #040).
+        costMarkupRanges: normalizeCostMarkupRanges(dto.costMarkupRanges),
         // Negotiated rather than earned (#074).
         isInternal: dto.isInternal ?? false,
         // Each tier carries its own attribution window (#037).
@@ -6594,6 +6634,9 @@ export class PartnersService {
       }),
       ...(dto.costMarkupPercent !== undefined && {
         costMarkupPercent: dto.costMarkupPercent,
+      }),
+      ...(dto.costMarkupRanges !== undefined && {
+        costMarkupRanges: normalizeCostMarkupRanges(dto.costMarkupRanges),
       }),
       ...(dto.isInternal !== undefined && { isInternal: dto.isInternal }),
       ...(dto.attributionDays !== undefined && {
@@ -8437,7 +8480,9 @@ export class PartnersService {
   /** Tiers a partner can be placed in, for the "Hạng đối tác" comparison. */
   async getMyTiers(
     partnerId: number,
-  ): Promise<Omit<PartnerTierEntity, 'costMarkupPercent'>[]> {
+  ): Promise<
+    Omit<PartnerTierEntity, 'costMarkupPercent' | 'costMarkupRanges'>[]
+  > {
     const partner = await this.getPartnerOrThrowById(partnerId);
 
     // A partner on an internal tier sits outside the ladder altogether: they
@@ -8999,11 +9044,14 @@ export class PartnersService {
   async partnerAgentPriceVnd(
     partnerId: number,
     costVnd: number,
+    /** The web's price for it: the agent price never goes above (#040). */
+    listPriceVnd?: number,
   ): Promise<number> {
     const partner = await this.getPartnerOrThrowById(partnerId);
     return partnerPurchaseUnitPriceVnd(
       costVnd,
       await this.purchaseMarkupPercentFor(partner),
+      listPriceVnd,
     );
   }
 
@@ -9935,15 +9983,19 @@ export class PartnersService {
    */
   private async purchaseMarkupPercentFor(
     partner: PartnerEntity,
-  ): Promise<number> {
-    if (!partner.tierCode) return 0;
+  ): Promise<CostMarkup> {
+    if (!partner.tierCode) return { percent: 0, ranges: [] };
     const tier = await this.tierRepository.findOne({
       where: {
         partnerType: partner.partnerType,
         tierCode: partner.tierCode,
       },
     });
-    return Number(tier?.costMarkupPercent ?? 0);
+    // The bands first, the flat % for a cost outside them (doitac-3010 #040).
+    return {
+      percent: Number(tier?.costMarkupPercent ?? 0),
+      ranges: tier?.costMarkupRanges ?? [],
+    };
   }
 
   /**
@@ -10090,6 +10142,7 @@ export class PartnersService {
         const unitPriceVnd = partnerPurchaseUnitPriceVnd(
           Number(plan.vndCostPrice ?? 0),
           markupPercent,
+          listPriceVnd,
         );
         const destination = plan.destination as
           | { name?: string; titleVi?: string | null; flagUrl?: string | null }

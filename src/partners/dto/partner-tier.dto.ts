@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -8,8 +11,38 @@ import {
   IsString,
   Matches,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { PartnerTypeEnum } from '../partners.enum';
+
+/** One cost band of a tier's markup (doitac-3010 #040). */
+export class CostMarkupRangeDto {
+  @ApiProperty({ example: 0, description: 'Giá gốc từ (VND, tính cả mốc này)' })
+  @IsNumber()
+  @Min(0)
+  fromVnd!: number;
+
+  @ApiProperty({
+    example: 1000000,
+    description: 'Giá gốc đến (VND, tính cả mốc này)',
+  })
+  @IsNumber()
+  @Min(0)
+  toVnd!: number;
+
+  @ApiProperty({ example: 10, description: 'Tăng theo %' })
+  @IsNumber()
+  @Min(0)
+  percent!: number;
+
+  @ApiProperty({
+    example: 0,
+    description: 'Tăng theo giá tiền (VND); lớn hơn 0 thì dùng thay cho %',
+  })
+  @IsNumber()
+  @Min(0)
+  fixedVnd!: number;
+}
 
 export class CreatePartnerTierDto {
   @ApiProperty({ enum: PartnerTypeEnum })
@@ -84,6 +117,18 @@ export class CreatePartnerTierDto {
   costMarkupPercent?: number;
 
   @ApiPropertyOptional({
+    type: [CostMarkupRangeDto],
+    description:
+      'Markup theo khoảng giá gốc, như Profit Margin Tier (doitac-3010 #040). Giá gốc ngoài mọi khoảng dùng costMarkupPercent.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CostMarkupRangeDto)
+  costMarkupRanges?: CostMarkupRangeDto[];
+
+  @ApiPropertyOptional({
     type: Boolean,
     description:
       'Hạng nội bộ: không hiện trong bảng xếp hạng công khai, không được xét thăng hạng tự động (#074).',
@@ -147,6 +192,18 @@ export class UpdatePartnerTierDto {
   @IsNumber()
   @Min(0)
   costMarkupPercent?: number;
+
+  @ApiPropertyOptional({
+    type: [CostMarkupRangeDto],
+    description:
+      'Markup theo khoảng giá gốc, như Profit Margin Tier (doitac-3010 #040). Giá gốc ngoài mọi khoảng dùng costMarkupPercent.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CostMarkupRangeDto)
+  costMarkupRanges?: CostMarkupRangeDto[];
 
   @ApiPropertyOptional({
     type: Boolean,

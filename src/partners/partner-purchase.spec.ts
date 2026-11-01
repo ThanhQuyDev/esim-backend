@@ -53,18 +53,25 @@ describe('partner purchase', () => {
       expect(quote.marginPercent).toBe(28);
     });
 
-    it('should giữ nguyên chênh lệch âm khi markup vượt giá niêm yết', () => {
-      // Kẹp về 0 ở đây sẽ làm đối tác tưởng hoà vốn trong khi đang lỗ.
+    it('should chặn giá đại lý ở giá niêm yết khi markup vượt giá web', () => {
+      // doitac-3010 #040: giá đại lý không bao giờ cao hơn giá bán web.
       const quote = partnerPurchaseQuote({
         unitCostVnd: 200000,
         costMarkupPercent: 10,
-        listPriceVnd: 150000,
+        listPriceVnd: 250000,
         quantity: 2,
       });
 
-      // 2 × 220.000đ vốn so với 2 × 150.000đ niêm yết.
-      expect(quote.marginVnd).toBe(-140000);
-      expect(quote.marginPercent).toBeLessThan(0);
+      // 220.000đ theo markup, nhưng web bán 250.000đ: giữ 220.000đ.
+      expect(quote.unitPriceVnd).toBe(220000);
+      const capped = partnerPurchaseQuote({
+        unitCostVnd: 200000,
+        costMarkupPercent: 10,
+        listPriceVnd: 210000,
+        quantity: 2,
+      });
+      expect(capped.unitPriceVnd).toBe(210000);
+      expect(capped.marginVnd).toBe(0);
     });
 
     it('should không chia cho 0 khi gói chưa có giá niêm yết', () => {

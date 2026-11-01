@@ -21,16 +21,64 @@ import {
  * để test được bằng số, còn service chỉ lo lưu và gọi nhà cung cấp.
  */
 
-/** Giá một eSIM bán cho đối tác = giá vốn + markup theo hạng. */
+/**
+ * One price band of a tier's markup (doitac-3010 #040), set like the admin's
+ * Profit Margin Tier: a cost from `fromVnd` to `toVnd` (both included) gets
+ * `fixedVnd` added when it is above 0, otherwise `percent` %.
+ */
+export type CostMarkupRange = {
+  fromVnd: number;
+  toVnd: number;
+  percent: number;
+  fixedVnd: number;
+};
+
+/**
+ * A tier's markup: the bands, and the flat % for a cost no band covers (the
+ * one figure every tier had before the bands).
+ */
+export type CostMarkup = { percent: number; ranges?: CostMarkupRange[] | null };
+
+/** The band covering `costVnd`, or null. */
+export function costMarkupRangeFor(
+  costVnd: number,
+  ranges: CostMarkupRange[] | null | undefined,
+): CostMarkupRange | null {
+  for (const range of ranges ?? []) {
+    const from = Number(range.fromVnd) || 0;
+    const to = Number(range.toVnd) || 0;
+    if (costVnd >= from && costVnd <= to) return range;
+  }
+  return null;
+}
+
+/**
+ * Giá một eSIM bán cho đối tác = giá vốn + markup theo hạng.
+ *
+ * `listPriceVnd` is what the web sells it for: a markup must never take the
+ * agent price above it (doitac-3010 #040 — a flat % on a 1 triệu+ eSIM did,
+ * because the web's own margin falls as the price rises).
+ */
 export function partnerPurchaseUnitPriceVnd(
   costVnd: number,
-  costMarkupPercent: number,
+  markup: number | CostMarkup,
+  listPriceVnd?: number,
 ): number {
   const cost = Math.max(0, Number(costVnd) || 0);
-  const markup = Math.max(0, Number(costMarkupPercent) || 0);
+  const { percent, ranges } =
+    typeof markup === 'object' && markup !== null
+      ? markup
+      : { percent: markup, ranges: null };
+  const range = costMarkupRangeFor(cost, ranges);
+  const fixed = Math.max(0, Number(range?.fixedVnd) || 0);
+  const pct = Math.max(0, Number(range ? range.percent : percent) || 0);
   // "Giá đại lý … được làm tròn đến hàng ngàn" (doitac-1410 #034) — the
   // price list, the quote and the wallet debit all read this one figure.
-  return roundToThousand(cost * (1 + markup / 100));
+  const price = roundToThousand(
+    fixed > 0 ? cost + fixed : cost * (1 + pct / 100),
+  );
+  const list = Math.max(0, Math.round(Number(listPriceVnd) || 0));
+  return list > 0 ? Math.min(price, list) : price;
 }
 
 /**
@@ -72,8 +120,8 @@ export function planRefundSupported(plan: RefundPolicyPlan): boolean {
 export type PartnerPurchaseQuoteInput = {
   /** `plan.vndCostPrice` — giá vốn esim.vn trả nhà cung cấp. */
   unitCostVnd: number;
-  /** `tier.costMarkupPercent` của hạng đối tác đang giữ. */
-  costMarkupPercent: number;
+  /** Markup của hạng đối tác đang giữ: % chung và các khoảng giá (#040). */
+  costMarkupPercent: number | CostMarkup;
   /** `plan.vndPrice` — giá niêm yết trên esim.vn (quyết định B, phương án a). */
   listPriceVnd: number;
   quantity: number;
@@ -104,10 +152,9 @@ export type PartnerPurchaseQuote = {
 /**
  * Báo giá một lần mua.
  *
- * `marginVnd` có thể âm — khi markup của hạng đẩy giá vốn vượt giá niêm yết.
- * Không chặn ở đây: đó là một thoả thuận kinh doanh hợp lệ (đối tác bán theo
- * giá của họ, không buộc bán đúng giá niêm yết), nhưng màn hình phải hiện đúng
- * số âm đó thay vì kẹp về 0 và làm đối tác tưởng mình hoà vốn.
+ * `marginVnd` không còn âm khi gói có giá niêm yết: giá đại lý bị chặn ở
+ * giá bán web (doitac-3010 #040). Gói chưa có giá niêm yết (0đ) thì không
+ * chặn được, và màn hình hiện đúng con số thay vì kẹp về 0.
  */
 export function partnerPurchaseQuote(
   input: PartnerPurchaseQuoteInput,
@@ -116,6 +163,7 @@ export function partnerPurchaseQuote(
   const unitPriceVnd = partnerPurchaseUnitPriceVnd(
     input.unitCostVnd,
     input.costMarkupPercent,
+    input.listPriceVnd,
   );
   const listUnitPriceVnd = Math.max(
     0,

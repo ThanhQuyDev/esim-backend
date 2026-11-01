@@ -110,6 +110,7 @@ export class PartnerPurchaseService {
             ? await this.partnersService.partnerAgentPriceVnd(
                 partnerId,
                 pkg.costVnd,
+                Number(pkg.vndPrice ?? 0),
               )
             : 0;
         // No supplier cost or provider id leaves the server.
@@ -143,8 +144,8 @@ export class PartnerPurchaseService {
     return this.topupService.checkoutForPartner(
       partner.userId,
       { iccid, packageId },
-      (costVnd) =>
-        this.partnersService.partnerAgentPriceVnd(partnerId, costVnd),
+      (costVnd, listVnd) =>
+        this.partnersService.partnerAgentPriceVnd(partnerId, costVnd, listVnd),
       async (order, amountVnd) => {
         const rejection =
           await this.partnersService.partnerWalletPaymentRejection(
