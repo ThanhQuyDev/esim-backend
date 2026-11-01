@@ -159,9 +159,14 @@ describe('PartnersService.resolveOrderAttribution — the click id outranks the 
     const service = Object.create(PartnersService.prototype) as PartnersService;
     Object.assign(service, {
       resolvePartnerForCoupon: jest.fn().mockResolvedValue(null),
-      resolveClickForAttribution: jest
+      // The server's own record of the click (doitac-3010 #017).
+      checkClickForAttribution: jest
         .fn()
-        .mockResolvedValue(opts.click ?? null),
+        .mockResolvedValue(
+          opts.click
+            ? { ok: true, ...opts.click, linkCode: 'VANA2026' }
+            : { ok: false, reason: null },
+        ),
       resolveLinkForAttribution: jest.fn().mockResolvedValue(opts.link ?? null),
       resolveMemberAttribution: jest
         .fn()
@@ -184,7 +189,7 @@ describe('PartnersService.resolveOrderAttribution — the click id outranks the 
     await expect(
       service.resolveOrderAttribution({ clickId: 'a'.repeat(32) }),
     ).resolves.toEqual({
-      partnerLinkCode: null,
+      partnerLinkCode: 'VANA2026',
       attributedPartnerId: 8,
       linkId: 11,
     });

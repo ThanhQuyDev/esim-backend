@@ -43,6 +43,8 @@ import {
 import type { PartnerDocument } from './infrastructure/persistence/relational/entities/partner.entity';
 import { partnerDeviceFingerprint } from './partner-device-fingerprint';
 import {
+  ATTRIBUTION_REJECT_REASONS,
+  AttributionRejectReason,
   isClickToken,
   signClickToken,
   verifyClickToken,
@@ -11906,8 +11908,8 @@ export class PartnersService {
 
     // The server-minted click id outranks the cookie: same click, but this one
     // did not have to survive in the browser (#039).
-    const fromClick = await this.resolveClickForAttribution(params.clickId);
-    if (fromClick) {
+    const fromClick = await this.checkClickForAttribution(params.clickId);
+    if (fromClick.ok) {
       // The click id carries the link, so the account can be bound even when
       // the cookie that used to carry the code is long gone (#034, #039).
       if (params.buyerUserId) {
@@ -11918,10 +11920,23 @@ export class PartnersService {
         ).catch(() => undefined);
       }
       return {
-        partnerLinkCode: params.linkCode ?? null,
+        // The code of the link the click was really on, not the one the
+        // browser named (doitac-3010 #017).
+        partnerLinkCode: fromClick.linkCode,
         attributedPartnerId: fromClick.partnerId,
         linkId: fromClick.linkId,
       };
+    }
+    if (fromClick.reason) {
+      await this.logAttributionRejection({
+        reason: fromClick.reason,
+        clickValue: params.clickId,
+        linkCode: params.linkCode,
+        linkId: fromClick.linkId,
+        partnerId: fromClick.partnerId,
+        buyerUserId: params.buyerUserId,
+        ipHash: params.ipHash,
+      });
     }
 
     if (!params.linkCode) return fromAccount();
@@ -11931,7 +11946,15 @@ export class PartnersService {
       params.linkCode,
       parsed && !Number.isNaN(parsed.getTime()) ? parsed : null,
     );
-    if (!resolved) return fromAccount();
+    if (!resolved) {
+      await this.logAttributionRejection({
+        reason: 'code_not_attributable',
+        linkCode: params.linkCode,
+        buyerUserId: params.buyerUserId,
+        ipHash: params.ipHash,
+      });
+      return fromAccount();
+    }
 
     // A bare code and time are whatever the browser says (doitac-1410 #026):
     // they count only when this device really clicked that link.
@@ -11950,6 +11973,14 @@ export class PartnersService {
         since,
       ))
     ) {
+      await this.logAttributionRejection({
+        reason: 'no_click_from_device',
+        linkCode: params.linkCode,
+        linkId: resolved.linkId,
+        partnerId: resolved.partnerId,
+        buyerUserId: params.buyerUserId,
+        ipHash: params.ipHash,
+      });
       return fromAccount();
     }
 
@@ -12123,37 +12154,132 @@ export class PartnersService {
   async resolveClickForAttribution(
     clickId?: string | null,
   ): Promise<{ partnerId: number; linkId: number } | null> {
+    const checked = await this.checkClickForAttribution(clickId);
+    return checked.ok
+      ? { partnerId: checked.partnerId, linkId: checked.linkId }
+      : null;
+  }
+
+  /**
+   * {@link resolveClickForAttribution}, saying why a click was turned down
+   * (doitac-3010 #017, rule 1). Everything is read from the server's own
+   * records: the HMAC is computed again, the click id looked up in the click
+   * table, and the link, the partner and the click's time are the ones stored
+   * there — whatever else the browser sent is ignored.
+   */
+  async checkClickForAttribution(clickId?: string | null): Promise<
+    | { ok: true; partnerId: number; linkId: number; linkCode: string }
+    | {
+        ok: false;
+        reason: AttributionRejectReason | null;
+        linkId?: number;
+        partnerId?: number;
+      }
+  > {
     const raw = clickId?.trim();
-    if (!raw) return null;
+    // Nothing sent is not a rejection — most orders come without a click.
+    if (!raw) return { ok: false, reason: null };
     // Signed token, or a bare id from before tokens existed (doitac-1410 #026).
     const token = isClickToken(raw);
     const id = this.clickIdOf(raw);
-    if (!id) return null;
+    if (!id) {
+      return {
+        ok: false,
+        reason: token ? 'forged_signature' : 'malformed_click',
+      };
+    }
 
     const click = await this.linkClickRepository.findOne({
       where: { clickId: id },
     });
-    if (!click) return null;
+    if (!click) return { ok: false, reason: 'unknown_click' };
     // A click handed out as a token can only be claimed with that token.
-    if (click.signed && !token) return null;
+    if (click.signed && !token) {
+      return { ok: false, reason: 'unsigned_claim', linkId: click.linkId };
+    }
 
     const link = await this.linkRepository.findOne({
       where: { id: click.linkId, status: PartnerLinkStatusEnum.ACTIVE },
     });
-    if (!link) return null;
+    if (!link) {
+      return { ok: false, reason: 'link_inactive', linkId: click.linkId };
+    }
 
     const partner = await this.partnerRepository.findOne({
       where: { id: link.partnerId, status: PartnerStatusEnum.ACTIVE },
     });
-    if (!partner || partner.partnerType !== PartnerTypeEnum.KOL) return null;
+    if (!partner || partner.partnerType !== PartnerTypeEnum.KOL) {
+      return {
+        ok: false,
+        reason: 'partner_inactive',
+        linkId: link.id,
+        partnerId: link.partnerId,
+      };
+    }
 
     const windowStart = this.attributionWindowStart(
       new Date(),
       await this.attributionDaysFor(partner),
     );
-    if (click.clickedAt < windowStart) return null;
+    if (click.clickedAt < windowStart) {
+      return {
+        ok: false,
+        reason: 'window_expired',
+        linkId: link.id,
+        partnerId: partner.id,
+      };
+    }
 
-    return { partnerId: partner.id, linkId: link.id };
+    return {
+      ok: true,
+      partnerId: partner.id,
+      linkId: link.id,
+      linkCode: link.code,
+    };
+  }
+
+  /**
+   * Write down a turned-down attribution (doitac-3010 #017, rule 1). The order
+   * still goes through, so the log line and this row are all that is left of
+   * the attempt. Never at the cost of the order.
+   */
+  private async logAttributionRejection(row: {
+    reason: AttributionRejectReason;
+    clickValue?: string | null;
+    linkCode?: string | null;
+    linkId?: number | null;
+    partnerId?: number | null;
+    buyerUserId?: number | null;
+    ipHash?: string | null;
+  }): Promise<void> {
+    const detail = ATTRIBUTION_REJECT_REASONS[row.reason];
+    this.logger?.warn(
+      `Partner attribution rejected (${row.reason}): ${detail}` +
+        (row.linkId ? ` link=${row.linkId}` : '') +
+        (row.linkCode ? ` code=${row.linkCode}` : ''),
+    );
+    try {
+      await this.dataSource.query(
+        `INSERT INTO "partner_attribution_rejection"
+           ("reason", "detail", "clickValue", "linkCode", "linkId", "partnerId",
+            "buyerUserId", "ipHash")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          row.reason,
+          detail,
+          row.clickValue?.trim().slice(0, 160) || null,
+          row.linkCode?.trim().slice(0, 100) || null,
+          row.linkId ?? null,
+          row.partnerId ?? null,
+          row.buyerUserId ?? null,
+          row.ipHash?.trim().slice(0, 64) || null,
+        ],
+      );
+    } catch (err) {
+      this.logger?.error(
+        `Attribution rejection not stored: ${(err as Error).message}`,
+      );
+    }
   }
 
   // ───────────────────────── Session journey (#040) ─────────────────────────

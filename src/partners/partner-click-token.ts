@@ -71,3 +71,23 @@ export function verifyClickToken(token?: string | null): string | null {
     ? clickId
     : null;
 }
+
+/**
+ * Why an order's partner click was not counted (doitac-3010 #017, rule 1),
+ * each said the way the admin reads it.
+ */
+export const ATTRIBUTION_REJECT_REASONS = {
+  forged_signature: 'Chữ ký (HMAC) không khớp — cookie đã bị sửa hoặc giả',
+  malformed_click: 'Mã click sai định dạng, máy chủ không phát hành',
+  unknown_click: 'Không có click này trong bảng clicks của máy chủ',
+  unsigned_claim: 'Click đã ký nhưng đơn gửi mã trần, không kèm chữ ký',
+  link_inactive: 'Link của click không còn hoạt động',
+  partner_inactive: 'Đối tác của link không còn hoạt động',
+  window_expired: 'Click đã quá cửa sổ ghi nhận của đối tác',
+  code_not_attributable:
+    'Mã link trong cookie không ghi nhận được (không có, đã tắt hoặc quá hạn)',
+  no_click_from_device:
+    'Thiết bị này chưa từng nhấp link trong cửa sổ ghi nhận',
+} as const;
+
+export type AttributionRejectReason = keyof typeof ATTRIBUTION_REJECT_REASONS;
