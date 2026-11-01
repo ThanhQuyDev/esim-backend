@@ -165,6 +165,8 @@ export class PlansRelationalRepository implements PlanRepository {
       filterOptions?.locations?.length ||
       filterOptions?.topUpKind?.length ||
       filterOptions?.planCode ||
+      // The supplier's own package name (doitac-3010 #048).
+      filterOptions?.providerSearch ||
       filterOptions?.hasCallSms !== undefined
     ) {
       const qb = this.plansRepository.createQueryBuilder('plan');
@@ -812,6 +814,14 @@ export class PlansRelationalRepository implements PlanRepository {
       );
     }
 
+    const providerSearch = filterOptions?.providerSearch?.trim();
+    if (providerSearch) {
+      qb.andWhere(
+        '(plan.name ILIKE :providerSearch OR plan."providerPlanId" ILIKE :providerSearch)',
+        { providerSearch: `%${providerSearch}%` },
+      );
+    }
+
     if (filterOptions?.isCheapest !== undefined) {
       qb.andWhere('plan."isCheapest" = :isCheapest', {
         isCheapest: filterOptions.isCheapest,
@@ -879,6 +889,15 @@ export class PlansRelationalRepository implements PlanRepository {
     qb: SelectQueryBuilder<PlanEntity>,
     f?: FilterPlanDto | null,
   ): void {
+    // "Tìm gói nhà cung cấp" (doitac-3010 #048): the supplier's original
+    // package name and code, apart from our own standard name.
+    const providerSearch = f?.providerSearch?.trim();
+    if (providerSearch) {
+      qb.andWhere(
+        '(plan.name ILIKE :providerSearch OR plan."providerPlanId" ILIKE :providerSearch)',
+        { providerSearch: `%${providerSearch}%` },
+      );
+    }
     if (f?.isCheapest !== undefined) {
       qb.andWhere('plan."isCheapest" = :isCheapest', {
         isCheapest: f.isCheapest,

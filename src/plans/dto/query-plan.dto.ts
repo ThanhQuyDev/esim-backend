@@ -16,6 +16,12 @@ export class FilterPlanDto {
   @IsString()
   search?: string;
 
+  /** The supplier's original package name or code (doitac-3010 #048). */
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  providerSearch?: string;
+
   @ApiPropertyOptional({
     type: String,
     description:
