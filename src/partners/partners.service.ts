@@ -224,6 +224,14 @@ export type PartnerTopupInstruction = {
   /** Card only. */
   paymentUrl?: string;
   paymentRef?: string;
+  /**
+   * The promotion bonus this top-up earns if the money arrives while the
+   * promotion still runs (doitac-3010 #023), so the partner is told before
+   * paying rather than finding an extra line afterwards.
+   */
+  expectedBonusVnd?: number;
+  promotionName?: string | null;
+  promotionBonusPercent?: number | null;
 };
 
 type WalletTransactionInput = {
@@ -1514,6 +1522,12 @@ export class PartnersService {
       }),
     );
 
+    // What the running promotion adds (doitac-3010 #023) — the same rule the
+    // money is credited by once it arrives. Never at the cost of the request.
+    const bonus = await this.depositBonusFor(amountVnd, new Date()).catch(
+      () => null,
+    );
+
     const common = {
       id: request.id,
       amountVnd,
@@ -1522,6 +1536,10 @@ export class PartnersService {
       method,
       bankTransferCode,
       status: request.status,
+      expectedBonusVnd: bonus?.bonusVnd ?? 0,
+      promotionName: bonus?.promotion.name ?? null,
+      promotionBonusPercent:
+        bonus != null ? Number(bonus.promotion.bonusPercent) : null,
     };
 
     if (method === PartnerTopupMethodEnum.CARD) {
