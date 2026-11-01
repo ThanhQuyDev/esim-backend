@@ -354,6 +354,52 @@ export class UpdatePartnerProgramSettingDto {
 
   @ApiPropertyOptional({
     type: Number,
+    example: 0,
+    description:
+      'Rút tối đa mỗi lần, đối tác tiếp thị; 0 = không giới hạn (doitac-3010 #041).',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000_000)
+  payoutMaxKolVnd?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 0,
+    description:
+      'Rút tối đa mỗi lần, đối tác phân phối; 0 = không giới hạn (#041).',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000_000)
+  payoutMaxDistributionVnd?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 10000000,
+    description: 'Nạp tối đa mỗi lần, đối tác tiếp thị (#041).',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000_000)
+  depositMaxKolVnd?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    example: 10000000,
+    description: 'Nạp tối đa mỗi lần, đối tác phân phối (#041).',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000_000)
+  depositMaxDistributionVnd?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
     example: 500000,
     description: 'Dưới mức này thì cảnh báo đối tác phân phối nạp thêm (#077).',
   })

@@ -36,6 +36,50 @@ export class PartnerProgramSettingEntity extends EntityRelationalHelper {
   @Column({ type: 'int', default: 100_000 })
   depositMinDistributionVnd!: number;
 
+  /** Largest withdrawal a marketing partner may request; 0 = none (doitac-3010 #041). */
+  @Column({
+    type: 'bigint',
+    default: 0,
+    transformer: {
+      to: (v: number) => v,
+      from: (v: string | number) => Number(v),
+    },
+  })
+  payoutMaxKolVnd!: number;
+
+  /** Largest withdrawal a distribution partner may request; 0 = none (#041). */
+  @Column({
+    type: 'bigint',
+    default: 0,
+    transformer: {
+      to: (v: number) => v,
+      from: (v: string | number) => Number(v),
+    },
+  })
+  payoutMaxDistributionVnd!: number;
+
+  /** Largest single top-up a marketing partner may make (doitac-3010 #041). */
+  @Column({
+    type: 'bigint',
+    default: 10_000_000,
+    transformer: {
+      to: (v: number) => v,
+      from: (v: string | number) => Number(v),
+    },
+  })
+  depositMaxKolVnd!: number;
+
+  /** Largest single top-up a distribution partner may make (#041). */
+  @Column({
+    type: 'bigint',
+    default: 10_000_000,
+    transformer: {
+      to: (v: number) => v,
+      from: (v: string | number) => Number(v),
+    },
+  })
+  depositMaxDistributionVnd!: number;
+
   /**
    * Below this, a distribution partner is warned to top up (#077).
    *

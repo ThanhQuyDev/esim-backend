@@ -574,6 +574,63 @@ function withoutCostMarkup<
 }
 
 /**
+ * "Cấu hình chung" keeps each floor at or below its ceiling (doitac-3010
+ * #041): a 500.000đ minimum under a 200.000đ maximum would leave no amount a
+ * partner could enter. A withdrawal ceiling of 0 means none.
+ */
+export function assertProgramLimitsConsistent(s: {
+  payoutMinKolVnd: number;
+  payoutMinDistributionVnd: number;
+  depositMinKolVnd: number;
+  depositMinDistributionVnd: number;
+  payoutMaxKolVnd?: number | null;
+  payoutMaxDistributionVnd?: number | null;
+  depositMaxKolVnd?: number | null;
+  depositMaxDistributionVnd?: number | null;
+}): void {
+  const checks: [string, number, number | null | undefined, boolean][] = [
+    [
+      'rút tiền hoa hồng của đối tác tiếp thị',
+      s.payoutMinKolVnd,
+      s.payoutMaxKolVnd,
+      true,
+    ],
+    [
+      'rút tiền hoa hồng của đối tác phân phối',
+      s.payoutMinDistributionVnd,
+      s.payoutMaxDistributionVnd,
+      true,
+    ],
+    [
+      'nạp ký quỹ của đối tác tiếp thị',
+      s.depositMinKolVnd,
+      s.depositMaxKolVnd,
+      false,
+    ],
+    [
+      'nạp ký quỹ của đối tác phân phối',
+      s.depositMinDistributionVnd,
+      s.depositMaxDistributionVnd,
+      false,
+    ],
+  ];
+  for (const [label, min, max, zeroIsNone] of checks) {
+    // Not set yet (a row from before #041): the code's default applies.
+    if (max == null) continue;
+    const lo = Number(min) || 0;
+    const hi = Number(max) || 0;
+    if (!zeroIsNone && hi <= 0) {
+      throw new BadRequestException(`Ngưỡng ${label} tối đa phải lớn hơn 0.`);
+    }
+    if (hi > 0 && lo > hi) {
+      throw new BadRequestException(
+        `Ngưỡng ${label}: tối thiểu không được lớn hơn tối đa.`,
+      );
+    }
+  }
+}
+
+/**
  * A tier's cost bands as saved (doitac-3010 #040): in price order, each "từ"
  * no higher than its "đến", and no two bands covering the same cost — a cost
  * in two bands would get whichever came first, which nobody reading the form
@@ -1470,6 +1527,10 @@ export class PartnersService {
         endsAt: p.endsAt,
       })),
       payoutMinVnd: await this.payoutMinVndFor(
+        (await this.getPartnerOrThrowById(partnerId)).partnerType,
+      ),
+      // null = no ceiling (doitac-3010 #041).
+      payoutMaxVnd: await this.payoutMaxVndFor(
         (await this.getPartnerOrThrowById(partnerId)).partnerType,
       ),
       /**
@@ -3438,6 +3499,15 @@ export class PartnersService {
         `Số tiền rút tối thiểu là ${payoutMinVnd.toLocaleString('vi-VN')}đ.`,
       );
     }
+    // The ceiling, from the same settings (doitac-3010 #041).
+    const payoutMaxVnd = await this.payoutMaxVndFor(
+      partnerForLimits.partnerType,
+    );
+    if (payoutMaxVnd !== null && dto.amountVnd > payoutMaxVnd) {
+      throw new BadRequestException(
+        `Số tiền rút tối đa mỗi lần là ${payoutMaxVnd.toLocaleString('vi-VN')}đ.`,
+      );
+    }
 
     const summary = await this.getWalletSummaryForPartner(partnerId);
     // The admin can freeze the commission alone, from the wallet popup,
@@ -5240,6 +5310,19 @@ export class PartnersService {
       ...(dto.depositMinDistributionVnd !== undefined && {
         depositMinDistributionVnd: dto.depositMinDistributionVnd,
       }),
+      // The ceilings beside the floors (doitac-3010 #041).
+      ...(dto.payoutMaxKolVnd !== undefined && {
+        payoutMaxKolVnd: dto.payoutMaxKolVnd,
+      }),
+      ...(dto.payoutMaxDistributionVnd !== undefined && {
+        payoutMaxDistributionVnd: dto.payoutMaxDistributionVnd,
+      }),
+      ...(dto.depositMaxKolVnd !== undefined && {
+        depositMaxKolVnd: dto.depositMaxKolVnd,
+      }),
+      ...(dto.depositMaxDistributionVnd !== undefined && {
+        depositMaxDistributionVnd: dto.depositMaxDistributionVnd,
+      }),
       ...(dto.lowDepositWarningVnd !== undefined && {
         lowDepositWarningVnd: dto.lowDepositWarningVnd,
       }),
@@ -5256,8 +5339,23 @@ export class PartnersService {
       }),
       updatedByAdminId: adminId,
     });
+    assertProgramLimitsConsistent(settings);
 
     return this.programSettingRepository.save(settings);
+  }
+
+  /**
+   * The largest withdrawal this partner's type may request, or null for none
+   * (doitac-3010 #041).
+   */
+  async payoutMaxVndFor(partnerType: string): Promise<number | null> {
+    const settings = await this.getProgramSettings();
+    const max = Number(
+      partnerType === PartnerTypeEnum.DISTRIBUTION
+        ? settings.payoutMaxDistributionVnd
+        : settings.payoutMaxKolVnd,
+    );
+    return max > 0 ? max : null;
   }
 
   /** The smallest withdrawal this partner's type may request (#075). */
@@ -5278,14 +5376,21 @@ export class PartnersService {
     partner: PartnerEntity,
   ): Promise<{ minVnd: number; maxVnd: number }> {
     const settings = await this.getProgramSettings();
-    const programMin =
-      partner.partnerType === PartnerTypeEnum.DISTRIBUTION
-        ? settings.depositMinDistributionVnd
-        : settings.depositMinKolVnd;
+    const distribution = partner.partnerType === PartnerTypeEnum.DISTRIBUTION;
+    const programMin = distribution
+      ? settings.depositMinDistributionVnd
+      : settings.depositMinKolVnd;
+    // From "Cấu hình chung" now, not a constant (doitac-3010 #041).
+    const programMax =
+      Number(
+        distribution
+          ? settings.depositMaxDistributionVnd
+          : settings.depositMaxKolVnd,
+      ) || PARTNER_DEPOSIT_MAX_VND;
 
     return {
       minVnd: partner.depositMinVnd ?? programMin,
-      maxVnd: partner.depositMaxVnd ?? PARTNER_DEPOSIT_MAX_VND,
+      maxVnd: partner.depositMaxVnd ?? programMax,
     };
   }
 
@@ -12371,7 +12476,11 @@ export class PartnersService {
         depositMinVnd: settings.depositMinKolVnd,
         depositMinDistributionVnd: settings.depositMinDistributionVnd,
         lowDepositWarningVnd: settings.lowDepositWarningVnd,
-        depositMaxVnd: PARTNER_DEPOSIT_MAX_VND,
+        // From "Cấu hình chung" (doitac-3010 #041).
+        depositMaxVnd: Number(settings.depositMaxKolVnd),
+        depositMaxDistributionVnd: Number(settings.depositMaxDistributionVnd),
+        payoutMaxVnd: Number(settings.payoutMaxKolVnd),
+        payoutMaxDistributionVnd: Number(settings.payoutMaxDistributionVnd),
         cardTopupFeePercent: PARTNER_CARD_TOPUP_FEE_PERCENT,
       },
       topPartners: topPartners.map((t: Record<string, any>) => ({
