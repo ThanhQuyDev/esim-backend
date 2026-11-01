@@ -5975,7 +5975,8 @@ export class PartnersService {
    */
   async adminListCommissions(query: QueryPartnerCommissionDto) {
     const page = query.page ?? 1;
-    const limit = Math.min(query.limit ?? 20, 100);
+    // Up to 200 a page, as the admin tables offer (doitac-3010 #037).
+    const limit = Math.min(query.limit ?? 20, 200);
 
     const qb = this.commissionRepository
       .createQueryBuilder('c')
