@@ -203,6 +203,15 @@ export class UsersService {
     });
   }
 
+  /**
+   * Stamp a sign-in (#060, doitac-3010 #035). Its own method: `update` builds
+   * the payload from the admin's form fields and dropped this one, so the
+   * partner list read "Chưa đăng nhập" for partners who had signed in.
+   */
+  markSignedIn(id: User['id'], at: Date = new Date()): Promise<User | null> {
+    return this.usersRepository.update(id, { lastLoginAt: at });
+  }
+
   async update(
     id: User['id'],
     updateUserDto: UpdateUserDto,

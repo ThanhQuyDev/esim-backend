@@ -208,6 +208,37 @@ import { couponSourceLabel } from './partner-coupon-label';
  * card gets a URL to open. The three amounts are always there, because the
  * amount paid and the amount credited are different numbers for a card.
  */
+/**
+ * A partner's latest act and what it was (doitac-3010 #035): signing in, a
+ * link created or changed, a withdrawal, a support ticket — and for a
+ * distribution partner a purchase or a deposit. Null when there is none.
+ */
+export function partnerLastActivity(row: Record<string, unknown> | undefined): {
+  lastActivityAt: Date | null;
+  lastActivityLabel: string | null;
+} {
+  const kinds: [string, string][] = [
+    ['lastLoginAt', 'Đăng nhập'],
+    ['lastLinkAt', 'Thao tác link tiếp thị'],
+    ['lastPayoutAt', 'Tạo yêu cầu rút tiền'],
+    ['lastTicketAt', 'Gửi yêu cầu hỗ trợ'],
+    ['lastDepositAt', 'Nạp ký quỹ'],
+    ['lastPurchaseAt', 'Đặt mua eSIM'],
+  ];
+  let best: { at: Date; label: string } | null = null;
+  for (const [key, label] of kinds) {
+    const value = row?.[key];
+    if (!value) continue;
+    const at = new Date(value as string | Date);
+    if (Number.isNaN(at.getTime())) continue;
+    if (!best || at > best.at) best = { at, label };
+  }
+  return {
+    lastActivityAt: best?.at ?? null,
+    lastActivityLabel: best?.label ?? null,
+  };
+}
+
 /** One month on "Đơn hàng" (doitac-3010 #029). */
 export type PurchaseMonthFigures = {
   orders: number;
@@ -422,10 +453,11 @@ type AdminPartnerListRow = PartnerEntity & {
   availableBalanceVnd: number;
   revenue30dVnd: number;
   /**
-   * When the partner last signed in (#060) — the brief's "hoạt động gần nhất".
-   * Falls back to their last order for accounts that predate the column.
+   * The partner's latest act — signing in or what they did in the portal
+   * (#060, doitac-3010 #035) — and what it was.
    */
   lastActivityAt: Date | null;
+  lastActivityLabel: string | null;
   lastLoginAt: Date | null;
   lastOrderAt: Date | null;
   /** Lifetime paid/completed orders attributed to this partner (#095). */
@@ -11458,9 +11490,24 @@ export class PartnersService {
                 SELECT MAX(o."createdAt") FROM "order" o
                 WHERE o."attributedPartnerId" = p.id AND o."deletedAt" IS NULL
               ) AS "lastOrderAt",
-              -- "hoạt động gần nhất" is when they last signed in (#060), not
-              -- when an order last happened to arrive through their link.
+              -- "hoạt động gần nhất" is the partner's own latest act (#060,
+              -- doitac-3010 #035) — signing in, or what they did in the portal —
+              -- never an order that happened to arrive through their link.
               u."lastLoginAt" AS "lastLoginAt",
+              (SELECT MAX(e."createdAt") FROM partner_link_event e
+                WHERE e."partnerId" = p.id AND e."actorRole" = 'partner') AS "lastLinkAt",
+              (SELECT MAX(pay."createdAt") FROM partner_payout pay
+                WHERE pay."partnerId" = p.id) AS "lastPayoutAt",
+              (SELECT MAX(tk."createdAt") FROM ticket tk
+                WHERE tk."fromPartner" = true
+                  AND lower(tk."customerEmail") = lower(u.email)) AS "lastTicketAt",
+              CASE WHEN p."partnerType" = 'distribution' THEN
+                (SELECT MAX(dr."createdAt") FROM partner_deposit_request dr
+                  WHERE dr."partnerId" = p.id) END AS "lastDepositAt",
+              CASE WHEN p."partnerType" = 'distribution' THEN
+                (SELECT MAX(po."createdAt") FROM "order" po
+                  WHERE po."userId" = p."userId" AND po."deletedAt" IS NULL) END
+                AS "lastPurchaseAt",
               -- What they could actually withdraw or spend: the balance less
               -- anything already claimed and waiting (#060).
               GREATEST(
@@ -11514,9 +11561,9 @@ export class PartnersService {
         walletBalanceVnd: Number(m?.walletBalanceVnd ?? 0),
         availableBalanceVnd: Number(m?.availableBalanceVnd ?? 0),
         revenue30dVnd: Number(m?.revenue30dVnd ?? 0),
-        // The sign-in is the answer the brief asks for; the last order is kept
-        // as a fallback for accounts that predate the column (#060).
-        lastActivityAt: m?.lastLoginAt ?? m?.lastOrderAt ?? null,
+        // The latest of the sign-in and what they did themselves (doitac-3010
+        // #035), with what it was.
+        ...partnerLastActivity(m),
         lastLoginAt: m?.lastLoginAt ?? null,
         lastOrderAt: m?.lastOrderAt ?? null,
         totalOrders: Number(m?.totalOrders ?? 0),

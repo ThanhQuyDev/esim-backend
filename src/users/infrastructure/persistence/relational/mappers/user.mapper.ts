@@ -78,6 +78,11 @@ export class UserMapper {
     }
     persistenceEntity.email = domainEntity.email;
     persistenceEntity.password = domainEntity.password;
+    // "Hoạt động gần nhất" of a partner reads it (doitac-3010 #035); left out
+    // here, a sign-in never reached the database.
+    if (domainEntity.lastLoginAt !== undefined) {
+      persistenceEntity.lastLoginAt = domainEntity.lastLoginAt;
+    }
     persistenceEntity.mustChangePassword =
       domainEntity.mustChangePassword ?? false;
     persistenceEntity.provider = domainEntity.provider;
