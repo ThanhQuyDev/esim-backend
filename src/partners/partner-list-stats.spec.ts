@@ -104,3 +104,15 @@ describe('PartnersService.adminPartnerListStats (#057)', () => {
     expect(result.onHold.byType).toEqual([]);
   });
 });
+
+describe('Danh sách đối tác figures count approved partners (doitac-3010 #034)', () => {
+  it('should leave pending and rejected applications out', async () => {
+    const { service, query } = buildService([]);
+
+    await service.adminPartnerListStats();
+
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('status NOT IN ($4, $5)');
+    expect(params.slice(3)).toEqual(['pending', 'rejected']);
+  });
+});

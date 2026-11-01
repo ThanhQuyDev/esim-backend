@@ -45,6 +45,14 @@ export class QueryPartnerDto {
   @IsOptional()
   @IsString()
   tierCode?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Only partners that were approved: no pending or rejected application (doitac-3010 #034).',
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  approvedOnly?: boolean;
 }
 
 export class QueryPartnerCommissionDto {

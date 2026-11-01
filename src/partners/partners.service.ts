@@ -3416,7 +3416,8 @@ export class PartnersService {
 
   async adminList(query: QueryPartnerDto) {
     const page = query.page ?? 1;
-    const limit = Math.min(query.limit ?? 10, 50);
+    // Up to 200 a page, as the admin tables offer (doitac-3010 #033).
+    const limit = Math.min(query.limit ?? 10, 200);
 
     const qb = this.partnerRepository
       .createQueryBuilder('partner')
@@ -3429,6 +3430,13 @@ export class PartnersService {
     }
     if (query.status) {
       qb.andWhere('partner.status = :status', { status: query.status });
+    } else if (query.approvedOnly) {
+      // "Danh sách đối tác" lists the partners esim.vn approved; an
+      // application still waiting or turned down lives only on "Duyệt đăng
+      // ký đối tác" (doitac-3010 #034).
+      qb.andWhere('partner.status NOT IN (:...unapproved)', {
+        unapproved: [PartnerStatusEnum.PENDING, PartnerStatusEnum.REJECTED],
+      });
     }
     if (query.tierCode) {
       qb.andWhere('partner.tierCode = :tierCode', { tierCode: query.tierCode });
@@ -12091,6 +12099,8 @@ export class PartnersService {
     onHold: { count: number; byType: { partnerType: string; count: number }[] };
   }> {
     const rows = await this.dataSource.query(
+      // Approved partners only, as the list below lists (doitac-3010 #034):
+      // an application waiting or turned down is not a partner yet.
       `SELECT "partnerType",
               COUNT(*) FILTER (WHERE status <> $1) AS "total",
               COUNT(*) FILTER (WHERE status = $2) AS "active",
@@ -12101,11 +12111,14 @@ export class PartnersService {
               ) AS "newThisMonth"
        FROM partner
        WHERE "deletedAt" IS NULL
+         AND status NOT IN ($4, $5)
        GROUP BY 1`,
       [
         PartnerStatusEnum.DISABLED,
         PartnerStatusEnum.ACTIVE,
         PartnerStatusEnum.HOLD,
+        PartnerStatusEnum.PENDING,
+        PartnerStatusEnum.REJECTED,
       ],
     );
 

@@ -106,6 +106,43 @@ describe('PartnersService.adminList — searching an application (#055)', () => 
     expect(sql).toContain('partner.partnerType = :partnerType');
     expect(sql).toContain('partner.status = :status');
   });
+
+  // doitac-3010 #034
+  it('should list only approved partners on "Danh sách đối tác"', async () => {
+    const { service, qb } = buildListService();
+
+    await service.adminList({ approvedOnly: true });
+
+    const call = (
+      qb.andWhere.mock.calls as [string, Record<string, unknown>][]
+    ).find(([sql]) => sql.includes('NOT IN (:...unapproved)'));
+    expect(call?.[1]).toEqual({
+      unapproved: [PartnerStatusEnum.PENDING, PartnerStatusEnum.REJECTED],
+    });
+  });
+
+  it('should let a status asked for win over the approved-only view', async () => {
+    const { service, qb } = buildListService();
+
+    await service.adminList({
+      approvedOnly: true,
+      status: PartnerStatusEnum.HOLD,
+    });
+
+    const sql = (qb.andWhere.mock.calls as [string][])
+      .map(([s]) => s)
+      .join(' ');
+    expect(sql).toContain('partner.status = :status');
+    expect(sql).not.toContain('unapproved');
+  });
+
+  it('should give a page of up to 200, as the admin tables offer', async () => {
+    const { service, qb } = buildListService();
+
+    await service.adminList({ limit: 1000 });
+
+    expect(qb.limit).toHaveBeenCalledWith(200);
+  });
 });
 
 function buildDecisionService(status: PartnerStatusEnum) {
