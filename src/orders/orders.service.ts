@@ -1298,6 +1298,7 @@ export class OrdersService {
                 currency: plan.currency,
                 speed: plan.speed,
                 fupSpeed: plan.fupSpeed,
+                validityStart: plan.validityStart ?? null,
                 operatorName: plan.operatorName,
                 countryCode: plan.countryCode,
                 // Minutes / SMS and the plan type for the payment-success card
@@ -3153,6 +3154,7 @@ export class OrdersService {
                 currency: plan.currency,
                 speed: plan.speed,
                 fupSpeed: plan.fupSpeed,
+                validityStart: plan.validityStart ?? null,
                 operatorName: plan.operatorName,
                 countryCode: plan.countryCode,
                 provider: plan.provider,
