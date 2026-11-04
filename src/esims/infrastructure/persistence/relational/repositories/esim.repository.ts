@@ -552,6 +552,14 @@ export class EsimsRelationalRepository implements EsimRepository {
    * per-run cap, every eSIM still comes round eventually instead of the same
    * few being refreshed forever.
    */
+  /** Not through `update`: asking the supplier changes nothing to save. */
+  async markUsageChecked(id: Esim['id']): Promise<void> {
+    await this.esimsRepository.query(
+      `UPDATE "esim" SET "usageCheckedAt" = now() WHERE id = $1`,
+      [Number(id)],
+    );
+  }
+
   async findDueForUsageRefresh(
     providers: string[],
     limit: number,
@@ -566,7 +574,10 @@ export class EsimsRelationalRepository implements EsimRepository {
       })
       // An expired eSIM cannot use any more data, so stop polling it.
       .andWhere('(esim."expiresAt" IS NULL OR esim."expiresAt" > NOW())')
-      .orderBy('esim.updatedAt', 'ASC')
+      // Never asked first, then the longest wait: every eSIM gets its turn
+      // however many are due (vande-0411 #029).
+      .orderBy('esim."usageCheckedAt"', 'ASC', 'NULLS FIRST')
+      .addOrderBy('esim.id', 'ASC')
       .limit(limit)
       .getMany();
 

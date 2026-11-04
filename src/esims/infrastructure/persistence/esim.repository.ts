@@ -120,6 +120,8 @@ export abstract class EsimRepository {
    * eSIMs worth asking the provider about: sold/active, not expired, and
    * belonging to a provider that actually exposes a usage API.
    */
+  abstract markUsageChecked(id: Esim['id']): Promise<void>;
+
   abstract findDueForUsageRefresh(
     providers: string[],
     limit: number,

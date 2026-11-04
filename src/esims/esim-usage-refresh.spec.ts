@@ -10,6 +10,7 @@ function makeService(due: Record<string, unknown>[]) {
 
   const repository = {
     findDueForUsageRefresh: jest.fn().mockResolvedValue(due),
+    markUsageChecked: jest.fn().mockResolvedValue(undefined),
     update: jest.fn((id: unknown, payload: Record<string, unknown>) => {
       updates.push({ id, payload });
       return Promise.resolve(payload);

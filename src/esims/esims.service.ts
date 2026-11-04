@@ -878,6 +878,8 @@ export class EsimsService {
           `Usage refresh failed for eSIM ${esim.id} (${esim.provider}): ${(error as Error).message}`,
         );
       }
+      // Whatever the answer, its turn is over.
+      await this.esimsRepository.markUsageChecked(esim.id).catch(() => {});
     }
 
     this.logger.log(

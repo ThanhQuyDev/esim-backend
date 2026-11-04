@@ -118,6 +118,11 @@ export class EsimEntity extends EntityRelationalHelper {
   @UpdateDateColumn()
   updatedAt: Date;
 
+  /** When the supplier was last asked about its usage (vande-0411 #029). */
+  @Index()
+  @Column({ type: 'timestamp', nullable: true })
+  usageCheckedAt?: Date | null;
+
   @DeleteDateColumn()
   deletedAt: Date;
 }
