@@ -168,6 +168,10 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: 'int', nullable: true })
   supplierActiveType?: number | null;
 
+  /** Airalo's `activation_policy`, Gadget Korea's PreInstallation (vande-0411 #025). */
+  @Column({ type: 'varchar', nullable: true })
+  supplierActivationPolicy?: string | null;
+
   /**
    * Exit IP is local rather than routed via Hong Kong. Apps that geo-block
    * Hong Kong routing (TikTok, ChatGPT) work on these (#041).

@@ -331,6 +331,8 @@ export class AiraloService {
       fupSpeed: pkg.is_unlimited ? '1 Mbps' : null,
       isKyc: operator.is_kyc_verify ?? false,
       apn: operator.apn_value ?? null,
+      // first-usage / installation (vande-0411 #025).
+      supplierActivationPolicy: operator.activation_policy ?? null,
       // Days to install the eSIM after buying — the operator's
       // install_window_days (365 for most, 90 for a few). Never stored before,
       // so the storefront printed a flat "180 ngày" (#047, test round 4).

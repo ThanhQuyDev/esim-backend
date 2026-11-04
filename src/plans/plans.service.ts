@@ -337,6 +337,7 @@ export class PlansService implements OnApplicationBootstrap {
       apn: createPlanDto.apn ?? null,
       activationValidityDays: createPlanDto.activationValidityDays ?? null,
       supplierActiveType: createPlanDto.supplierActiveType ?? null,
+      supplierActivationPolicy: createPlanDto.supplierActivationPolicy ?? null,
       // What the supplier resets by, unless the caller stated it outright
       // (#063). Falling back to the supplier default means a plan typed in by
       // hand is as informative as a synced one.
@@ -614,6 +615,7 @@ export class PlansService implements OnApplicationBootstrap {
       activationValidUntil: updatePlanDto.activationValidUntil,
       activationValidityDays: updatePlanDto.activationValidityDays,
       supplierActiveType: updatePlanDto.supplierActiveType,
+      supplierActivationPolicy: updatePlanDto.supplierActivationPolicy,
       dailyResetPolicy: updatePlanDto.dailyResetPolicy,
       dailyResetUtcOffset: updatePlanDto.dailyResetUtcOffset,
       ...(money
@@ -998,6 +1000,11 @@ export class PlansService implements OnApplicationBootstrap {
       provider,
       syncStartedAt,
     );
+  }
+
+  /** A region with Turkey in it must be installed before arriving (vande-0411 #025). */
+  markGadgetTurkeyPlansPreArrival(): Promise<void> {
+    return this.plansRepository.markGadgetTurkeyPlansPreArrival();
   }
 
   async deactivateAllProviderPlans(

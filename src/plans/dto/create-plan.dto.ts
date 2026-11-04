@@ -270,6 +270,11 @@ export class CreatePlanDto {
   @IsNumber()
   supplierActiveType?: number | null;
 
+  /** Set by the catalogue sync and the Gadget Korea import (vande-0411 #025). */
+  @IsOptional()
+  @IsString()
+  supplierActivationPolicy?: string | null;
+
   @ApiPropertyOptional({
     enum: DailyResetPolicyEnum,
     description:

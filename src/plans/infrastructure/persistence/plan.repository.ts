@@ -70,6 +70,8 @@ export abstract class PlanRepository {
    */
   abstract deactivatePlansForProvider(provider: string): Promise<number>;
 
+  abstract markGadgetTurkeyPlansPreArrival(): Promise<void>;
+
   /** Reactivate only the rows flagged `disabledByProvider` (#005). */
   abstract reactivatePlansDisabledByProvider(provider: string): Promise<number>;
 

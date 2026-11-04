@@ -1,3 +1,4 @@
+import type { PlanValidityStart } from '../plan-validity-start';
 import type { DomesticOffer } from '../domestic-offer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Destination } from '../../destinations/domain/destination';
@@ -156,6 +157,10 @@ export class Plan {
   vndCostPrice: number;
   /** eSIM Access's `activeType`; 3 cannot be refunded (vande-0411 #007). */
   supplierActiveType?: number | null;
+  /** Airalo's `activation_policy`, Gadget Korea's PreInstallation (vande-0411 #025). */
+  supplierActivationPolicy?: string | null;
+  /** "Thời điểm bắt đầu tính gói", worked out from the above (vande-0411 #025). */
+  validityStart?: PlanValidityStart | null;
   /** Unrounded cost incl. supplier fee, for the cheapest-plan comparison (vande #064). */
   vndCostExact?: number | null;
 

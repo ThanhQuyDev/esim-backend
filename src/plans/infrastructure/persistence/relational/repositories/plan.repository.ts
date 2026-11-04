@@ -318,6 +318,21 @@ export class PlansRelationalRepository implements PlanRepository {
    * flagged, which is what makes the switch reversible — a plan an admin had
    * already deactivated is left alone and stays off when the supplier returns.
    */
+  async markGadgetTurkeyPlansPreArrival(): Promise<void> {
+    await this.plansRepository.query(
+      `UPDATE "plan" p SET "supplierActivationPolicy" = 'Only Pre-Arrival'
+        WHERE p."provider" = 'gadgetkorea' AND (
+          EXISTS (SELECT 1 FROM destination d
+                   WHERE d.id = p."destinationId"
+                     AND (d."countryCode" = 'TR' OR d.name ILIKE 'turk%'))
+          OR EXISTS (SELECT 1 FROM destination_region dr
+                       JOIN destination d ON d.id = dr."destinationId"
+                      WHERE dr."regionId" = p."regionId"
+                        AND (d."countryCode" = 'TR' OR d.name ILIKE 'turk%'))
+        )`,
+    );
+  }
+
   async deactivatePlansForProvider(provider: string): Promise<number> {
     const result = await this.plansRepository.query(
       `UPDATE "plan"

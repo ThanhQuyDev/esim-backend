@@ -428,6 +428,10 @@ export class PlansGadgetkoreaImportService {
             operatorName,
             isKyc,
             apn,
+            // "Available" / "Only Pre-Arrival" (vande-0411 #025).
+            supplierActivationPolicy:
+              this.getString(row.getCell(COL.PRE_INSTALLATION).value)?.trim() ||
+              null,
             ...(ipExport !== undefined
               ? {
                   ipExport,
@@ -482,6 +486,7 @@ export class PlansGadgetkoreaImportService {
         ...importedSlugs,
       ]);
     }
+    await this.plansService.markGadgetTurkeyPlansPreArrival();
     await this.plansService.markCheapestPlans();
     await this.plansService.updateVndPrices();
 
