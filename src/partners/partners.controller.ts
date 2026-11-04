@@ -67,8 +67,16 @@ export class PartnersController {
 
   @Post('apply')
   @HttpCode(HttpStatus.CREATED)
-  async apply(@Body() dto: PartnerApplyDto) {
-    const result = await this.partnersService.apply(dto);
+  async apply(
+    @Body() dto: PartnerApplyDto,
+    @Request() req: Parameters<typeof clientIp>[0],
+    // The portal's register page posts from its own server (vande-0411 #006).
+    @Headers('x-esim-client-ip') forwardedIp?: string,
+  ) {
+    const result = await this.partnersService.apply(
+      dto,
+      forwardedIp?.trim() || clientIp(req),
+    );
     return {
       ...result,
       // Opens the document upload for this application only, for an hour

@@ -91,6 +91,14 @@ export class PartnerApplyDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  /**
+   * Hidden from people on the form; only a script fills it in (vande-0411 #006).
+   */
+  @ApiPropertyOptional({ description: 'Leave empty.' })
+  @IsOptional()
+  @IsString()
+  website?: string;
 }
 
 /**

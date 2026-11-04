@@ -9,6 +9,12 @@ import { sanitizeNotificationHtml } from './notification-html';
 import { partnerCommissionAmount } from './partner-commission-amount';
 import { multidayRetailVnd } from '../plans/multiday-price';
 import {
+  applyLimiters,
+  assertApplicationComplete,
+  isVisitorAddress,
+  tooManyApplications,
+} from './partner-apply-guard';
+import {
   Optional,
   BadRequestException,
   ConflictException,
@@ -1028,6 +1034,9 @@ function linkStatusText(link: { status: string; deletedAt?: Date | null }) {
 
 @Injectable()
 export class PartnersService {
+  /** Per address and overall, for the public application (vande-0411 #006). */
+  private applyLimiters?: ReturnType<typeof applyLimiters>;
+
   private readonly logger = new Logger(PartnersService.name);
 
   constructor(
@@ -1125,7 +1134,16 @@ export class PartnersService {
 
   async apply(
     dto: PartnerApplyDto,
+    visitorIp?: string,
   ): Promise<{ partnerId: number; userId: number }> {
+    // Complete first, so a mistake in the form costs none of the limit below.
+    assertApplicationComplete(dto);
+    const limiters = (this.applyLimiters ??= applyLimiters());
+    if (isVisitorAddress(visitorIp) && !limiters.byIp.hit(visitorIp).ok) {
+      throw tooManyApplications();
+    }
+    if (!limiters.total.hit('all').ok) throw tooManyApplications();
+
     const existing = await this.userRepository.findOne({
       where: { email: dto.contactEmail },
     });

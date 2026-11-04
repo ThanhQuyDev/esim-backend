@@ -17,6 +17,7 @@ import type { PartnerApplyDto } from './dto/partner-apply.dto';
  */
 
 const DTO: PartnerApplyDto = {
+  channelInfo: { channel: 'tiktok' },
   partnerType: PartnerTypeEnum.KOL,
   legalType: PartnerLegalTypeEnum.INDIVIDUAL,
   contactName: 'Nguyen Van A',
