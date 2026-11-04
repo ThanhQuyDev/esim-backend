@@ -203,6 +203,21 @@ export class EsimsRelationalRepository implements EsimRepository {
     return Number.isFinite(days) && days > 0 ? days : null;
   }
 
+  /** The same for a page of eSIMs, in one query (vande-0411 #035). */
+  async findChosenDaysByIds(ids: Esim['id'][]): Promise<Map<number, number>> {
+    const wanted = ids.map(Number).filter((id) => id > 0);
+    if (!wanted.length) return new Map();
+    const rows: { id: number | string; periodNum: number | string | null }[] =
+      await this.esimsRepository.query(
+        `SELECT e.id, oi."periodNum"
+           FROM esim e
+           JOIN order_item oi ON oi.id = e."orderItemId"
+          WHERE e.id = ANY($1) AND oi."periodNum" > 0`,
+        [wanted],
+      );
+    return new Map(rows.map((row) => [Number(row.id), Number(row.periodNum)]));
+  }
+
   async findByIccid(iccid: Esim['iccid']): Promise<NullableType<Esim>> {
     const entity = await this.esimsRepository.findOne({
       where: { iccid },

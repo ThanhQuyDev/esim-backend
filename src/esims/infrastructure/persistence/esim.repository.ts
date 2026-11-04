@@ -66,6 +66,8 @@ export abstract class EsimRepository {
   /** Days the customer picked for this eSIM's day pass (vande #006). */
   abstract findChosenDays(id: Esim['id']): Promise<number | null>;
 
+  abstract findChosenDaysByIds(ids: Esim['id'][]): Promise<Map<number, number>>;
+
   abstract findBaseOrderLine(id: Esim['id']): Promise<{
     orderId: number;
     orderNumber: string | null;

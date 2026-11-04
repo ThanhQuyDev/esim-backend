@@ -59,6 +59,10 @@ export class EsimsExportService {
 
   async exportToExcel(filterOptions?: FilterEsimDto | null): Promise<Buffer> {
     const rows = await this.esimsRepository.findAllForExport(filterOptions);
+    // As the list shows it: the days picked on a day pass (vande-0411 #035).
+    const days = await this.esimsRepository.findChosenDaysByIds(
+      rows.map((esim) => esim.id),
+    );
 
     // Which of these have been topped up (#025). One query for the whole file.
     const topups = await this.esimsRepository.countTopupsByIccids(
@@ -144,7 +148,8 @@ export class EsimsExportService {
         iccid: esim.iccid,
         provider: esim.provider ?? '',
         planName: esim.plan?.name ?? '',
-        durationDays: esim.plan?.durationDays ?? '',
+        durationDays:
+          days.get(Number(esim.id)) ?? esim.plan?.durationDays ?? '',
         planType: exportPlanTypeLabel(esim.plan?.type),
         saleStatus: exportSaleStatusLabel(esim.status),
         // Blank rather than "No"/0 for an eSIM never topped up, so the column

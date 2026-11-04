@@ -8884,7 +8884,8 @@ export class PartnersService {
                 WHERE t."orderType" = 'TOPUP' AND t."targetIccid" = e.iccid
                   AND t.status = 'completed' AND t."deletedAt" IS NULL)
                 AS "bought",
-              p."durationDays",
+              -- The days picked on a day pass, not its 1 (vande-0411 #035).
+              COALESCE(NULLIF(oi."periodNum", 0), p."durationDays") AS "durationDays",
               (COALESCE(p.sms, 0) > 0 OR COALESCE(p.call, 0) > 0) AS "hasCallSms",
               p.provider,
               p."operatorName",

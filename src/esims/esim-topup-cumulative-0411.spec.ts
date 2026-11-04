@@ -10,6 +10,7 @@ function service(esim: Record<string, unknown>, addedDays = 0) {
     esimsRepository: {
       update,
       findByIccid: jest.fn().mockResolvedValue({ ...ESIM, ...esim }),
+      findChosenDaysByIds: jest.fn().mockResolvedValue(new Map()),
       countTopupsByIccids: jest
         .fn()
         .mockResolvedValue(new Map([['8901', { addedDays }]])),

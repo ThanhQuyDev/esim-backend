@@ -246,10 +246,16 @@ export class EsimsService {
           .filter((id) => Number.isInteger(id) && id > 0),
       );
 
+    // A day pass sold for 5 days: the plan itself says 1 (vande-0411 #035).
+    const chosenDays = await this.esimsRepository.findChosenDaysByIds(
+      esims.map((esim) => esim.id),
+    );
+
     return esims.map((esim) => {
       const info = topups.get(esim.iccid);
       return {
         ...esim,
+        chosenDays: chosenDays.get(Number(esim.id)) ?? null,
         orderNumber:
           esim.orderItemId != null
             ? (orderNumbers.get(Number(esim.orderItemId)) ?? null)

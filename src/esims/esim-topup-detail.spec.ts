@@ -32,6 +32,7 @@ describe('Topup packages on the eSIM detail (#026)', () => {
       findChosenDays: jest.fn().mockResolvedValue(30),
       findBaseOrderLine: jest.fn().mockResolvedValue(null),
       findOrderNumbersByOrderItemIds: jest.fn().mockResolvedValue(new Map()),
+      findChosenDaysByIds: jest.fn().mockResolvedValue(new Map()),
       countTopupsByIccids: jest
         .fn()
         .mockResolvedValue(

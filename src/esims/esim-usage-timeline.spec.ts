@@ -27,6 +27,7 @@ function makeService(stored: Record<string, unknown> | null) {
   (service as unknown as Record<string, unknown>).esimsRepository = {
     findByIdWithRelations: jest.fn().mockResolvedValue(stored),
     findChosenDays: jest.fn().mockResolvedValue(null),
+    findChosenDaysByIds: jest.fn().mockResolvedValue(new Map()),
     countTopupsByIccids: jest.fn().mockResolvedValue(new Map()),
   };
 

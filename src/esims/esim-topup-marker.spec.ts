@@ -23,6 +23,7 @@ describe('Topup marker on an eSIM (#025)', () => {
     const esimsRepository = {
       findManyWithPagination: jest.fn(),
       findOrderNumbersByOrderItemIds: jest.fn().mockResolvedValue(new Map()),
+      findChosenDaysByIds: jest.fn().mockResolvedValue(new Map()),
       countTopupsByIccids: jest.fn((iccids: string[]) => {
         const map = new Map<string, TopupSummary>();
         for (const iccid of iccids) {
@@ -82,6 +83,7 @@ describe('Topup columns in the eSIM export (#025)', () => {
   ) {
     const esimsRepository = {
       findAllForExport: jest.fn().mockResolvedValue(esims),
+      findChosenDaysByIds: jest.fn().mockResolvedValue(new Map()),
       countTopupsByIccids: jest.fn((iccids: string[]) => {
         const map = new Map<string, TopupSummary>();
         for (const iccid of iccids) {
