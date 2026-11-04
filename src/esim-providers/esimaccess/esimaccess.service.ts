@@ -836,6 +836,16 @@ function isNonhkipNamed(pkg: { name?: string | null; slug?: string | null }) {
   return /nonhkip/i.test(`${pkg.name ?? ''} ${pkg.slug ?? ''}`);
 }
 
+/**
+ * What sets a package apart from the plain offer, read off the end of its slug:
+ * "AU_10_30_auip", "JP_1_7_IIJ", "CA_1_7_Premium". Null on the plain one,
+ * "AU_10_30" or "AU_1_Daily".
+ */
+function variantOf(pkg: { slug?: string | null }): string | null {
+  const last = (pkg.slug ?? '').match(/_([a-z]+)$/i)?.[1]?.toLowerCase();
+  return last && last !== 'daily' && last !== 'nonhkip' ? last : null;
+}
+
 function fupGroup(fupPolicy: string | null | undefined): string {
   const lower = (fupPolicy ?? '').toLowerCase().trim();
   // 1 Mbps and up is its own kind of plan; anything slower is one group.
@@ -874,12 +884,46 @@ export function pairNonhkipVariants(
   const result: { pkg: EsimAccessPackage; slugSuffix: string }[] = [];
   for (const group of grouped.values()) {
     const nonhkip = group.find(isNonhkipNamed);
-    const regular = group.find((p) => !isNonhkipNamed(p));
+    // "(AUIP)", "(IIJ)", "Premium": the same offer by another route. Each is its
+    // own package to sell, and was dropped, or taken for the regular one, by
+    // the search for "the one without nonhkip" (vande-0411 #031).
+    const regular = group.find((p) => !isNonhkipNamed(p) && !variantOf(p));
+    const variants = new Map<string, EsimAccessPackage>();
+    for (const pkg of group) {
+      const variant = variantOf(pkg);
+      if (variant && !isNonhkipNamed(pkg) && !variants.has(variant)) {
+        variants.set(variant, pkg);
+      }
+    }
     if (nonhkip) result.push({ pkg: nonhkip, slugSuffix: '' });
     if (regular) {
       result.push({
         pkg: regular,
         slugSuffix: nonhkip ? HK_TWIN_SLUG_SUFFIX : '',
+      });
+    }
+    for (const [variant, pkg] of variants) {
+      result.push({ pkg, slugSuffix: `-${variant}` });
+    }
+    // Same specs on paper but a package of its own, by its own slug: France
+    // 3GB/Day FUP1Mbps beside France 3GB/Day, Japan Unlimited-10Mbps beside
+    // Japan Unlimited. Only a true duplicate, same slug, is left out.
+    const taken = new Set([
+      nonhkip?.packageCode,
+      regular?.packageCode,
+      ...[...variants.values()].map((pkg) => pkg.packageCode),
+    ]);
+    const slugs = new Set(
+      group.filter((pkg) => taken.has(pkg.packageCode)).map((pkg) => pkg.slug),
+    );
+    for (const pkg of group) {
+      if (taken.has(pkg.packageCode) || !pkg.slug || slugs.has(pkg.slug)) {
+        continue;
+      }
+      slugs.add(pkg.slug);
+      result.push({
+        pkg,
+        slugSuffix: `-${pkg.slug.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
       });
     }
   }

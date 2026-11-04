@@ -74,3 +74,72 @@ describe('esimaccess regular + nonhkip twins (vande #017)', () => {
     expect(result.map((r) => r.slugSuffix)).toEqual(['', '']);
   });
 });
+
+describe('Gói IP theo nước của eSIM Access (vande-0411 #031)', () => {
+  const pack = (over: Record<string, unknown>) =>
+    ({
+      locationCode: 'AU',
+      volume: 1073741824,
+      duration: 1,
+      dataType: 2,
+      fupPolicy: '1 Mbps',
+      ...over,
+    }) as never;
+  const regular = pack({
+    packageCode: 'P07T5HKJD',
+    name: 'Australia 1GB/Day FUP1Mbps',
+    slug: 'AU_1_Daily_1Mbps',
+  });
+  const nonhkip = pack({
+    packageCode: 'PNON',
+    name: 'Australia 1GB/Day FUP1Mbps (nonhkip)',
+    slug: 'AU_1_Daily_1Mbps_nonhkip',
+  });
+  const auip = pack({
+    packageCode: 'PR1JV40NN',
+    name: 'Australia 1GB/Day FUP1Mbps (AUIP)',
+    slug: 'AU_1_Daily_1Mbps_auip',
+  });
+  const codes = (
+    list: { pkg: { packageCode: string }; slugSuffix: string }[],
+  ) => list.map((row) => [row.pkg.packageCode, row.slugSuffix]);
+
+  it('should keep the regular, nonhkip and country-IP packages apart', () => {
+    expect(codes(pairNonhkipVariants([auip, regular, nonhkip]))).toEqual([
+      ['PNON', ''],
+      ['P07T5HKJD', HK_TWIN_SLUG_SUFFIX],
+      ['PR1JV40NN', '-auip'],
+    ]);
+  });
+
+  it('should not take a country-IP package for the regular one', () => {
+    expect(codes(pairNonhkipVariants([auip, regular]))).toEqual([
+      ['P07T5HKJD', ''],
+      ['PR1JV40NN', '-auip'],
+    ]);
+  });
+
+  it('should keep a package with its own slug on the same specs', () => {
+    const plain = pack({
+      packageCode: 'FR1',
+      slug: 'FR_3_Daily',
+      name: 'France 3GB/Day',
+    });
+    const other = pack({
+      packageCode: 'FR2',
+      slug: 'FR_3_Daily_1Mbps',
+      name: 'France 3GB/Day FUP1Mbps',
+    });
+
+    expect(codes(pairNonhkipVariants([plain, other]))).toEqual([
+      ['FR1', ''],
+      ['FR2', '-fr-3-daily-1mbps'],
+    ]);
+  });
+
+  it('should keep a country-IP package with nothing beside it', () => {
+    expect(codes(pairNonhkipVariants([auip]))).toEqual([
+      ['PR1JV40NN', '-auip'],
+    ]);
+  });
+});
