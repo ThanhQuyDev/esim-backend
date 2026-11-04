@@ -100,6 +100,9 @@ export class AdminOrderItemPlanDto {
   })
   isRefundable?: boolean;
 
+  /** Topup / Addon / Không (vande-0411 #015). */
+  purchaseKind?: 'topup' | 'addon' | 'none';
+
   @ApiPropertyOptional({ type: String, nullable: true, example: 'SG' })
   ipExport?: string | null;
 

@@ -1,3 +1,7 @@
+import {
+  PLAN_PURCHASE_KIND_LABEL,
+  planPurchaseKind,
+} from './plan-purchase-kind';
 import { Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { PlanRepository } from './infrastructure/persistence/plan.repository';
@@ -67,7 +71,7 @@ export class PlansExportService {
       { header: 'FUP Speed', key: 'fupSpeed', width: 12 },
       { header: 'SMS', key: 'sms', width: 8 },
       { header: 'Call', key: 'call', width: 8 },
-      { header: 'Top Up', key: 'topUp', width: 10 },
+      { header: 'Mua thêm', key: 'topUp', width: 10 },
       { header: 'KYC', key: 'isKyc', width: 8 },
       { header: 'Local Inventory', key: 'isLocalInventory', width: 15 },
       { header: 'Multi-date', key: 'isAbleMultidate', width: 12 },
@@ -114,7 +118,7 @@ export class PlansExportService {
         fupSpeed: plan.fupSpeed ?? '',
         sms: plan.sms ?? '',
         call: plan.call ?? '',
-        topUp: plan.topUp ? 'Có' : 'Không',
+        topUp: PLAN_PURCHASE_KIND_LABEL[planPurchaseKind(plan)],
         isKyc: plan.isKyc ? 'Có' : 'Không',
         isLocalInventory: plan.isLocalInventory ? 'Có' : 'Không',
         isAbleMultidate: plan.isAbleMultidate ? 'Có' : 'Không',

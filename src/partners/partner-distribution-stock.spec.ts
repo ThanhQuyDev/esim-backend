@@ -68,6 +68,7 @@ describe('PartnersService.getMyEsims (#046)', () => {
         esimCreatedAt: null,
         planType: null,
         topUp: false,
+        purchaseKind: 'none',
         // doitac-1410 #038
         durationDays: null,
         hasCallSms: false,

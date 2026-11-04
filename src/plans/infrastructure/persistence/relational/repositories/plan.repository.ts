@@ -1,3 +1,4 @@
+import { planIsBillionAddonSql } from '../../../../plan-purchase-kind';
 import {
   standardPlanName,
   StandardNameInput,
@@ -961,10 +962,10 @@ export class PlansRelationalRepository implements PlanRepository {
     // whatever its top-up flag says.
     if (f?.topUpKind?.length) {
       const kinds: Record<string, string> = {
-        addon: 'COALESCE(plan."isAddOn", false) = true',
+        addon: `(COALESCE(plan."isAddOn", false) = true OR ${planIsBillionAddonSql('plan')})`,
         topup:
           '(COALESCE(plan."isAddOn", false) = false AND COALESCE(plan."topUp", false) = true)',
-        none: '(COALESCE(plan."isAddOn", false) = false AND COALESCE(plan."topUp", false) = false)',
+        none: `(COALESCE(plan."isAddOn", false) = false AND COALESCE(plan."topUp", false) = false AND NOT ${planIsBillionAddonSql('plan')})`,
       };
       const parts = f.topUpKind.map((k) => kinds[k]).filter(Boolean);
       if (parts.length) qb.andWhere(`(${parts.join(' OR ')})`);

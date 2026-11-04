@@ -81,6 +81,9 @@ export class Plan {
   })
   isAddOn?: boolean;
 
+  /** Topup / Addon / Không, as the screens read it (vande-0411 #015). */
+  purchaseKind?: 'topup' | 'addon' | 'none';
+
   @ApiPropertyOptional({
     type: Number,
     nullable: true,

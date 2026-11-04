@@ -4,6 +4,7 @@ import {
   MarginTier,
   multidayRetailVnd,
 } from '../plans/multiday-price';
+import { planPurchaseKind } from '../plans/plan-purchase-kind';
 import { PARTNER_WALLET_PAYMENT_METHOD } from '../topup/topup.constants';
 import {
   ALL_RETRY_PROVIDERS,
@@ -3163,6 +3164,7 @@ export class OrdersService {
                 // "Thông tin kỹ thuật" of each eSIM (doitac-1410 #081).
                 ipExport: plan.ipExport ?? null,
                 topUp: !!plan.topUp,
+                purchaseKind: planPurchaseKind(plan),
                 // The order's product block (vande #024).
                 standardName: plan.standardName ?? null,
                 providerPlanId: plan.providerPlanId,

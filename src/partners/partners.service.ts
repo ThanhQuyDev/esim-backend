@@ -14,6 +14,11 @@ import {
   isVisitorAddress,
   tooManyApplications,
 } from './partner-apply-guard';
+import {
+  PLAN_PURCHASE_KIND_LABEL,
+  planPurchaseKind,
+  type PlanPurchaseKind,
+} from '../plans/plan-purchase-kind';
 import { BILLION_ADDON_PACKAGE_PREFIX } from '../topup/billion-addon';
 import {
   AUTO_RETRY_PROVIDERS,
@@ -8795,6 +8800,8 @@ export class PartnersService {
       esimCreatedAt: string | null;
       planType: string | null;
       topUp: boolean;
+      /** Topup / Addon / Không (vande-0411 #015). */
+      purchaseKind: PlanPurchaseKind;
       // doitac-1410 #038:
       durationDays: number | null;
       hasCallSms: boolean;
@@ -8856,6 +8863,7 @@ export class PartnersService {
               o."createdAt",
               p.type AS "planType",
               COALESCE(p."topUp", false) AS "topUp",
+              p.provider AS "planProvider", p."isAddOn", p."accelerationSupport", p.apn AS "planApn",
               p.id AS "planId",
               p."dataMb",
               (SELECT array_agg(t."topupDataText") FROM "order" t
@@ -8950,6 +8958,13 @@ export class PartnersService {
       esimCreatedAt: row.esimCreatedAt ?? null,
       planType: row.planType ?? null,
       topUp: Boolean(row.topUp),
+      purchaseKind: planPurchaseKind({
+        provider: row.planProvider,
+        topUp: row.topUp,
+        isAddOn: row.isAddOn,
+        accelerationSupport: row.accelerationSupport,
+        apn: row.planApn,
+      }),
       durationDays: row.durationDays == null ? null : Number(row.durationDays),
       hasCallSms: Boolean(row.hasCallSms),
       tiktokAi: tiktokByPlan.get(Number(row.planId)) ?? false,
@@ -9101,7 +9116,7 @@ export class PartnersService {
       { header: 'Gọi / SMS', key: 'callSms', width: 22 },
       { header: 'Nhà mạng', key: 'operator', width: 18 },
       { header: 'Tốc độ', key: 'speed', width: 10 },
-      { header: 'Topup', key: 'topUp', width: 8 },
+      { header: 'Mua thêm', key: 'topUp', width: 9 },
       { header: 'Tiktok & AI', key: 'tiktok', width: 11 },
       { header: 'Hoàn tiền', key: 'refund', width: 10 },
       {
@@ -9152,7 +9167,7 @@ export class PartnersService {
           call > 0 || sms > 0 ? `Gọi ${call} phút · SMS ${sms}` : 'Không',
         operator: x.operatorName ?? '',
         speed: x.speed ?? '',
-        topUp: yes(e.topUp),
+        topUp: PLAN_PURCHASE_KIND_LABEL[e.purchaseKind],
         tiktok: yes(e.tiktokAi),
         refund: yes(e.refundable),
         agent: e.costVnd,
@@ -9282,6 +9297,7 @@ export class PartnersService {
               p."dataMb", p."durationDays", p.call, p.sms, p.speed,
               p."ipExport", p."isNonHkIp", p."dailyResetPolicy",
               p."dailyResetUtcOffset", COALESCE(p."topUp", false) AS "topUp",
+              p."isAddOn", p."accelerationSupport", p.apn AS "planApn",
               p."fupSpeed", p."isKyc", p."hotSpot", p."hotSpotAllow",
               e."isRoaming", e."phoneNumber", e.eid, e."deviceModel",
               COALESCE(d.name, r.name, p."countryCode") AS destination,
@@ -9405,6 +9421,13 @@ export class PartnersService {
         operatorName: (row.operatorName as string) ?? null,
         speed: (row.speed as string) ?? null,
         topUp: Boolean(row.topUp),
+        purchaseKind: planPurchaseKind({
+          provider: row.provider as string,
+          topUp: row.topUp as boolean,
+          isAddOn: row.isAddOn as boolean,
+          accelerationSupport: row.accelerationSupport as number,
+          apn: row.planApn as string,
+        }),
         // Billion: whether THIS eSIM takes a topup is known only from its
         // recharge products (F052), so the screen asks for them (#064).
         topUpPerEsim: row.provider === 'billion',
@@ -10016,6 +10039,7 @@ export class PartnersService {
               p.provider, p."operatorName", p."dataMb", p.call, p.sms,
               p."durationDays", p.speed, p.type,
               p.slug, p."isKyc", p."topUp", p."fupSpeed",
+              p."isAddOn", p."accelerationSupport", p.apn AS "planApn",
               COALESCE(d.name, r.name, p."countryCode") AS destination
          FROM order_item oi
          LEFT JOIN plan p ON p.id = oi."planId"
@@ -10073,6 +10097,13 @@ export class PartnersService {
         planCode: (line.slug as string) ?? null,
         kycRequired: Boolean(line.isKyc),
         topUp: Boolean(line.topUp),
+        purchaseKind: planPurchaseKind({
+          provider: line.provider as string,
+          topUp: line.topUp as boolean,
+          isAddOn: line.isAddOn as boolean,
+          accelerationSupport: line.accelerationSupport as number,
+          apn: line.planApn as string,
+        }),
         /** "Tốc độ sau khi hết data". */
         throttleSpeed: (line.fupSpeed as string) ?? null,
         refundable: planRefundSupported({
@@ -10276,6 +10307,7 @@ export class PartnersService {
       dataMb: number;
       type: string | null;
       topUp: boolean;
+      purchaseKind: PlanPurchaseKind;
       hasCallSms: boolean;
       tiktokAi: boolean;
       /** False when neither the APN table nor the exit IP tells. */
@@ -10423,6 +10455,7 @@ export class PartnersService {
           dataMb: Number(plan.dataMb ?? 0),
           type: plan.type ?? null,
           topUp: Boolean(plan.topUp),
+          purchaseKind: planPurchaseKind(plan),
           hasCallSms: Number(plan.sms ?? 0) > 0 || Number(plan.call ?? 0) > 0,
           tiktokAi: Boolean(
             appSupport?.tiktokAllDevices && appSupport?.chatGpt,
@@ -10900,7 +10933,7 @@ export class PartnersService {
       { header: 'Tốc độ sau giảm tốc', key: 'throttle', width: 20 },
       { header: 'Gọi / SMS', key: 'callSms', width: 22 },
       { header: 'Loại gói', key: 'type', width: 22 },
-      { header: 'Topup', key: 'topUp', width: 8 },
+      { header: 'Mua thêm', key: 'topUp', width: 9 },
       { header: 'Tiktok & AI', key: 'tiktok', width: 11 },
       { header: 'Hoàn tiền', key: 'refund', width: 10 },
       { header: 'Rẻ nhất', key: 'cheapest', width: 9 },
@@ -10942,7 +10975,10 @@ export class PartnersService {
           ? `Có · Gọi ${p.call ?? 0} phút · SMS ${p.sms ?? 0}`
           : 'Không',
         type: typeLabel[p.type ?? ''] ?? p.type ?? '',
-        topUp: yes(p.topUp),
+        topUp:
+          PLAN_PURCHASE_KIND_LABEL[
+            p.purchaseKind ?? (p.topUp ? 'topup' : 'none')
+          ],
         tiktok: yes(p.tiktokAi),
         refund: yes(p.refundable),
         cheapest: yes(p.isCheapest),

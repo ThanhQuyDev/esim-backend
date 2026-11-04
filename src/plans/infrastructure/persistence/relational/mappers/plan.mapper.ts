@@ -1,3 +1,4 @@
+import { planPurchaseKind } from '../../../../plan-purchase-kind';
 import {
   isPlanRefundable,
   ruleRefundable,
@@ -88,6 +89,7 @@ export class PlanMapper {
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
+    domainEntity.purchaseKind = planPurchaseKind(domainEntity);
     domainEntity.isRefundable = isPlanRefundable(domainEntity);
     domainEntity.refundableByRule = ruleRefundable(domainEntity);
     return domainEntity;
