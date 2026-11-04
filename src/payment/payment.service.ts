@@ -1,3 +1,4 @@
+import { PENDING_ORDER_TTL_MINUTES } from '../orders/pending-order-ttl';
 import { EXU_WALLET_PAYMENT_METHOD } from '../topup/dto/topup-checkout.dto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -32,6 +33,8 @@ export interface BankTransferCheckoutResult {
   accountNumber: string;
   accountName: string;
   bankCode: string;
+  /** Left to pay; seconds, so a wrong clock on the phone cannot skew it. */
+  expiresInSeconds?: number;
 }
 
 /**
@@ -225,6 +228,7 @@ export class PaymentService {
       accountNumber: sepay.accountNumber,
       accountName: sepay.accountName,
       bankCode: sepay.bankCode,
+      expiresInSeconds: PENDING_ORDER_TTL_MINUTES * 60,
     };
   }
 

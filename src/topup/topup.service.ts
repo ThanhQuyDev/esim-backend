@@ -1,3 +1,4 @@
+import { PENDING_ORDER_TTL_MINUTES } from '../orders/pending-order-ttl';
 import { withExpiryAfter } from './package-expiry';
 import { generateOrderNumber } from '../utils/order-number';
 import {
@@ -671,6 +672,7 @@ export class TopupService {
     accountNumber: string;
     accountName: string;
     bankCode: string;
+    expiresInSeconds: number;
   }> {
     const sepay = this.configService.getOrThrow('sepay', { infer: true });
     if (!sepay.accountNumber) {
@@ -710,6 +712,7 @@ export class TopupService {
       accountNumber: sepay.accountNumber,
       accountName: sepay.accountName,
       bankCode: sepay.bankCode,
+      expiresInSeconds: PENDING_ORDER_TTL_MINUTES * 60,
     };
   }
 

@@ -101,6 +101,7 @@ import { generateOrderNumber } from '../utils/order-number';
 import { parseOrderImportFile } from '../utils/order-import-file';
 import { ipLocation, publicIp } from './buyer-location';
 import { orderTrafficFields } from './traffic-source';
+import { PENDING_ORDER_TTL_MINUTES } from './pending-order-ttl';
 import { randomBytes } from 'crypto';
 import { downloadFilename } from '../utils/download-filename';
 import { activationDeadlineFromDays } from '../plans/plan-activation';
@@ -4570,8 +4571,9 @@ export class OrdersService {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async failExpiredPendingOrders(): Promise<void> {
-    const failedOrderIds =
-      await this.orderRepository.failExpiredPendingOrders(30);
+    const failedOrderIds = await this.orderRepository.failExpiredPendingOrders(
+      PENDING_ORDER_TTL_MINUTES,
+    );
     if (failedOrderIds.length > 0) {
       this.logger.log(
         `Auto-failed ${failedOrderIds.length} expired pending orders`,
