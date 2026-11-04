@@ -39,6 +39,29 @@ export function isCountryCodeList(name: string): boolean {
   );
 }
 
+/** Codes that are part of a country, which no country list names. */
+const SUBDIVISION_NAMES: Record<string, string> = {
+  'PT-20': 'Azores',
+  'PT-30': 'Madeira',
+  'US-HI': 'Hawaii',
+};
+
+/**
+ * A destination's name from the code a supplier gives (vande-0411 #030): "PR"
+ * read "PR" in a region's country list, "PT-20" read "PT-20". The code itself
+ * only when nothing knows it.
+ */
+export function destinationNameFromCode(code: string): string {
+  const upper = (code ?? '').trim().toUpperCase();
+  if (SUBDIVISION_NAMES[upper]) return SUBDIVISION_NAMES[upper];
+  if (!/^[A-Z]{2}$/.test(upper)) return code;
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(upper) ?? code;
+  } catch {
+    return code;
+  }
+}
+
 /**
  * Carrier list for the "Mạng nội địa" line: each carrier once, in the order
  * given, without the "Auto" / "Auto connect" placeholders MicroEsim sends for

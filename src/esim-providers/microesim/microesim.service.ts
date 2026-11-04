@@ -32,6 +32,7 @@ import {
   shortRegionName,
   slugify,
   uniqueOperators,
+  destinationNameFromCode,
 } from '../catalogue-naming';
 
 const PROVIDER = 'microesim';
@@ -278,10 +279,20 @@ export class MicroEsimService {
   }
 
   private async resolveDestinationByCode(code: string) {
+    const displayName = destinationNameFromCode(code);
     const existing = await this.destinationsService.findByCountryCode(code);
-    if (existing) return existing;
+    if (existing) {
+      // What an earlier sync created under the bare code; a name set in the
+      // CMS is left alone (vande-0411 #030).
+      if (existing.name === code && displayName !== code) {
+        await this.destinationsService.update(existing.id, {
+          name: displayName,
+        });
+        return { ...existing, name: displayName };
+      }
+      return existing;
+    }
 
-    const displayName = code;
     const byName = await this.destinationsService.findByName(displayName);
     if (byName) return byName;
 
