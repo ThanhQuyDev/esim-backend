@@ -254,7 +254,7 @@ export class TopupService {
       ...list,
       packages: list.packages.map((pkg) => ({
         ...pkg,
-        costVnd: roundVndToThousands(rate * (Number(pkg.price) || 0)),
+        costVnd: Math.round(rate * (Number(pkg.price) || 0)),
       })),
     };
   }
@@ -526,7 +526,7 @@ export class TopupService {
     // Cost in đồng, so the order detail and the reports can state the margin on a
     // topup (#015). It used to be stored as 0, which made every topup look like
     // pure profit.
-    const vndCostPrice = roundVndToThousands(
+    const vndCostPrice = Math.round(
       (await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)) *
         (Number(pkg.price) || 0) *
         days,

@@ -106,8 +106,6 @@ import {
 } from './bulk-esim-list';
 import { checkoutLocaleOf, isPaymentUsdIssue } from './payment-usd';
 
-const VND_ROUNDING_UNIT = 1000;
-
 /**
  * What share of an order a commission came to (#095).
  *
@@ -146,9 +144,6 @@ export function commissionShareOfOrder(
   const base = paid > 0 ? paid : Number(order.subtotalVndPrice ?? 0);
   if (!(base > 0) || !(earnedCommissionVnd > 0)) return 0;
   return Math.round((earnedCommissionVnd / base) * 1_000_000) / 10_000;
-}
-function roundVndToThousands(amount: number): number {
-  return Math.round(amount / VND_ROUNDING_UNIT) * VND_ROUNDING_UNIT;
 }
 
 function getPlanPeriodMultiplier(
@@ -199,8 +194,23 @@ export function getPlanUsdPrice(
   return plan.price * multiplier;
 }
 
-function getPlanCostPrice(plan: Plan, periodNum?: number | null): number {
-  return plan.costPrice * getPlanPeriodMultiplier(plan, periodNum);
+/**
+ * What one line unit costs esim.vn in đồng, to the đồng and with the supplier's
+ * tax/fee: the same figure the plan list shows and the price comparison reads
+ * (vande-0411 #004). The bare `costPrice` left out the fee, so a Gadget Korea or
+ * Billion order showed a cost 20 % below the plan's and overstated its profit.
+ */
+export function getPlanUnitCostVnd(
+  plan: Plan,
+  periodNum: number | null | undefined,
+  vndRate: number | null | undefined,
+): number {
+  const days = getPlanPeriodMultiplier(plan, periodNum);
+  const exact = Number(plan.vndCostExact ?? 0);
+  if (exact > 0) return Math.round(exact * days);
+  const cost = plan.costPrice * days;
+  if (plan.isLocalInventory) return Math.round(cost);
+  return vndRate ? Math.round(cost * vndRate) : 0;
 }
 
 type OrderPlanDetail = SubmitOrderDto['items'][number] & { plan: Plan };
@@ -955,16 +965,12 @@ export class OrdersService {
       clientUserAgent ?? null,
     );
 
-    const totalVndCostPrice = planDetails.reduce((sum, item) => {
-      const itemCostPrice = getPlanCostPrice(item.plan, item.periodNum);
-      if (item.plan.isLocalInventory) {
-        return sum + Math.round(itemCostPrice) * item.quantity;
-      }
-      return (
+    const totalVndCostPrice = planDetails.reduce(
+      (sum, item) =>
         sum +
-        (vndRate ? Math.round(itemCostPrice * vndRate) * item.quantity : 0)
-      );
-    }, 0);
+        getPlanUnitCostVnd(item.plan, item.periodNum, vndRate) * item.quantity,
+      0,
+    );
 
     const order = await this.orderRepository.create({
       userId,
@@ -1045,12 +1051,12 @@ export class OrdersService {
     // The same tiers the pricing used, for each line's price (vande #014).
     const tiers = await this.plansService.marginTiers();
     for (const item of planDetails) {
-      const unitCostPrice = getPlanCostPrice(item.plan, item.periodNum);
-      const itemVndCostPrice = item.plan.isLocalInventory
-        ? Math.round(unitCostPrice) * item.quantity
-        : vndRate
-          ? Math.round(unitCostPrice * vndRate) * item.quantity
-          : 0;
+      const unitVndCostPrice = getPlanUnitCostVnd(
+        item.plan,
+        item.periodNum,
+        vndRate,
+      );
+      const itemVndCostPrice = unitVndCostPrice * item.quantity;
 
       // Gadget Korea returns one topupId per unit and the webhook fires once
       // per topupId, so expand into one order-item per unit (quantity = 1
@@ -1068,7 +1074,7 @@ export class OrdersService {
             currency: 'USD',
             quantity: 1,
             vndPrice: getDiscountedVndPrice(item.plan, item.periodNum, tiers),
-            vndCostPrice: vndRate ? Math.round(unitCostPrice * vndRate) : 0,
+            vndCostPrice: unitVndCostPrice,
             periodNum: item.periodNum ?? null,
           });
         }
@@ -2640,9 +2646,7 @@ export class OrdersService {
           }
           if (missingCost && Number(pkg.net_price) > 0) {
             const rate = await this.exchangeRateService.getUsdToVndRate();
-            patch.vndCostPrice = roundVndToThousands(
-              Number(pkg.net_price) * rate,
-            );
+            patch.vndCostPrice = Math.round(Number(pkg.net_price) * rate);
           }
         }
       } catch (err) {

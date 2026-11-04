@@ -160,7 +160,12 @@ export class EsimsExportService {
           callMinutesOf(esim) > 0 || smsCountOf(esim) > 0 ? 'Có' : 'Không',
         callMinutes: callMinutesOf(esim) || '',
         smsCount: smsCountOf(esim) || '',
-        esimCostVnd: Number(esim.plan?.vndCostPrice) || '',
+        esimCostVnd:
+          Math.round(
+            Number(esim.plan?.vndCostExact) ||
+              Number(esim.plan?.vndCostPrice) ||
+              0,
+          ) || '',
         esimPriceVnd: Number(esim.plan?.vndPrice) || '',
         status: esim.status,
         phoneNumber: esim.phoneNumber ?? '',

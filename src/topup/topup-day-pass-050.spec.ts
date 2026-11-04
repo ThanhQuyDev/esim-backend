@@ -103,8 +103,8 @@ describe('Day-pass top-up for several days (doitac-3010 #050)', () => {
     const order = orderRepository.create.mock.calls[0][0];
     // 0.5 USD × 5 days × 25.000 × 1.3 = 81.250 → 81.000đ.
     expect(order.vndPrice).toBe(81000);
-    // 0.5 × 5 × 25.000 = 62.500 → 63.000đ cost.
-    expect(order.vndCostPrice).toBe(63000);
+    // 0.5 × 5 × 25.000 = 62.500đ cost, to the đồng (vande-0411 #004).
+    expect(order.vndCostPrice).toBe(62500);
     expect(order.topupPeriodNum).toBe(5);
     expect(order.topupDurationDays).toBe(5);
     expect(order.topupPackageName).toBe('Vietnam 1GB/day × 5 ngày');
