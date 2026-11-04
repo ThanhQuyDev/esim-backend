@@ -166,6 +166,20 @@ export class PartnerPurchaseController {
     res.end(file.content);
   }
 
+  /** "Gọi lại API lấy eSIM" for what has not come (vande-0411 #011). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.partner, RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('me/purchases/:orderNumber/retry-provisioning')
+  @HttpCode(HttpStatus.OK)
+  async retryPurchase(
+    @Request() req: { user: { id: number } },
+    @Param('orderNumber') orderNumber: string,
+  ) {
+    const partner = await this.partnersService.getPartnerByUserId(req.user.id);
+    return this.purchaseService.retryPurchase(partner.id, orderNumber);
+  }
+
   /** "Gửi lại email eSIM" for a whole order (doitac-1410 #042). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)

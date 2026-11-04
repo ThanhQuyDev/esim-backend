@@ -412,6 +412,29 @@ export class PartnerPurchaseService {
     };
   }
 
+  /**
+   * "Gọi lại API lấy eSIM" for the partner (vande-0411 #011), only on lines the
+   * supplier clearly refused, or eSIM Access, whose repeat cannot buy twice. A
+   * line that timed out may have gone through and needs a person to check.
+   */
+  async retryPurchase(partnerId: number, orderNumber: string) {
+    const { orderId } = await this.partnersService.assertOwnsPurchase(
+      partnerId,
+      orderNumber,
+    );
+    const lines = await this.partnersService.purchaseRetryLines(orderId);
+    const itemIds = lines.filter((l) => l.canRetry).map((l) => l.itemId);
+    if (!itemIds.length) {
+      throw new BadRequestException(
+        'Chưa thể gọi lại cho đơn này. Vui lòng liên hệ esim.vn để kiểm tra với nhà cung cấp.',
+      );
+    }
+    const result = await this.ordersService.retryProvisioning(orderId, {
+      itemIds,
+    });
+    return { retried: result.retriedItemIds.length, message: result.message };
+  }
+
   /** One of the partner's own orders as the bulk eSIM list (vande #057). */
   async esimList(partnerId: number, orderNumber: string) {
     const partner = await this.partnersService.getPartnerOrThrowById(partnerId);

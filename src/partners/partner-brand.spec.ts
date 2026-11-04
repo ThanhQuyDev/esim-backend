@@ -109,7 +109,7 @@ describe('Partner logo in the QR code (doitac-1410 #044)', () => {
       OPTS,
       fetchImpl as never,
     );
-    expect(logo?.length).toBe(4);
+    expect((logo as Buffer).length).toBe(4);
   });
 
   it('should never download a logo from another host', async () => {
@@ -121,7 +121,7 @@ describe('Partner logo in the QR code (doitac-1410 #044)', () => {
         OPTS,
         fetchImpl as never,
       ),
-    ).resolves.toBeNull();
+    ).resolves.toBe(false);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -138,7 +138,7 @@ describe('Partner logo in the QR code (doitac-1410 #044)', () => {
         OPTS,
         fetchImpl as never,
       ),
-    ).resolves.toBeNull();
+    ).resolves.toBe(false);
   });
 });
 

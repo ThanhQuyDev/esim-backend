@@ -199,6 +199,17 @@ export function getPlanUsdPrice(
   return plan.price * multiplier;
 }
 
+/** What a list row says about an eSIM that has not come (vande-0411 #011). */
+export function missingEsimReason(line: {
+  orderRequestId?: string | null;
+  lastProvisionError?: string | null;
+}): string {
+  if (line.orderRequestId) return 'Nhà cung cấp đang cấp, chưa có eSIM';
+  return line.lastProvisionError
+    ? 'LỖI: nhà cung cấp chưa nhận đơn'
+    : 'Chưa có eSIM';
+}
+
 /**
  * What one line unit costs esim.vn in đồng, to the đồng and with the supplier's
  * tax/fee: the same figure the plan list shows and the price comparison reads
@@ -2367,10 +2378,68 @@ export class OrdersService {
         lpa,
         qrUrl:
           r.id && r.qrAccessToken
-            ? `${backendDomain}/api/v1/esims/${r.id}/qrcode?token=${r.qrAccessToken}`
+            ? `${backendDomain}/api/v1/esims/${r.id}/qrcode/view?token=${r.qrAccessToken}`
             : '',
       };
     });
+
+    // What was ordered and did not come: without these rows, 5 ordered read as
+    // a list of 3 with nothing saying 2 are missing (vande-0411 #011).
+    const lines: Record<string, any>[] = await this.dataSource.query(
+      `SELECT oi.id, oi.quantity, oi."vndPrice", oi."vndCostPrice",
+              oi."orderRequestId", oi."lastProvisionError",
+              p.name, p.slug, p."providerPlanId", p.provider, p.type,
+              p."durationDays", p."dataMb", p."fupSpeed", p.call, p.sms, p."topUp",
+              COALESCE(NULLIF(d."titleVi", ''), d.name,
+                       NULLIF(r."titleVi", ''), r.name, '') AS destination,
+              (SELECT COUNT(*) FROM esim e
+                WHERE e."orderItemId" = oi.id AND e."deletedAt" IS NULL)::int AS delivered
+         FROM order_item oi
+         LEFT JOIN plan p ON p.id = oi."planId"
+         LEFT JOIN destination d ON d.id = p."destinationId"
+         LEFT JOIN region r ON r.id = p."regionId"
+        WHERE oi."orderId" = $1
+        ORDER BY oi.id`,
+      [order.id],
+    );
+    for (const line of lines) {
+      const quantity = Math.max(1, Number(line.quantity ?? 1));
+      const priceVnd = Math.round(
+        Number(line.vndPrice ?? 0) / (perEsim ? quantity : 1),
+      );
+      for (let i = Number(line.delivered ?? 0); i < quantity; i += 1) {
+        list.push({
+          orderNumber: order.orderNumber,
+          iccid: '',
+          planName: line.name ?? '',
+          destination: line.destination ?? '',
+          planType: line.type ?? null,
+          durationDays:
+            line.durationDays == null ? null : Number(line.durationDays),
+          dataMb: line.dataMb == null ? null : Number(line.dataMb),
+          fupSpeed: line.fupSpeed ?? null,
+          phoneNumber: null,
+          call: line.call == null ? null : Number(line.call),
+          sms: line.sms == null ? null : Number(line.sms),
+          topUp: Boolean(line.topUp),
+          packageCode: line.providerPlanId ?? null,
+          slug: line.slug ?? null,
+          provider: line.provider ?? null,
+          costVnd:
+            line.vndCostPrice == null
+              ? null
+              : Math.round(Number(line.vndCostPrice) / quantity),
+          priceVnd,
+          priceUsd: rate > 0 ? Math.round((priceVnd / rate) * 100) / 100 : 0,
+          createdBy: order.email ?? '',
+          orderedAt: new Date(order.createdAt),
+          activationDeadline: null,
+          lpa: '',
+          qrUrl: '',
+          missingReason: missingEsimReason(line),
+        });
+      }
+    }
 
     return {
       filename: downloadFilename(`Danh-sach-eSIM-${order.orderNumber}`),

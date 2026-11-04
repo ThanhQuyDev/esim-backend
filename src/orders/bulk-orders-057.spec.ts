@@ -304,6 +304,7 @@ describe('the eSIM list of a "file" order (vande #057)', () => {
     const { titles } = await headers(true);
     expect(titles).toEqual([
       'STT',
+      'Trạng thái eSIM',
       'Mã đơn hàng mua',
       'ICCID',
       'Tên gói cước',

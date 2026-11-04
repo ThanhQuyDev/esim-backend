@@ -15,6 +15,11 @@ import {
   tooManyApplications,
 } from './partner-apply-guard';
 import {
+  AUTO_RETRY_PROVIDERS,
+  isDefiniteRefusal,
+  isDuplicateOrderRefusal,
+} from '../orders/provision-retry';
+import {
   Optional,
   BadRequestException,
   ConflictException,
@@ -9895,6 +9900,51 @@ export class PartnersService {
   }
 
   /**
+   * Which lines of a purchase are short of eSIMs, and whether the partner may
+   * ask the supplier again (vande-0411 #011).
+   */
+  async purchaseRetryLines(orderId: number): Promise<
+    {
+      itemId: number;
+      missing: number;
+      canRetry: boolean;
+      accepted: boolean;
+    }[]
+  > {
+    const rows: Record<string, any>[] = await this.dataSource.query(
+      `SELECT oi.id, oi.quantity, oi."orderRequestId", oi."lastProvisionError",
+              o.status, p.provider,
+              (SELECT COUNT(*) FROM esim e
+                WHERE e."orderItemId" = oi.id AND e."deletedAt" IS NULL)::int AS delivered
+         FROM order_item oi
+         JOIN "order" o ON o.id = oi."orderId"
+         LEFT JOIN plan p ON p.id = oi."planId"
+        WHERE oi."orderId" = $1`,
+      [orderId],
+    );
+    return rows
+      .map((row) => {
+        const missing = Number(row.quantity ?? 0) - Number(row.delivered ?? 0);
+        const accepted = Boolean(row.orderRequestId);
+        return {
+          itemId: Number(row.id),
+          missing: Math.max(0, missing),
+          accepted,
+          canRetry:
+            missing > 0 &&
+            !accepted &&
+            row.status === 'paid' &&
+            !isDuplicateOrderRefusal(row.lastProvisionError) &&
+            (AUTO_RETRY_PROVIDERS.includes(
+              String(row.provider ?? '').toLowerCase(),
+            ) ||
+              isDefiniteRefusal(row.lastProvisionError)),
+        };
+      })
+      .filter((line) => line.missing > 0);
+  }
+
+  /**
    * "Chi tiết đơn hàng" on the partner portal (doitac-1410 #042): the admin's
    * order page without the customer block — the order, the email the QR went
    * to, each product with its total at the agent price and at the suggested
@@ -9942,8 +9992,13 @@ export class PartnersService {
       [orderId],
     );
 
+    const shortLines = new Map(
+      (await this.purchaseRetryLines(orderId)).map((l) => [l.itemId, l]),
+    );
+
     const products = (lines as Record<string, any>[]).map((line) => {
       const quantity = Number(line.quantity ?? 0);
+      const short = shortLines.get(Number(line.id));
       // The line stores the unit price (submitPartnerPurchase).
       const unit = Number(line.vndPrice ?? 0);
       const agentTotalVnd = unit * quantity;
@@ -9951,6 +10006,10 @@ export class PartnersService {
         itemId: Number(line.id),
         planName: (line.planName as string) ?? null,
         quantity,
+        /** eSIMs not delivered yet, and what can be done (vande-0411 #011). */
+        missingEsims: short?.missing ?? 0,
+        canRetryEsims: short?.canRetry ?? false,
+        supplierAccepted: short?.accepted ?? false,
         /** One eSIM at the agent price — what a refund of it gives back (#058). */
         unitVnd: unit,
         agentTotalVnd,
@@ -10012,6 +10071,8 @@ export class PartnersService {
     const walletRefundedVnd = refunds.reduce((sum, r) => sum + r.amountVnd, 0);
 
     return {
+      // For the admin's buttons, which work by id (vande-0411 #011).
+      orderId,
       orderNumber: code,
       status: summary?.status ?? null,
       orderType: summary?.orderType ?? null,

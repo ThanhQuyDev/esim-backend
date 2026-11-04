@@ -4,7 +4,9 @@ import { isOwnFileUrl, readPartnerBrand } from '../partners/partner-brand';
 /**
  * The logo in the middle of the QR code of an eSIM a distribution partner
  * bought: theirs, from "Cấu hình thương hiệu", instead of esim.vn's
- * (doitac-1410 #044). Null means "use the esim.vn logo".
+ * (doitac-1410 #044). Null means "use the esim.vn logo"; false, a partner with
+ * no logo of their own, means none: their customer should not see ours
+ * (vande-0411 #011).
  *
  * Only a file our own upload stored is downloaded (see `isOwnFileUrl`), with
  * a short timeout and a size cap — this runs on an unauthenticated image
@@ -27,7 +29,7 @@ export async function loadPartnerQrLogo(
   esimId: number,
   opts: { backendDomain?: string; s3Bucket?: string; s3Region?: string },
   fetchImpl: typeof fetch = fetch,
-): Promise<Buffer | null> {
+): Promise<Buffer | null | false> {
   if (!dataSource) return null;
   try {
     const [row] = await dataSource.query(
@@ -42,10 +44,11 @@ export async function loadPartnerQrLogo(
         LIMIT 1`,
       [esimId],
     );
-    const logoUrl = row?.brandInfo
+    if (!row) return null;
+    const logoUrl = row.brandInfo
       ? readPartnerBrand(row.brandInfo).logoUrl
       : '';
-    return await fetchPartnerLogo(logoUrl, opts, fetchImpl);
+    return (await fetchPartnerLogo(logoUrl, opts, fetchImpl)) ?? false;
   } catch {
     return null;
   }

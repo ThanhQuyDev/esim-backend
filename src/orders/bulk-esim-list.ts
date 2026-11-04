@@ -35,6 +35,8 @@ export type BulkEsimRow = {
   activationDeadline: string | null;
   lpa: string;
   qrUrl: string;
+  /** Why this row has no eSIM yet; null when it has one (vande-0411 #011). */
+  missingReason?: string | null;
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -80,6 +82,7 @@ export async function buildBulkEsimList(
   const money = '#,##0';
   sheet.columns = [
     { header: 'STT', key: 'stt', width: 6 },
+    { header: 'Trạng thái eSIM', key: 'state', width: 26 },
     { header: 'Mã đơn hàng mua', key: 'orderNumber', width: 30 },
     { header: 'ICCID', key: 'iccid', width: 24 },
     { header: 'Tên gói cước', key: 'planName', width: 36 },
@@ -91,10 +94,11 @@ export async function buildBulkEsimList(
     { header: 'Gọi điện', key: 'call', width: 10 },
     { header: 'SMS', key: 'sms', width: 8 },
     { header: 'Hỗ trợ Topup', key: 'topUp', width: 12 },
-    { header: 'Mã gói cước', key: 'packageCode', width: 24 },
-    { header: 'Slug', key: 'slug', width: 32 },
+    // A partner knows a plan by its slug, not the supplier's code (vande-0411 #011).
+    { header: 'Mã gói cước', key: 'packageCode', width: 32 },
     ...(options.forAdmin
       ? [
+          { header: 'Slug', key: 'slug', width: 32 },
           { header: 'Nhà cung cấp', key: 'provider', width: 14 },
           {
             header: 'Giá vốn (VND)',
@@ -126,6 +130,7 @@ export async function buildBulkEsimList(
   rows.forEach((row, index) => {
     const added = sheet.addRow({
       stt: index + 1,
+      state: row.missingReason ?? 'Đã có eSIM',
       orderNumber: row.orderNumber,
       iccid: row.iccid,
       planName: row.planName,
@@ -137,10 +142,13 @@ export async function buildBulkEsimList(
       call: Number(row.call) > 0 ? `${row.call} phút` : 'Không',
       sms: Number(row.sms) > 0 ? Number(row.sms) : 'Không',
       topUp: row.topUp ? 'Có' : 'Không',
-      packageCode: row.packageCode ?? '',
-      slug: row.slug ?? '',
+      packageCode: (options.forAdmin ? row.packageCode : row.slug) ?? '',
       ...(options.forAdmin
-        ? { provider: row.provider ?? '', cost: row.costVnd ?? '' }
+        ? {
+            slug: row.slug ?? '',
+            provider: row.provider ?? '',
+            cost: row.costVnd ?? '',
+          }
         : {}),
       priceVnd: row.priceVnd,
       priceUsd: row.priceUsd,
@@ -150,6 +158,13 @@ export async function buildBulkEsimList(
       lpa: row.lpa,
       qr: row.qrUrl,
     });
+    if (row.missingReason) {
+      added.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFFE5E5' },
+      };
+    }
     // A clickable link, not text to copy (vande #057).
     if (row.qrUrl) {
       added.getCell('qr').value = { text: row.qrUrl, hyperlink: row.qrUrl };

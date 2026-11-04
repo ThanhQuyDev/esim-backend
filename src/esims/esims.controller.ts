@@ -24,6 +24,7 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { AllConfigType } from '../config/config.type';
 import { loadPartnerQrLogo } from './partner-qr-logo';
+import { esimQrPage } from './esim-qr-page';
 import { loadLookupDetails, lookupVoiceAndSms } from './esim-lookup-details';
 import { Response } from 'express';
 import { renderEsimQrCode } from './esim-qrcode';
@@ -126,6 +127,47 @@ export class EsimsPublicController {
       'Cache-Control': 'public, max-age=86400',
     });
     res.send(buffer);
+  }
+
+  /** The QR code with its ICCID, plan and order under it (vande-0411 #011). */
+  @Get(':id/qrcode/view')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: Number, required: true })
+  @ApiQuery({ name: 'token', required: true, type: String })
+  async getQrPage(
+    @Param('id') id: number,
+    @Query('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const esim = token ? await this.esimsService.findById(id) : null;
+    if (!esim || !esim.lpa || esim.qrAccessToken !== token) {
+      throw new NotFoundException('eSIM or LPA not found');
+    }
+    const [line] =
+      (await this.dataSource?.query(
+        `SELECT COALESCE(NULLIF(p."standardName", ''), p.name) AS "planName",
+                o."orderNumber"
+           FROM esim e
+           JOIN order_item oi ON oi.id = e."orderItemId"
+           JOIN "order" o ON o.id = oi."orderId"
+           LEFT JOIN plan p ON p.id = oi."planId"
+          WHERE e.id = $1`,
+        [Number(id)],
+      )) ?? [];
+    res.set({
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'private, no-store',
+      'X-Robots-Tag': 'noindex',
+      'Referrer-Policy': 'no-referrer',
+    });
+    res.send(
+      esimQrPage({
+        imageUrl: `/api/v1/esims/${Number(id)}/qrcode?token=${encodeURIComponent(token)}`,
+        iccid: esim.iccid ?? null,
+        planName: line?.planName ?? null,
+        orderNumber: line?.orderNumber ?? null,
+      }),
+    );
   }
 
   /**

@@ -107,14 +107,19 @@ export async function compositeLogo(
 export async function renderEsimQrCode(
   lpa: string,
   size = QR_SIZE,
-  /** A distribution partner's own logo instead of esim.vn's (doitac-1410 #044). */
-  customLogo?: Buffer | null,
+  /**
+   * A distribution partner's own logo instead of esim.vn's (doitac-1410 #044);
+   * `false` is a partner with no logo: no logo at all (vande-0411 #011).
+   */
+  customLogo?: Buffer | null | false,
 ): Promise<Buffer> {
   const qrBuffer = await QRCode.toBuffer(lpa, {
     width: size,
     margin: 2,
     errorCorrectionLevel: 'H',
   });
+
+  if (customLogo === false) return qrBuffer;
 
   if (customLogo) {
     try {
