@@ -14,6 +14,7 @@ import {
   isVisitorAddress,
   tooManyApplications,
 } from './partner-apply-guard';
+import { BILLION_ADDON_PACKAGE_PREFIX } from '../topup/billion-addon';
 import {
   AUTO_RETRY_PROVIDERS,
   isDefiniteRefusal,
@@ -150,6 +151,7 @@ import { CreatePartnerCouponDto } from './dto/partner-coupon.dto';
 import { UpdatePartnerProfileDto } from './dto/update-partner-profile.dto';
 import { RequestBankAccountChangeDto } from './dto/partner-bank-account.dto';
 import {
+  fileNamePart,
   buildCreditStatementWorkbook,
   CreditStatementLine,
 } from './credit-statement-workbook';
@@ -8133,16 +8135,35 @@ export class PartnersService {
       deliveryEmail: string | null;
       products: string | null;
       esims: number | null;
+      orderType: string | null;
+      topupPackageId: string | null;
+      topupPackageName: string | null;
+      targetIccid: string | null;
+      iccids: string | null;
+      topupCustomer: string | null;
     }[] = await this.dataSource.query(
       `SELECT t.type, t."amountVnd", t."createdAt", o."orderNumber",
+              o."orderType", o."topupPackageId", o."topupPackageName",
+              o."targetIccid",
               -- No address of its own: the eSIMs went to the partner's login.
               COALESCE(NULLIF(o."deliveryEmail", ''), u.email) AS "deliveryEmail",
-              (SELECT string_agg(p.name || CASE WHEN oi.quantity > 1
+              (SELECT string_agg(COALESCE(NULLIF(p."standardName", ''), p.name) || CASE WHEN oi.quantity > 1
                                    THEN ' x' || oi.quantity ELSE '' END, ' + ')
                  FROM order_item oi JOIN plan p ON p.id = oi."planId"
                 WHERE oi."orderId" = o.id) AS products,
               (SELECT COALESCE(SUM(oi.quantity), 0)::int
-                 FROM order_item oi WHERE oi."orderId" = o.id) AS esims
+                 FROM order_item oi WHERE oi."orderId" = o.id) AS esims,
+              (SELECT string_agg(e.iccid, ', ' ORDER BY e.id)
+                 FROM esim e JOIN order_item oi ON oi.id = e."orderItemId"
+                WHERE oi."orderId" = o.id AND e."deletedAt" IS NULL) AS iccids,
+              -- A topup goes to whoever got the eSIM it was bought for.
+              (SELECT COALESCE(NULLIF(eo."deliveryEmail", ''), eu.email)
+                 FROM esim e
+                 JOIN order_item oi ON oi.id = e."orderItemId"
+                 JOIN "order" eo ON eo.id = oi."orderId"
+                 LEFT JOIN "user" eu ON eu.id = eo."userId"
+                WHERE e.iccid = o."targetIccid"
+                ORDER BY e.id LIMIT 1) AS "topupCustomer"
          FROM partner_wallet_transaction t
          LEFT JOIN "order" o ON o.id = t."orderId"
          LEFT JOIN "user" u ON u.id = o."userId"
@@ -8168,16 +8189,24 @@ export class PartnersService {
     const lines: CreditStatementLine[] = rows.map((r) => {
       const purchase =
         r.type === PartnerWalletTransactionTypeEnum.ORDER_PURCHASE;
+      const isTopup = r.orderType === 'TOPUP';
       return {
         orderNumber: r.orderNumber ?? '—',
-        products: r.products ?? '',
+        products: (isTopup ? r.topupPackageName : r.products) ?? '',
         // The ledger stores a purchase as money out (negative); the statement
         // reads it as money owed.
         amountVnd: -Number(r.amountVnd),
-        customer: r.deliveryEmail ?? '',
+        customer: (isTopup ? r.topupCustomer : null) ?? r.deliveryEmail ?? '',
         esims: purchase ? Number(r.esims ?? 0) : 0,
         status: purchase ? 'Đã mua' : 'Hoàn tiền',
         createdAt: new Date(r.createdAt),
+        orderKind: !isTopup
+          ? 'Mua eSIM'
+          : r.topupPackageId?.startsWith(BILLION_ADDON_PACKAGE_PREFIX)
+            ? 'Addon'
+            : 'Topup',
+        quantity: isTopup ? 1 : Number(r.esims ?? 0),
+        iccids: (isTopup ? r.targetIccid : r.iccids) ?? '',
       };
     });
     const purchases = lines.filter((l) => l.status === 'Đã mua');
@@ -8206,13 +8235,17 @@ export class PartnersService {
   ): Promise<{ filename: string; content: Buffer }> {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const statement = await this.creditStatement(partnerId, period);
+    const partnerName = partner.companyName?.trim() || partner.contactName;
     const content = await buildCreditStatementWorkbook({
-      partnerName: partner.companyName?.trim() || partner.contactName,
+      partnerName,
       ...statement,
     });
+    // Thang-10-2026_Doi-soat-giao-dich_Hoang-Ha-Mobile_03-11-2026_22-24-34
+    // (vande-0411 #013): the name, since an id says nothing in a mailbox.
+    const [year, month] = period.split('-');
     return {
       filename: downloadFilename(
-        `Chi-tiet-giao-dich-${period}-doi-tac-${partnerId}`,
+        `Thang-${month}-${year}_Doi-soat-giao-dich_${fileNamePart(partnerName) || `Doi-tac-${partnerId}`}`,
       ),
       content,
     };

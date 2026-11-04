@@ -3,11 +3,10 @@ import { Workbook } from 'exceljs';
 /**
  * The file attached to a no-deposit partner's monthly statement (vande #056).
  *
- * "Chi tiết giao dịch" keeps the columns of the sheet "Mẫu file Chi tiết giao
- * dịch" in the source Excel, so the partner reads the same layout as the
- * commission statement; the two commission columns stay empty, since a
- * partner buying stock earns none. A refund is its own line with a negative
- * amount, so the column adds up to exactly what the email asks them to pay.
+ * "Chi tiết giao dịch" has one row per order, in the columns anh Thọ set out
+ * (vande-0411 #013). It has nothing about marketing partners: a partner on
+ * credit does not earn commission. Revenue less refunds adds up to exactly what
+ * the email asks them to pay.
  */
 
 export type CreditStatementLine = {
@@ -21,7 +20,76 @@ export type CreditStatementLine = {
   /** "Đã mua" or "Hoàn tiền". */
   status: string;
   createdAt: Date;
+  /** "Mua eSIM", "Topup" or "Addon". */
+  orderKind?: string;
+  /** eSIMs bought, or 1 for a topup. */
+  quantity?: number;
+  /** The eSIMs of the order, or the one topped up, comma separated. */
+  iccids?: string;
 };
+
+/** One row of the sheet: everything that moved on one order this month. */
+export type CreditStatementRow = {
+  orderNumber: string;
+  products: string;
+  quantity: number;
+  revenueVnd: number;
+  refundVnd: number;
+  orderKind: string;
+  iccids: string;
+  customer: string;
+  createdAt: Date;
+  status: string;
+};
+
+/** Folds the ledger lines of an order into its one row. */
+export function creditStatementRows(
+  lines: CreditStatementLine[],
+): CreditStatementRow[] {
+  const rows = new Map<string, CreditStatementRow>();
+  for (const line of lines) {
+    const row = rows.get(line.orderNumber) ?? {
+      orderNumber: line.orderNumber,
+      products: line.products,
+      quantity: 0,
+      revenueVnd: 0,
+      refundVnd: 0,
+      orderKind: line.orderKind ?? 'Mua eSIM',
+      iccids: line.iccids ?? '',
+      customer: line.customer,
+      createdAt: line.createdAt,
+      status: '',
+    };
+    if (line.amountVnd >= 0) {
+      row.revenueVnd += line.amountVnd;
+      row.quantity = line.quantity ?? line.esims;
+    } else {
+      row.refundVnd -= line.amountVnd;
+      // Refunded in a later month than it was bought: still say how many.
+      row.quantity = row.quantity || (line.quantity ?? line.esims);
+    }
+    rows.set(line.orderNumber, row);
+  }
+  for (const row of rows.values()) {
+    row.status = !row.refundVnd
+      ? 'Đã mua'
+      : row.revenueVnd > row.refundVnd
+        ? 'Hoàn một phần'
+        : 'Đã hoàn tiền';
+  }
+  return [...rows.values()];
+}
+
+/** `Hoàng Hà Mobile` → `Hoang-Ha-Mobile`, for a file name. */
+export function fileNamePart(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 
 export type CreditStatementData = {
   partnerName: string;
@@ -81,16 +149,16 @@ export async function buildCreditStatementWorkbook(
   const sheet = wb.addWorksheet('Chi tiết giao dịch');
   sheet.columns = [
     { header: 'STT', key: 'stt', width: 6 },
-    { header: 'Mã đơn hàng', key: 'orderNumber', width: 28 },
-    { header: 'Tên sản phẩm', key: 'products', width: 40 },
-    { header: 'Doanh thu đơn hàng', key: 'amountVnd', width: 20 },
-    { header: 'Nguồn ghi nhận', key: 'source', width: 22 },
-    { header: 'Khách hàng', key: 'customer', width: 28 },
-    { header: 'Số lượng eSIM', key: 'esims', width: 14 },
-    { header: 'Mức % hoa hồng', key: 'commissionPercent', width: 16 },
-    { header: 'Tiền hoa hồng', key: 'commissionVnd', width: 18 },
-    { header: 'Trạng thái đơn hàng', key: 'status', width: 20 },
-    { header: 'Ngày đặt hàng', key: 'createdAt', width: 14 },
+    { header: 'Mã đơn hàng', key: 'orderNumber', width: 30 },
+    { header: 'Tên sản phẩm', key: 'products', width: 44 },
+    { header: 'Số lượng eSIM/gói topup', key: 'quantity', width: 14 },
+    { header: 'Doanh thu đơn hàng', key: 'revenueVnd', width: 18 },
+    { header: 'Hoàn tiền', key: 'refundVnd', width: 16 },
+    { header: 'Loại đơn', key: 'orderKind', width: 12 },
+    { header: 'ICCID', key: 'iccids', width: 26 },
+    { header: 'Khách hàng', key: 'customer', width: 30 },
+    { header: 'Ngày mua hàng', key: 'createdAt', width: 14 },
+    { header: 'Trạng thái đơn hàng', key: 'status', width: 18 },
   ];
   const header = sheet.getRow(1);
   header.font = { name: FONT, size: 12, bold: true };
@@ -101,28 +169,26 @@ export async function buildCreditStatementWorkbook(
   };
   header.height = 30;
 
-  data.lines.forEach((line, index) => {
-    sheet.addRow({
+  const orderRows = creditStatementRows(data.lines);
+  orderRows.forEach((row, index) => {
+    const added = sheet.addRow({
+      ...row,
       stt: index + 1,
-      orderNumber: line.orderNumber,
-      products: line.products,
-      amountVnd: line.amountVnd,
-      source: 'Mua bằng hạn mức',
-      customer: line.customer,
-      esims: line.esims,
-      status: line.status,
-      createdAt: vnDate(line.createdAt),
+      createdAt: vnDate(row.createdAt),
     });
+    added.getCell('iccids').alignment = { wrapText: true, vertical: 'top' };
   });
   const total = sheet.addRow({
     orderNumber: 'TỔNG CỘNG',
-    amountVnd: data.lines.reduce((sum, l) => sum + l.amountVnd, 0),
-    esims: data.lines.reduce((sum, l) => sum + l.esims, 0),
+    quantity: orderRows.reduce((sum, r) => sum + r.quantity, 0),
+    revenueVnd: orderRows.reduce((sum, r) => sum + r.revenueVnd, 0),
+    refundVnd: orderRows.reduce((sum, r) => sum + r.refundVnd, 0),
   });
   total.font = { name: FONT, size: 12, bold: true };
 
   for (let r = 2; r <= sheet.rowCount; r++) {
-    sheet.getCell(r, 4).numFmt = MONEY_FORMAT;
+    sheet.getCell(r, 5).numFmt = MONEY_FORMAT;
+    sheet.getCell(r, 6).numFmt = MONEY_FORMAT;
   }
   for (let r = 1; r <= sheet.rowCount; r++) {
     for (let c = 1; c <= 11; c++) {

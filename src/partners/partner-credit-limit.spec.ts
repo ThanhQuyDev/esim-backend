@@ -422,9 +422,7 @@ describe('the monthly statement (vande #056)', () => {
         periodLabel: 'Tháng 10/2026',
         amountDueVnd: 3_900_000,
         attachment: expect.objectContaining({
-          filename: expect.stringMatching(
-            /^Chi-tiet-giao-dich-2026-10-doi-tac-11/,
-          ),
+          filename: expect.stringMatching(/^Thang-10-2026_Doi-soat-giao-dich_/),
         }),
       }),
     );
