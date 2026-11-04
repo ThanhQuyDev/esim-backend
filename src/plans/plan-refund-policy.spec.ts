@@ -15,6 +15,19 @@ describe('plan refund policy', () => {
     ).toBe(false);
   });
 
+  it('should refuse eSIM Access plans billed from purchase (vande-0411 #007)', () => {
+    const plan = { provider: 'esimaccess', name: 'Canada 75GB 30Days' };
+    expect(ruleRefundable({ ...plan, supplierActiveType: 3 })).toBe(false);
+    expect(ruleRefundable({ ...plan, supplierActiveType: 1 })).toBe(true);
+    expect(ruleRefundable({ ...plan, supplierActiveType: 2 })).toBe(true);
+    // Not filled yet, until the next catalogue sync.
+    expect(ruleRefundable({ ...plan, supplierActiveType: null })).toBe(true);
+    // The value only means this at eSIM Access.
+    expect(ruleRefundable({ provider: 'airalo', supplierActiveType: 3 })).toBe(
+      true,
+    );
+  });
+
   it('should refuse MicroEsim plans named Local, not the others', () => {
     expect(
       ruleRefundable({ provider: 'microesim', name: 'Japan Local 5GB 7 days' }),

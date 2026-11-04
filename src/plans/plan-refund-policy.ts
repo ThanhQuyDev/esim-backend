@@ -19,6 +19,8 @@
  * Checked against Billion's full eSIM catalogue on 25/10/2026: no Billion
  * Connect plan matches except its "Local" SIMs, and no other issuer's plan is
  * missed.
+ * - eSIM Access plans billed from the moment of purchase (`activeType` 3):
+ *   "Non-refundable — non-cancelable once purchased" (vande-0411 #007).
  * Everything else is refundable. An admin can set it by hand per plan
  * (`refundableOverride`), which wins over the rule.
  */
@@ -29,6 +31,7 @@ export interface RefundPolicyPlan {
   isLocalInventory?: boolean | null;
   isDomesticEsim?: boolean | null;
   refundableOverride?: boolean | null;
+  supplierActiveType?: number | null;
 }
 
 /** Billion plans, by name, that Billion does not take back (vande #010). */
@@ -43,6 +46,9 @@ export function ruleRefundable(plan: RefundPolicyPlan): boolean {
   if (plan.isDomesticEsim || plan.isLocalInventory) return false;
   const provider = (plan.provider ?? '').toLowerCase();
   if (provider === 'viettel' || provider.endsWith('-noidia')) return false;
+  if (provider === 'esimaccess' && Number(plan.supplierActiveType) === 3) {
+    return false;
+  }
   if (provider === 'microesim' && MICROESIM_LOCAL.test(plan.name ?? '')) {
     return false;
   }

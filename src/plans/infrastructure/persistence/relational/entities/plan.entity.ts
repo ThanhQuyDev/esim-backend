@@ -164,6 +164,10 @@ export class PlanEntity extends EntityRelationalHelper {
   @Column({ type: 'bigint', default: 0 })
   vndRetailPrice: number;
 
+  /** eSIM Access's `activeType`; 3 cannot be refunded (vande-0411 #007). */
+  @Column({ type: 'int', nullable: true })
+  supplierActiveType?: number | null;
+
   /**
    * Exit IP is local rather than routed via Hong Kong. Apps that geo-block
    * Hong Kong routing (TikTok, ChatGPT) work on these (#041).

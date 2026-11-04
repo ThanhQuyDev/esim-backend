@@ -265,6 +265,11 @@ export class CreatePlanDto {
   @Max(3650)
   activationValidityDays?: number | null;
 
+  /** eSIM Access's `activeType`, set by the catalogue sync (vande-0411 #007). */
+  @IsOptional()
+  @IsNumber()
+  supplierActiveType?: number | null;
+
   @ApiPropertyOptional({
     enum: DailyResetPolicyEnum,
     description:

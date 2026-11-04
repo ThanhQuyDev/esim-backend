@@ -336,6 +336,7 @@ export class PlansService implements OnApplicationBootstrap {
       tags: createPlanDto.tags ?? null,
       apn: createPlanDto.apn ?? null,
       activationValidityDays: createPlanDto.activationValidityDays ?? null,
+      supplierActiveType: createPlanDto.supplierActiveType ?? null,
       // What the supplier resets by, unless the caller stated it outright
       // (#063). Falling back to the supplier default means a plan typed in by
       // hand is as informative as a synced one.
@@ -594,6 +595,7 @@ export class PlansService implements OnApplicationBootstrap {
       ipExport: updatePlanDto.ipExport,
       activationValidUntil: updatePlanDto.activationValidUntil,
       activationValidityDays: updatePlanDto.activationValidityDays,
+      supplierActiveType: updatePlanDto.supplierActiveType,
       dailyResetPolicy: updatePlanDto.dailyResetPolicy,
       dailyResetUtcOffset: updatePlanDto.dailyResetUtcOffset,
       ...(money

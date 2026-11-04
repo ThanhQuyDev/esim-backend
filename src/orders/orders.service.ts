@@ -3237,6 +3237,23 @@ export class OrdersService {
     let selectedItemIds: number[] = [];
     let selectedEsims: Esim[] = [];
     let orderItems: OrderItem[] = [];
+    if (!isPartial) {
+      // The refund screen makes the admin pick the lines of such an order; a
+      // whole-order request must not get round it (vande-0411 #007).
+      const blocked: string[] = [];
+      for (const item of await this.orderItemsService.findByOrderId(order.id)) {
+        if (item.status === 'refunded') continue;
+        const plan = await this.plansService.findById(item.planId);
+        if (plan && !isPlanRefundable(plan)) {
+          blocked.push(plan.name ?? `#${item.id}`);
+        }
+      }
+      if (blocked.length) {
+        throw new UnprocessableEntityException(
+          `Gói không hỗ trợ hoàn tiền: ${blocked.join(', ')}`,
+        );
+      }
+    }
     if (isPartial) {
       orderItems = await this.orderItemsService.findByOrderId(order.id);
       const validIds = new Set(orderItems.map((item) => Number(item.id)));

@@ -151,6 +151,8 @@ export class Plan {
     description: 'Cost price in VND',
   })
   vndCostPrice: number;
+  /** eSIM Access's `activeType`; 3 cannot be refunded (vande-0411 #007). */
+  supplierActiveType?: number | null;
   /** Unrounded cost incl. supplier fee, for the cheapest-plan comparison (vande #064). */
   vndCostExact?: number | null;
 

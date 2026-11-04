@@ -421,6 +421,7 @@ export class EsimAccessService {
       // How long the customer has to activate before the eSIM is wasted (#070).
       // esimaccess calls this the unused-package validity and quotes it in days.
       activationValidityDays: parseValidityDays(pkg.unusedValidTime),
+      supplierActiveType: pkg.activeType ?? null,
       hotSpot: true,
       hotSpotAllow: this.formatHotSpotAllow(planType, dataMb),
       // TikTok / ChatGPT work unless traffic exits via Hong Kong (#043, test

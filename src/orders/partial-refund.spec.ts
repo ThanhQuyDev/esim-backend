@@ -105,6 +105,26 @@ describe('Per-item order refund', () => {
     expect(walletsService.refundOrder).not.toHaveBeenCalled();
   });
 
+  it('should refuse a whole-order refund too (vande-0411 #007)', async () => {
+    const { service, walletsService } = makeService();
+    (
+      service as unknown as { plansService: { findById: jest.Mock } }
+    ).plansService.findById.mockResolvedValue({
+      name: 'Canada 75GB 30Days',
+      provider: 'esimaccess',
+      supplierActiveType: 3,
+    });
+
+    await expect(
+      service.refundOrder(
+        7 as never,
+        { mode: 'wallet', amountVnd: 250000 } as never,
+        1,
+      ),
+    ).rejects.toThrow('Gói không hỗ trợ hoàn tiền: Canada 75GB 30Days');
+    expect(walletsService.refundOrder).not.toHaveBeenCalled();
+  });
+
   it('should cancel only the selected line with its supplier', async () => {
     const { service, cancelled } = makeService();
 
