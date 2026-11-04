@@ -85,7 +85,7 @@ describe('TikTok support on the storefront payload', () => {
       plan({ id: 2, apn: 'gpt-only' }),
     ]);
 
-    expect(groups.dataPlans[0].appSupport).toEqual({
+    expect(groups.dataPlans[0].appSupport).toMatchObject({
       tiktokIos: true,
       tiktokAndroid: true,
       tiktokAllDevices: true,

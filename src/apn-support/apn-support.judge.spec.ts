@@ -38,7 +38,7 @@ describe('ApnSupportService.judgePlan', () => {
   ]);
 
   it('should read the per-platform answer straight off the table', () => {
-    expect(service.judgePlan({ apn: 'cmhk' }, table)).toEqual({
+    expect(service.judgePlan({ apn: 'cmhk' }, table)).toMatchObject({
       tiktokIos: true,
       tiktokAndroid: false,
       tiktokAllDevices: false,

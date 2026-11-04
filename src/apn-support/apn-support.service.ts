@@ -37,6 +37,9 @@ export type PlanAppSupport = {
   /** TikTok on both platforms — the only claim that holds for an unknown device. */
   tiktokAllDevices: boolean;
   chatGpt: boolean;
+  /** Same reading as ChatGPT, for the CMS to say what does work (vande-0411 #041). */
+  gemini?: boolean;
+  claude?: boolean;
   /**
    * Whether the APN table (or the nonhkip marker) actually had an answer for this
    * plan — as opposed to all-false meaning "nothing is known".
@@ -261,6 +264,8 @@ export class ApnSupportService {
       // Cũng tính theo "chạy được cả 2 hệ máy" như TikTok: trang sản phẩm không
       // biết khách đang cầm máy gì (#068).
       chatGpt: worksOnEveryDevice(caps.chatGpt),
+      gemini: worksOnEveryDevice(caps.gemini),
+      claude: worksOnEveryDevice(caps.claude),
       known: true,
     };
   }
