@@ -113,6 +113,18 @@ const BILLION_ACCELERATION_ORDER_TRADE_TYPE = 'F016';
 /** F017 after-sale reasons: 20 = no reason given, 29 = eSIM not downloaded. */
 export type BillionAfterSaleReason = '20' | '29';
 
+/**
+ * The eSIM's number from N009, the only Billion notice or query that carries
+ * one. Billion can send it empty: that says nothing, so it neither wipes a
+ * number already known nor reads as one (vande-0411 #033).
+ */
+export function billionPhoneNumber(
+  msisdn: string | null | undefined,
+  known?: string | null,
+): string | null {
+  return msisdn?.trim() || known?.trim() || null;
+}
+
 @Injectable()
 export class BillionService {
   private readonly logger = new Logger(BillionService.name);
@@ -1086,7 +1098,8 @@ export class BillionService {
             activationCode ?? existing.activationCode ?? undefined,
           lpa: lpa ?? existing.lpa ?? undefined,
           apnValue: apn ?? existing.apnValue ?? undefined,
-          phoneNumber: sub.msisdn ?? existing.phoneNumber ?? undefined,
+          phoneNumber:
+            billionPhoneNumber(sub.msisdn, existing.phoneNumber) ?? undefined,
           status: 'available',
           userId: userId ?? existing.userId ?? undefined,
           orderItemId: orderItem.id,
@@ -1105,7 +1118,7 @@ export class BillionService {
         lpa,
         qrcode: null,
         apnValue: apn,
-        phoneNumber: sub.msisdn ?? null,
+        phoneNumber: billionPhoneNumber(sub.msisdn),
         status: 'available',
         userId,
         orderItemId: orderItem.id,
