@@ -22,8 +22,10 @@ export interface MarginTier {
 
 export interface MultidayPlan {
   isAbleMultidate?: boolean | null;
-  /** Per-day cost in đồng, supplier surcharge included. */
+  /** Per-day cost in đồng, supplier surcharge included, rounded for display. */
   vndCostPrice?: number | string | null;
+  /** The same cost as the supplier's dollars × the rate, not rounded. */
+  vndCostExact?: number | string | null;
   /** 1-day retail in đồng. */
   vndPrice?: number | string | null;
 }
@@ -57,7 +59,25 @@ export function multidayRetailVnd(
   const perDay = Number(plan.vndPrice ?? 0) || 0;
   const n = plan.isAbleMultidate ? Math.max(1, Math.round(days || 1)) : 1;
   if (n === 1) return perDay;
-  const cost = Number(plan.vndCostPrice ?? 0) || 0;
+  // The real cost when known: 14 days at 20 615 đ, not at the displayed 21 000 đ
+  // (vande-0411 #001).
+  const cost =
+    Number(plan.vndCostExact ?? 0) || Number(plan.vndCostPrice ?? 0) || 0;
   if (!tiers?.length || !(cost > 0)) return perDay * n;
   return retailVndForCost(cost * n, tiers);
+}
+
+/**
+ * What one line of `days` costs the customer: the retail above less the plan's
+ * own discount. Order pricing and the cart both read this, so they cannot differ.
+ */
+export function discountedRetailVnd(
+  plan: MultidayPlan & { discount?: number | string | null },
+  days: number | null | undefined,
+  tiers: MarginTier[] | null | undefined,
+): number {
+  const vnd = multidayRetailVnd(plan, Number(days ?? 1), tiers);
+  const discount = Number(plan.discount ?? 0);
+  if (!(discount > 0)) return vnd;
+  return Math.round((vnd * (1 - discount / 100)) / 1000) * 1000;
 }

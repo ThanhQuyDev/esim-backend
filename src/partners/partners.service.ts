@@ -10434,6 +10434,7 @@ export class PartnersService {
               {
                 isAbleMultidate: true,
                 vndCostPrice: plan[0].vndCostPrice,
+                vndCostExact: plan[0].vndCostExact,
                 vndPrice: plan[0].vndPrice,
               },
               days,

@@ -26,6 +26,18 @@ export class Cart {
   })
   periodNum: number | null;
 
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'What checkout charges for one of this line, in đồng',
+  })
+  unitVndPrice?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description: 'The same before the plan discount, in đồng',
+  })
+  unitOriginalVndPrice?: number;
+
   @ApiProperty()
   createdAt: Date;
 

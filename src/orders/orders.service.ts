@@ -1,5 +1,9 @@
 import { esimLifecycleStatus } from '../esims/esim-lifecycle';
-import { MarginTier, multidayRetailVnd } from '../plans/multiday-price';
+import {
+  discountedRetailVnd,
+  MarginTier,
+  multidayRetailVnd,
+} from '../plans/multiday-price';
 import {
   AUTO_RETRY_PROVIDERS,
   AUTO_RETRY_WINDOW_HOURS,
@@ -161,10 +165,7 @@ export function getDiscountedVndPrice(
   /** Margin tiers: a day pass is priced on its whole cost (vande #014). */
   tiers?: MarginTier[] | null,
 ): number {
-  const multiplier = getPlanPeriodMultiplier(plan, periodNum);
-  const vndPrice = multidayRetailVnd(plan, multiplier, tiers);
-  if (!plan.discount || plan.discount <= 0) return vndPrice;
-  return roundVndToThousands(vndPrice * (1 - plan.discount / 100));
+  return discountedRetailVnd(plan, periodNum, tiers);
 }
 
 /**
