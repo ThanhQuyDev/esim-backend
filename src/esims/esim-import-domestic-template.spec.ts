@@ -256,7 +256,7 @@ describe('Nhập eSIM nội địa theo file mẫu mới (#066)', () => {
     expect(plan.type).toBe('daily');
     expect(plan.costPrice).toBe(1408000);
     expect(plan.retailPrice).toBe(1708000);
-    expect(plan.call).toBe(1);
+    expect(plan.call).toBe(530);
     expect(plan.ipExport).toBe('VN');
     expect(plan.domesticOffer).toEqual({
       firstCycleDataMb: 7 * 1024,
@@ -469,7 +469,7 @@ describe('Nhập eSIM nội địa theo file mẫu mới (#066)', () => {
       'domestic',
     );
     expect(planUpdates[0]).toMatchObject({
-      type: 'month',
+      type: 'fixed',
       durationDays: 360,
       dataMb: 10240,
       costPrice: 10036000,

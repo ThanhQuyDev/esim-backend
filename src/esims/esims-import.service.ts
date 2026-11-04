@@ -281,11 +281,14 @@ export class EsimsImportService {
           this.cellNum(cellAt(row, 'days', 6)) ??
           (domesticOffer ? domesticOffer.cycleMonths * 30 : 0);
         const bundleType = this.cellStr(cellAt(row, 'bundle type'));
-        const type =
+        // A monthly total is a fixed plan: read as anything else it was labelled
+        // "500 GB/ngày" (vande-0411 #044). The offer keeps its period.
+        const rawType =
           this.cellStr(cellAt(row, 'type', 7)) ??
           domesticOffer?.bundleType ??
           this.travelPlanType(bundleType) ??
           'daily';
+        const type = rawType.toLowerCase() === 'month' ? 'fixed' : rawType;
 
         // Expired time
         const expiredTimeRaw = cellAt(row, 'expried time', 8);
@@ -310,23 +313,30 @@ export class EsimsImportService {
 
         // Support Phone Number, Call, SMS. The domestic template has no
         // yes/no Call/SMS columns: any minutes or SMS in the offer mean yes.
+        // How many, not yes/no: stored as 1, plans read "1 phút gọi" (vande-0411
+        // #044). The other templates only say whether it has any.
         const callRaw = this.cellStr(cellAt(row, 'call', 18));
+        const offerMinutes = domesticOffer
+          ? domesticOffer.offNetMinutes +
+            domesticOffer.onNetMinutes +
+            domesticOffer.domesticMinutes
+          : 0;
         const call =
-          this.parseVietnameseBoolean(callRaw) ||
-          (domesticOffer &&
-            domesticOffer.offNetMinutes +
-              domesticOffer.onNetMinutes +
-              domesticOffer.domesticMinutes >
-              0)
-            ? 1
-            : null;
+          offerMinutes > 0
+            ? offerMinutes
+            : !domesticOffer && this.parseVietnameseBoolean(callRaw)
+              ? 1
+              : null;
         const smsRaw = this.cellStr(cellAt(row, 'sms', 19));
+        const offerSms = domesticOffer
+          ? domesticOffer.offNetSms + domesticOffer.onNetSms
+          : 0;
         const sms =
-          this.parseVietnameseBoolean(smsRaw) ||
-          (domesticOffer &&
-            domesticOffer.offNetSms + domesticOffer.onNetSms > 0)
-            ? 1
-            : null;
+          offerSms > 0
+            ? offerSms
+            : !domesticOffer && this.parseVietnameseBoolean(smsRaw)
+              ? 1
+              : null;
 
         const costPrice = this.cellNum(cellAt(row, 'cost price', 25)) ?? 0;
         const sellPrice = this.cellNum(cellAt(row, 'sell price', 26)) ?? 0;
@@ -483,6 +493,11 @@ export class EsimsImportService {
                   planPatch.durationDays = durationDays;
                 if (dataMb && existingPlan.dataMb !== dataMb)
                   planPatch.dataMb = dataMb;
+              }
+              // A re-upload also corrects what the plan says about calls.
+              if (domesticOffer) {
+                if ((existingPlan.call ?? null) !== call) planPatch.call = call;
+                if ((existingPlan.sms ?? null) !== sms) planPatch.sms = sms;
               }
 
               if (Object.keys(planPatch).length > 0) {
