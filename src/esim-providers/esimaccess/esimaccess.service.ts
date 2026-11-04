@@ -402,7 +402,9 @@ export class EsimAccessService {
     const planData = {
       provider: 'esimaccess',
       providerPlanId: pkg.packageCode,
-      name: planName,
+      // The supplier's own name, to compare against its site at a glance
+      // (vande-0411 #039); ours is only for a package with none.
+      name: pkg.name?.trim() || planName,
       countryCode: destinationId ? pkg.location : null,
       destinationId,
       regionId,

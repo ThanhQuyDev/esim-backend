@@ -105,7 +105,9 @@ function makeService(opts: { existingRegionName?: string } = {}) {
 }
 
 describe('eSIM Access regional plan naming', () => {
-  it('should name a regional plan after its region, not the first country', async () => {
+  // Since vande-0411 #039 the name is the supplier's own; the region's name goes
+  // in the standard name, built from the plan's location.
+  it('should keep the name of a regional plan, not the first country', async () => {
     const { created, callProcess } = makeService({
       existingRegionName: 'Europe',
     });
@@ -113,19 +115,19 @@ describe('eSIM Access regional plan naming', () => {
     await callProcess(europePackage());
 
     expect(created).toHaveLength(1);
-    expect(created[0].name).toBe('Europe 3GB / 30day');
+    expect(created[0].name).toBe('Europe 3GB 30Days');
     // The bug this replaces.
     expect(String(created[0].name)).not.toContain('Aland Islands');
   });
 
-  it('should follow the region name an admin set in the CMS', async () => {
+  it('should keep the supplier name whatever the region is called in the CMS', async () => {
     const { created, callProcess } = makeService({
       existingRegionName: 'eSIM Châu Âu',
     });
 
     await callProcess(europePackage());
 
-    expect(created[0].name).toBe('eSIM Châu Âu 3GB / 30day');
+    expect(created[0].name).toBe('Europe 3GB 30Days');
   });
 
   it('should leave the slug untouched, so a re-sync renames instead of duplicating', async () => {
@@ -142,12 +144,12 @@ describe('eSIM Access regional plan naming', () => {
     expect(String(created[0].slug)).not.toContain('europe');
   });
 
-  it('should leave single-country plans named exactly as before', async () => {
+  it('should take the name of a single-country plan from the supplier', async () => {
     const { created, callProcess } = makeService();
 
     await callProcess(spainPackage());
 
-    expect(created[0].name).toBe('Spain 3GB / 30day');
+    expect(created[0].name).toBe('Spain 3GB 30Days');
   });
 });
 
