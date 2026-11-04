@@ -123,4 +123,11 @@ export class EsimLookupResponseDto {
   /** SMS left, as the provider reports them (#015, test round 4). */
   @ApiPropertyOptional({ type: Number })
   smsRemaining: number | null;
+
+  /** First package and what was added, when anything was (vande-0411 #020). */
+  @ApiPropertyOptional()
+  packages?: unknown[];
+
+  @ApiPropertyOptional({ type: Number })
+  topupCount?: number;
 }

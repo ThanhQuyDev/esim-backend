@@ -375,6 +375,7 @@ export class EsimsRelationalRepository implements EsimRepository {
       vndPrice: number;
       vndCostPrice: number;
       provider: string | null;
+      status: string;
       createdAt: Date;
     }[]
   > {
@@ -385,7 +386,7 @@ export class EsimsRelationalRepository implements EsimRepository {
               "topupDurationDays" AS "durationDays",
               "topupIsUnlimited" AS "isUnlimited",
               "vndPrice", "vndCostPrice", "topupProvider" AS "provider",
-              "createdAt"
+              "status", "createdAt"
          FROM "order"
         WHERE "targetIccid" = $1
           AND "orderType" = 'TOPUP'
@@ -410,8 +411,48 @@ export class EsimsRelationalRepository implements EsimRepository {
       vndPrice: Number(row.vndPrice) || 0,
       vndCostPrice: Number(row.vndCostPrice) || 0,
       provider: (row.provider as string) ?? null,
+      status: String(row.status ?? ''),
       createdAt: row.createdAt as Date,
     }));
+  }
+
+  /** The line an eSIM was bought on, for its first package (vande-0411 #020). */
+  async findBaseOrderLine(id: Esim['id']): Promise<{
+    orderId: number;
+    orderNumber: string | null;
+    vndPrice: number | null;
+    createdAt: Date;
+    soldToDistributor: boolean;
+  } | null> {
+    const rows: {
+      orderId: number | string;
+      orderNumber: string | null;
+      vndPrice: string | number | null;
+      createdAt: Date;
+      soldToDistributor: boolean;
+    }[] = await this.esimsRepository.query(
+      `SELECT o.id AS "orderId", o."orderNumber", oi."vndPrice", o."createdAt",
+              EXISTS (
+                SELECT 1 FROM partner p
+                 WHERE p."userId" = o."userId"
+                   AND p."partnerType" = 'distribution'
+                   AND p."deletedAt" IS NULL
+              ) AS "soldToDistributor"
+         FROM esim e
+         JOIN order_item oi ON oi.id = e."orderItemId"
+         JOIN "order" o ON o.id = oi."orderId"
+        WHERE e.id = $1`,
+      [Number(id)],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      orderId: Number(row.orderId),
+      orderNumber: row.orderNumber,
+      vndPrice: row.vndPrice == null ? null : Number(row.vndPrice),
+      createdAt: row.createdAt,
+      soldToDistributor: !!row.soldToDistributor,
+    };
   }
 
   /**

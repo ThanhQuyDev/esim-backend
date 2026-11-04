@@ -87,6 +87,9 @@ describe('eSIM lookup (vande #037)', () => {
           activatedAt: null,
           plan,
         }),
+        publicPackagesOf: jest
+          .fn()
+          .mockResolvedValue({ packages: [], topupCount: 0 }),
         getDataUsage: jest.fn().mockResolvedValue({
           status: 'ACTIVE',
           isUnlimited: false,

@@ -30,6 +30,7 @@ describe('Topup packages on the eSIM detail (#026)', () => {
     const esimsRepository = {
       findByIdWithRelations: jest.fn().mockResolvedValue(esim),
       findChosenDays: jest.fn().mockResolvedValue(30),
+      findBaseOrderLine: jest.fn().mockResolvedValue(null),
       findOrderNumbersByOrderItemIds: jest.fn().mockResolvedValue(new Map()),
       countTopupsByIccids: jest
         .fn()
@@ -110,6 +111,7 @@ describe('Số ngày khách chọn trên chi tiết eSIM (vande #006)', () => {
         .mockResolvedValue({ id: 586, iccid: '8948010010047313209' }),
       findTopupsByIccid: jest.fn().mockResolvedValue([]),
       findChosenDays: jest.fn().mockResolvedValue(30),
+      findBaseOrderLine: jest.fn().mockResolvedValue(null),
     };
     service.attachTopupInfo = jest.fn((rows: unknown[]) =>
       Promise.resolve(rows),

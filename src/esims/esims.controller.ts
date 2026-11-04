@@ -271,6 +271,7 @@ export class EsimsPublicController {
       expiredAt: usage.expiredAt,
       lastUpdateTime: usage.lastUpdateTime,
       usageAvailable: usage.usageAvailable !== false,
+      ...(await this.esimsService.publicPackagesOf(esim)),
       // The provider's own totals when it reports them, else the plan's.
       ...lookupVoiceAndSms(usage, esim.plan),
     };

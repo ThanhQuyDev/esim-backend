@@ -1,3 +1,4 @@
+import { buildEsimPackages, type EsimPackage } from './esim-packages';
 import { DataSource } from 'typeorm';
 import { PlansService } from '../plans/plans.service';
 import { derivedExpiry } from './daily-cycle';
@@ -277,8 +278,16 @@ export class EsimsService {
       esims.map(async (esim) => {
         if (!esim.topupCount || !esim.iccid) return esim;
         const rows = await this.esimsRepository.findTopupsByIccid(esim.iccid);
+        const line = await this.esimsRepository.findBaseOrderLine(esim.id);
+        const chosenDays = await this.esimsRepository.findChosenDays(esim.id);
         return {
           ...esim,
+          packages: buildEsimPackages({
+            ...esim,
+            chosenDays,
+            baseLine: line,
+            topups: rows,
+          }),
           topups: rows.map((row) => ({
             orderId: row.orderId,
             orderNumber: row.orderNumber,
@@ -292,6 +301,31 @@ export class EsimsService {
         };
       }),
     );
+  }
+
+  /**
+   * The packages for the public lookup page, where anyone holding the ICCID
+   * reads them: no order references, and no price on what a distribution
+   * partner bought, since that is their wholesale price and the reader their
+   * customer (vande-0411 #020).
+   */
+  async publicPackagesOf(esim: Esim): Promise<{
+    packages: Omit<EsimPackage, 'orderId' | 'orderNumber'>[];
+    topupCount: number;
+  }> {
+    const line = await this.esimsRepository.findBaseOrderLine(esim.id);
+    return {
+      topupCount: esim.topupCount ?? 0,
+      packages: (esim.topupCount ? (esim.packages ?? []) : []).map((pkg) => {
+        const { orderId, orderNumber, ...shown } = pkg;
+        void orderId;
+        void orderNumber;
+        return {
+          ...shown,
+          vndPrice: line?.soldToDistributor ? null : pkg.vndPrice,
+        };
+      }),
+    };
   }
 
   /** The topups and add-ons bought for this eSIM that went through. */
@@ -348,7 +382,22 @@ export class EsimsService {
           withTopup.plan)
         : withTopup.plan;
     const supplierRefunds = await this.supplierRefundsOf(esim.iccid);
-    return { ...withTopup, plan, topups, chosenDays, supplierRefunds };
+    const baseLine = await this.esimsRepository.findBaseOrderLine(esim.id);
+    const packages = buildEsimPackages({
+      ...withTopup,
+      plan,
+      chosenDays,
+      baseLine,
+      topups,
+    });
+    return {
+      ...withTopup,
+      plan,
+      topups,
+      chosenDays,
+      supplierRefunds,
+      packages,
+    };
   }
 
   /**

@@ -1,3 +1,4 @@
+import type { EsimPackage } from '../esim-packages';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from '../../users/domain/user';
 import { Plan } from '../../plans/domain/plan';
@@ -167,6 +168,9 @@ export class Esim {
    */
   @ApiPropertyOptional({ type: () => [EsimTopupDto] })
   topups?: EsimTopupDto[];
+
+  /** The first package, then each top-up or add-on (vande-0411 #020). */
+  packages?: EsimPackage[];
 
   /** Refund requests sent to the supplier (vande-0411 #009). */
   supplierRefunds?: {
