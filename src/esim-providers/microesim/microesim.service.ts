@@ -175,6 +175,9 @@ export class MicroEsimService {
 
   // ─── Catalogue sync ──────────────────────────────────────────────────────
 
+  /** Every plan the supplier lists, for the current sync. */
+  private liveDataplanIds = new Set<string>();
+
   async syncPlans(): Promise<void> {
     this.logger.log('Starting microesim plan sync...');
     const syncStartedAt = new Date();
@@ -188,6 +191,9 @@ export class MicroEsimService {
 
     try {
       const plans = await this.fetchAllPlans();
+      this.liveDataplanIds = new Set(
+        plans.map((item) => item.channel_dataplan_id),
+      );
       const hkdToUsd = await this.getHkdToUsdRate();
       let itemsSynced = 0;
 
@@ -377,6 +383,25 @@ export class MicroEsimService {
     return `${root}-mi-${Date.now().toString(36)}`;
   }
 
+  /**
+   * The row this plan is stored on: its own, by the supplier's id. The slug is
+   * only for a row an older mapping left, never one holding another plan on
+   * sale: "Japan-Daily1GB-5-5mbps-A1" and "-A2" build the same slug, so the
+   * second took over the first's row at every sync and 6 plans were missing
+   * while others came back off sale (vande-0411 #034).
+   */
+  private async existingPlanFor(item: MicroEsimDataplan, baseSlug: string) {
+    const own = await this.plansService.findByProviderPlanId(
+      PROVIDER,
+      item.channel_dataplan_id,
+    );
+    if (own) return own;
+    const bySlug = await this.plansService.findBySlug(baseSlug);
+    return bySlug && !this.liveDataplanIds.has(bySlug.providerPlanId ?? '')
+      ? bySlug
+      : null;
+  }
+
   private async upsertPlan(
     item: MicroEsimDataplan,
     destinationId: number | null,
@@ -403,11 +428,7 @@ export class MicroEsimService {
 
     // Matched by the supplier's plan id, so a slug format change renames the
     // row instead of creating a duplicate next to it.
-    const existing =
-      (await this.plansService.findByProviderPlanId(
-        PROVIDER,
-        item.channel_dataplan_id,
-      )) ?? (await this.plansService.findBySlug(baseSlug));
+    const existing = await this.existingPlanFor(item, baseSlug);
     const slug = await this.plansService.uniqueSyncedPlanSlug(
       baseSlug,
       PROVIDER,

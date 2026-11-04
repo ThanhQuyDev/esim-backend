@@ -755,9 +755,17 @@ export class PlansService implements OnApplicationBootstrap {
     this.flushing = this.flushing
       .catch(() => undefined)
       .then(async () => {
-        await this.repricePlans(ids);
-        if (activate.length)
-          await this.plansRepository.setActive(activate, true);
+        try {
+          await this.repricePlans(ids);
+          if (activate.length)
+            await this.plansRepository.setActive(activate, true);
+        } catch (err) {
+          // Not forgotten: a plan the supplier sells would otherwise stay off
+          // sale until something else switches it on (vande-0411 #034).
+          for (const id of activate) this.pendingActivation.add(id);
+          for (const id of ids) this.pendingReprice.add(id);
+          throw err;
+        }
       });
     return this.flushing;
   }
