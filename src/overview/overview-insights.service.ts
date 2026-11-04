@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { countryName, ipPlace } from '../orders/buyer-location';
+import { TRAFFIC_GROUPS } from '../orders/traffic-source';
 import { deviceInfo } from '../utils/device-info';
 import {
   COMPLETED_ORDER_ITEM_STATUSES,
@@ -116,6 +117,46 @@ export class OverviewInsightsService {
       this.logger.warn(`recordVisit: ${(err as Error).message}`);
       return { recorded: false };
     }
+  }
+
+  /**
+   * Paid web orders by "Nguồn truy cập" (vande-0411 #052). Orders with none
+   * (placed before it existed, or for a customer by staff) are counted apart,
+   * so they do not pass for a source.
+   */
+  async getTrafficSources(query: OverviewDateRangeQueryDto) {
+    const range = overviewRange(query);
+    const rows: { group: string | null; source: string | null; n: unknown }[] =
+      await this.dataSource.query(
+        `SELECT o."trafficGroup" AS "group", o."trafficSource" AS source, COUNT(*) AS n
+           FROM "order" o
+          WHERE ${WEB_ORDER} AND ${PAID} AND ${orderInRange('1', '2')}
+          GROUP BY 1, 2`,
+        [range.from, range.to],
+      );
+    const known = rows.filter((row) => row.source);
+    const total = known.reduce((sum, row) => sum + n(row.n), 0);
+    const percent = (value: number) =>
+      total ? Math.round((value / total) * 1000) / 10 : 0;
+    const groups = TRAFFIC_GROUPS.map((group) => {
+      const sources = known
+        .filter((row) => (row.group ?? 'unknown') === group)
+        .map((row) => ({
+          source: String(row.source),
+          orders: n(row.n),
+          percent: percent(n(row.n)),
+        }))
+        .sort((a, b) => b.orders - a.orders);
+      const orders = sources.reduce((sum, row) => sum + row.orders, 0);
+      return { group, orders, percent: percent(orders), sources };
+    }).filter((group) => group.orders > 0);
+    return {
+      total,
+      unrecorded: rows
+        .filter((row) => !row.source)
+        .reduce((sum, row) => sum + n(row.n), 0),
+      groups,
+    };
   }
 
   /** The five KPI cards (vande #059). */

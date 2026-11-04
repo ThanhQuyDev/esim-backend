@@ -1,3 +1,4 @@
+import type { TrafficSignals } from '../../../../traffic-source';
 import {
   Column,
   CreateDateColumn,
@@ -174,6 +175,16 @@ export class OrderEntity extends EntityRelationalHelper {
 
   @Column({ type: String, nullable: true })
   buyerLocation?: string | null;
+
+  /** "Nguồn truy cập" (vande-0411 #052), see `orders/traffic-source.ts`. */
+  @Column({ type: String, length: 120, nullable: true })
+  trafficSource?: string | null;
+
+  @Column({ type: String, length: 20, nullable: true })
+  trafficGroup?: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  trafficDetail?: TrafficSignals | null;
 
   /**
    * The storefront language at checkout, "vi" or "en" (doitac-3010 #043). An

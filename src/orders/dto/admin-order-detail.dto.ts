@@ -467,6 +467,16 @@ export class AdminOrderDetailDto {
   })
   buyerLocation?: string | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Facebook Ads',
+  })
+  trafficSource?: string | null;
+
+  @ApiPropertyOptional({ type: Object, nullable: true })
+  trafficDetail?: Record<string, unknown> | null;
+
   @ApiPropertyOptional({ type: String, nullable: true, example: 'en' })
   checkoutLocale?: string | null;
 

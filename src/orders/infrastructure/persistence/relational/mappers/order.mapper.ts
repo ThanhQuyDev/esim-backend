@@ -48,6 +48,9 @@ export class OrderMapper {
     domainEntity.deliveryEmail = raw.deliveryEmail ?? null;
     domainEntity.buyerIp = raw.buyerIp ?? null;
     domainEntity.buyerLocation = raw.buyerLocation ?? null;
+    domainEntity.trafficSource = raw.trafficSource ?? null;
+    domainEntity.trafficGroup = raw.trafficGroup ?? null;
+    domainEntity.trafficDetail = raw.trafficDetail ?? null;
     domainEntity.checkoutLocale = raw.checkoutLocale ?? null;
     domainEntity.paymentUsdIssue = isPaymentUsdIssue(raw);
     domainEntity.bulkMode = raw.bulkMode ?? null;
@@ -142,6 +145,9 @@ export class OrderMapper {
     persistenceEntity.deliveryEmail = domainEntity.deliveryEmail;
     persistenceEntity.buyerIp = domainEntity.buyerIp;
     persistenceEntity.buyerLocation = domainEntity.buyerLocation;
+    persistenceEntity.trafficSource = domainEntity.trafficSource;
+    persistenceEntity.trafficGroup = domainEntity.trafficGroup;
+    persistenceEntity.trafficDetail = domainEntity.trafficDetail;
     persistenceEntity.checkoutLocale = domainEntity.checkoutLocale;
     persistenceEntity.bulkMode = domainEntity.bulkMode;
     persistenceEntity.bulkBatch = domainEntity.bulkBatch;

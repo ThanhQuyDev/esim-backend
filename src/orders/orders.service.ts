@@ -100,6 +100,7 @@ import { SessionShapeEnum } from '../partners/partners.enum';
 import { generateOrderNumber } from '../utils/order-number';
 import { parseOrderImportFile } from '../utils/order-import-file';
 import { ipLocation, publicIp } from './buyer-location';
+import { orderTrafficFields } from './traffic-source';
 import { randomBytes } from 'crypto';
 import { downloadFilename } from '../utils/download-filename';
 import { activationDeadlineFromDays } from '../plans/plan-activation';
@@ -672,6 +673,8 @@ export class OrdersService {
       buyerIpHash: fraudSignals.ipHash,
       buyerIp: publicIp(clientIp),
       buyerLocation: await ipLocation(clientIp),
+      // "Nguồn truy cập" (vande-0411 #052).
+      ...orderTrafficFields(dto.trafficSignals, clientUserAgent),
       // English checkout = prices read in $ (doitac-3010 #043).
       checkoutLocale: checkoutLocaleOf(dto.locale),
       buyerVisitorId: fraudSignals.visitorId,
@@ -1025,6 +1028,8 @@ export class OrdersService {
       buyerIpHash: fraudSignals.ipHash,
       buyerIp: publicIp(clientIp),
       buyerLocation: await ipLocation(clientIp),
+      // "Nguồn truy cập" (vande-0411 #052).
+      ...orderTrafficFields(dto.trafficSignals, clientUserAgent),
       // English checkout = prices read in $ (doitac-3010 #043).
       checkoutLocale: checkoutLocaleOf(dto.locale),
       buyerVisitorId: fraudSignals.visitorId,
@@ -3083,6 +3088,8 @@ export class OrdersService {
       // "Vị trí & IP" (vande #058).
       buyerIp: order.buyerIp ?? null,
       buyerLocation: order.buyerLocation ?? null,
+      trafficSource: order.trafficSource ?? null,
+      trafficDetail: order.trafficDetail ?? null,
       // "payment $" (doitac-3010 #043).
       checkoutLocale: order.checkoutLocale ?? null,
       paymentUsdIssue: isPaymentUsdIssue(order),

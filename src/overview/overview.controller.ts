@@ -58,6 +58,14 @@ export class OverviewController {
     return this.insights.getAudience(query);
   }
 
+  /** Paid web orders by where they came from (vande-0411 #052). */
+  @ApiOperation({ summary: 'Overview traffic sources (vande-0411 #052)' })
+  @Get('traffic-sources')
+  @HttpCode(HttpStatus.OK)
+  getTrafficSources(@Query() query: OverviewProviderFilterQueryDto) {
+    return this.insights.getTrafficSources(query);
+  }
+
   @ApiOperation({ summary: 'Get all overview dashboard blocks' })
   @ApiOkResponse({ type: OverviewResponseDto })
   @Get()

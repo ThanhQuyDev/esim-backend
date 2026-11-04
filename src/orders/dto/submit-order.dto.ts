@@ -7,12 +7,55 @@ import {
   IsOptional,
   IsString,
   IsArray,
+  IsBoolean,
   ValidateNested,
   Min,
   MaxLength,
   IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+/** What the first page of the session noted (vande-0411 #052). */
+export class TrafficSignalsDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  referrer?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmSource?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmMedium?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmCampaign?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(30, { each: true })
+  clickIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  secFetchSite?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  textFragment?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  partnerLink?: boolean;
+}
 
 export class SubmitOrderInvoiceDto {
   @ApiProperty({ example: 'Công ty TNHH ABC', maxLength: 255 })
@@ -135,6 +178,15 @@ export class SubmitOrderDto {
   // A signed click token is longer than the bare id (doitac-1410 #026).
   @MaxLength(128)
   partnerClickId?: string;
+
+  @ApiPropertyOptional({
+    type: TrafficSignalsDto,
+    description: 'Where the buyer came from (vande-0411 #052)',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TrafficSignalsDto)
+  trafficSignals?: TrafficSignalsDto;
 
   @ApiPropertyOptional({
     type: String,

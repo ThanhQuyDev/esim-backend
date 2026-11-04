@@ -1,3 +1,4 @@
+import type { TrafficSignals } from '../traffic-source';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   TierSourceEnum,
@@ -175,6 +176,10 @@ export class Order {
   /** "Vị trí & IP" of the buyer (vande #058). */
   buyerIp?: string | null;
   buyerLocation?: string | null;
+  /** "Nguồn truy cập" (vande-0411 #052). */
+  trafficSource?: string | null;
+  trafficGroup?: string | null;
+  trafficDetail?: TrafficSignals | null;
   /** Storefront language at checkout: "en" read prices in $ (doitac-3010 #043). */
   checkoutLocale?: string | null;
   /**
