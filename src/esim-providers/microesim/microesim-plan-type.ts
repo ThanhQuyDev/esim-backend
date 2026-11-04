@@ -12,6 +12,12 @@ import { unlimitedTypeForSpeed } from '../billion/billion-catalogue';
  * The types follow the customer's rule already applied to Billion (#002, test
  * round 4): a daily quota slowed to more than 1 Mbps is "unlimited", to exactly
  * 1 Mbps "unlimited-reduce", to less (or cut) "daily".
+ *
+ * MicroEsim has no field for the type itself: `data` and `rule_desc` are what
+ * it gives, and a few plans contradict their own name (read 05/11/2026, 15 092
+ * plans): "Turkey-Daily200MB-1-A0" says "Total200MB" in `data` (2 plans), and
+ * "Thailand-Daily1GB-10-5mbps-A1" says "Unlimited" (56). Where the name says
+ * Daily with a size, it is a daily plan (vande-0411 #028).
  */
 export interface MicroEsimAllowance {
   type: string;
@@ -54,9 +60,16 @@ export function microEsimAllowance(item: {
   const name = item.channel_dataplan_name ?? '';
   const throttle = microEsimThrottleKbps(item.rule_desc);
   const fupSpeed = speedLabel(throttle);
+  const dailyByName = /-daily\s*[\d.]+\s*(gb|mb)/i.test(name);
+  // "Unlimited" in `data` with no speed stated really has no quota to read.
+  const quotaByName =
+    dailyByName &&
+    (/^total/i.test(data) || (/unlimited/i.test(data) && throttle > 0));
 
-  if (/^daily/i.test(data) || (!data && /-daily/i.test(name))) {
-    const dataMb = sizeMb(data) || sizeMb(name);
+  if (/^daily/i.test(data) || (!data && /-daily/i.test(name)) || quotaByName) {
+    const dataMb = quotaByName
+      ? sizeMb(name.match(/-daily\s*([\d.]+\s*(gb|mb))/i)?.[1] ?? '')
+      : sizeMb(data) || sizeMb(name);
     return {
       type: throttle > 0 ? unlimitedTypeForSpeed(throttle) : 'daily',
       dataMb,

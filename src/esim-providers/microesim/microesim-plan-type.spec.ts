@@ -41,6 +41,32 @@ describe('MicroEsim plan type (vande #012)', () => {
     });
   });
 
+  it('should go by the name where it says Daily and `data` does not (vande-0411 #028)', () => {
+    expect(
+      t('Total200MB', 'unlimited 128kbps', 'Turkey-Daily200MB-1-A0'),
+    ).toEqual({
+      type: 'daily',
+      dataMb: 200,
+      fupSpeed: '128kbps',
+    });
+    expect(
+      t('Unlimited', 'unlimited 5mbps', 'Thailand-Daily1GB-10-5mbps-A1'),
+    ).toEqual({ type: 'unlimited', dataMb: 1024, fupSpeed: '5Mbps' });
+    expect(
+      t('Daily1GB', 'unlimited 10mbps', 'China(T+C)-Daily1GB-3-D1'),
+    ).toEqual({
+      type: 'unlimited',
+      dataMb: 1024,
+      fupSpeed: '10Mbps',
+    });
+  });
+
+  it('should keep a total plan fixed though its name holds no Daily', () => {
+    expect(
+      t('Total5GB', 'unlimited 128kbps', 'Cambodia(T+C)-Total5GB-15-A0').type,
+    ).toBe('fixed');
+  });
+
   it('should read Unlimited plans', () => {
     expect(t('Unlimited', 'unlimited')).toEqual({
       type: 'unlimited',
