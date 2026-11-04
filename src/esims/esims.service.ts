@@ -112,6 +112,18 @@ export function topupDataMb(text: string | null | undefined): number {
   return m[2].toUpperCase() === 'GB' ? Math.round(n * 1024) : Math.round(n);
 }
 
+/** The later of two dates, as an ISO string; null when neither is known. */
+export function laterExpiry(
+  a: string | Date | null | undefined,
+  b: string | Date | null | undefined,
+): string | null {
+  const times = [a, b]
+    .filter(Boolean)
+    .map((value) => new Date(value as string | Date).getTime())
+    .filter((time) => !Number.isNaN(time));
+  return times.length ? new Date(Math.max(...times)).toISOString() : null;
+}
+
 @Injectable()
 export class EsimsService {
   private readonly logger = new Logger(EsimsService.name);
@@ -246,6 +258,11 @@ export class EsimsService {
         // The package names come from the same rolled-up query, so the customer's
         // profile can name what was topped up without a second round trip (#031).
         topupPackageNames: info?.packageNames ?? null,
+        addedDays: info?.addedDays ?? 0,
+        addedDataMb: (info?.dataTexts ?? []).reduce(
+          (sum, text) => sum + topupDataMb(text),
+          0,
+        ),
       };
     });
   }
@@ -714,11 +731,25 @@ export class EsimsService {
     // the plan (for its duration) is not on the object the caller passed in.
     const stored = await this.esimsRepository.findByIdWithRelations(esim.id);
     const activatedAt = stored?.activatedAt ?? esim.activatedAt ?? null;
-    const durationDays = Number(stored?.plan?.durationDays ?? 0) || null;
+    // The days bought, then what the finished top-ups added: 7 + 15 is a
+    // 22-day eSIM, on its progress bar too (vande-0411 #019).
+    const [chosenDays, topups] = await Promise.all([
+      this.esimsRepository.findChosenDays(esim.id),
+      this.esimsRepository.countTopupsByIccids([esim.iccid]),
+    ]);
+    const addedDays = topups.get(esim.iccid)?.addedDays ?? 0;
+    const durationDays =
+      (chosenDays ?? (Number(stored?.plan?.durationDays ?? 0) || 0)) +
+        addedDays || null;
 
+    // A supplier reports the package running now, so after a top-up its date
+    // can be earlier than the eSIM's own.
     let expiredAt =
       usage.expiredAt ??
       (stored?.expiresAt ? stored.expiresAt.toISOString() : null);
+    if (addedDays > 0) {
+      expiredAt = laterExpiry(expiredAt, stored?.expiresAt);
+    }
 
     // Counted the way the plan counts its days (vande #075): a calendar-day
     // plan ends at midnight in its own timezone, not 24-hour blocks later.
@@ -874,8 +905,9 @@ export class EsimsService {
 
   /**
    * A top-up went through (doitac-3010 #006): its data joins the eSIM's total
-   * and the eSIM lasts at least the top-up's days from now. Before, the order
-   * was marked done and the eSIM page showed neither.
+   * and its days follow what is left: bought 1/11 for 7 days, ending 8/11, then
+   * 15 days more ends 23/11 (vande-0411 #019). An eSIM already over starts
+   * again from now.
    */
   async applyCompletedTopup(
     iccid: string,
@@ -893,14 +925,45 @@ export class EsimsService {
     const days = Number(topup.durationDays ?? 0);
     // An eSIM not switched on yet has no clock to extend.
     if (days > 0 && (esim.expiresAt || esim.activatedAt)) {
-      const until = new Date(now.getTime() + days * 86_400_000);
-      if (!esim.expiresAt || esim.expiresAt.getTime() < until.getTime()) {
-        patch.expiresAt = until;
-      }
+      const current =
+        esim.expiresAt ?? (await this.expiryBeforeTopup(esim, days));
+      const from = Math.max(current?.getTime() ?? 0, now.getTime());
+      patch.expiresAt = new Date(from + days * 86_400_000);
     }
     if (Object.keys(patch).length) {
       await this.esimsRepository.update(esim.id, patch as never);
     }
+  }
+
+  /**
+   * When an eSIM with no stored date would have ended before this top-up: some
+   * suppliers report none, and the days left would be lost otherwise. The order
+   * is already completed here, so its own days come off the total.
+   */
+  private async expiryBeforeTopup(
+    esim: Esim,
+    days: number,
+  ): Promise<Date | null> {
+    const [stored, chosenDays, topups] = await Promise.all([
+      this.esimsRepository.findByIdWithRelations(esim.id),
+      this.esimsRepository.findChosenDays(esim.id),
+      this.esimsRepository.countTopupsByIccids([esim.iccid]),
+    ]);
+    const planDays = chosenDays ?? (Number(stored?.plan?.durationDays) || 0);
+    const addedBefore = (topups.get(esim.iccid)?.addedDays ?? 0) - days;
+    return derivedExpiry(
+      esim.activatedAt ?? null,
+      planDays + Math.max(0, addedBefore),
+      stored?.plan?.dailyResetPolicy ?? null,
+      stored?.plan?.dailyResetUtcOffset != null
+        ? Number(stored.plan.dailyResetUtcOffset)
+        : null,
+    );
+  }
+
+  private async hasAddedDays(iccid: string): Promise<boolean> {
+    const topups = await this.esimsRepository.countTopupsByIccids([iccid]);
+    return (topups.get(iccid)?.addedDays ?? 0) > 0;
   }
 
   private async persistUsageSnapshot(
@@ -919,7 +982,16 @@ export class EsimsService {
     }
 
     if (result.expiredAt) {
-      patch.expiresAt = new Date(result.expiredAt);
+      const reported = new Date(result.expiredAt);
+      // Only the package running now: not to cut short what a top-up added
+      // (vande-0411 #019).
+      const stored = esim.expiresAt?.getTime() ?? 0;
+      if (
+        reported.getTime() >= stored ||
+        !(await this.hasAddedDays(esim.iccid))
+      ) {
+        patch.expiresAt = reported;
+      }
     }
 
     // A provider that reports the activation moment itself is always right;

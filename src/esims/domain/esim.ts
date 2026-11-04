@@ -157,6 +157,10 @@ export class Esim {
   @ApiPropertyOptional({ type: String, example: 'Vietnam-3days-3gb-topup' })
   topupPackageNames?: string | null;
 
+  /** Added to the plan by finished top-ups, for what it now offers (vande-0411 #019). */
+  addedDays?: number;
+  addedDataMb?: number;
+
   /**
    * The topup packages applied to this eSIM, newest first (#026). Only the detail
    * endpoint fills this; the list carries {@link topupCount} alone.

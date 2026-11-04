@@ -10,6 +10,10 @@ import { Esim, EsimTopupDto } from '../../domain/esim';
  * export reconciles on the total, not on the last one.
  */
 export interface EsimTopupSummary {
+  /** Days the finished top-ups add (vande-0411 #019). */
+  addedDays?: number;
+  /** Their data, as the orders store it. */
+  dataTexts?: (string | null)[];
   count: number;
   lastAt: Date | null;
   /** Total charged for the topups, in VND. */

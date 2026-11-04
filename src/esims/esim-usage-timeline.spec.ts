@@ -26,6 +26,8 @@ function makeService(stored: Record<string, unknown> | null) {
   const service = Object.create(EsimsService.prototype) as EsimsService;
   (service as unknown as Record<string, unknown>).esimsRepository = {
     findByIdWithRelations: jest.fn().mockResolvedValue(stored),
+    findChosenDays: jest.fn().mockResolvedValue(null),
+    countTopupsByIccids: jest.fn().mockResolvedValue(new Map()),
   };
 
   const withTimeline = (

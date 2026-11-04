@@ -306,6 +306,8 @@ export class EsimsRelationalRepository implements EsimRepository {
       vndPrice: string | number | null;
       vndCostPrice: string | number | null;
       packageNames: string | null;
+      addedDays: string | number | null;
+      dataTexts: (string | null)[] | null;
     }[] = await this.esimsRepository.query(
       // The sums are what the export reconciles on (#027): an eSIM can be topped
       // up several times and each one cost money of its own.
@@ -317,7 +319,17 @@ export class EsimsRelationalRepository implements EsimRepository {
               STRING_AGG(
                 COALESCE(NULLIF("topupPackageName", ''), "topupPackageId"),
                 ', ' ORDER BY "createdAt" DESC
-              ) AS "packageNames"
+              ) AS "packageNames",
+              -- What it adds up to on the eSIM, once done (vande-0411 #019). An
+              -- add-on's days are copies billed, not days gained.
+              SUM("topupDurationDays") FILTER (
+                WHERE "status" = 'completed'
+                  AND COALESCE("topupPackageId", '') NOT LIKE 'billion-acc:%'
+              ) AS "addedDays",
+              ARRAY_AGG("topupDataText") FILTER (
+                WHERE "status" = 'completed'
+                  AND COALESCE("topupIsUnlimited", false) = false
+              ) AS "dataTexts"
          FROM "order"
         WHERE "targetIccid" = ANY($1)
           AND "orderType" = 'TOPUP'
@@ -337,6 +349,8 @@ export class EsimsRelationalRepository implements EsimRepository {
         vndPrice: Number(row.vndPrice) || 0,
         vndCostPrice: Number(row.vndCostPrice) || 0,
         packageNames: row.packageNames ?? null,
+        addedDays: Number(row.addedDays) || 0,
+        dataTexts: row.dataTexts ?? [],
       });
     }
     return result;

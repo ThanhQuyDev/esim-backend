@@ -107,7 +107,8 @@ describe("An eSIM's whole allowance (doitac-3010 #006)", () => {
 
     expect(update).toHaveBeenCalledWith(9, {
       dataTotal: '25600',
-      expiresAt: new Date('2026-12-01T00:00:00Z'),
+      // What was left, then the 30 days (vande-0411 #019).
+      expiresAt: new Date('2026-12-10T00:00:00Z'),
     });
   });
 });
