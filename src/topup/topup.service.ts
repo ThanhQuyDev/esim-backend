@@ -54,6 +54,7 @@ import {
 import {
   FALLBACK_USD_VND_RATE,
   OrderType,
+  ADDON_ORDER_NUMBER_PREFIX,
   TOPUP_ORDER_NUMBER_PREFIX,
   TOPUP_ORDER_STATUS,
   ADMIN_MANUAL_PAYMENT_METHOD,
@@ -521,8 +522,15 @@ export class TopupService {
             );
 
     // Readable date-time code like a purchase (#051, test round 4):
-    // TOPUP-yyMMddHHmmssSSS-XXXXXX. The prefix is what payment routing reads.
-    const orderNumber = generateOrderNumber(`${TOPUP_ORDER_NUMBER_PREFIX}-`);
+    // TOPUP-yyMMddHHmmssSSS-XXXXXX, or ADDON-… for an add-on (vande-0411 #018).
+    // The prefix is what payment routing reads.
+    const orderNumber = generateOrderNumber(
+      `${
+        parseBillionAddonPackageId(dto.packageId)
+          ? ADDON_ORDER_NUMBER_PREFIX
+          : TOPUP_ORDER_NUMBER_PREFIX
+      }-`,
+    );
 
     // Cost in đồng, so the order detail and the reports can state the margin on a
     // topup (#015). It used to be stored as 0, which made every topup look like

@@ -23,6 +23,16 @@ export type TopupOrderStatus =
   (typeof TOPUP_ORDER_STATUS)[keyof typeof TOPUP_ORDER_STATUS];
 
 export const TOPUP_ORDER_NUMBER_PREFIX = 'TOPUP';
+/** An add-on order: `ADDON-…`, to tell it from a top-up (vande-0411 #018). */
+export const ADDON_ORDER_NUMBER_PREFIX = 'ADDON';
+
+/** Payment routing: both are paid and run through the same top-up flow. */
+export function isTopupOrderNumber(orderNumber: string): boolean {
+  return (
+    orderNumber.startsWith(`${TOPUP_ORDER_NUMBER_PREFIX}-`) ||
+    orderNumber.startsWith(`${ADDON_ORDER_NUMBER_PREFIX}-`)
+  );
+}
 
 /**
  * `Order.orderType` values.

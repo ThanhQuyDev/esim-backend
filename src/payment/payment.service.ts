@@ -11,7 +11,7 @@ import { CustomPaymentLinksService } from '../custom-payment-links/custom-paymen
 import { CUSTOM_PAYMENT_VIRTUAL_ORDER_PREFIX } from '../custom-payment-links/custom-payment-links.enum';
 import { TopupService } from '../topup/topup.service';
 import {
-  TOPUP_ORDER_NUMBER_PREFIX,
+  isTopupOrderNumber,
   TOPUP_ORDER_STATUS,
 } from '../topup/topup.constants';
 import { PartnersService } from '../partners/partners.service';
@@ -496,11 +496,11 @@ export class PaymentService {
 
     if (!orderNumber) return { code: '01' };
 
-    // Topup orders use the dedicated TOPUP- prefix. After the cash arrives
+    // Topup orders use the dedicated TOPUP- or ADDON- prefix. After the cash arrives
     // we mark the order PAID then fire-and-forget the provider submission.
     // We do NOT wait for the provider here — bus timeouts otherwise back
     // up to OnePay and the customer-facing return page.
-    if (orderNumber.startsWith(`${TOPUP_ORDER_NUMBER_PREFIX}-`)) {
+    if (isTopupOrderNumber(orderNumber)) {
       return this.handleTopupIpn(query, orderNumber);
     }
 
