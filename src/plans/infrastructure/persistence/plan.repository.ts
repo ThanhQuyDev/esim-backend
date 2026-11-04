@@ -42,6 +42,9 @@ export abstract class PlanRepository {
 
   abstract findBySlug(slug: Plan['slug']): Promise<NullableType<Plan>>;
 
+  /** Every plan with this supplier code, whichever the supplier. */
+  abstract findAllByProviderPlanId(providerPlanId: string): Promise<Plan[]>;
+
   abstract findByProviderPlanId(
     provider: string,
     providerPlanId: string,

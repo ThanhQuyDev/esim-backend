@@ -14,8 +14,11 @@ import { vnFold } from './vn-fold';
 export type OrderImportRow = {
   /** The spreadsheet row number, so an error points at the right line. */
   row: number;
+  /** The slug, or the supplier's own code (vande-0411 #010). */
   slug: string;
   quantity: number;
+  /** Days of a day pass; null when the column is empty (vande-0411 #010). */
+  days: number | null;
   email: string | null;
   error: string | null;
 };
@@ -27,7 +30,15 @@ const MAX_QUANTITY = 1000;
 
 /** Header titles each column is recognised by, folded (no accents, lower). */
 const COLUMNS = {
-  slug: ['ma goi cuoc', 'ma goi', 'slug', 'plan code', 'package code'],
+  slug: [
+    'ma goi cuoc',
+    'ma goi',
+    'ma ncc',
+    'slug',
+    'plan code',
+    'package code',
+  ],
+  days: ['so ngay', 'so ngay dung', 'ngay', 'days'],
   quantity: ['so luong', 'sl', 'quantity', 'qty'],
   email: ['email nhan qr', 'email nhan ma qr', 'email', 'email khach'],
 } as const;
@@ -182,24 +193,32 @@ export async function parseOrderImportFile(
         : (cells[columnIndex[column]!] ?? '').trim();
     const slug = at('slug');
     const rawQuantity = at('quantity');
+    const rawDays = at('days');
     const rawEmail = options.withEmail ? at('email') : '';
     // A blank line between rows, or the end of the sheet.
     if (!slug && !rawQuantity && !rawEmail) continue;
 
     // Quantity left out means one eSIM.
     const quantity = rawQuantity === '' ? 1 : Number(rawQuantity);
+    const days = rawDays === '' ? null : Number(rawDays);
     let error: string | null = null;
     if (!slug) error = 'Thiếu mã gói cước.';
     else if (!Number.isInteger(quantity) || quantity < 1)
       error = 'Số lượng phải là số nguyên từ 1 trở lên.';
     else if (quantity > MAX_QUANTITY)
       error = `Số lượng tối đa ${MAX_QUANTITY} mỗi dòng.`;
+    else if (
+      days !== null &&
+      (!Number.isInteger(days) || days < 1 || days > 365)
+    )
+      error = 'Số ngày phải là số nguyên từ 1 đến 365.';
     else if (rawEmail && !EMAIL.test(rawEmail)) error = 'Email không hợp lệ.';
 
     rows.push({
       row: r + 1,
       slug,
       quantity: Number.isFinite(quantity) ? quantity : 0,
+      days: days !== null && Number.isFinite(days) ? days : null,
       email: rawEmail ? rawEmail.toLowerCase() : null,
       error,
     });
@@ -223,6 +242,7 @@ export async function orderImportTemplate(withEmail: boolean): Promise<Buffer> {
   const sheet = workbook.addWorksheet('Danh sách đặt eSIM');
   sheet.columns = [
     { header: 'Mã gói cước', key: 'slug', width: 36 },
+    { header: 'Số ngày', key: 'days', width: 10 },
     { header: 'Số lượng', key: 'quantity', width: 10 },
     ...(withEmail
       ? [{ header: 'Email nhận QR', key: 'email', width: 32 }]
@@ -230,6 +250,7 @@ export async function orderImportTemplate(withEmail: boolean): Promise<Buffer> {
   ];
   sheet.addRow({
     slug: 'vi-du-ma-goi-cuoc',
+    days: 7,
     quantity: 2,
     ...(withEmail ? { email: 'khach@example.com' } : {}),
   });

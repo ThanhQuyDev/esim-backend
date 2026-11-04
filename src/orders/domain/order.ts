@@ -182,6 +182,8 @@ export class Order {
    * pending or failed — the order the admin counts to judge a USD gateway.
    */
   paymentUsdIssue?: boolean;
+  /** eSIMs of this order the supplier has not taken (vande-0411 #010). */
+  esimErrorCount?: number;
   /** Ordered in bulk from a file: mailed spaced out, or as a list (vande #057). */
   @ApiPropertyOptional({ type: String, enum: ['email', 'file'] })
   bulkMode?: 'email' | 'file' | null;

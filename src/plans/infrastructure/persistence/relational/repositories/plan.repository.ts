@@ -253,6 +253,13 @@ export class PlansRelationalRepository implements PlanRepository {
     return entity ? PlanMapper.toDomain(entity) : null;
   }
 
+  async findAllByProviderPlanId(providerPlanId: string): Promise<Plan[]> {
+    const entities = await this.plansRepository.find({
+      where: { providerPlanId },
+    });
+    return entities.map((entity) => PlanMapper.toDomain(entity));
+  }
+
   async findByProviderPlanId(
     provider: string,
     providerPlanId: string,

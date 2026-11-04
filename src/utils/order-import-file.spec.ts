@@ -29,11 +29,19 @@ describe('parseOrderImportFile (doitac-1410 #084)', () => {
         row: 2,
         slug: 'jp-5gb-7d',
         quantity: 2,
+        days: null,
         email: 'khach@example.com',
         error: null,
       },
       // Blank quantity means one eSIM; the blank line in between is skipped.
-      { row: 4, slug: 'th-3gb-5d', quantity: 1, email: null, error: null },
+      {
+        row: 4,
+        slug: 'th-3gb-5d',
+        quantity: 1,
+        days: null,
+        email: null,
+        error: null,
+      },
     ]);
   });
 
@@ -44,7 +52,14 @@ describe('parseOrderImportFile (doitac-1410 #084)', () => {
     ]);
     const rows = await parseOrderImportFile(buffer, 'bang-gia.xlsx', opts);
     expect(rows).toEqual([
-      { row: 2, slug: 'jp-5gb-7d', quantity: 3, email: null, error: null },
+      {
+        row: 2,
+        slug: 'jp-5gb-7d',
+        quantity: 3,
+        days: null,
+        email: null,
+        error: null,
+      },
     ]);
   });
 
@@ -119,8 +134,22 @@ describe('parseOrderImportFile (doitac-1410 #084)', () => {
       '﻿Mã gói cước;Số lượng;Email nhận QR\r\n"jp;5gb";2;a@b.vn\r\nth-3gb;1;\r\n';
     const rows = await parseOrderImportFile(Buffer.from(csv), 'don.csv', opts);
     expect(rows).toEqual([
-      { row: 2, slug: 'jp;5gb', quantity: 2, email: 'a@b.vn', error: null },
-      { row: 3, slug: 'th-3gb', quantity: 1, email: null, error: null },
+      {
+        row: 2,
+        slug: 'jp;5gb',
+        quantity: 2,
+        days: null,
+        email: 'a@b.vn',
+        error: null,
+      },
+      {
+        row: 3,
+        slug: 'th-3gb',
+        quantity: 1,
+        days: null,
+        email: null,
+        error: null,
+      },
     ]);
     expect(parseCsv('a,"b ""c""",d\n1,2,3')).toEqual([
       ['a', 'b "c"', 'd'],
@@ -139,6 +168,7 @@ describe('parseOrderImportFile (doitac-1410 #084)', () => {
         row: 2,
         slug: 'vi-du-ma-goi-cuoc',
         quantity: 2,
+        days: 7,
         email: 'khach@example.com',
         error: null,
       },

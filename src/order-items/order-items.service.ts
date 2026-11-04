@@ -60,6 +60,12 @@ export class OrderItemsService {
   }
 
   /** Total eSIMs per order — quantities summed, not lines counted (#064). */
+  countProvisionErrorsByOrderIds(
+    orderIds: number[],
+  ): Promise<Map<number, number>> {
+    return this.orderItemsRepository.countProvisionErrorsByOrderIds(orderIds);
+  }
+
   sumQuantityByOrderIds(orderIds: number[]): Promise<Map<number, number>> {
     return this.orderItemsRepository.sumQuantityByOrderIds(orderIds);
   }

@@ -125,6 +125,15 @@ export class BulkOrderRowDto {
   @Max(1000)
   quantity: number;
 
+  /** Days of a day pass; ignored for other plans (vande-0411 #010). */
+  @ApiPropertyOptional({ example: 7, minimum: 1, maximum: 365 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  days?: number | null;
+
   @ApiPropertyOptional({ example: 'khach@example.com' })
   @IsOptional()
   @IsEmail()

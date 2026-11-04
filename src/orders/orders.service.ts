@@ -1744,6 +1744,8 @@ export class OrdersService {
       row: number;
       slug: string;
       quantity: number;
+      /** Days of a day pass; null for any other plan (vande-0411 #010). */
+      days: number | null;
       email: string | null;
       plan: {
         id: number;
@@ -1762,20 +1764,35 @@ export class OrdersService {
     });
     const plans = new Map<
       string,
-      Awaited<ReturnType<PlansService['findBySlug']>>
+      Awaited<ReturnType<PlansService['findByOrderCode']>>
     >();
-    for (const slug of new Set(rows.filter((r) => r.slug).map((r) => r.slug))) {
-      plans.set(slug, await this.plansService.findBySlug(slug));
+    for (const code of new Set(rows.filter((r) => r.slug).map((r) => r.slug))) {
+      plans.set(code, await this.plansService.findByOrderCode(code));
     }
+    // The price of the days asked for, not of one day (vande-0411 #010).
+    const tiers = rows.some((row) => (row.days ?? 1) > 1)
+      ? await this.plansService.marginTiers()
+      : null;
+    const previewVnd = (plan: Plan, days: number | null) =>
+      days && days > 1
+        ? getDiscountedVndPrice(plan, days, tiers)
+        : Number(plan.vndPrice);
     const lines = rows.map((row) => {
-      const plan = row.slug ? plans.get(row.slug) : null;
+      const found = row.slug ? plans.get(row.slug) : null;
+      const plan = found?.plan ?? null;
       let error = row.error;
-      if (!error && !plan) error = `Không thấy gói có mã "${row.slug}".`;
-      else if (!error && plan && !plan.isActive) error = 'Gói đang ngừng bán.';
+      if (!error && found?.ambiguous) {
+        error = `Mã "${row.slug}" trùng ở nhiều nhà cung cấp, hãy dùng slug của gói.`;
+      } else if (!error && !plan) {
+        error = `Không thấy gói có mã "${row.slug}".`;
+      } else if (!error && plan && !plan.isActive) {
+        error = 'Gói đang ngừng bán.';
+      }
       return {
         row: row.row,
         slug: row.slug,
         quantity: row.quantity,
+        days: plan?.isAbleMultidate ? (row.days ?? 1) : null,
         email: row.email,
         plan:
           plan && !error
@@ -1783,7 +1800,7 @@ export class OrdersService {
                 id: Number(plan.id),
                 slug: plan.slug,
                 packageCode: plan.providerPlanId,
-                label: `${plan.name} · ${Number(plan.vndPrice).toLocaleString('vi-VN')}đ`,
+                label: `${plan.name} · ${previewVnd(plan, row.days).toLocaleString('vi-VN')}đ`,
               }
             : null,
         error,
@@ -2140,7 +2157,12 @@ export class OrdersService {
     dto: {
       mode: 'email' | 'file';
       emailIntervalSec?: number;
-      rows: { slug: string; quantity: number; email?: string | null }[];
+      rows: {
+        slug: string;
+        quantity: number;
+        days?: number | null;
+        email?: string | null;
+      }[];
     },
   ): Promise<{
     batch: string;
@@ -2159,10 +2181,11 @@ export class OrdersService {
       slug: string;
       packageCode: string;
       quantity: number;
+      periodNum?: number;
       email: string | null;
     }[] = [];
     for (const [index, row] of dto.rows.entries()) {
-      const plan = await this.plansService.findBySlug(row.slug);
+      const { plan } = await this.plansService.findByOrderCode(row.slug);
       if (!plan || !plan.isActive) {
         throw new BadRequestException(
           `Dòng ${index + 1}: ${plan ? 'gói đang ngừng bán' : `không thấy gói có mã "${row.slug}"`}.`,
@@ -2178,6 +2201,10 @@ export class OrdersService {
         slug: plan.slug,
         packageCode: plan.providerPlanId,
         quantity: row.quantity,
+        // Days only mean something on a day pass (vande-0411 #010).
+        ...(plan.isAbleMultidate && row.days && row.days > 1
+          ? { periodNum: row.days }
+          : {}),
         email,
       });
     }
@@ -2213,10 +2240,11 @@ export class OrdersService {
         adminUserId,
         {
           email,
-          items: lines.map(({ slug, packageCode, quantity }) => ({
+          items: lines.map(({ slug, packageCode, quantity, periodNum }) => ({
             slug,
             packageCode,
             quantity,
+            ...(periodNum ? { periodNum } : {}),
           })),
         },
         tag,
@@ -2579,19 +2607,27 @@ export class OrdersService {
       const orderIds = orders.map((o) => o.id);
 
       // Batch fetch invoice existence, item counts and affiliate commissions
-      const [invoiceOrderIds, itemCounts, productQuantities, commissions] =
-        await Promise.all([
-          this.invoiceRepository.findOrderIdsWithInvoice(orderIds),
-          this.orderItemsService.countByOrderIds(orderIds),
-          this.orderItemsService.sumQuantityByOrderIds(orderIds),
-          // One query for the page, so the affiliate badge costs nothing
-          // per row (#095).
-          this.partnersService.getCommissionSummariesByOrderIds(orderIds),
-        ]);
+      const [
+        invoiceOrderIds,
+        itemCounts,
+        productQuantities,
+        commissions,
+        esimErrors,
+      ] = await Promise.all([
+        this.invoiceRepository.findOrderIdsWithInvoice(orderIds),
+        this.orderItemsService.countByOrderIds(orderIds),
+        this.orderItemsService.sumQuantityByOrderIds(orderIds),
+        // One query for the page, so the affiliate badge costs nothing
+        // per row (#095).
+        this.partnersService.getCommissionSummariesByOrderIds(orderIds),
+        // The badge beside the order number (vande-0411 #010).
+        this.orderItemsService.countProvisionErrorsByOrderIds(orderIds),
+      ]);
 
       const invoiceSet = new Set(invoiceOrderIds);
       for (const order of orders) {
         order.isInvoice = invoiceSet.has(order.id);
+        order.esimErrorCount = esimErrors.get(order.id) ?? 0;
         // A topup order has no order lines: it is one package put on one
         // eSIM, so it counts as 1, not 0 (vande #023).
         const isTopup = order.orderType === 'TOPUP';

@@ -133,6 +133,12 @@ export class FilterOrderDto {
   @IsBoolean()
   usdCheckout?: boolean;
 
+  /** Paid orders with eSIMs the supplier has not taken (vande-0411 #010). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  esimError?: boolean;
+
   @ApiPropertyOptional({
     type: String,
     format: 'date',

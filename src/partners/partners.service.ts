@@ -10608,6 +10608,8 @@ export class PartnersService {
       row: number;
       slug: string;
       quantity: number;
+      /** Days of a day pass; null for any other plan (vande-0411 #010). */
+      days: number | null;
       email: string | null;
       planId: number | null;
       name: string | null;
@@ -10637,28 +10639,39 @@ export class PartnersService {
     const found: {
       id: number;
       slug: string;
+      providerPlanId: string | null;
+      isAbleMultidate: boolean | null;
       name: string;
       destinationName: string | null;
     }[] = slugs.length
       ? await this.dataSource.query(
-          `SELECT p.id, p.slug, p.name,
+          `SELECT p.id, p.slug, p."providerPlanId", p."isAbleMultidate", p.name,
                   COALESCE(NULLIF(d."titleVi", ''), d.name,
                            NULLIF(r."titleVi", ''), r.name) AS "destinationName"
              FROM plan p
              LEFT JOIN destination d ON d.id = p."destinationId"
              LEFT JOIN region r ON r.id = p."regionId"
-            WHERE p.slug = ANY($1) AND p."deletedAt" IS NULL`,
+            WHERE (p.slug = ANY($1) OR p."providerPlanId" = ANY($1))
+              AND p."deletedAt" IS NULL`,
           [slugs],
         )
       : [];
     const bySlug = new Map(found.map((p) => [p.slug, p]));
+    // Or by the supplier's code, unless two suppliers share it (vande-0411 #010).
+    const byCode = (code: string) => {
+      const hits = found.filter((p) => p.providerPlanId === code);
+      return hits.length === 1 ? hits[0] : undefined;
+    };
 
     const lines = rows.map((row) => {
-      const plan = row.slug ? bySlug.get(row.slug) : undefined;
+      const plan = row.slug
+        ? (bySlug.get(row.slug) ?? byCode(row.slug))
+        : undefined;
       return {
         row: row.row,
         slug: row.slug,
         quantity: row.quantity,
+        days: plan?.isAbleMultidate ? (row.days ?? 1) : null,
         email: row.email,
         planId: plan ? Number(plan.id) : null,
         name: plan?.name ?? null,
@@ -10684,10 +10697,19 @@ export class PartnersService {
     for (const [key, group] of groups) {
       const quote = await this.quoteCart(
         partnerId,
-        group.map((l) => ({ planId: l.planId!, quantity: l.quantity })),
+        group.map((l) => ({
+          planId: l.planId!,
+          quantity: l.quantity,
+          periodNum: l.days ?? undefined,
+        })),
       );
       for (const line of group) {
-        const priced = quote.lines.find((q) => q.planId === line.planId);
+        const priced = quote.lines.find(
+          (q) =>
+            q.planId === line.planId &&
+            (q.periodNum ?? null) ===
+              (line.days && line.days > 1 ? line.days : null),
+        );
         line.unitPriceVnd = priced?.unitPriceVnd ?? 0;
         line.totalVnd = (priced?.unitPriceVnd ?? 0) * line.quantity;
         if (priced?.rejection) line.error = priced.rejection;

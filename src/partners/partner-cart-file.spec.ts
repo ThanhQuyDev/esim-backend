@@ -154,8 +154,8 @@ describe('OrdersService.previewManualOrderFile (doitac-1410 #084)', () => {
     const service = Object.create(OrdersService.prototype) as OrdersService;
     Object.assign(service, {
       plansService: {
-        findBySlug: jest.fn((slug: string) =>
-          Promise.resolve(plans[slug] ?? null),
+        findByOrderCode: jest.fn((slug: string) =>
+          Promise.resolve({ plan: plans[slug] ?? null, ambiguous: false }),
         ),
       },
     });
@@ -175,6 +175,7 @@ describe('OrdersService.previewManualOrderFile (doitac-1410 #084)', () => {
         row: 2,
         slug: 'jp',
         quantity: 2,
+        days: null,
         // Only a bulk upload reads emails (vande #057).
         email: null,
         plan: {
@@ -189,6 +190,7 @@ describe('OrdersService.previewManualOrderFile (doitac-1410 #084)', () => {
         row: 3,
         slug: 'nope',
         quantity: 1,
+        days: null,
         // Only a bulk upload reads emails (vande #057).
         email: null,
         plan: null,
@@ -198,6 +200,7 @@ describe('OrdersService.previewManualOrderFile (doitac-1410 #084)', () => {
         row: 4,
         slug: 'off',
         quantity: 1,
+        days: null,
         // Only a bulk upload reads emails (vande #057).
         email: null,
         plan: null,

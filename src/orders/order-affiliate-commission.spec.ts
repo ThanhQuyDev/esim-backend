@@ -51,6 +51,7 @@ describe('OrdersService — affiliate commission on orders', () => {
       },
       orderItemsService: {
         countByOrderIds: jest.fn().mockResolvedValue(new Map()),
+        countProvisionErrorsByOrderIds: jest.fn().mockResolvedValue(new Map()),
         sumQuantityByOrderIds: jest.fn().mockResolvedValue(new Map()),
       },
       partnersService,
@@ -132,6 +133,7 @@ describe('OrdersService — affiliate commission on orders', () => {
       },
       orderItemsService: {
         countByOrderIds: jest.fn().mockResolvedValue(new Map()),
+        countProvisionErrorsByOrderIds: jest.fn().mockResolvedValue(new Map()),
         sumQuantityByOrderIds: jest.fn().mockResolvedValue(new Map()),
       },
       partnersService,

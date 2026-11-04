@@ -473,6 +473,24 @@ export class PlansService implements OnApplicationBootstrap {
     return this.plansRepository.findBySlug(slug);
   }
 
+  /**
+   * The plan an order file names: by slug, or by the supplier's code, which is
+   * what the admin copies from the plan list (vande-0411 #010). `ambiguous` when
+   * two suppliers use that code, rather than ordering from the wrong one.
+   */
+  async findByOrderCode(
+    code: string,
+  ): Promise<{ plan: NullableType<Plan>; ambiguous: boolean }> {
+    const bySlug = await this.plansRepository.findBySlug(code);
+    if (bySlug) return { plan: bySlug, ambiguous: false };
+    const matches = await this.plansRepository.findAllByProviderPlanId(code);
+    const active = matches.filter((plan) => plan.isActive);
+    const pool = active.length ? active : matches;
+    return pool.length === 1
+      ? { plan: pool[0], ambiguous: false }
+      : { plan: null, ambiguous: pool.length > 1 };
+  }
+
   /** The live row a supplier sync last wrote for this provider plan id. */
   findByProviderPlanId(
     provider: string,

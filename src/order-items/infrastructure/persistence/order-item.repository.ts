@@ -29,6 +29,11 @@ export abstract class OrderItemRepository {
   abstract countByOrderIds(orderIds: number[]): Promise<Map<number, number>>;
 
   /** Total eSIMs per order — quantities summed, not lines counted (#064). */
+  /** eSIMs not delivered on lines the supplier refused, per order. */
+  abstract countProvisionErrorsByOrderIds(
+    orderIds: number[],
+  ): Promise<Map<number, number>>;
+
   abstract sumQuantityByOrderIds(
     orderIds: number[],
   ): Promise<Map<number, number>>;

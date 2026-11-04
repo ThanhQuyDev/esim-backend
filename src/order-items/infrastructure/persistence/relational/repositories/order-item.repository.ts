@@ -110,6 +110,31 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
    * reports 1 — which reads as "1 sản phẩm" to a customer holding three eSIMs.
    * This sums the quantities instead.
    */
+  async countProvisionErrorsByOrderIds(
+    orderIds: number[],
+  ): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    if (!orderIds.length) return result;
+    const rows: { orderId: number; missing: string }[] =
+      await this.orderItemsRepository.query(
+        `SELECT oi."orderId",
+                SUM(GREATEST(oi.quantity - (SELECT COUNT(*) FROM esim e WHERE e."orderItemId" = oi.id), 0)) AS missing
+           FROM order_item oi
+           JOIN "order" o ON o.id = oi."orderId"
+          WHERE oi."orderId" = ANY($1)
+            AND o.status = 'paid'
+            AND oi."lastProvisionError" IS NOT NULL
+            AND oi."orderRequestId" IS NULL
+          GROUP BY oi."orderId"`,
+        [orderIds.map(Number)],
+      );
+    for (const row of rows) {
+      const missing = Number(row.missing) || 0;
+      if (missing > 0) result.set(Number(row.orderId), missing);
+    }
+    return result;
+  }
+
   async sumQuantityByOrderIds(
     orderIds: number[],
   ): Promise<Map<number, number>> {

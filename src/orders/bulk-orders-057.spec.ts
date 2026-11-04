@@ -161,12 +161,14 @@ describe('OrdersService.submitBulkOrders (vande #057)', () => {
     Object.assign(service, {
       logger: { log: jest.fn(), error: jest.fn() },
       plansService: {
-        findBySlug: jest.fn((slug: string) =>
-          Promise.resolve(
-            slug === 'gone'
-              ? null
-              : { slug, providerPlanId: `PK-${slug}`, isActive: true },
-          ),
+        findByOrderCode: jest.fn((slug: string) =>
+          Promise.resolve({
+            ambiguous: false,
+            plan:
+              slug === 'gone'
+                ? null
+                : { slug, providerPlanId: `PK-${slug}`, isActive: true },
+          }),
         ),
       },
       usersService: {

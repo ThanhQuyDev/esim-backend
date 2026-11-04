@@ -88,7 +88,8 @@ export class OrdersRelationalRepository implements OrderRepository {
       filterOptions?.createdFrom ||
       filterOptions?.createdTo ||
       // English ($) checkouts (doitac-3010 #043).
-      filterOptions?.usdCheckout
+      filterOptions?.usdCheckout ||
+      filterOptions?.esimError
     ) {
       return this.findManyWithAdvancedFilters(
         filterOptions,
@@ -186,6 +187,16 @@ export class OrdersRelationalRepository implements OrderRepository {
     // Checked out in English, prices in $ (doitac-3010 #043).
     if (filterOptions.usdCheckout) {
       qb.andWhere(`"order"."checkoutLocale" = 'en'`);
+    }
+
+    // The same lines as `countProvisionErrorsByOrderIds` (vande-0411 #010).
+    if (filterOptions.esimError) {
+      qb.andWhere(`"order"."status" = 'paid'`).andWhere(
+        `EXISTS (SELECT 1 FROM order_item oi
+                  WHERE oi."orderId" = "order"."id"
+                    AND oi."lastProvisionError" IS NOT NULL
+                    AND oi."orderRequestId" IS NULL)`,
+      );
     }
 
     // #017 — created-date range, in VIETNAM days (#022, test round 4).
