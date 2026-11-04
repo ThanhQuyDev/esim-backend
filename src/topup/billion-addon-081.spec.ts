@@ -5,6 +5,7 @@ import {
   parseBillionAddonPackageId,
   planTakesAddons,
 } from './billion-addon';
+import { billionApnTakesVas } from '../esim-providers/billion/billion-catalogue';
 
 /**
  * vande #081: Billion's acceleration packages (F015/F016) as "Mua thêm dung
@@ -62,6 +63,33 @@ describe('Billion add-ons (vande #081)', () => {
     expect(planTakesAddons(3)).toBe(true);
     // Not synced since the field arrived: ask Billion, which answers for itself.
     expect(planTakesAddons(null)).toBe(true);
+  });
+
+  it('should only sell add-ons on the APNs Billion lists', () => {
+    for (const apn of [
+      'ctexcel',
+      'cmhk',
+      'drei.at',
+      'mobile.three.com.hk',
+      'ctm-mobile',
+      'm3-world',
+      'plus',
+      'e-ideas',
+      'umobile',
+      'mobile-csl',
+    ]) {
+      expect(billionApnTakesVas(apn)).toBe(true);
+    }
+    // As the catalogue writes them.
+    expect(billionApnTakesVas('CTExcel')).toBe(true);
+    expect(billionApnTakesVas('cmhk/cmlink')).toBe(true);
+    expect(billionApnTakesVas(' plus\t')).toBe(true);
+    // Not on the list, even when close to a name that is.
+    expect(billionApnTakesVas('plus.4g')).toBe(false);
+    expect(billionApnTakesVas('internet.proximus.be')).toBe(false);
+    expect(billionApnTakesVas('mobile')).toBe(false);
+    expect(billionApnTakesVas('')).toBe(false);
+    expect(billionApnTakesVas(null)).toBe(false);
   });
 
   it('should round-trip the package id', () => {

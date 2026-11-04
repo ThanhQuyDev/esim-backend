@@ -1,3 +1,4 @@
+import { normalizeApn } from '../../apn-support/apn-support.types';
 import { BillionPrice, BillionProduct } from './billion-api.types';
 
 /**
@@ -67,6 +68,30 @@ export function parseBillionPlanId(providerPlanId: string): {
     copies: copies > 0 ? copies : 1,
     rechargeable: flag === 'r',
   };
+}
+
+/**
+ * The APNs Billion sells add-ons on ("Bundle Add-on Instructions", 04/11/2026):
+ * "only products with these APNs support the VAS functions".
+ */
+export const BILLION_VAS_APNS: ReadonlySet<string> = new Set([
+  'ctexcel',
+  'cmhk',
+  'drei.at',
+  'mobile.three.com.hk',
+  'ctm-mobile',
+  'm3-world',
+  'plus',
+  'e-ideas',
+  'umobile',
+  'mobile-csl',
+]);
+
+/** Whether a plan's APN is on that list; "cmhk/cmlink" counts through cmhk. */
+export function billionApnTakesVas(apn: string | null | undefined): boolean {
+  return (apn ?? '')
+    .split('/')
+    .some((name) => BILLION_VAS_APNS.has(normalizeApn(name) ?? ''));
 }
 
 /** A rechargeable-eSIM plan ("复充商品"), sold as a new eSIM (vande #004). */

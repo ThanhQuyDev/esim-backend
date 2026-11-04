@@ -36,6 +36,7 @@ import {
   billionRegionName,
   isRawBillionRegionName,
   billionActivationUntil,
+  billionApnTakesVas,
   isBillionRechargeableEsim,
   parseBillionPlanId,
 } from './billion-catalogue';
@@ -534,8 +535,9 @@ export class BillionService {
       sms: null,
       call: null,
       type,
-      // A rechargeable eSIM takes topups later (F052 + F007, vande #004).
-      topUp: isBillionRechargeableEsim(product),
+      // A rechargeable eSIM takes topups later (F052 + F007, vande #004), on
+      // the APNs Billion lists for them (Bundle Add-on Instructions, 04/11).
+      topUp: isBillionRechargeableEsim(product) && billionApnTakesVas(apn),
       // Whether data can be bought on top later (F015/F016, vande #081).
       accelerationSupport: /^[0-3]$/.test(
         String(product.accelerationSupport ?? ''),

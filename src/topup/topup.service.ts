@@ -19,7 +19,10 @@ import {
   BillionService,
   BillionTopupOffer,
 } from '../esim-providers/billion/billion.service';
-import { parseBillionPlanId } from '../esim-providers/billion/billion-catalogue';
+import {
+  billionApnTakesVas,
+  parseBillionPlanId,
+} from '../esim-providers/billion/billion-catalogue';
 import {
   BILLION_ADDON_DAY_TYPES,
   BILLION_ADDON_KIND,
@@ -407,6 +410,14 @@ export class TopupService {
       // Only the recharge products F052 allows for this very eSIM
       // (doitac-1410 #064) — none means this eSIM takes no topup. Our `plan`
       // table holds Billion's eSIM products, which are new eSIMs, not data.
+      // Nothing at all on an APN Billion does not list for add-ons (Bundle
+      // Add-on Instructions, 04/11), whatever F052 says.
+      const billionPlan = esim.planId
+        ? await this.plansService.findById(esim.planId)
+        : null;
+      if (billionPlan && !billionApnTakesVas(billionPlan.apn)) {
+        return { iccid, provider, packages: [] };
+      }
       const offers = await this.callProvider(provider, iccid, () =>
         this.billionService.listTopupOffers(iccid),
       );
@@ -991,8 +1002,8 @@ export class TopupService {
   /**
    * What a Billion eSIM can buy on top of its plan (F015, vande #081), priced
    * with our margin tiers on its cost like every top-up. Only for an activated
-   * eSIM whose plan takes add-ons (accelerationSupport 2 or 3) — Billion sells
-   * nothing before activation.
+   * eSIM whose plan takes add-ons (accelerationSupport 2 or 3, on an APN Billion
+   * lists for them) — Billion sells nothing before activation.
    */
   private async listBillionAddons(
     esim: {
@@ -1006,7 +1017,11 @@ export class TopupService {
     try {
       if (!esim.activatedAt || !esim.planId) return [];
       const plan = await this.plansService.findById(esim.planId);
-      if (!plan?.providerPlanId || !planTakesAddons(plan.accelerationSupport)) {
+      if (
+        !plan?.providerPlanId ||
+        !planTakesAddons(plan.accelerationSupport) ||
+        !billionApnTakesVas(plan.apn)
+      ) {
         return [];
       }
       const orderId = await this.resolveProviderOrderRef(esim.id);

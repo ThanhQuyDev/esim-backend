@@ -209,6 +209,22 @@ describe('TopupService — Billion recharge products (doitac-1410 #064)', () => 
     ]);
   });
 
+  it('should offer nothing on an APN Billion does not list, whatever F052 says', async () => {
+    const billionService = { listTopupOffers: jest.fn() };
+    const { service } = buildService({
+      esimsService: billionEsim,
+      billionService,
+      plansService: {
+        findById: jest.fn().mockResolvedValue({ apn: 'internet.proximus.be' }),
+      },
+    });
+
+    const result = await service.listPackages('8985');
+
+    expect(result.packages).toEqual([]);
+    expect(billionService.listTopupOffers).not.toHaveBeenCalled();
+  });
+
   it('should list nothing for an eSIM Billion gives no recharge product', async () => {
     const { service } = buildService({
       esimsService: billionEsim,
