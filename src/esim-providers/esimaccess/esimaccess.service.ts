@@ -27,6 +27,15 @@ import {
   isAmountMismatch,
 } from './esimaccess-order';
 
+/**
+ * 2 is a fixed plan's top-up; 3 is a day pass, bought by the day (their article
+ * of 09/05/2026; 1275 day passes answer 3 on 05/11). Only 2 was read, so every
+ * day pass read as taking no top-up (vande-0411 #022).
+ */
+export function esimAccessTakesTopup(supportTopUpType: number): boolean {
+  return supportTopUpType === 2 || supportTopUpType === 3;
+}
+
 @Injectable()
 export class EsimAccessService {
   private readonly logger = new Logger(EsimAccessService.name);
@@ -406,7 +415,7 @@ export class EsimAccessService {
       sms: null,
       call: null,
       type: planType,
-      topUp: pkg.supportTopUpType === 2,
+      topUp: esimAccessTakesTopup(pkg.supportTopUpType),
       speed: pkg.speed || null,
       operatorName:
         (pkg.locationNetworkList ?? [])
@@ -721,7 +730,7 @@ export class EsimAccessService {
       packageCode: params.packageCode,
       transactionId: params.transactionId,
       ...(params.periodNum && params.periodNum > 1
-        ? { periodNum: params.periodNum }
+        ? { periodNum: String(params.periodNum) }
         : {}),
     };
 

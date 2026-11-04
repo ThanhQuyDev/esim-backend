@@ -17,6 +17,7 @@ import { ListTopupPackagesQueryDto } from './dto/list-topup-packages-query.dto';
 import {
   AdminManualTopupDto,
   TopupCheckoutDto,
+  TopupDayPriceQueryDto,
 } from './dto/topup-checkout.dto';
 import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
@@ -88,6 +89,18 @@ export class TopupController {
   ): Promise<TopupListResponse> {
     const result = await this.topupService.listPackages(query.iccid);
     return { success: true, ...result };
+  }
+
+  /** A day pass priced for N days, before anything is bought (vande-0411 #022). */
+  @Get('packages/price')
+  async dayPrice(
+    @Query() query: TopupDayPriceQueryDto,
+  ): Promise<{ days: number; vndPrice: number }> {
+    return this.topupService.priceForDays(
+      query.iccid,
+      query.packageId,
+      query.days,
+    );
   }
 
   @Post('checkout')

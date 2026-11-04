@@ -368,6 +368,33 @@ export class TopupService {
     };
   }
 
+  /** What N days of a day pass cost: the whole cost through the margin tiers. */
+  private dayPassPriceVnd(
+    pkg: { price?: number | null },
+    days: number,
+    rate: number,
+  ): Promise<number> {
+    return this.profitMarginsService.calculateRetailVndFromCostUsd(
+      (Number(pkg.price) || 0) * days,
+      rate,
+    );
+  }
+
+  /** The price the checkout will charge, for the popup (vande-0411 #022). */
+  async priceForDays(
+    iccid: string,
+    packageId: string,
+    periodNum: number,
+  ): Promise<{ days: number; vndPrice: number }> {
+    const { packages } = await this.listProviderPackages(iccid);
+    const pkg = packages.find((row) => row.packageId === packageId);
+    if (!pkg) throw new NotFoundException('Topup package not found');
+    const days = topupDays(pkg, periodNum);
+    if (days <= 1) return { days, vndPrice: pkg.vndPrice ?? 0 };
+    const rate = await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE);
+    return { days, vndPrice: await this.dayPassPriceVnd(pkg, days, rate) };
+  }
+
   /** For the date labels; a failure here must not cost the customer the list. */
   private async expiryContext(
     iccid: string,
@@ -529,17 +556,14 @@ export class TopupService {
     // path for a package that somehow arrived without a VND figure.
     // A day pass bought for N days: the whole cost through the margin tiers,
     // as a multi-day plan is priced (doitac-3010 #050, vande #014).
-    const days = topupDays(pkg, periodNum);
+    const days = topupDays(pkg, periodNum ?? dto.periodNum);
     const rateForDays =
       days > 1
         ? await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)
         : 0;
     const vndAmount =
       days > 1
-        ? await this.profitMarginsService.calculateRetailVndFromCostUsd(
-            (Number(pkg.price) || 0) * days,
-            rateForDays,
-          )
+        ? await this.dayPassPriceVnd(pkg, days, rateForDays)
         : pkg.vndPrice && pkg.vndPrice > 0
           ? pkg.vndPrice
           : roundVndToThousands(

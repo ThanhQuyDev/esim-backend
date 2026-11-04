@@ -94,12 +94,39 @@ export class TopupCheckoutDto {
   @ValidateNested()
   @Type(() => TopupInvoiceDto)
   invoice?: TopupInvoiceDto;
+
+  /** Days for a day pass, 1–365 (vande-0411 #022); ignored on any other package. */
+  @ApiPropertyOptional({ type: Number, minimum: 1, maximum: 365 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  periodNum?: number;
 }
 
 /**
  * Payload for `POST /api/v1/topup/admin/manual` — an admin topping an eSIM up
  * on the customer's behalf, without going through a payment gateway.
  */
+export class TopupDayPriceQueryDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @IsNotEmpty()
+  iccid!: string;
+
+  @ApiProperty({ type: String })
+  @IsString()
+  @IsNotEmpty()
+  packageId!: string;
+
+  @ApiProperty({ type: Number, minimum: 1, maximum: 365 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  days!: number;
+}
+
 export class AdminManualTopupDto {
   @ApiProperty({ type: String, example: '89852245280001354019' })
   @IsString()

@@ -113,8 +113,8 @@ export interface EsimAccessTopupRequest {
   iccid: string;
   packageCode: string;
   transactionId: string;
-  /** Days for a day-pass package, as on an order (doitac-3010 #050). */
-  periodNum?: number;
+  /** Days for a day-pass package; a string in eSIM Access's own sample. */
+  periodNum?: string;
 }
 
 export interface EsimAccessTopupResponse {
