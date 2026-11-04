@@ -5,9 +5,10 @@ import {
   multidayRetailVnd,
 } from '../plans/multiday-price';
 import {
-  AUTO_RETRY_PROVIDERS,
+  ALL_RETRY_PROVIDERS,
   AUTO_RETRY_WINDOW_HOURS,
   MAX_PROVISION_ATTEMPTS,
+  RETRY_LINES_PER_RUN,
   nextAutoRetryAt,
   provisionErrorText,
 } from './provision-retry';
@@ -1392,13 +1393,28 @@ export class OrdersService {
       `retryProvisioning: re-submitting items ${retriedItemIds.join(', ')} of order ${order.orderNumber}`,
     );
 
+    if (this.provisionInFlight.has(orderId)) {
+      return {
+        retriedItemIds: [],
+        skippedItemIds: [...skippedItemIds, ...retriedItemIds],
+        emailsSent: 0,
+        message:
+          'Hệ thống đang tự gọi lại nhà cung cấp cho đơn này. Vui lòng đợi một lát rồi tải lại trang.',
+      };
+    }
+
     // Muted: the mail goes out ONCE, just below. `submitProviders` mails the
     // local-stock eSIMs it assigns on its own, so the retry used to send every
     // Viettel eSIM twice — "2 eSIMs re-sent, 4 in the email" (#020, round 4).
-    await this.submitProviders(orderId, {
-      onlyItemIds: retriedItemIds,
-      mutedEmail: true,
-    });
+    this.provisionInFlight.add(orderId);
+    try {
+      await this.submitProviders(orderId, {
+        onlyItemIds: retriedItemIds,
+        mutedEmail: true,
+      });
+    } finally {
+      this.provisionInFlight.delete(orderId);
+    }
 
     // Mail whatever came back on this run (#014). Suppliers that deliver over a
     // webhook (Airalo, Billion, MicroEsim) have nothing yet, and their webhook
@@ -4092,10 +4108,10 @@ export class OrdersService {
 
   /**
    * Ask the supplier again for paid lines it refused (vande #003) — what the
-   * KDDI integration used to do. Runs every 5 minutes, waits longer after each
-   * try (5, 15, 30, 60 min), gives up after {@link MAX_PROVISION_ATTEMPTS}
-   * tries or once the order is a day old; the refusal stays on the order for
-   * the admin either way.
+   * KDDI integration used to do. Runs every 5 minutes, gives up after
+   * {@link MAX_PROVISION_ATTEMPTS} tries or once the order is a day old; the
+   * refusal stays on the order for the admin either way. See `provision-retry`
+   * for which lines are safe to repeat.
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async retryUnplacedProviderItems(now: Date = new Date()): Promise<void> {
@@ -4106,21 +4122,31 @@ export class OrdersService {
         now.getTime() - AUTO_RETRY_WINDOW_HOURS * 3600_000,
       );
       const lines = await this.orderItemsService.findUnplacedForRetry({
-        providers: AUTO_RETRY_PROVIDERS,
+        providers: ALL_RETRY_PROVIDERS,
         since,
         maxAttempts: MAX_PROVISION_ATTEMPTS,
       });
       const dueByOrder = new Map<number, number[]>();
+      const askedPerSupplier = new Map<string, number>();
       for (const line of lines) {
         const order = await this.orderRepository.findById(line.orderId);
         if (!order) continue;
         const due = nextAutoRetryAt(order, line, line.provider, now);
         if (!due || due.getTime() > now.getTime()) continue;
+        // A few per run: Airalo's 429 means slow down, not ask harder. The
+        // rest wait for the next run.
+        const asked = askedPerSupplier.get(line.provider) ?? 0;
+        if (asked >= RETRY_LINES_PER_RUN) continue;
+        askedPerSupplier.set(line.provider, asked + 1);
         const ids = dueByOrder.get(order.id) ?? [];
         ids.push(Number(line.id));
         dueByOrder.set(order.id, ids);
       }
       for (const [orderId, itemIds] of dueByOrder) {
+        // The admin is re-sending this order right now: both going out at once
+        // is how a line gets bought twice.
+        if (this.provisionInFlight.has(orderId)) continue;
+        this.provisionInFlight.add(orderId);
         this.logger.log(
           `retryUnplacedProviderItems: order ${orderId}, lines ${itemIds.join(', ')}`,
         );
@@ -4130,6 +4156,8 @@ export class OrdersService {
           this.logger.error(
             `retryUnplacedProviderItems: order ${orderId}: ${(err as Error).message}`,
           );
+        } finally {
+          this.provisionInFlight.delete(orderId);
         }
       }
     } finally {
@@ -4138,6 +4166,12 @@ export class OrdersService {
   }
 
   private provisionRetryRunning = false;
+
+  /** Orders being re-sent to a supplier right now, by the job or the admin. */
+  private get provisionInFlight(): Set<number> {
+    return (this.provisionInFlightOrders ??= new Set<number>());
+  }
+  private provisionInFlightOrders?: Set<number>;
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async failExpiredPendingOrders(): Promise<void> {
