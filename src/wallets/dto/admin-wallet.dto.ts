@@ -126,4 +126,11 @@ export class RefundOrderDto {
   @IsOptional()
   @IsIn(AIRALO_REFUND_REASONS as unknown as string[])
   airaloRefundReason?: AiraloRefundReason;
+
+  /** Written for Airalo; required with OTHERS (vande-0411 #009). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  airaloRefundNotes?: string;
 }

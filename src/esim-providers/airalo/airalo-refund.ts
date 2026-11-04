@@ -50,6 +50,19 @@ export interface AiraloRefundResult {
   iccids: string[];
 }
 
+/**
+ * What an Airalo order's status says about a refund request (vande-0411 #009).
+ * Airalo documents no refund status or notice, so the order's status is all
+ * there is. An unfamiliar status is reported as it stands, not guessed at.
+ */
+export function airaloRefundOutcome(
+  slug: string | null | undefined,
+): 'pending' | 'refunded' | 'changed' {
+  const text = (slug ?? '').trim().toLowerCase();
+  if (!text || text === 'completed') return 'pending';
+  return text.includes('refund') ? 'refunded' : 'changed';
+}
+
 /** Lists of at most 5 ICCIDs, the most one request takes. */
 export function chunkIccids(
   iccids: string[],

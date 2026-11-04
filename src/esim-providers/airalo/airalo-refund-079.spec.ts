@@ -214,7 +214,7 @@ describe('Order refund → Airalo refund request', () => {
     expect(requestRefund).toHaveBeenCalledWith({
       iccids: ['8901', '8902'],
       reason: 'TRIP_CANCELLATION',
-      notes: 'Khach huy chuyen — Order ESIM-7',
+      notes: 'Order ESIM-7',
     });
     expect(res.supplierRequests).toEqual([expect.stringContaining('#555')]);
     expect(notes).toEqual([expect.stringContaining('#555')]);
@@ -271,6 +271,7 @@ describe('Order refund → Airalo refund request', () => {
         mode: 'wallet',
         amountVnd: 100000,
         airaloRefundReason: 'OTHERS',
+        airaloRefundNotes: 'Khach doi y',
       } as never,
       1,
     );

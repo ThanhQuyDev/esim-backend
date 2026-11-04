@@ -15,7 +15,10 @@ import {
 } from './provision-retry';
 import { deviceInfo, deviceType, storedUserAgent } from '../utils/device-info';
 import { isPlanRefundable } from '../plans/plan-refund-policy';
-import { AiraloRefundReason } from '../esim-providers/airalo/airalo-refund';
+import {
+  airaloRefundOutcome,
+  AiraloRefundReason,
+} from '../esim-providers/airalo/airalo-refund';
 import { Esim } from '../esims/domain/esim';
 import {
   allocateDiscount,
@@ -3672,10 +3675,19 @@ export class OrdersService {
     if (!iccids.length) return { requests, warnings };
 
     const reason = dto.airaloRefundReason as AiraloRefundReason;
-    const notes =
-      [dto.reason, `Order ${order.orderNumber ?? order.id}`]
-        .filter(Boolean)
-        .join(' — ') || undefined;
+    if (reason === 'OTHERS' && !dto.airaloRefundNotes?.trim()) {
+      warnings.push(
+        `Airalo: chưa gửi yêu cầu hoàn tiền cho ICCID ${iccids.join(', ')} vì chọn "Lý do khác" mà chưa nhập nội dung.`,
+      );
+      return { requests, warnings };
+    }
+    // Written for Airalo. `dto.reason` is what the customer reads, not this.
+    const notes = [
+      dto.airaloRefundNotes?.trim(),
+      `Order ${order.orderNumber ?? order.id}`,
+    ]
+      .filter(Boolean)
+      .join(' — ');
     try {
       const results = await this.airaloService.requestRefund({
         iccids,
@@ -3683,6 +3695,7 @@ export class OrdersService {
         notes,
       });
       for (const r of results) {
+        await this.recordAiraloRefundRequest(order, r, reason);
         requests.push(
           `Airalo: đã gửi yêu cầu hoàn tiền #${r.refundId} cho ICCID ${r.iccids.join(', ')} (lý do ${reason}) — Airalo duyệt thủ công, hoàn bằng credit.`,
         );
@@ -3707,6 +3720,108 @@ export class OrdersService {
       }
     }
     return { requests, warnings };
+  }
+
+  /**
+   * Keep a request taken by Airalo, to follow it up (vande-0411 #009). A failure
+   * here must not read as the request having failed: it went through.
+   */
+  private async recordAiraloRefundRequest(
+    order: Order,
+    result: { refundId: string; iccids: string[] },
+    reason: string,
+  ): Promise<void> {
+    try {
+      const rows: { providerOrderId: string | null }[] =
+        await this.dataSource.query(
+          `SELECT DISTINCT oi."providerOrderId"
+             FROM esim e JOIN order_item oi ON oi.id = e."orderItemId"
+            WHERE e.iccid = ANY($1) AND oi."orderId" = $2`,
+          [result.iccids, order.id],
+        );
+      await this.dataSource.query(
+        `INSERT INTO airalo_refund_request ("refundId", "orderId", iccids, "airaloOrderIds", reason)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT ("refundId") DO NOTHING`,
+        [
+          result.refundId,
+          order.id,
+          result.iccids.join(', '),
+          rows
+            .map((row) => row.providerOrderId)
+            .filter(Boolean)
+            .join(','),
+          reason,
+        ],
+      );
+    } catch (err) {
+      this.logger.error(
+        `refundOrder: failed to record Airalo refund ${result.refundId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Read the Airalo orders behind the refund requests still open (vande-0411
+   * #009): Airalo has no notice for this. Requests older than 60 days are left
+   * alone. Reads only; a change lands as a note on the order.
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async refreshAiraloRefundRequests(): Promise<void> {
+    let rows: {
+      id: number;
+      refundId: string;
+      orderId: number;
+      iccids: string;
+      airaloOrderIds: string;
+      statusText: string | null;
+    }[] = [];
+    try {
+      rows = await this.dataSource.query(
+        `SELECT id, "refundId", "orderId", iccids, "airaloOrderIds", "statusText"
+           FROM airalo_refund_request
+          WHERE status = 'pending' AND "createdAt" > now() - interval '60 days'
+          ORDER BY id`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `refreshAiraloRefundRequests: ${(err as Error).message}`,
+      );
+      return;
+    }
+    for (const row of rows) {
+      for (const airaloOrderId of row.airaloOrderIds
+        .split(',')
+        .filter(Boolean)) {
+        try {
+          const { name, slug } =
+            await this.airaloService.getOrderStatus(airaloOrderId);
+          const outcome = airaloRefundOutcome(slug);
+          const text = name ?? slug ?? '';
+          if (outcome === 'pending' || text === row.statusText) continue;
+          await this.dataSource.query(
+            `UPDATE airalo_refund_request
+                SET status = $2, "statusText" = $3, "updatedAt" = now()
+              WHERE id = $1`,
+            [row.id, outcome === 'refunded' ? 'refunded' : 'pending', text],
+          );
+          await this.dataSource.query(
+            `INSERT INTO order_note ("orderId", "adminId", body) VALUES ($1, NULL, $2)`,
+            [
+              row.orderId,
+              outcome === 'refunded'
+                ? `Airalo đã hoàn tiền cho yêu cầu #${row.refundId} (ICCID ${row.iccids}): đơn Airalo chuyển trạng thái "${text}".`
+                : `Yêu cầu hoàn tiền Airalo #${row.refundId} (ICCID ${row.iccids}): đơn Airalo đổi trạng thái thành "${text}". Vui lòng kiểm tra trên trang Airalo.`,
+            ],
+          );
+          break;
+        } catch (err) {
+          this.logger.warn(
+            `refreshAiraloRefundRequests: ${row.refundId}: ${(err as Error).message}`,
+          );
+        }
+      }
+    }
   }
 
   /**

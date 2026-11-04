@@ -164,6 +164,16 @@ export class Esim {
   @ApiPropertyOptional({ type: () => [EsimTopupDto] })
   topups?: EsimTopupDto[];
 
+  /** Refund requests sent to the supplier (vande-0411 #009). */
+  supplierRefunds?: {
+    supplier: string;
+    requestId: string;
+    status: string;
+    note: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }[];
+
   @ApiPropertyOptional({
     type: Number,
     nullable: true,

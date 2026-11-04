@@ -523,6 +523,30 @@ export class AiraloService {
     return results;
   }
 
+  /** An order's status, read only (vande-0411 #009). */
+  async getOrderStatus(
+    orderId: string,
+  ): Promise<{ name: string | null; slug: string | null }> {
+    const token = await this.authenticate();
+    const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
+      infer: true,
+    });
+    const { data } = await firstValueFrom(
+      this.httpService.get<{
+        data?: { status?: { name?: string; slug?: string } };
+      }>(`${baseUrl}/v2/orders/${encodeURIComponent(orderId)}?include=status`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      }),
+    );
+    return {
+      name: data?.data?.status?.name ?? null,
+      slug: data?.data?.status?.slug ?? null,
+    };
+  }
+
   async getDataUsage(iccid: string): Promise<AiraloUsageResponse['data']> {
     const token = await this.authenticate();
     const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {

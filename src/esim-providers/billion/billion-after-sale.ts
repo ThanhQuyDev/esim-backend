@@ -23,6 +23,8 @@ export const FINAL_AFTER_SALE_STATUSES: BillionAfterSaleStatus[] = [
 export interface AfterSaleUpdate {
   status: BillionAfterSaleStatus;
   opinion: string | null;
+  /** What Billion says it paid back, when a read tells (vande-0411 #009). */
+  refundAmount?: string | null;
 }
 
 /** An N004 (审核通知) notice: auditStatus 1 = approved, 2 = rejected. */
@@ -61,12 +63,19 @@ export function afterSaleFromF020(data: {
   auditOpinion?: string;
   refundStatus?: string | number;
   refundOpinion?: string;
+  refundAmount?: string;
 }): AfterSaleUpdate {
   const audit = String(data?.auditStatus ?? '');
   const refund = String(data?.refundStatus ?? '');
   const auditOpinion = data?.auditOpinion?.trim() || null;
   const refundOpinion = data?.refundOpinion?.trim() || null;
-  if (refund === '1') return { status: 'refunded', opinion: refundOpinion };
+  if (refund === '1') {
+    return {
+      status: 'refunded',
+      opinion: refundOpinion,
+      refundAmount: data?.refundAmount?.toString().trim() || null,
+    };
+  }
   if (refund === '2') {
     return { status: 'refund_failed', opinion: refundOpinion ?? auditOpinion };
   }
@@ -92,7 +101,7 @@ export function afterSaleNote(
     case 'withdrawn':
       return `Billion ghi ${ref} là đã rút lại${said}.`;
     case 'refunded':
-      return `Billion đã hoàn tiền xong cho yêu cầu #${afterSaleId} (ICCID ${iccids})${said}.`;
+      return `Billion đã hoàn tiền xong cho yêu cầu #${afterSaleId} (ICCID ${iccids})${update.refundAmount ? `, số tiền ${update.refundAmount}` : ''}${said}.`;
     case 'refund_failed':
       return `Billion hoàn tiền THẤT BẠI cho ${ref}${said} — cần liên hệ Billion.`;
     default:

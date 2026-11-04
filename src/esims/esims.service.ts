@@ -286,6 +286,35 @@ export class EsimsService {
     return this.esimsRepository.findById(id);
   }
 
+  /** Refund requests sent to the supplier for this eSIM (vande-0411 #009). */
+  private async supplierRefundsOf(iccid: string | null | undefined) {
+    if (!this.dataSource || !iccid) return [];
+    try {
+      const rows: {
+        supplier: string;
+        requestId: string;
+        status: string;
+        note: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+      }[] = await this.dataSource.query(
+        `SELECT 'Airalo' AS supplier, "refundId" AS "requestId", status,
+                "statusText" AS note, "createdAt", "updatedAt"
+           FROM airalo_refund_request
+          WHERE $1 = ANY(string_to_array(iccids, ', '))
+         UNION ALL
+         SELECT 'Billion', "afterSaleId", status, opinion, "createdAt", "updatedAt"
+           FROM billion_after_sale
+          WHERE $1 = ANY(string_to_array(iccids, ', '))
+          ORDER BY "createdAt" DESC`,
+        [iccid],
+      );
+      return rows;
+    } catch {
+      return [];
+    }
+  }
+
   async findByIdWithRelations(id: Esim['id']): Promise<NullableType<Esim>> {
     const esim = await this.esimsRepository.findByIdWithRelations(id);
     if (!esim) return null;
@@ -301,7 +330,8 @@ export class EsimsService {
         ? ((await this.plansService.withAppSupport([withTopup.plan]))[0] ??
           withTopup.plan)
         : withTopup.plan;
-    return { ...withTopup, plan, topups, chosenDays };
+    const supplierRefunds = await this.supplierRefundsOf(esim.iccid);
+    return { ...withTopup, plan, topups, chosenDays, supplierRefunds };
   }
 
   /**
