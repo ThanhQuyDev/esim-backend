@@ -1,3 +1,4 @@
+import { planPurchaseKind } from '../../plans/plan-purchase-kind';
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -123,6 +124,25 @@ export function billionPhoneNumber(
   known?: string | null,
 ): string | null {
   return msisdn?.trim() || known?.trim() || null;
+}
+
+/**
+ * The topup and add-on twins of a Billion plan read the same, which is hard to
+ * follow in one list (vande-0411 #040). "Addon" goes on the one that really
+ * takes add-ons; a plan outside Billion's APN list takes neither and stays as
+ * it is.
+ */
+export function billionPlanName(
+  name: string,
+  plan: {
+    topUp: boolean;
+    accelerationSupport: number | null;
+    apn: string | null;
+  },
+): string {
+  return planPurchaseKind({ provider: PROVIDER, ...plan }) === 'addon'
+    ? `${name} Addon`
+    : name;
 }
 
 @Injectable()
@@ -532,10 +552,23 @@ export class BillionService {
       (c.operatorInfo ?? []).map((o) => o.network),
     );
 
+    const accelerationSupport = /^[0-3]$/.test(
+      String(product.accelerationSupport ?? ''),
+    )
+      ? Number(product.accelerationSupport)
+      : null;
+    // A rechargeable eSIM takes topups later (F052 + F007, vande #004), on the
+    // APNs Billion lists for them (Bundle Add-on Instructions, 04/11).
+    const topUp = isBillionRechargeableEsim(product) && billionApnTakesVas(apn);
+
     const planData = {
       provider: PROVIDER,
       providerPlanId: variant.providerPlanId,
-      name: variant.name,
+      name: billionPlanName(variant.name, {
+        topUp,
+        accelerationSupport,
+        apn,
+      }),
       countryCode: destinationId ? mccCode : null,
       destinationId,
       regionId,
@@ -548,15 +581,9 @@ export class BillionService {
       sms: null,
       call: null,
       type,
-      // A rechargeable eSIM takes topups later (F052 + F007, vande #004), on
-      // the APNs Billion lists for them (Bundle Add-on Instructions, 04/11).
-      topUp: isBillionRechargeableEsim(product) && billionApnTakesVas(apn),
+      topUp,
       // Whether data can be bought on top later (F015/F016, vande #081).
-      accelerationSupport: /^[0-3]$/.test(
-        String(product.accelerationSupport ?? ''),
-      )
-        ? Number(product.accelerationSupport)
-        : null,
+      accelerationSupport,
       slug,
       speed: networkSpeed(generations),
       operatorName: uniqueOperators(carriers),
