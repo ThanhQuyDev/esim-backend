@@ -269,22 +269,29 @@ export function topupFromPackageCode(code: string): {
 }
 
 /**
- * Expiry of a local eSIM from the day it is sold (#024, test round 4): a
- * Viettel travel eSIM of 15 days runs 15 days from the purchase — no
- * Vietnamese carrier reports activation, so buying it is starting it.
- *
- * A domestic eSIM does expire, just much later (vande #002): its date is the
- * "Expried Time" column of the import file, already stored on the eSIM, so a
- * sale leaves it as it is. It used to be cleared here as "Vô thời hạn".
+ * The dates of a local eSIM from the moment it is sold (vande-0411 #046). No
+ * Vietnamese carrier reports them, and it is running once bought: created,
+ * installed and activated are the sale, and it ends its days later. A domestic
+ * eSIM too, 360 days from the sale rather than the date in the import file.
  */
 export function localEsimExpiry(
-  plan: { isDomesticEsim?: boolean | null; durationDays?: number | null },
+  plan: { durationDays?: number | null },
   soldAt: Date = new Date(),
-): { expiresAt: Date | null } | Record<string, never> {
-  if (plan.isDomesticEsim) return {};
+): {
+  createdAt: Date;
+  installedAt: Date;
+  activatedAt: Date;
+  expiresAt?: Date;
+} {
   const days = Number(plan.durationDays ?? 0);
-  if (!(days > 0)) return {};
-  return { expiresAt: new Date(soldAt.getTime() + days * 24 * 60 * 60 * 1000) };
+  return {
+    createdAt: soldAt,
+    installedAt: soldAt,
+    activatedAt: soldAt,
+    ...(days > 0
+      ? { expiresAt: new Date(soldAt.getTime() + days * 86_400_000) }
+      : {}),
+  };
 }
 
 /**
@@ -875,8 +882,11 @@ export class OrdersService {
             orderItemId: orderItem.id,
             userId,
             status: 'sold',
-            ...localEsimExpiry(item.plan),
           });
+          await this.esimsService.stampLocalSale(
+            esim.id,
+            localEsimExpiry(item.plan),
+          );
         }
 
         if (availableEsims.length >= item.quantity) {
@@ -1712,8 +1722,11 @@ export class OrdersService {
             orderItemId: item.id,
             userId: order.userId,
             status: 'sold',
-            ...localEsimExpiry(item.plan),
           });
+          await this.esimsService.stampLocalSale(
+            esim.id,
+            localEsimExpiry(item.plan),
+          );
         }
 
         const completed = availableEsims.length >= item.quantity;

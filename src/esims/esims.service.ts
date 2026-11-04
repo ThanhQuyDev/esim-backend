@@ -474,6 +474,19 @@ export class EsimsService {
     });
   }
 
+  /** The dates of a local eSIM once sold (vande-0411 #046). */
+  stampLocalSale(
+    id: Esim['id'],
+    dates: {
+      createdAt: Date;
+      installedAt: Date;
+      activatedAt: Date;
+      expiresAt?: Date;
+    },
+  ): Promise<void> {
+    return this.esimsRepository.stampLocalSale(id, dates);
+  }
+
   async remove(id: Esim['id']): Promise<void> {
     await this.esimsRepository.remove(id);
   }

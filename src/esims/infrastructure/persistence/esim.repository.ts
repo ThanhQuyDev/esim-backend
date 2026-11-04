@@ -126,6 +126,16 @@ export abstract class EsimRepository {
 
   abstract markStockUploaded(id: Esim['id']): Promise<void>;
 
+  abstract stampLocalSale(
+    id: Esim['id'],
+    dates: {
+      createdAt: Date;
+      installedAt: Date;
+      activatedAt: Date;
+      expiresAt?: Date;
+    },
+  ): Promise<void>;
+
   abstract findDueForUsageRefresh(
     providers: string[],
     limit: number,

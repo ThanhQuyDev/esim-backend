@@ -51,13 +51,24 @@ describe('eSIM lifecycle status (#024, test round 4)', () => {
     ).toBe('active');
   });
 
-  it('should start a Viettel eSIM expiry from the sale, and keep the imported date of a domestic one', () => {
-    expect(localEsimExpiry({ durationDays: 15 }, NOW)).toEqual({
-      expiresAt: new Date('2026-10-25T00:00:00Z'),
-    });
-    expect(
-      localEsimExpiry({ isDomesticEsim: true, durationDays: 30 }, NOW),
-    ).toEqual({});
+  it('should date a sold local eSIM from the sale, Viettel and domestic alike', () => {
+    for (const plan of [
+      { durationDays: 15 },
+      { isDomesticEsim: true, durationDays: 15 },
+    ]) {
+      expect(localEsimExpiry(plan, NOW)).toEqual({
+        createdAt: NOW,
+        installedAt: NOW,
+        activatedAt: NOW,
+        expiresAt: new Date('2026-10-25T00:00:00Z'),
+      });
+    }
+  });
+
+  it('should leave the end open when the plan has no length', () => {
+    expect(localEsimExpiry({ durationDays: 0 }, NOW)).not.toHaveProperty(
+      'expiresAt',
+    );
   });
 });
 

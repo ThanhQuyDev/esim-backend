@@ -567,6 +567,31 @@ export class EsimsRelationalRepository implements EsimRepository {
    * per-run cap, every eSIM still comes round eventually instead of the same
    * few being refreshed forever.
    */
+  /** Directly: an ordinary save does not write `createdAt`. */
+  async stampLocalSale(
+    id: Esim['id'],
+    dates: {
+      createdAt: Date;
+      installedAt: Date;
+      activatedAt: Date;
+      expiresAt?: Date;
+    },
+  ): Promise<void> {
+    await this.esimsRepository.query(
+      `UPDATE "esim"
+          SET "createdAt" = $2, "installedAt" = $3, "activatedAt" = $4,
+              "expiresAt" = COALESCE($5, "expiresAt")
+        WHERE id = $1`,
+      [
+        Number(id),
+        dates.createdAt,
+        dates.installedAt,
+        dates.activatedAt,
+        dates.expiresAt ?? null,
+      ],
+    );
+  }
+
   async markStockUploaded(id: Esim['id']): Promise<void> {
     await this.esimsRepository.query(
       `UPDATE "esim" SET "createdAt" = now() WHERE id = $1`,
