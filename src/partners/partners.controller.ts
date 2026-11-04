@@ -677,13 +677,15 @@ export class PartnersController {
   @HttpCode(HttpStatus.OK)
   async quoteMyPurchase(
     @Request() req: { user: { id: number } },
-    @Query() query: { planId: string; quantity: string },
+    @Query() query: { planId: string; quantity: string; periodNum?: string },
   ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
     return this.partnersService.quotePurchase(
       partner.id,
       Number(query.planId),
       Number(query.quantity),
+      // Days of a day pass (vande-0411 #002).
+      query.periodNum ? Number(query.periodNum) : null,
     );
   }
 

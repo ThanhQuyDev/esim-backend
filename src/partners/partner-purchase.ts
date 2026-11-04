@@ -94,6 +94,18 @@ export function partnerLineDays(
   return Math.min(365, Math.max(1, days));
 }
 
+/**
+ * What one day (or one eSIM) of a plan costs esim.vn: the supplier's dollars ×
+ * the rate, not the figure rounded to the thousand for display (vande-0411 #002).
+ * Over 14 days that gap alone moved a 50% agent price by about 8.000đ.
+ */
+export function partnerPlanCostVnd(plan: {
+  vndCostExact?: number | string | null;
+  vndCostPrice?: number | string | null;
+}): number {
+  return Number(plan.vndCostExact ?? 0) || Number(plan.vndCostPrice ?? 0) || 0;
+}
+
 /** To the nearest 1.000đ. */
 export function roundToThousand(vnd: number): number {
   return Math.round((Number(vnd) || 0) / 1000) * 1000;
@@ -118,7 +130,7 @@ export function planRefundSupported(plan: RefundPolicyPlan): boolean {
 }
 
 export type PartnerPurchaseQuoteInput = {
-  /** `plan.vndCostPrice` — giá vốn esim.vn trả nhà cung cấp. */
+  /** Giá vốn esim.vn trả nhà cung cấp, chưa làm tròn (`partnerPlanCostVnd`). */
   unitCostVnd: number;
   /** Markup của hạng đối tác đang giữ: % chung và các khoảng giá (#040). */
   costMarkupPercent: number | CostMarkup;

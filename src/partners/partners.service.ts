@@ -67,6 +67,7 @@ import {
   partnerSuggestedRetailVnd,
   planRefundSupported,
   partnerLineDays,
+  partnerPlanCostVnd,
 } from './partner-purchase';
 import { readPartnerBrand, sanitizeBrandInput } from './partner-brand';
 import {
@@ -10245,7 +10246,7 @@ export class PartnersService {
       plans: rows.map((plan) => {
         const listPriceVnd = Number(plan.vndPrice ?? 0);
         const unitPriceVnd = partnerPurchaseUnitPriceVnd(
-          Number(plan.vndCostPrice ?? 0),
+          partnerPlanCostVnd(plan),
           markupPercent,
           listPriceVnd,
         );
@@ -10413,7 +10414,8 @@ export class PartnersService {
   > {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const plan = await this.dataSource.query(
-      `SELECT "vndPrice", "vndCostPrice", "isAbleMultidate" FROM plan
+      `SELECT "vndPrice", "vndCostPrice", "vndCostExact", "isAbleMultidate"
+         FROM plan
         WHERE id = $1 AND "isActive" = true AND "deletedAt" IS NULL`,
       [planId],
     );
@@ -10426,7 +10428,7 @@ export class PartnersService {
     const days = partnerLineDays(plan[0], periodNum);
     const wallet = await this.getOrCreateWallet(partnerId);
     const quote = partnerPurchaseQuote({
-      unitCostVnd: Number(plan[0].vndCostPrice ?? 0) * days,
+      unitCostVnd: partnerPlanCostVnd(plan[0]) * days,
       costMarkupPercent: await this.purchaseMarkupPercentFor(partner),
       listPriceVnd:
         days > 1
