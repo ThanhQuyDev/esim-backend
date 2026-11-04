@@ -1,12 +1,16 @@
-import { lookup } from 'fast-geoip';
+import { open, Reader } from 'maxmind';
 
 /**
  * Where an order came from, for "Vị trí & IP" on the admin order page
  * (vande #058).
  *
  * Looked up once, when the order is placed, from a database shipped with the
- * app (GeoLite2 via fast-geoip): the buyer's address is never sent to an
- * outside service, and reading it costs a few small file reads, not memory.
+ * app: the buyer's address is never sent to an outside service.
+ *
+ * GeoLite2 from the `@ip-location-db` package (vande-0411 #051). `fast-geoip`
+ * stopped at July 2022, and Vietnamese networks move their blocks between
+ * cities: a Ho Chi Minh City address came out as Quảng Ngãi. Keep this package
+ * current, an old copy goes wrong the same way.
  */
 
 /** The address as the buyer's network gave it, or null when it is not one. */
@@ -26,6 +30,27 @@ export function publicIp(ip?: string | null): string | null {
 
 const COUNTRY = new Intl.DisplayNames(['en'], { type: 'region' });
 
+type Place = { country_code?: string; city?: string };
+
+const DATABASE = '@ip-location-db/geolite2-city-mmdb/geolite2-city';
+const readers = new Map<string, Promise<Reader<any>>>();
+
+/** Opened on first use, each file once: IPv6 is rarely needed. */
+function readerFor(ipv6: boolean): Promise<Reader<any>> {
+  const file = `${DATABASE}-${ipv6 ? 'ipv6' : 'ipv4'}.mmdb`;
+  let reader = readers.get(file);
+  if (!reader) {
+    reader = open<any>(require.resolve(file));
+    readers.set(file, reader);
+  }
+  return reader;
+}
+
+async function lookup(address: string): Promise<Place | null> {
+  const reader = await readerFor(address.includes(':'));
+  return reader.get(address) as Place | null;
+}
+
 /** Country code and city of a public address (vande #059), or null. */
 export async function ipPlace(
   ip?: string | null,
@@ -34,8 +59,8 @@ export async function ipPlace(
   if (!address) return null;
   try {
     const found = await lookup(address);
-    return found?.country
-      ? { country: found.country, city: found.city || null }
+    return found?.country_code
+      ? { country: found.country_code, city: found.city || null }
       : null;
   } catch {
     return null;
@@ -57,10 +82,10 @@ export async function ipLocation(ip?: string | null): Promise<string | null> {
   if (!address) return null;
   try {
     const found = await lookup(address);
-    if (!found?.country) return null;
-    let country: string = found.country;
+    if (!found?.country_code) return null;
+    let country: string = found.country_code;
     try {
-      country = COUNTRY.of(found.country) ?? found.country;
+      country = COUNTRY.of(found.country_code) ?? found.country_code;
     } catch {
       // An unusual code stays as it is.
     }

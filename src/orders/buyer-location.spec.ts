@@ -7,6 +7,14 @@ describe('buyer location', () => {
     expect(await ipLocation('27.72.100.1')).toBe('Hanoi, Vietnam');
   });
 
+  it('should not use data so old it puts Ho Chi Minh City in Quang Ngai (#051)', async () => {
+    expect(await ipLocation('171.243.48.1')).toBe('Ho Chi Minh City, Vietnam');
+  });
+
+  it('should read an IPv6 address', async () => {
+    expect(await ipLocation('2001:4860:4860::8888')).toBe('United States');
+  });
+
   it('should give the country alone when the city is not known', async () => {
     expect(await ipLocation('8.8.8.8')).toBe('United States');
   });
