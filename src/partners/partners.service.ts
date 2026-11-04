@@ -1703,19 +1703,7 @@ export class PartnersService {
     }
 
     const amountVnd = Math.round(dto.amountVnd);
-    // This partner's own limits when they have been given any, the programme
-    // default otherwise (#061).
-    const limits = await this.depositLimitsFor(partner);
-    if (amountVnd < limits.minVnd) {
-      throw new BadRequestException(
-        `Số tiền nạp tối thiểu là ${limits.minVnd.toLocaleString('vi-VN')}đ.`,
-      );
-    }
-    if (amountVnd > limits.maxVnd) {
-      throw new BadRequestException(
-        `Số tiền nạp tối đa mỗi lần là ${limits.maxVnd.toLocaleString('vi-VN')}đ.`,
-      );
-    }
+    await this.assertDepositWithinLimits(partner, amountVnd);
 
     const method = dto.method ?? PartnerTopupMethodEnum.BANK_TRANSFER;
     // A card payment goes through OnePay, which charges for it, and the brief
@@ -1839,6 +1827,9 @@ export class PartnersService {
     }
 
     const amountVnd = Math.round(dto.amountVnd);
+    // The same limits as an automatic top-up: a manual request skipped them,
+    // so the admin's limit for this partner did nothing (vande-0411 #014).
+    await this.assertDepositWithinLimits(partner, amountVnd);
     const dir = join(PARTNER_DEPOSIT_PROOFS_DIR, String(partnerId));
     await mkdir(dir, { recursive: true });
     const proofFiles: PartnerDocument[] = [];
@@ -5398,6 +5389,27 @@ export class PartnersService {
    * The programme-wide numbers are the default; a partner may be given their
    * own, which is what a distributor turning over hundreds of millions needs.
    */
+  /**
+   * This partner's own limits when they have been given any, the programme
+   * default otherwise (#061).
+   */
+  private async assertDepositWithinLimits(
+    partner: PartnerEntity,
+    amountVnd: number,
+  ): Promise<void> {
+    const limits = await this.depositLimitsFor(partner);
+    if (amountVnd < limits.minVnd) {
+      throw new BadRequestException(
+        `Số tiền nạp tối thiểu là ${limits.minVnd.toLocaleString('vi-VN')}đ.`,
+      );
+    }
+    if (amountVnd > limits.maxVnd) {
+      throw new BadRequestException(
+        `Số tiền nạp tối đa mỗi lần là ${limits.maxVnd.toLocaleString('vi-VN')}đ.`,
+      );
+    }
+  }
+
   async depositLimitsFor(
     partner: PartnerEntity,
   ): Promise<{ minVnd: number; maxVnd: number }> {

@@ -46,6 +46,10 @@ function buildService(partner: Record<string, unknown>) {
       ...partner,
     }),
     configService: { get: () => ({ accountNumber: '123' }) },
+    depositLimitsFor: jest.fn().mockResolvedValue({
+      minVnd: 1_000_000,
+      maxVnd: 100_000_000,
+    }),
   });
   return { service, saved, depositRequestRepository };
 }
@@ -92,6 +96,26 @@ describe('manual ký quỹ top-ups (vande #068/#069)', () => {
     expect(proofs).toHaveLength(1);
     expect(proofs[0].id).toMatch(/^[a-f0-9]{24}\.png$/);
     expect(proofs[0].name).toBe('uy-nhiem-chi.png');
+  });
+
+  it('should hold a manual request to the limits too (vande-0411 #014)', async () => {
+    const { service, saved } = buildService({});
+
+    await expect(
+      service.createManualDepositRequest(
+        11,
+        { amountVnd: 999_999, transferContent: 'NAP KY QUY' },
+        [PROOF],
+      ),
+    ).rejects.toThrow('tối thiểu');
+    await expect(
+      service.createManualDepositRequest(
+        11,
+        { amountVnd: 100_000_001, transferContent: 'NAP KY QUY' },
+        [PROOF],
+      ),
+    ).rejects.toThrow('tối đa');
+    expect(saved).toHaveLength(0);
   });
 
   it('should refuse a request without proof', async () => {
