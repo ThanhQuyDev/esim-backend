@@ -101,7 +101,7 @@ describe('Standard plan name (vande #020)', () => {
         { type: 'daily', dataMb: 1024, durationDays: 1, fupSpeed: '384kbps' },
         'Asia 13',
       ),
-    ).toBe('Asia 13 - Daily 1 GB/day - Unlimited 384 Kbps - 1 day');
+    ).toBe('Asia 13 - Daily 1 GB/day - 1 day');
     expect(
       standardPlanName(
         { type: 'fixed', dataMb: 500, durationDays: 3, fupSpeed: 'Terminate' },
@@ -141,4 +141,89 @@ describe('Standard name of a day pass sold by the day (vande #020)', () => {
       ),
     ).toBe('China - Daily 1 GB/day - Unlimited 1 Mbps');
   });
+});
+
+describe('Unlimited only from 1 Mbps (vande-0411 #038)', () => {
+  it('should keep the speed of a plan with no quota to name', () => {
+    expect(
+      standardPlanName(
+        { type: 'unlimited', dataMb: 0, durationDays: 7, fupSpeed: '128kbps' },
+        'Vietnam',
+      ),
+    ).toBe('Vietnam - Unlimited 128 Kbps - 7 days');
+  });
+
+  it.each([
+    [
+      'Japan - Total 10 GB - 7 days',
+      { type: 'fixed', dataMb: 10240, durationDays: 7, fupSpeed: '128kbps' },
+      'Japan',
+    ],
+    [
+      'United States - Daily 1 GB/day - 15 days',
+      { type: 'daily', dataMb: 1024, durationDays: 15, fupSpeed: '384 Kbps' },
+      'United States',
+    ],
+    [
+      'Russia - Daily 1 GB/day - Unlimited 5 Mbps - 5 days',
+      { type: 'unlimited', dataMb: 1024, durationDays: 5, fupSpeed: '5Mbps' },
+      'Russia',
+    ],
+    [
+      'South Korea - Daily 1 GB/day - Unlimited 5 Mbps - 20 days',
+      { type: 'unlimited', dataMb: 1024, durationDays: 20, fupSpeed: '5Mbps' },
+      'South Korea',
+    ],
+    [
+      'Vietnam - Total 5 GB - Unlimited 10 Mbps - 7 days',
+      { type: 'fixed', dataMb: 5120, durationDays: 7, fupSpeed: '10Mbps' },
+      'Vietnam',
+    ],
+    [
+      'Vietnam - Daily 5 GB/day - Unlimited 1 Mbps - 200 Mins - 200 SMS - 7 days',
+      {
+        type: 'unlimited-reduce',
+        dataMb: 5120,
+        durationDays: 7,
+        fupSpeed: '1 Mbps',
+        call: 200,
+        sms: 200,
+      },
+      'Vietnam',
+    ],
+    [
+      'Vietnam - Unlimited 5 Mbps - 200 Mins - 200 SMS - 7 days',
+      {
+        type: 'unlimited',
+        dataMb: 0,
+        durationDays: 7,
+        fupSpeed: '5Mbps',
+        call: 200,
+        sms: 200,
+      },
+      'Vietnam',
+    ],
+    [
+      'Vietnam - Unlimited - 7 days',
+      { type: 'unlimited', dataMb: 0, durationDays: 7 },
+      'Vietnam',
+    ],
+    [
+      'Vietnam - Total 5 GB - 200 Mins - 200 SMS - 7 days',
+      {
+        type: 'fixed',
+        dataMb: 5120,
+        durationDays: 7,
+        fupSpeed: '512 Kbps',
+        call: 200,
+        sms: 200,
+      },
+      'Vietnam',
+    ],
+  ] as [string, Parameters<typeof standardPlanName>[0], string][])(
+    'should name %s',
+    (expected, plan, location) => {
+      expect(standardPlanName(plan, location)).toBe(expected);
+    },
+  );
 });

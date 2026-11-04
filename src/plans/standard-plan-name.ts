@@ -14,6 +14,10 @@
  *   Vietnam - Unlimited 5 Mbps - 7 days
  *   Global 45 - Unlimited - 7 days
  *
+ * "Unlimited" is only for a speed still worth using, 1 Mbps or more: "Japan -
+ * Total 10 GB - Unlimited 128 Kbps" read as unlimited to a customer who would
+ * crawl at 128 Kbps, so it is "Japan - Total 10 GB - 7 days" (vande-0411 #038).
+ *
  * The supplier's own name stays in `plan.name`; plans we stock ourselves are
  * imported with a name already in this form, so theirs is kept as it is.
  */
@@ -55,6 +59,15 @@ export function formatData(dataMb: number): string {
 
 const DAILY_TYPES = new Set(['daily', 'daily-limit-service-cutoff']);
 
+/** "Unlimited 5 Mbps" from 1 Mbps up; nothing to say below that. */
+function unlimitedLabel(raw: string | null | undefined): string | null {
+  const speed = formatSpeed(raw);
+  if (!speed) return null;
+  const [value, unit] = speed.split(' ');
+  const mbps = unit === 'Mbps' ? Number(value) : Number(value) / 1024;
+  return mbps >= 1 ? `Unlimited ${speed}` : null;
+}
+
 export function standardPlanName(
   plan: StandardNameInput,
   locationName: string | null | undefined,
@@ -63,21 +76,23 @@ export function standardPlanName(
 
   const type = plan.type ?? '';
   const dataMb = Number(plan.dataMb ?? 0);
-  const speed = formatSpeed(plan.fupSpeed);
-  const unlimited = speed ? `Unlimited ${speed}` : null;
+  const unlimited = unlimitedLabel(plan.fupSpeed);
   const parts: string[] = [locationName?.trim() || 'eSIM'];
 
-  if (DAILY_TYPES.has(type) || (type === 'unlimited-reduce' && dataMb > 0)) {
-    // A day pass: so much data a day, then (maybe) slower but unlimited.
+  if (
+    DAILY_TYPES.has(type) ||
+    ((type === 'unlimited' || type === 'unlimited-reduce') && dataMb > 0)
+  ) {
+    // A day pass: so much data a day, then (maybe) slower but unlimited. An
+    // "unlimited" plan with a quota is one too, as Billion and MicroEsim file
+    // "1GB/day, then 5 Mbps"; a total quota stays "fixed" (vande-0411 #038).
     parts.push(`Daily ${formatData(dataMb)}/day`);
     if (unlimited) parts.push(unlimited);
   } else if (type === 'unlimited' || type === 'unlimited-reduce') {
-    if (dataMb > 0) {
-      parts.push(`Total ${formatData(dataMb)}`);
-      if (unlimited) parts.push(unlimited);
-    } else {
-      parts.push(unlimited ?? 'Unlimited');
-    }
+    // No quota to name, so the speed is all there is, however low: a bare
+    // "Unlimited" would promise more than "Unlimited 128 Kbps" does.
+    const speed = formatSpeed(plan.fupSpeed);
+    parts.push(speed ? `Unlimited ${speed}` : 'Unlimited');
   } else {
     parts.push(`Total ${formatData(dataMb)}`);
     if (unlimited) parts.push(unlimited);
