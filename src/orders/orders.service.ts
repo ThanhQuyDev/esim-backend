@@ -1290,6 +1290,8 @@ export class OrdersService {
             ? {
                 id: plan.id,
                 name: plan.name,
+                // The name under the one rule, for the payment result (vande-0411 #043).
+                standardName: plan.standardName ?? null,
                 slug: plan.slug,
                 durationDays: plan.durationDays,
                 dataMb: plan.dataMb,
