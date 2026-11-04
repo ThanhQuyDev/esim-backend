@@ -1,3 +1,4 @@
+import { withExpiryAfter } from './package-expiry';
 import { generateOrderNumber } from '../utils/order-number';
 import {
   BadGatewayException,
@@ -342,7 +343,14 @@ export class TopupService {
     provider: TopupProvider;
     packages: TopupPackageDto[];
   }> {
-    const list = await this.listProviderPackages(iccid);
+    const raw = await this.listProviderPackages(iccid);
+    const list = {
+      ...raw,
+      packages: withExpiryAfter(
+        raw.packages,
+        await this.expiryContext(iccid, raw.provider),
+      ),
+    };
     // "Seychelles - 5 GB - 30 days": supplier names leave the place out, so
     // the topup list could not be checked against the eSIM (doitac-3010 #006).
     const place = await this.destinationNameFor(iccid);
@@ -358,6 +366,24 @@ export class TopupService {
           : { ...pkg, name: `${place} - ${pkg.name}` },
       ),
     };
+  }
+
+  /** For the date labels; a failure here must not cost the customer the list. */
+  private async expiryContext(
+    iccid: string,
+    provider: TopupProvider,
+  ): Promise<{ current: Date | null; billionFixed: boolean }> {
+    try {
+      const esim = await this.esimsService.findByIccid(iccid);
+      const current = esim ? await this.esimsService.currentExpiry(esim) : null;
+      const plan =
+        provider === TopupProvider.BILLION && esim?.planId
+          ? await this.plansService.findById(esim.planId)
+          : null;
+      return { current, billionFixed: plan?.type === 'fixed' };
+    } catch {
+      return { current: null, billionFixed: false };
+    }
   }
 
   /** The country or region of the plan an eSIM was bought on. */

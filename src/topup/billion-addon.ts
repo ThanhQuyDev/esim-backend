@@ -106,7 +106,10 @@ export function billionAddonData(sku: BillionAccelerationSku): {
   bytes: number;
   perDay: boolean;
 } {
-  const perDay = sku.planType === '1' || (!sku.capacity && !!sku.highFlowSize);
+  // Billion answers capacity "-1" on a daily add-on, so "no capacity" is not
+  // only an empty value; the label fell back to the package name (vande-0411 #021).
+  const perDay =
+    sku.planType === '1' || (!(Number(sku.capacity) > 0) && !!sku.highFlowSize);
   const kb = Number(perDay ? sku.highFlowSize : sku.capacity) || 0;
   return { bytes: Math.round(kb * 1024), perDay };
 }

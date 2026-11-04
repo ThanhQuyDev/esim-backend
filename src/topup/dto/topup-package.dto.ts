@@ -100,6 +100,17 @@ export class TopupPackageDto {
   addonKind?: 'boost' | 'upgrade' | 'extra';
 
   /**
+   * The eSIM's date once bought (vande-0411 #021): a top-up's new date, or the
+   * date an add-on leaves as it is. Null when the eSIM has not started.
+   */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  expiresAfter?: string | null;
+
+  /** Billion fixed top-up: it runs only after the current package ends. */
+  @ApiPropertyOptional({ type: Boolean })
+  startsAfterCurrent?: boolean;
+
+  /**
    * A day pass (eSIM Access dataType 2): `durationDays` is one day and the
    * top-up can be bought for several (doitac-3010 #050).
    */

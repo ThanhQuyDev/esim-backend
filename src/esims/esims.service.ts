@@ -984,6 +984,12 @@ export class EsimsService {
     }
   }
 
+  /** When this eSIM ends as things stand; null before it is switched on. */
+  async currentExpiry(esim: Esim): Promise<Date | null> {
+    if (esim.expiresAt) return esim.expiresAt;
+    return esim.activatedAt ? this.expiryBeforeTopup(esim, 0) : null;
+  }
+
   /**
    * When an eSIM with no stored date would have ended before this top-up: some
    * suppliers report none, and the days left would be lost otherwise. The order

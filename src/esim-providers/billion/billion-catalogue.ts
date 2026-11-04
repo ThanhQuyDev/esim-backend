@@ -256,6 +256,25 @@ export function isRawBillionRegionName(name: string): boolean {
  * ids carry the `:r` mark. As a topup of an eSIM (`carrierFee` left out) the
  * same product keeps plain ids and the plan price alone.
  */
+/**
+ * A recharge product's packages, for the top-up list (vande-0411 #021). Billion
+ * prices a daily one by day count, 1 to 90 days, but types it 110 rather than
+ * 3105, so only the 1-day row came through. A fixed one stays a single package:
+ * its other rows are copies, not more days.
+ */
+export function billionRechargeVariants(
+  product: BillionProduct,
+  price: BillionPrice | undefined,
+): BillionPlanVariant[] {
+  const daily = billionDataAndType(product).type !== 'fixed';
+  return billionPlanVariants(
+    daily && (price?.price?.length ?? 0) > 1
+      ? { ...product, type: '3105' }
+      : product,
+    price,
+  );
+}
+
 export function billionPlanVariants(
   product: BillionProduct,
   price: BillionPrice | undefined,

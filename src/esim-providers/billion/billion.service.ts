@@ -33,6 +33,7 @@ import {
 import {
   BillionPlanVariant,
   billionPlanVariants,
+  billionRechargeVariants,
   billionRegionName,
   isRawBillionRegionName,
   billionActivationUntil,
@@ -850,7 +851,10 @@ export class BillionService {
         );
         continue;
       }
-      for (const variant of billionPlanVariants(entry.product, entry.price)) {
+      for (const variant of billionRechargeVariants(
+        entry.product,
+        entry.price,
+      )) {
         offers.push({
           ...variant,
           costUsd: Math.round(variant.cost * hkdToUsd * 10000) / 10000,
