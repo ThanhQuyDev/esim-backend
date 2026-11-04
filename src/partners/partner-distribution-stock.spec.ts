@@ -71,6 +71,8 @@ describe('PartnersService.getMyEsims (#046)', () => {
         purchaseKind: 'none',
         // doitac-1410 #038
         durationDays: null,
+        topupCount: 0,
+        addonCount: 0,
         hasCallSms: false,
         tiktokAi: false,
         refundable: true,

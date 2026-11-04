@@ -8804,6 +8804,9 @@ export class PartnersService {
       purchaseKind: PlanPurchaseKind;
       // doitac-1410 #038:
       durationDays: number | null;
+      /** Finished on this eSIM, shown on its row (vande-0411 #024). */
+      topupCount: number;
+      addonCount: number;
       hasCallSms: boolean;
       tiktokAi: boolean;
       refundable: boolean;
@@ -8871,6 +8874,16 @@ export class PartnersService {
                   AND t.status = 'completed' AND t."deletedAt" IS NULL
                   AND COALESCE(t."topupIsUnlimited", false) = false)
                 AS "topupData",
+              -- What was bought on top, for the row itself (vande-0411 #024).
+              -- An add-on's days are copies billed, not days gained.
+              (SELECT json_build_object(
+                        'topups', COUNT(*) FILTER (WHERE COALESCE(t."topupPackageId", '') NOT LIKE 'billion-acc:%'),
+                        'addons', COUNT(*) FILTER (WHERE t."topupPackageId" LIKE 'billion-acc:%'),
+                        'days', COALESCE(SUM(t."topupDurationDays") FILTER (WHERE COALESCE(t."topupPackageId", '') NOT LIKE 'billion-acc:%'), 0))
+                 FROM "order" t
+                WHERE t."orderType" = 'TOPUP' AND t."targetIccid" = e.iccid
+                  AND t.status = 'completed' AND t."deletedAt" IS NULL)
+                AS "bought",
               p."durationDays",
               (COALESCE(p.sms, 0) > 0 OR COALESCE(p.call, 0) > 0) AS "hasCallSms",
               p.provider,
@@ -8965,7 +8978,12 @@ export class PartnersService {
         accelerationSupport: row.accelerationSupport,
         apn: row.planApn,
       }),
-      durationDays: row.durationDays == null ? null : Number(row.durationDays),
+      durationDays:
+        row.durationDays == null
+          ? null
+          : Number(row.durationDays) + Number(row.bought?.days ?? 0),
+      topupCount: Number(row.bought?.topups ?? 0),
+      addonCount: Number(row.bought?.addons ?? 0),
       hasCallSms: Boolean(row.hasCallSms),
       tiktokAi: tiktokByPlan.get(Number(row.planId)) ?? false,
       refundable: planRefundSupported({
