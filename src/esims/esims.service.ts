@@ -530,7 +530,12 @@ export class EsimsService {
         };
         await this.persistUsageSnapshot(esim, result);
         return result;
-      } catch {
+      } catch (err) {
+        // A 429 here was invisible: the page just kept its old figures
+        // (vande-0411 #037).
+        this.logger?.warn(
+          `Airalo usage for eSIM ${esim.id}: ${(err as Error).message}`,
+        );
         return this.fallbackFromDb(esim);
       }
     }
