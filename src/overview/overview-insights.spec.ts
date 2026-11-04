@@ -103,6 +103,7 @@ describe('the KPI cards (vande #059)', () => {
     });
     expect(kpis.orders).toEqual({
       paidOrders: 25,
+      topupOrders: 0,
       esimsSold: 31,
       visits: 400,
       conversionPercent: 5,

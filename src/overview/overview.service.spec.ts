@@ -159,7 +159,7 @@ describe('Refunded orders are excluded from the overview figures', () => {
     qb.getRawOne = jest.fn().mockResolvedValue({});
 
     const service = new OverviewService(
-      {} as never,
+      { createQueryBuilder: () => qb } as never,
       { createQueryBuilder: () => qb } as never,
       {} as never,
       {} as never,
@@ -205,7 +205,7 @@ describe('Partial refunds on the overview (#009)', () => {
     qb.getRawMany = jest.fn().mockResolvedValue(rawMany);
     qb.getRawOne = jest.fn().mockResolvedValue({ totalRevenue: '150000' });
 
-    const ordersRepository = { createQueryBuilder: jest.fn() };
+    const ordersRepository = { createQueryBuilder: jest.fn(() => qb) };
     const service = new OverviewService(
       ordersRepository as never,
       { createQueryBuilder: () => qb } as never,
@@ -360,5 +360,100 @@ describe('Partner commission on the overview (vande #016)', () => {
     ]);
     expect(result.data![1]).toMatchObject({ orders: 1, profit: 400 });
     expect(result.data![0]).toMatchObject({ orders: 0, profit: 0 });
+  });
+});
+
+/** vande-0411 #023 — a top-up has no order line, so line sums leave it out. */
+describe('Topup / Addon on the overview (vande-0411 #023)', () => {
+  function service(orderRows: unknown[], itemRows: unknown[] = []) {
+    const query = (rows: unknown[]) => {
+      const qb: Record<string, jest.Mock> = {};
+      for (const name of [
+        'innerJoin',
+        'leftJoin',
+        'where',
+        'andWhere',
+        'select',
+        'addSelect',
+        'groupBy',
+        'addGroupBy',
+        'orderBy',
+        'setParameters',
+      ]) {
+        qb[name] = jest.fn(() => qb);
+      }
+      qb.getRawMany = jest.fn().mockResolvedValue(rows);
+      return qb;
+    };
+    const svc = new OverviewService(
+      { createQueryBuilder: () => query(orderRows) } as never,
+      { createQueryBuilder: () => query(itemRows) } as never,
+      {} as never,
+      {} as never,
+    );
+    Object.assign(svc, {
+      overviewProviders: jest.fn().mockResolvedValue(['airalo', 'billion']),
+    });
+    return svc;
+  }
+  const TOPUP = {
+    provider: 'AIRALO',
+    orders: '2',
+    revenue: '300000',
+    cost: '200000',
+  };
+
+  it('should add top-up money to its supplier', async () => {
+    const svc = service(
+      [TOPUP],
+      [
+        {
+          group: 'airalo',
+          costPrice: '100',
+          totalRevenue: '150',
+          plansSold: '3',
+        },
+      ],
+    );
+
+    const result = await svc.getFinancialComparison({
+      groupBy: 'provider',
+    } as never);
+
+    const airalo = result.data!.find((row) => row.group === 'airalo');
+    expect(airalo).toMatchObject({
+      costPrice: 200100,
+      totalRevenue: 300150,
+      profit: 100050,
+      plansSold: 3,
+      topupOrders: 2,
+    });
+    expect(result.totals).toMatchObject({ topupOrders: 2, plansSold: 3 });
+  });
+
+  it('should count top-ups on the provider chart', async () => {
+    const svc = service([TOPUP]);
+    Object.assign(svc, {
+      getProviderAggregates: jest.fn().mockResolvedValue(new Map()),
+    });
+
+    const result = await svc.getProviderComparison({
+      groupBy: 'provider',
+    } as never);
+
+    const rows = result.data as { provider: string; topupOrders: number }[];
+    expect(rows.find((r) => r.provider === 'airalo')?.topupOrders).toBe(2);
+    expect(rows.find((r) => r.provider === 'billion')?.topupOrders).toBe(0);
+  });
+
+  it('should leave out other suppliers when one is filtered', async () => {
+    const svc = service([TOPUP]);
+
+    const result = await svc.getFinancialComparison({
+      groupBy: 'provider',
+      provider: 'billion',
+    } as never);
+
+    expect(result.totals).toMatchObject({ topupOrders: 0 });
   });
 });

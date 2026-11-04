@@ -207,7 +207,18 @@ interface FinancialGroupValue extends FinancialValue {
   group: string;
   /** Orders behind the figures; groupBy=orderSource only. */
   orders?: number;
+  /** Top-ups and add-ons in the figures; groupBy=provider only. */
+  topupOrders?: number;
 }
+
+/** How a top-up order names its supplier, and how a plan does. */
+const TOPUP_PROVIDER_TO_PLAN: Record<string, string> = {
+  AIRALO: 'airalo',
+  ESIM_ACCESS: 'esimaccess',
+  GADGET_KOREA: 'gadgetkorea',
+  BILLION: 'billion',
+  MICRO_ESIM: 'microesim',
+};
 
 interface FinancialSeriesValue extends FinancialValue {
   date: string;
@@ -319,9 +330,10 @@ export class OverviewService {
     const groupBy = query.groupBy ?? 'provider';
 
     if (groupBy === 'provider') {
-      const [aggregates, providers] = await Promise.all([
+      const [aggregates, providers, topups] = await Promise.all([
         this.getProviderAggregates(query),
         this.overviewProviders(),
+        this.getTopupsByProvider(query),
       ]);
       return {
         data: providers.map((provider) => {
@@ -338,6 +350,7 @@ export class OverviewService {
               aggregate.completedItems,
               aggregate.totalItems,
             ),
+            topupOrders: topups.get(provider)?.orders ?? 0,
           };
         }),
       };
@@ -488,7 +501,17 @@ export class OverviewService {
     const data = await this.getFinancialGroups(query, groupBy);
     return {
       data,
-      totals: this.calculateFinancialTotals(data),
+      totals: {
+        ...this.calculateFinancialTotals(data),
+        ...(groupBy === 'provider'
+          ? {
+              topupOrders: data.reduce(
+                (sum, row) => sum + (row.topupOrders ?? 0),
+                0,
+              ),
+            }
+          : {}),
+      },
     };
   }
 
@@ -575,6 +598,53 @@ export class OverviewService {
     }
 
     return activePlansQb.getCount();
+  }
+
+  /**
+   * Finished top-ups and add-ons per supplier (vande-0411 #023). They have no
+   * order line, so every line-based figure on this page leaves them out. A
+   * "paid" one is still with the supplier and a failed one earned nothing.
+   */
+  private async getTopupsByProvider(
+    query: OverviewDateRangeQueryDto & { provider?: string },
+  ): Promise<Map<string, { orders: number; revenue: number; cost: number }>> {
+    const qb = this.ordersRepository
+      .createQueryBuilder(ORDER_ALIAS)
+      .where(`${ORDER_ALIAS}."orderType" = 'TOPUP'`)
+      .andWhere(`${ORDER_ALIAS}.status = 'completed'`);
+    this.applyDateRange(qb, ORDER_ALIAS, query);
+    const rows = await qb
+      .select(`${ORDER_ALIAS}."topupProvider"`, 'provider')
+      .addSelect('COUNT(*)', 'orders')
+      .addSelect(
+        `COALESCE(SUM(${ORDER_ALIAS}."vndPrice" - COALESCE(${ORDER_ALIAS}."refundedAmountVnd", 0)), 0)`,
+        'revenue',
+      )
+      .addSelect(`COALESCE(SUM(${ORDER_ALIAS}."vndCostPrice"), 0)`, 'cost')
+      .groupBy(`${ORDER_ALIAS}."topupProvider"`)
+      .getRawMany<{
+        provider: string | null;
+        orders: RawValue;
+        revenue: RawValue;
+        cost: RawValue;
+      }>();
+
+    const result = new Map<
+      string,
+      { orders: number; revenue: number; cost: number }
+    >();
+    for (const row of rows) {
+      const provider = TOPUP_PROVIDER_TO_PLAN[row.provider ?? ''];
+      if (!provider || (query.provider && query.provider !== provider)) {
+        continue;
+      }
+      result.set(provider, {
+        orders: this.toNumber(row.orders),
+        revenue: this.toNumber(row.revenue),
+        cost: this.toNumber(row.cost),
+      });
+    }
+    return result;
   }
 
   private async getProviderAggregates(
@@ -743,14 +813,29 @@ export class OverviewService {
         ]),
       );
 
-      const providers = await this.overviewProviders();
-      return providers.map(
-        (provider) =>
-          byProvider.get(provider) ?? {
-            group: provider,
-            ...this.createFinancialValue(0, 0),
-          },
-      );
+      const [providers, topups] = await Promise.all([
+        this.overviewProviders(),
+        this.getTopupsByProvider(query),
+      ]);
+      // A top-up is an order with revenue and profit like any other
+      // (vande-0411 #023), though it has no order line to be summed from.
+      return providers.map((provider) => {
+        const row = byProvider.get(provider) ?? {
+          group: provider,
+          ...this.createFinancialValue(0, 0),
+        };
+        const topup = topups.get(provider);
+        return {
+          group: provider,
+          ...this.createFinancialValue(
+            row.costPrice + (topup?.cost ?? 0),
+            row.totalRevenue + (topup?.revenue ?? 0),
+            row.plansSold,
+            row.partnerCommission,
+          ),
+          topupOrders: topup?.orders ?? 0,
+        };
+      });
     }
 
     const limit = this.getLimit(query.limit);

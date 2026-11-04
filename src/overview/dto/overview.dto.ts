@@ -236,6 +236,10 @@ export class ProviderComparisonItemDto {
 
   @ApiProperty({ type: Number, example: 97.5 })
   successRate!: number;
+
+  /** Finished top-ups and add-ons on this supplier (vande-0411 #023). */
+  @ApiProperty({ type: Number, example: 4 })
+  topupOrders!: number;
 }
 
 export class ProviderComparisonSeriesItemDto {
@@ -383,6 +387,10 @@ export class FinancialComparisonGroupItemDto {
 
   @ApiProperty({ type: Number, example: 12 })
   plansSold!: number;
+
+  /** Top-ups and add-ons in these figures; groupBy=provider only (vande-0411 #023). */
+  @ApiProperty({ type: Number, required: false })
+  topupOrders?: number;
 }
 
 export class FinancialComparisonResponseDto {

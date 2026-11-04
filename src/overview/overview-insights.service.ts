@@ -140,8 +140,11 @@ export class OverviewInsightsService {
              FROM "order" o JOIN order_item oi ON oi."orderId" = o.id
             WHERE ${WEB_ORDER} AND ${PAID} AND ${COUNTED_ITEM}
               AND ${orderInRange('1', '2')}`),
-        // 2. Orders (eSIM and top-up), eSIMs handed out, failed orders.
-        q(`SELECT COUNT(*) FILTER (WHERE ${PAID}) AS paid,
+        // 2. Orders (eSIM and top-up), eSIMs handed out, failed orders. A top-up
+        // that went through ends "completed", so "paid" alone never counted it
+        // (vande-0411 #023); a "paid" one is still with the supplier.
+        q(`SELECT COUNT(*) FILTER (WHERE ${PAID} AND o."orderType" IS DISTINCT FROM 'TOPUP') AS paid,
+                  COUNT(*) FILTER (WHERE o."orderType" = 'TOPUP' AND o.status = 'completed') AS topups,
                   COUNT(*) FILTER (WHERE o.status = 'failed') AS failed,
                   COUNT(*) FILTER (WHERE ${PAID} AND o."paymentMethod" IS DISTINCT FROM 'admin_manual') AS "selfPaid",
                   (SELECT COUNT(*) FROM esim e JOIN order_item ei ON ei.id = e."orderItemId"
@@ -208,7 +211,8 @@ export class OverviewInsightsService {
         grossProfitVnd: revenue - cost - commission,
       },
       orders: {
-        paidOrders: n(orders.paid),
+        paidOrders: n(orders.paid) + n(orders.topups),
+        topupOrders: n(orders.topups),
         esimsSold: n(orders.esims),
         visits: visitCount,
         /** Orders a customer paid themselves ÷ visits; null without visits. */
