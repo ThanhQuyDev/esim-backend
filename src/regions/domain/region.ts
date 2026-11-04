@@ -94,6 +94,9 @@ export class Region {
   })
   parentId?: number | null;
 
+  /** The parent's name, when a plan list asks for its region. */
+  parentName?: string | null;
+
   @ApiProperty({
     type: Number,
     example: 120,

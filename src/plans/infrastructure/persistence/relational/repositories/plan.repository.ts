@@ -1005,9 +1005,16 @@ export class PlansRelationalRepository implements PlanRepository {
         .filter((id) => Number.isInteger(id) && id > 0);
     const destinationIds = ids('d');
     const regionIds = ids('r');
+    // "Tất cả khu vực": every regional plan, to see what a supplier has without
+    // picking each region by hand (vande-0411 #042).
+    const everyRegion = (locations ?? []).includes('r:all');
     const parts = [
       destinationIds.length ? 'plan."destinationId" IN (:...locDestIds)' : null,
-      regionIds.length ? 'plan."regionId" IN (:...locRegionIds)' : null,
+      everyRegion
+        ? 'plan."regionId" IS NOT NULL'
+        : regionIds.length
+          ? 'plan."regionId" IN (:...locRegionIds)'
+          : null,
     ].filter(Boolean);
     if (!parts.length) return;
     qb.andWhere(`(${parts.join(' OR ')})`, {

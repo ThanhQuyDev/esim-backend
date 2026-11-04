@@ -455,7 +455,14 @@ export class PlansService implements OnApplicationBootstrap {
     for (const regionId of regionIds) {
       const region = await this.regionsService.findById(regionId);
       if (region) {
-        regionMap.set(regionId, region);
+        // Where its page sits under, for the CMS (vande-0411 #042).
+        const parent = region.parentId
+          ? await this.regionsService.findById(region.parentId)
+          : null;
+        regionMap.set(
+          regionId,
+          parent ? { ...region, parentName: parent.name } : region,
+        );
       }
     }
 
