@@ -68,6 +68,7 @@ function makeService(existingPlan: Record<string, unknown> | null) {
   const planCreates: Record<string, unknown>[] = [];
 
   const esimRepository = {
+    markStockUploaded: jest.fn().mockResolvedValue(undefined),
     findByIccidWithDeleted: jest.fn().mockResolvedValue(null),
     create: jest.fn().mockResolvedValue({ id: 1 }),
     restore: jest.fn().mockResolvedValue(undefined),

@@ -100,6 +100,7 @@ function makeService(opts: {
 
   const service = new EsimsImportService(
     {
+      markStockUploaded: jest.fn().mockResolvedValue(undefined),
       findByIccidWithDeleted: jest
         .fn()
         .mockResolvedValue(opts.existingEsim ?? null),

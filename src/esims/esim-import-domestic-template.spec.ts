@@ -113,6 +113,7 @@ function makeService(
   const esimCreates: Record<string, unknown>[] = [];
   const service = new EsimsImportService(
     {
+      markStockUploaded: jest.fn().mockResolvedValue(undefined),
       findByIccidWithDeleted: jest.fn().mockResolvedValue(existingEsim),
       create: jest.fn((payload: Record<string, unknown>) => {
         esimCreates.push(payload);
@@ -270,7 +271,7 @@ describe('Nhập eSIM nội địa theo file mẫu mới (#066)', () => {
       onNetSms: 0,
       zeroRatedSocial: false,
       cycleFeeVnd: 109000,
-      cycleMonths: 12,
+      cycleDays: 360,
       supportPhone: 'Đầu số 077',
     });
   });

@@ -65,6 +65,7 @@ function makeService(existingPlan: Record<string, unknown> | null = null) {
 
   const service = new EsimsImportService(
     {
+      markStockUploaded: jest.fn().mockResolvedValue(undefined),
       findByIccidWithDeleted: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 1 }),
       restore: jest.fn().mockResolvedValue(undefined),

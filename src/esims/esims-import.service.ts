@@ -4,6 +4,7 @@ import {
   DomesticOffer,
   offerCount,
   parseBundleType,
+  cycleDaysFromCell,
   parseDataPeriod,
   parseOfferDataMb,
 } from '../plans/domestic-offer';
@@ -173,6 +174,11 @@ export class EsimsImportService {
         // or perks (#066) skipped every such row before reaching the plan, so
         // plans whose eSIMs were imported earlier never changed.
         const alreadyInStock = !!existing && !existing.deletedAt;
+        // Stock uploaded again reads as uploaded now: it showed the date of its
+        // first upload weeks before (vande-0411 #045).
+        if (alreadyInStock && existing.status === 'available') {
+          await this.esimRepository.markStockUploaded(existing.id);
+        }
 
         // If a soft-deleted record exists, restore it and update with new data
         const shouldRestore = !!existing && !!existing.deletedAt;
@@ -276,10 +282,10 @@ export class EsimsImportService {
         const domesticOffer = isDomesticTemplate
           ? this.readDomesticOffer(row, cellAt)
           : undefined;
-        // A domestic plan runs for whole monthly cycles (1, 3, 6, 12 months).
+        // A domestic plan runs for its cycle, in days (vande-0411 #045).
         const durationDays =
           this.cellNum(cellAt(row, 'days', 6)) ??
-          (domesticOffer ? domesticOffer.cycleMonths * 30 : 0);
+          (domesticOffer ? (domesticOffer.cycleDays ?? 30) : 0);
         const bundleType = this.cellStr(cellAt(row, 'bundle type'));
         // A monthly total is a fixed plan: read as anything else it was labelled
         // "500 GB/ngày" (vande-0411 #044). The offer keeps its period.
@@ -794,7 +800,7 @@ export class EsimsImportService {
         text('zero-rated social data'),
       ),
       cycleFeeVnd: this.cellNum(cellAt(row, 'cycle fee')),
-      cycleMonths: Math.max(1, count('no. of cycles')),
+      cycleDays: cycleDaysFromCell(this.cellNum(cellAt(row, 'no. of cycles'))),
       supportPhone: text('support phone number'),
     };
   }

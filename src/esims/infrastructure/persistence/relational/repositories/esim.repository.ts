@@ -567,6 +567,13 @@ export class EsimsRelationalRepository implements EsimRepository {
    * per-run cap, every eSIM still comes round eventually instead of the same
    * few being refreshed forever.
    */
+  async markStockUploaded(id: Esim['id']): Promise<void> {
+    await this.esimsRepository.query(
+      `UPDATE "esim" SET "createdAt" = now() WHERE id = $1`,
+      [Number(id)],
+    );
+  }
+
   /** Not through `update`: asking the supplier changes nothing to save. */
   async markUsageChecked(id: Esim['id']): Promise<void> {
     await this.esimsRepository.query(

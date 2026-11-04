@@ -62,6 +62,7 @@ function makeService() {
 
   const service = new EsimsImportService(
     {
+      markStockUploaded: jest.fn().mockResolvedValue(undefined),
       findByIccidWithDeleted: jest.fn().mockResolvedValue(null),
       create: jest.fn((payload: Record<string, unknown>) => {
         esimCreates.push(payload);

@@ -29,8 +29,10 @@ export interface DomesticOffer {
   zeroRatedSocial: boolean;
   /** Renewal fee for one cycle (VND). */
   cycleFeeVnd: number | null;
-  /** How many months the plan runs before it must be renewed (1, 3, 6, 12…). */
-  cycleMonths: number;
+  /** How many days the plan runs before it must be renewed: 30, 180, 360 (vande-0411 #045). */
+  cycleDays?: number;
+  /** The same in months, on plans imported before; read as 30 days each. */
+  cycleMonths?: number;
   /** E.g. "Đầu số 087" — the number range the eSIM comes with. */
   supportPhone: string | null;
 }
@@ -71,6 +73,17 @@ export function parseOfferDataMb(raw: string | null): number | null {
   const num = parseFloat(match[1].replace(',', '.'));
   if (!Number.isFinite(num)) return null;
   return match[2] === 'gb' ? Math.round(num * 1024) : Math.round(num);
+}
+
+/**
+ * "No. of Cycles" is in days now: 30, 180, 360. A file made before says 1, 3, 6
+ * or 12, which no plan means in days, so those still read as months
+ * (vande-0411 #045).
+ */
+export function cycleDaysFromCell(raw: unknown): number {
+  const n = offerCount(raw);
+  if (n === 0) return 30;
+  return [1, 2, 3, 6, 12].includes(n) ? n * 30 : n;
 }
 
 /** A whole number from a cell; blank or text reads as 0. */

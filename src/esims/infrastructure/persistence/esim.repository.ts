@@ -124,6 +124,8 @@ export abstract class EsimRepository {
    */
   abstract markUsageChecked(id: Esim['id']): Promise<void>;
 
+  abstract markStockUploaded(id: Esim['id']): Promise<void>;
+
   abstract findDueForUsageRefresh(
     providers: string[],
     limit: number,
