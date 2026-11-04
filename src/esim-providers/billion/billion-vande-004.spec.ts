@@ -261,6 +261,7 @@ describe('Order refund → Billion after-sale (vande #004)', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       esimsService: {
+        findTopupsByIccid: jest.fn().mockResolvedValue([]),
         findByOrderItemIds: jest.fn((ids: number[]) =>
           Promise.resolve(esims.filter((e) => ids.includes(e.orderItemId))),
         ),

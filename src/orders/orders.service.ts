@@ -4,6 +4,7 @@ import {
   MarginTier,
   multidayRetailVnd,
 } from '../plans/multiday-price';
+import { PARTNER_WALLET_PAYMENT_METHOD } from '../topup/topup.constants';
 import {
   ALL_RETRY_PROVIDERS,
   AUTO_RETRY_WINDOW_HOURS,
@@ -2861,6 +2862,25 @@ export class OrdersService {
         this.partnersService.getCommissionSummaryByOrderId(order.id),
       ]);
 
+    const paidTopupsByIccid = new Map(
+      await Promise.all(
+        esims
+          .filter((esim) => esim.iccid)
+          .map(
+            async (esim) =>
+              [
+                esim.iccid,
+                (await this.esimsService.findTopupsByIccid(esim.iccid)).map(
+                  (topup) => ({
+                    orderId: topup.orderId,
+                    orderNumber: topup.orderNumber,
+                    vndPrice: topup.vndPrice,
+                  }),
+                ),
+              ] as const,
+          ),
+      ),
+    );
     const esimsByOrderItemId = new Map<number, typeof esims>();
     for (const esim of esims) {
       if (esim.orderItemId == null) continue;
@@ -3081,6 +3101,8 @@ export class OrdersService {
           esims: (esimsByOrderItemId.get(item.id) ?? []).map((esim) => ({
             ...esim,
             lifecycleStatus: esimLifecycleStatus(esim, plan ?? null),
+            // What the refund screen warns about (vande-0411 #008).
+            paidTopups: paidTopupsByIccid.get(esim.iccid) ?? [],
           })),
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
@@ -3483,7 +3505,117 @@ export class OrdersService {
       }
     }
 
+    const linked = await this.refundLinkedTopups(order, dto, adminId, {
+      isPartial,
+      selectedItemIds,
+      selectedEsims,
+      orderItems,
+    });
+    supplierRequests.push(...linked.requests);
+    supplierWarnings.push(...linked.warnings);
+
     return { ...refund, supplierWarnings, supplierRequests };
+  }
+
+  /**
+   * The topups and add-ons of the eSIMs just refunded follow them back
+   * (vande-0411 #008): the eSIM is gone, so what was bought on top of it is too,
+   * and the supplier's cancel takes them along. The refund screen says so before
+   * the admin confirms. Never stops the refund already made: a failure is told
+   * to the admin, who can refund that order by hand.
+   */
+  private async refundLinkedTopups(
+    order: Order,
+    dto: RefundOrderDto,
+    adminId: number,
+    ctx: {
+      isPartial: boolean;
+      selectedItemIds: number[];
+      selectedEsims: Esim[];
+      orderItems: OrderItem[];
+    },
+  ): Promise<{ requests: string[]; warnings: string[] }> {
+    const requests: string[] = [];
+    const warnings: string[] = [];
+    if (order.orderType === 'TOPUP') return { requests, warnings };
+    try {
+      const wholeLines = ctx.isPartial
+        ? ctx.selectedItemIds
+        : (await this.orderItemsService.findByOrderId(order.id)).map((item) =>
+            Number(item.id),
+          );
+      const lineEsims = wholeLines.length
+        ? await this.esimsService.findByOrderItemIds(wholeLines)
+        : [];
+      const iccids = [
+        ...new Set(
+          [...lineEsims, ...ctx.selectedEsims]
+            .map((esim) => esim.iccid)
+            .filter(Boolean),
+        ),
+      ];
+      for (const iccid of iccids) {
+        for (const row of await this.esimsService.findTopupsByIccid(iccid)) {
+          const topup = await this.orderRepository.findById(row.orderId);
+          if (!topup) continue;
+          const left =
+            Number(topup.payableVndPrice ?? topup.vndPrice ?? 0) +
+            Number(topup.walletSpentVndAmount ?? 0) -
+            Number(topup.refundedAmountVnd ?? 0);
+          // Bought from a partner's wallet: that money goes back another way.
+          if (topup.paymentMethod === PARTNER_WALLET_PAYMENT_METHOD) {
+            warnings.push(
+              `Đơn ${topup.orderNumber} (eSIM ${iccid}) đối tác mua bằng ví ký quỹ: chưa tự hoàn, cần hoàn vào ví đối tác.`,
+            );
+            continue;
+          }
+          if (left <= 0) continue;
+          try {
+            // A topup that went through ends "completed"; the wallet refunds
+            // only what it reads as paid.
+            await this.walletsService.refundOrder(
+              { ...topup, status: 'paid' } as Order,
+              {
+                mode: dto.mode,
+                amountVnd: left,
+                reason: dto.reason,
+                adminNote: `Hoàn kèm eSIM ${iccid} của đơn ${order.orderNumber}`,
+              } as RefundOrderDto,
+              adminId,
+            );
+            if (topup.attributedPartnerId) {
+              await this.partnersService.reverseCommissionForOrder(topup.id, {
+                fullRefund: true,
+              });
+            }
+            requests.push(
+              `Đã hoàn kèm đơn ${topup.orderNumber}: ${left.toLocaleString('vi-VN')}đ.`,
+            );
+            // Only eSIM Access is known to cancel the topup with the eSIM.
+            if (topup.topupProvider?.toUpperCase() !== 'ESIM_ACCESS') {
+              warnings.push(
+                `Đơn ${topup.orderNumber}: kiểm tra nhà cung cấp ${topup.topupProvider ?? ''} có hoàn lại phần mua thêm không.`,
+              );
+            }
+          } catch (err) {
+            this.logger.error(
+              `refundLinkedTopups: ${topup.orderNumber}: ${(err as Error).message}`,
+            );
+            warnings.push(
+              `Chưa hoàn được đơn ${topup.orderNumber}: ${(err as Error).message}. Vui lòng hoàn đơn này thủ công.`,
+            );
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.error(
+        `refundLinkedTopups: order ${order.orderNumber}: ${(err as Error).message}`,
+      );
+      warnings.push(
+        `Không kiểm tra được đơn mua thêm của đơn ${order.orderNumber}: ${(err as Error).message}. Vui lòng kiểm tra thủ công.`,
+      );
+    }
+    return { requests, warnings };
   }
 
   /**

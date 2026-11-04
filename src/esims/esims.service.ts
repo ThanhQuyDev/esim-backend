@@ -277,6 +277,11 @@ export class EsimsService {
     );
   }
 
+  /** The topups and add-ons bought for this eSIM that went through. */
+  findTopupsByIccid(iccid: string) {
+    return this.esimsRepository.findTopupsByIccid(iccid);
+  }
+
   findById(id: Esim['id']): Promise<NullableType<Esim>> {
     return this.esimsRepository.findById(id);
   }

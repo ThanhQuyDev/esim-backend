@@ -161,6 +161,7 @@ describe('Order refund → Airalo refund request', () => {
       update: jest.fn().mockResolvedValue({}),
     };
     internals.esimsService = {
+      findTopupsByIccid: jest.fn().mockResolvedValue([]),
       findByOrderItemIds: jest.fn((ids: number[]) =>
         Promise.resolve(esims.filter((e) => ids.includes(e.orderItemId))),
       ),
