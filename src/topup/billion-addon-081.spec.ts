@@ -2,6 +2,7 @@ import {
   billionAddonCopies,
   billionAddonData,
   billionAddonPackageId,
+  daysGainedByTopup,
   parseBillionAddonPackageId,
   planTakesAddons,
 } from './billion-addon';
@@ -90,6 +91,14 @@ describe('Billion add-ons (vande #081)', () => {
     expect(billionApnTakesVas('mobile')).toBe(false);
     expect(billionApnTakesVas('')).toBe(false);
     expect(billionApnTakesVas(null)).toBe(false);
+  });
+
+  it('should not extend the validity for an add-on (vande-0411 #017)', () => {
+    expect(daysGainedByTopup('billion-acc:0:sku:1', 1)).toBeNull();
+    expect(daysGainedByTopup('billion-acc:2:sku:5', 5)).toBeNull();
+    expect(daysGainedByTopup('billion:sku:7', 7)).toBe(7);
+    expect(daysGainedByTopup('airalo-1gb', 15)).toBe(15);
+    expect(daysGainedByTopup(null, null)).toBeNull();
   });
 
   it('should round-trip the package id', () => {

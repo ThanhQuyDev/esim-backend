@@ -24,6 +24,7 @@ import {
   parseBillionPlanId,
 } from '../esim-providers/billion/billion-catalogue';
 import {
+  daysGainedByTopup,
   BILLION_ADDON_DAY_TYPES,
   BILLION_ADDON_KIND,
   BILLION_ADDON_LABEL,
@@ -902,7 +903,10 @@ export class TopupService {
       // The eSIM gains the top-up's data and days (doitac-3010 #006).
       await this.esimsService
         .applyCompletedTopup(iccid, {
-          durationDays: order.topupDurationDays ?? null,
+          durationDays: daysGainedByTopup(
+            order.topupPackageId,
+            order.topupDurationDays,
+          ),
         })
         .catch((err: unknown) =>
           this.logger.error(
@@ -1036,7 +1040,16 @@ export class TopupService {
           BILLION_ADDON_DAY_TYPES.map((dayType) =>
             this.billionService
               .listAccelerationOffers({ orderId, iccid: esim.iccid, dayType })
-              .then((skus) => ({ dayType, skus }))
+              .then((skus) => {
+                // Who said no matters when an eSIM stops offering add-ons
+                // (vande-0411 #017): Billion's empty list, or our own rules.
+                if (!skus.length) {
+                  this.logger.log(
+                    `Billion add-ons (F015 dayType=${dayType}) for ${esim.iccid}: Billion returned none`,
+                  );
+                }
+                return { dayType, skus };
+              })
               .catch((err: Error) => {
                 this.logger.warn(
                   `Billion add-ons (F015 dayType=${dayType}) for ${esim.iccid}: ${err.message}`,
@@ -1054,7 +1067,14 @@ export class TopupService {
           originalDays,
           activatedAt,
         });
-        if (!copies) continue;
+        if (!copies) {
+          if (skus.length) {
+            this.logger.log(
+              `Billion add-ons (dayType=${dayType}) for ${esim.iccid}: ${skus.length} offered, no day left on the plan`,
+            );
+          }
+          continue;
+        }
         for (const sku of skus) {
           const unit = Number(sku.settlementPrice);
           if (!(unit > 0)) continue;

@@ -44,6 +44,18 @@ export function planTakesAddons(
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Days a finished purchase adds to the eSIM. An add-on adds data on the same
+ * validity: its "days" are copies billed, not days gained (vande-0411 #017).
+ */
+export function daysGainedByTopup(
+  packageId: string | null | undefined,
+  durationDays: number | null | undefined,
+): number | null {
+  if (packageId?.startsWith(BILLION_ADDON_PACKAGE_PREFIX)) return null;
+  return durationDays ?? null;
+}
+
+/**
  * How many copies F016 must order. A one-day boost is 1. An upgrade or extra
  * data covers the rest of the plan: "original days − days used + 1", where the
  * day of activation counts as day 1. Null once the plan has no day left.
