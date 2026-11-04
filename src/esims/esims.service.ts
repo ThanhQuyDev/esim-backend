@@ -25,6 +25,7 @@ import {
   GadgetKoreaService,
   parseGadgetKoreaUsageMb,
   parseGadgetKoreaUtc,
+  gadgetKoreaDeviceFacts,
 } from '../esim-providers/gadgetkorea/gadgetkorea.service';
 import { MicroEsimService } from '../esim-providers/microesim/microesim.service';
 import { BillionService } from '../esim-providers/billion/billion.service';
@@ -632,6 +633,22 @@ export class EsimsService {
           activatedAt: activeTime,
           lastUpdateTime: null,
         };
+        // The phone it reached, asked until known (vande-0411 #036). Never at
+        // the cost of the usage figures just read.
+        if (!esim.eid || !esim.installedAt || !esim.deviceModel) {
+          try {
+            Object.assign(
+              result,
+              gadgetKoreaDeviceFacts(
+                await this.gadgetKoreaService.getDeviceInfo(esim.iccid),
+              ),
+            );
+          } catch (err) {
+            this.logger.warn(
+              `Gadget Korea device for eSIM ${esim.id}: ${(err as Error).message}`,
+            );
+          }
+        }
         await this.persistUsageSnapshot(esim, result);
         return result;
       } catch {

@@ -69,6 +69,32 @@ export function parseGadgetKoreaUtc(
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+export interface GadgetKoreaDeviceInfo {
+  installTime?: string | null;
+  installDevice?: string | null;
+  eid?: string | null;
+}
+
+/**
+ * What goes on the eSIM. `installTime` is UTC like the other times of this API:
+ * on 4 real eSIMs it falls between the order and the activation only when read
+ * as UTC (order 17:23:58, install 17:25:43, activation 17:28:59).
+ */
+export function gadgetKoreaDeviceFacts(
+  device: GadgetKoreaDeviceInfo | null | undefined,
+): {
+  installedAt?: string | null;
+  eid?: string | null;
+  deviceModel?: string | null;
+} {
+  if (!device) return {};
+  return {
+    installedAt: parseGadgetKoreaUtc(device.installTime),
+    eid: device.eid?.trim() || null,
+    deviceModel: device.installDevice?.trim() || null,
+  };
+}
+
 @Injectable()
 export class GadgetKoreaService {
   private readonly logger = new Logger(GadgetKoreaService.name);
@@ -216,6 +242,47 @@ export class GadgetKoreaService {
     }
 
     return data.data;
+  }
+
+  /**
+   * The phone an eSIM reached (vande-0411 #036): `GET /api/v2/iccid/{iccid}/device`.
+   * Read-only. "9001 ICCID not found" is the answer until it is installed, so
+   * that reads as nothing known yet rather than a failure.
+   */
+  async getDeviceInfo(iccid: string): Promise<GadgetKoreaDeviceInfo | null> {
+    const baseUrl = this.configService.getOrThrow('gadgetKorea.baseUrl', {
+      infer: true,
+    });
+    const accessKey = this.configService.getOrThrow('gadgetKorea.accessKey', {
+      infer: true,
+    });
+    const secretKey = this.configService.getOrThrow('gadgetKorea.secretKey', {
+      infer: true,
+    });
+
+    const timestamp = Date.now();
+    const pathAndQuery = `/api/v2/iccid/${encodeURIComponent(iccid)}/device`;
+    const signature = crypto
+      .createHmac('sha256', Buffer.from(secretKey, 'base64'))
+      .update(`GET ${pathAndQuery}\n${timestamp}\n${accessKey}`)
+      .digest('base64');
+
+    const { data } = await firstValueFrom(
+      this.httpService.get<{
+        code: string;
+        message?: string;
+        device?: GadgetKoreaDeviceInfo;
+      }>(`${baseUrl}${pathAndQuery}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-gat-timestamp': String(timestamp),
+          'x-gat-access-key': accessKey,
+          'x-gat-signature': signature,
+        },
+      }),
+    );
+
+    return data.code === '0000' ? (data.device ?? null) : null;
   }
 
   async getDataUsage(topupId: string): Promise<GadgetKoreaTopupData> {

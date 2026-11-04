@@ -54,7 +54,10 @@ function makeService(opts: {
     }),
   };
   const getDataUsage = jest.fn().mockResolvedValue(opts.usage);
-  internals.gadgetKoreaService = { getDataUsage };
+  internals.gadgetKoreaService = {
+    getDataUsage,
+    getDeviceInfo: jest.fn().mockResolvedValue(null),
+  };
 
   const run = (): Promise<DataUsageResult> =>
     (
