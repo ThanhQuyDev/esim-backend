@@ -30,6 +30,36 @@ describe('Thời điểm bắt đầu tính gói (vande-0411 #025)', () => {
     ],
     ['eSIM Access before the next sync', { provider: 'esimaccess' }, null],
     [
+      'eSIM Access with only the file (#027)',
+      {
+        provider: 'esimaccess',
+        supplierActivationPolicy: 'First Installation',
+      },
+      'installation',
+    ],
+    [
+      'eSIM Access file: first connection (#027)',
+      {
+        provider: 'esimaccess',
+        supplierActivationPolicy: 'First Network Connection',
+      },
+      'first_connection',
+    ],
+    [
+      'eSIM Access file: purchase (#027)',
+      { provider: 'esimaccess', supplierActivationPolicy: 'After Purchase' },
+      'purchase',
+    ],
+    [
+      'eSIM Access API over the file (#027)',
+      {
+        provider: 'esimaccess',
+        supplierActiveType: 2,
+        supplierActivationPolicy: 'After Purchase',
+      },
+      'first_connection',
+    ],
+    [
       'Gadget Korea available',
       {
         provider: 'gadgetkorea',

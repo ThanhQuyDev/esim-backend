@@ -394,6 +394,7 @@ export class PlansService implements OnApplicationBootstrap {
       filterOptions = {
         ...filterOptions,
         tiktokApns: await this.tiktokCapableApns(),
+        tiktokRefusedApns: await this.tiktokRefusedApns(),
       };
     }
 
@@ -405,6 +406,15 @@ export class PlansService implements OnApplicationBootstrap {
 
     await this.enrichPlansWithRegionDestinations(plans);
     return [await this.withAppSupport(plans), count];
+  }
+
+  private async tiktokRefusedApns(): Promise<string[]> {
+    if (!this.apnSupportService?.tiktokRefusedPlanApns) return [];
+    try {
+      return await this.apnSupportService.tiktokRefusedPlanApns();
+    } catch {
+      return [];
+    }
   }
 
   /** APNs that run TikTok on every device and ChatGPT, from the APN table. */
@@ -646,6 +656,12 @@ export class PlansService implements OnApplicationBootstrap {
   /** Recount units sold per plan, destination and region (#053). */
   async recalculateSoldCounts(): Promise<void> {
     await this.plansRepository.recalculateSoldCounts();
+  }
+
+  applyEsimAccessFile(
+    rows: { code: string; apn: string | null; billingStarts: string | null }[],
+  ) {
+    return this.plansRepository.applyEsimAccessFile(rows);
   }
 
   async markCheapestPlans(): Promise<void> {

@@ -49,6 +49,7 @@ import { PlansService } from './plans.service';
 import { PlansImportService, ImportResult } from './plans-import.service';
 import { PlansExportService } from './plans-export.service';
 import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
+import { PlansEsimaccessImportService } from './plans-esimaccess-import.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { infinityPagination } from '../utils/infinity-pagination';
 
@@ -60,6 +61,7 @@ export class PlansController {
     private readonly plansImportService: PlansImportService,
     private readonly plansExportService: PlansExportService,
     private readonly plansGadgetkoreaImportService: PlansGadgetkoreaImportService,
+    private readonly plansEsimaccessImportService: PlansEsimaccessImportService,
   ) {}
 
   @ApiBearerAuth()
@@ -421,6 +423,26 @@ export class PlansController {
       columnMapping,
       dto.sheet,
     );
+  }
+
+  /** The esimaccess package list: fills in each plan's APN (vande-0411 #027). */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('import-esimaccess')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  importEsimaccess(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('File is required');
+    return this.plansEsimaccessImportService.importFile(file.buffer);
   }
 
   /** How far a background Gadget import has got (doitac-3010 #008). */

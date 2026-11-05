@@ -5,7 +5,8 @@ import { ruleRefundable, type RefundPolicyPlan } from './plan-refund-policy';
  * counting, on each supplier's own terms.
  *
  * - Airalo: `operator.activation_policy` from `GET /v2/packages`.
- * - eSIM Access: `activeType` from `package/list`, known before buying.
+ * - eSIM Access: `activeType` from `package/list`, known before buying; the
+ *   price file's "Billing starts" only until a sync brings it (#027).
  * - Gadget Korea: "PreInstallation" in the import file; Turkey, and any region
  *   with Turkey in it, must be installed before arriving.
  * - Billion, MicroEsim: as the refund rule, a refundable plan counts from the
@@ -46,7 +47,10 @@ export function planValidityStart(
     const type = Number(plan.supplierActiveType);
     if (type === 1) return 'installation';
     if (type === 2) return 'first_connection';
-    return type === 3 ? 'purchase' : null;
+    if (type === 3) return 'purchase';
+    if (/first\s*installation/i.test(raw)) return 'installation';
+    if (/network/i.test(raw)) return 'first_connection';
+    return /purchase/i.test(raw) ? 'purchase' : null;
   }
   if (provider === 'gadgetkorea') {
     return PRE_ARRIVAL.test(raw) || TURKEY.test(plan.name ?? '')

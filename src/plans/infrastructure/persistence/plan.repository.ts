@@ -58,6 +58,11 @@ export abstract class PlanRepository {
     payload: DeepPartial<Plan>,
   ): Promise<Plan | null>;
 
+  /** Fill in APN and billing start from the esimaccess file (vande-0411 #027). */
+  abstract applyEsimAccessFile(
+    rows: { code: string; apn: string | null; billingStarts: string | null }[],
+  ): Promise<{ providerPlanId: string; supplierActiveType: number | null }[]>;
+
   abstract markCheapestPlans(): Promise<void>;
 
   /** Undo a soft delete, so a re-import can use the plan again. */

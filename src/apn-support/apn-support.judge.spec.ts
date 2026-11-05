@@ -105,6 +105,30 @@ describe('ApnSupportService.judgePlan', () => {
     });
   });
 
+  describe('esimaccess once the price file gives an APN (vande-0411 #027)', () => {
+    const plan = (apn: string | null, isNonHkIp: boolean) => ({
+      provider: 'esimaccess',
+      apn,
+      isNonHkIp,
+    });
+
+    it('should let a listed APN overrule the exit IP', () => {
+      expect(
+        service.judgePlan(plan('3gnet', true), table).tiktokAllDevices,
+      ).toBe(false);
+    });
+
+    it('should keep the exit IP for an APN the table has no answer for', () => {
+      expect(
+        service.judgePlan(plan('a1.net', true), table).tiktokAllDevices,
+      ).toBe(true);
+    });
+
+    it('should keep the exit IP until the file is imported', () => {
+      expect(service.judgePlan(plan(null, true), table).known).toBe(true);
+    });
+  });
+
   it('should let the nonhkip flag win over an APN that says no', () => {
     // A nonhkip package exits locally regardless of the APN recorded against it.
     expect(

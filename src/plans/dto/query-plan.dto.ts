@@ -115,6 +115,9 @@ export class FilterPlanDto {
    */
   tiktokApns?: string[];
 
+  /** APNs the table says no to, which overrule esimaccess's exit IP (#027). */
+  tiktokRefusedApns?: string[];
+
   @ApiPropertyOptional({
     type: Boolean,
     description: 'Whether the plan can be topped up (#010)',

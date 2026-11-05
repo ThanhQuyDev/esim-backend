@@ -428,7 +428,8 @@ export class EsimAccessService {
       fupSpeed: pkg.fupPolicy || null,
       isAbleMultidate: pkg.dataType === 2,
       isKyc: false,
-      apn: null,
+      // No `apn` here: the API has none before an order, and the price file
+      // supplies it (vande-0411 #027). A null would wipe it at every sync.
       // How long the customer has to activate before the eSIM is wasted (#070).
       // esimaccess calls this the unused-package validity and quotes it in days.
       activationValidityDays: parseValidityDays(pkg.unusedValidTime),

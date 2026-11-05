@@ -77,7 +77,8 @@ export class PlansRelationalRepository implements PlanRepository {
     if (
       filterOptions?.search ||
       (filterOptions?.isNonHkIp !== undefined &&
-        filterOptions?.tiktokApns?.length)
+        (filterOptions?.tiktokApns?.length ||
+          filterOptions?.tiktokRefusedApns?.length))
     ) {
       const qb = this.plansRepository
         .createQueryBuilder('plan')
@@ -389,6 +390,30 @@ export class PlansRelationalRepository implements PlanRepository {
    *   "trùng cả ưu đãi, trùng cả giá tiền") are settled by the lowest id, so
    *   exactly one plan per group is marked, every time.
    */
+  async applyEsimAccessFile(
+    rows: { code: string; apn: string | null; billingStarts: string | null }[],
+  ): Promise<{ providerPlanId: string; supplierActiveType: number | null }[]> {
+    // One statement: a full file is about 3 300 plans. A row with no APN keeps
+    // the one already stored.
+    const [updated] = await this.plansRepository.query(
+      `UPDATE "plan" p SET
+         "apn" = COALESCE(v.apn, p."apn"),
+         "supplierActivationPolicy" = COALESCE(v.billing, p."supplierActivationPolicy"),
+         "updatedAt" = NOW()
+       FROM UNNEST($1::text[], $2::text[], $3::text[]) AS v(code, apn, billing)
+       WHERE p."provider" = 'esimaccess'
+         AND p."providerPlanId" = v.code
+         AND p."deletedAt" IS NULL
+       RETURNING p."providerPlanId", p."supplierActiveType"`,
+      [
+        rows.map((row) => row.code),
+        rows.map((row) => row.apn),
+        rows.map((row) => row.billingStarts),
+      ],
+    );
+    return updated;
+  }
+
   async markCheapestPlans(): Promise<void> {
     await this.plansRepository.query(
       `UPDATE "plan" SET "isCheapest" = false WHERE "deletedAt" IS NULL`,
@@ -976,11 +1001,16 @@ export class PlansRelationalRepository implements PlanRepository {
     if (f?.isNonHkIp !== undefined) {
       // Same rule as the storefront (#045, test round 4): the exit-IP flag, or
       // an APN the APN table lists as working.
-      const capable = f.tiktokApns?.length
-        ? `(COALESCE(plan."isNonHkIp", false) = true OR LOWER(TRIM(plan."apn")) IN (:...tiktokApns))`
+      // For esimaccess a listed APN that says no overrules the IP (#027).
+      const exitIp = f.tiktokRefusedApns?.length
+        ? `(COALESCE(plan."isNonHkIp", false) = true AND NOT (plan."provider" = 'esimaccess' AND COALESCE(LOWER(TRIM(plan."apn")), '') IN (:...tiktokRefusedApns)))`
         : `COALESCE(plan."isNonHkIp", false) = true`;
+      const capable = f.tiktokApns?.length
+        ? `(${exitIp} OR COALESCE(LOWER(TRIM(plan."apn")), '') IN (:...tiktokApns))`
+        : exitIp;
       qb.andWhere(f.isNonHkIp ? capable : `NOT ${capable}`, {
         tiktokApns: f.tiktokApns ?? [],
+        tiktokRefusedApns: f.tiktokRefusedApns ?? [],
       });
     }
     if (f?.topUp !== undefined) {

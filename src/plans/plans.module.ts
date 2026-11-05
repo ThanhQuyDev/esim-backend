@@ -4,6 +4,7 @@ import { PlansService } from './plans.service';
 import { PlansImportService } from './plans-import.service';
 import { PlansExportService } from './plans-export.service';
 import { PlansGadgetkoreaImportService } from './plans-gadgetkorea-import.service';
+import { PlansEsimaccessImportService } from './plans-esimaccess-import.service';
 import { ExchangeRateCronService } from './exchange-rate-cron.service';
 import { ExchangeRateService } from './exchange-rate.service';
 import { SoldCountCronService } from './sold-count-cron.service';
@@ -30,6 +31,7 @@ const infrastructurePersistenceModule = RelationalPlanPersistenceModule;
     PlansImportService,
     PlansExportService,
     PlansGadgetkoreaImportService,
+    PlansEsimaccessImportService,
     ExchangeRateCronService,
     ExchangeRateService,
     SoldCountCronService,

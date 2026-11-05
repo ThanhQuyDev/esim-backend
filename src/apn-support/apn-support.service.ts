@@ -234,27 +234,51 @@ export class ApnSupportService {
   }
 
   /**
+   * Plan APN values the table lists as not running TikTok and ChatGPT: for
+   * esimaccess these overrule the exit IP in the CMS filter, as they do on the
+   * product page (vande-0411 #027).
+   */
+  async tiktokRefusedPlanApns(): Promise<string[]> {
+    const capabilities = await this.capabilityMap();
+    const values = await this.apnRepository.distinctPlanApns();
+    const refused = new Set<string>();
+    for (const raw of values) {
+      const apn = normalizeApn(raw);
+      if (!apn) continue;
+      const caps =
+        capabilities.get(apn) ?? combineCapabilities(raw, capabilities);
+      if (caps && !fullTiktokAndGpt(caps)) refused.add(apn);
+    }
+    return [...refused];
+  }
+
+  /**
    * What one plan supports.
    *
-   * esimaccess gives no APN at all, and says it in the package name instead — its
-   * "nonhkip" packages exit on a local IP, which is the whole point (#041). Every
-   * other supplier is judged on its APN, and an APN that is not in the table is
-   * "we do not know", which reads as no: a plan is only advertised as working with
-   * TikTok when the table says so.
+   * A plan that exits outside Hong Kong works, whatever APN it lists (#041). For
+   * esimaccess the APN table now comes first: its price file gives the APN, so a
+   * listed APN decides as it does for everyone else (vande-0411 #027). Its exit IP
+   * only answers until the file is imported or the table lists that APN. Any
+   * other APN that is not in the table is "we do not know", which reads as no: a
+   * plan is only advertised as working with TikTok when the table says so.
    */
   judgePlan(
-    plan: { apn?: string | null; isNonHkIp?: boolean },
+    plan: {
+      apn?: string | null;
+      isNonHkIp?: boolean;
+      provider?: string | null;
+    },
     capabilities: Map<string, ApnCapabilities>,
   ): PlanAppSupport {
-    if (plan.isNonHkIp) return NON_HK_IP_SUPPORT;
-
     const apn = normalizeApn(plan.apn);
-    if (!apn) return NO_SUPPORT;
-
     // An exact match first; else the APN(s) the plan uses in China — a region
     // pack lists one per country, "CN:cmhk|JP:…" (#046, test round 4).
-    const caps =
-      capabilities.get(apn) ?? combineCapabilities(plan.apn, capabilities);
+    const caps = apn
+      ? (capabilities.get(apn) ?? combineCapabilities(plan.apn, capabilities))
+      : undefined;
+
+    const apnDecides = plan.provider === 'esimaccess' && Boolean(caps);
+    if (plan.isNonHkIp && !apnDecides) return NON_HK_IP_SUPPORT;
     if (!caps) return NO_SUPPORT;
 
     return {

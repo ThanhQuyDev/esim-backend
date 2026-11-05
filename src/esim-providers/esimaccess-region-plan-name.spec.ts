@@ -175,6 +175,14 @@ describe('eSIM Access non-Hong-Kong-IP flag', () => {
     expect(created[0].isNonHkIp).toBe(true);
   });
 
+  it('should leave the APN from the price file alone (vande-0411 #027)', async () => {
+    const { created, callProcess } = makeService();
+
+    await callProcess(spainPackage());
+
+    expect(created[0]).not.toHaveProperty('apn');
+  });
+
   it('should not flag the ordinary variant of the same package', async () => {
     const { created, callProcess } = makeService();
 
