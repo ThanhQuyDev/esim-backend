@@ -33,6 +33,7 @@ export function getTierBenefits(tier: MembershipTierCode): TierBenefits {
     minimumSpendVnd: row.minimumSpendVnd,
     cashbackPercent: row.cashbackPercent,
     referralRewardVnd: row.referralRewardVnd,
+    refereeDiscountVnd: row.refereeDiscountVnd,
   };
 }
 

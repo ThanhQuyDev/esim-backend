@@ -84,6 +84,7 @@ export class MembershipTierConfigService
           minimumSpendVnd: Number(row.minimumSpendVnd),
           cashbackPercent: Number(row.cashbackPercent),
           referralRewardVnd: Number(row.referralRewardVnd),
+          refereeDiscountVnd: Number(row.refereeDiscountVnd),
           name: row.name?.trim() || row.tier,
           nameEn: row.nameEn?.trim() || null,
         };
@@ -123,6 +124,7 @@ export class MembershipTierConfigService
       minimumSpendVnd: dto.minimumSpendVnd ?? row.minimumSpendVnd,
       cashbackPercent: dto.cashbackPercent ?? row.cashbackPercent,
       referralRewardVnd: dto.referralRewardVnd ?? row.referralRewardVnd,
+      refereeDiscountVnd: dto.refereeDiscountVnd ?? row.refereeDiscountVnd,
       name: dto.name !== undefined ? dto.name.trim() : row.name,
       nameEn:
         dto.nameEn !== undefined ? dto.nameEn?.trim() || null : row.nameEn,
@@ -153,6 +155,7 @@ export class MembershipTierConfigService
       minimumSpendVnd: dto.minimumSpendVnd,
       cashbackPercent: dto.cashbackPercent,
       referralRewardVnd: dto.referralRewardVnd,
+      refereeDiscountVnd: dto.refereeDiscountVnd ?? 10_000,
       name: dto.name.trim(),
       nameEn: dto.nameEn?.trim() || null,
     };

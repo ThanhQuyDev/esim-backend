@@ -20,4 +20,7 @@ export class MembershipTierDto {
 
   @ApiProperty({ type: Number, example: 12_000 })
   referralRewardVnd!: number;
+
+  @ApiProperty({ type: Number, example: 10_000 })
+  refereeDiscountVnd!: number;
 }

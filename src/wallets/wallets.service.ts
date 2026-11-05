@@ -48,7 +48,6 @@ import {
   OrderReferralStatusEnum,
   OrderRefundModeEnum,
   OrderRefundStatusEnum,
-  REFERRAL_DISCOUNT_VND,
   REFERRAL_MIN_ORDER_VND,
   WalletHoldStatusEnum,
   WalletStatusEnum,
@@ -153,6 +152,7 @@ export class WalletsService {
       tierSource: tierSummary.tierSource,
       cashbackPercent: tierSummary.benefits.cashbackPercent,
       referralRewardVnd: tierSummary.benefits.referralRewardVnd,
+      refereeDiscountVnd: tierSummary.benefits.refereeDiscountVnd,
       tierBenefits: tierSummary.benefits,
       nextTier: tierSummary.nextTier,
       nextTierThresholdVnd: tierSummary.nextTierThresholdVnd,
@@ -514,7 +514,9 @@ export class WalletsService {
     return {
       referralCode: code,
       referrerUserId: profile.userId,
-      buyerDiscountVnd: REFERRAL_DISCOUNT_VND,
+      // By the tier of whoever referred them: the buyer has no order yet, and
+      // the two rewards should match (vande-0411 #056).
+      buyerDiscountVnd: tierSummary.benefits.refereeDiscountVnd,
       rewardVnd: tierSummary.benefits.referralRewardVnd,
       membershipTierSnapshot: tierSummary.membershipTier,
       tierSourceSnapshot: tierSummary.tierSource,

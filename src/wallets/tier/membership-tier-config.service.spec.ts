@@ -11,6 +11,7 @@ type Row = {
   minimumSpendVnd: number | string;
   cashbackPercent: number | string;
   referralRewardVnd: number | string;
+  refereeDiscountVnd: number | string;
 };
 
 function defaultRows(): Row[] {
@@ -52,6 +53,7 @@ describe('MembershipTierConfigService (#024)', () => {
       minimumSpendVnd: '2000000',
       cashbackPercent: '3.50',
       referralRewardVnd: '13000',
+      refereeDiscountVnd: 10_000,
     };
     const { service } = buildService(rows);
 
@@ -61,6 +63,7 @@ describe('MembershipTierConfigService (#024)', () => {
       minimumSpendVnd: 2_000_000,
       cashbackPercent: 3.5,
       referralRewardVnd: 13_000,
+      refereeDiscountVnd: 10_000,
     });
   });
 
@@ -88,6 +91,7 @@ describe('MembershipTierConfigService (#024)', () => {
     const ladder = await service.update(MembershipTierEnum.GOLD, {
       cashbackPercent: 5,
       referralRewardVnd: 16_000,
+      refereeDiscountVnd: 10_000,
     });
 
     expect(repository.save).toHaveBeenCalledTimes(1);
@@ -98,6 +102,7 @@ describe('MembershipTierConfigService (#024)', () => {
       minimumSpendVnd: 5_000_000,
       cashbackPercent: 5,
       referralRewardVnd: 16_000,
+      refereeDiscountVnd: 10_000,
     });
     expect(resolveTierSummary(5_000_000).benefits.cashbackPercent).toBe(5);
     expect(
@@ -127,6 +132,7 @@ describe('MembershipTierConfigService (#024)', () => {
         minimumSpendVnd: 100_000_000,
         cashbackPercent: 10,
         referralRewardVnd: 30_000,
+        refereeDiscountVnd: 10_000,
       });
 
       expect(ladder.map((t) => t.tier)).toEqual([
@@ -149,6 +155,7 @@ describe('MembershipTierConfigService (#024)', () => {
         minimumSpendVnd: 500_000,
         cashbackPercent: 2.5,
         referralRewardVnd: 11_000,
+        refereeDiscountVnd: 10_000,
       });
       expect(ladder.map((t) => t.tier).slice(0, 3)).toEqual([
         'traveler',
@@ -165,6 +172,7 @@ describe('MembershipTierConfigService (#024)', () => {
           minimumSpendVnd: 5_000_000,
           cashbackPercent: 5,
           referralRewardVnd: 0,
+          refereeDiscountVnd: 10_000,
         }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });

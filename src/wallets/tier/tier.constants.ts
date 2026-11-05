@@ -4,6 +4,8 @@ export type TierBenefits = {
   minimumSpendVnd: number;
   cashbackPercent: number;
   referralRewardVnd: number;
+  /** Off the first order of a friend this tier referred (vande-0411 #056). */
+  refereeDiscountVnd: number;
 };
 
 /** The starting ladder, until `membership_tier_config` has loaded. */
@@ -12,21 +14,25 @@ export const TIER_BENEFITS: Record<string, TierBenefits> = {
     minimumSpendVnd: 0,
     cashbackPercent: 2,
     referralRewardVnd: 10_000,
+    refereeDiscountVnd: 10_000,
   },
   [MembershipTierEnum.SILVER]: {
     minimumSpendVnd: 1_000_000,
     cashbackPercent: 3,
     referralRewardVnd: 12_000,
+    refereeDiscountVnd: 10_000,
   },
   [MembershipTierEnum.GOLD]: {
     minimumSpendVnd: 5_000_000,
     cashbackPercent: 4,
     referralRewardVnd: 15_000,
+    refereeDiscountVnd: 10_000,
   },
   [MembershipTierEnum.PLATINUM]: {
     minimumSpendVnd: 25_000_000,
     cashbackPercent: 7,
     referralRewardVnd: 20_000,
+    refereeDiscountVnd: 10_000,
   },
 };
 

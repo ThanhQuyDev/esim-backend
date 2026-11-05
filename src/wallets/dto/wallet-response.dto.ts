@@ -110,6 +110,10 @@ export class WalletMeDto {
   @ApiProperty({ type: Number })
   referralRewardVnd!: number;
 
+  /** Off the first order of a friend this customer refers (vande-0411 #056). */
+  @ApiProperty({ type: Number })
+  refereeDiscountVnd!: number;
+
   @ApiProperty({ type: Object })
   tierBenefits!: TierBenefits;
 

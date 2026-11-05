@@ -36,6 +36,10 @@ export class MembershipTierConfigEntity extends EntityRelationalHelper {
   @Column({ type: 'bigint', default: 0, transformer: numberTransformer })
   referralRewardVnd!: number;
 
+  /** Off the first order of a friend this tier referred (vande-0411 #056). */
+  @Column({ type: 'bigint', default: 10_000, transformer: numberTransformer })
+  refereeDiscountVnd!: number;
+
   @UpdateDateColumn()
   updatedAt!: Date;
 }

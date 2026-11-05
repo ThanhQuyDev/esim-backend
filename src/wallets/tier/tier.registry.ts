@@ -1,3 +1,4 @@
+import { REFERRAL_MIN_ORDER_VND } from '../wallets.enum';
 import {
   DEFAULT_TIER_NAMES,
   TIER_BENEFITS,
@@ -120,6 +121,18 @@ export function validateTierLadder(
         tier,
         field: 'referralRewardVnd',
         code: 'invalidReferralReward',
+      };
+    }
+    // Up to the smallest order it applies to, so no order goes below nothing.
+    if (
+      !Number.isInteger(benefits.refereeDiscountVnd) ||
+      benefits.refereeDiscountVnd < 0 ||
+      benefits.refereeDiscountVnd > REFERRAL_MIN_ORDER_VND
+    ) {
+      return {
+        tier,
+        field: 'refereeDiscountVnd',
+        code: 'invalidRefereeDiscount',
       };
     }
 

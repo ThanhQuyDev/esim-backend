@@ -43,5 +43,4 @@ export enum OrderRefundStatusEnum {
 export const EXU_EXPIRY_DAYS = 365;
 export const EXU_CASHBACK_PERCENT = 2;
 export const REFERRAL_MIN_ORDER_VND = 100_000;
-export const REFERRAL_DISCOUNT_VND = 10_000;
 export const REFERRAL_REWARD_VND = 10_000;

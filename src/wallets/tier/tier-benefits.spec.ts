@@ -34,6 +34,8 @@ describe('Membership tier benefits', () => {
         minimumSpendVnd,
         cashbackPercent,
         referralRewardVnd,
+        // What a friend gets starts the same on every tier (vande-0411 #056).
+        refereeDiscountVnd: 10_000,
       });
     },
   );

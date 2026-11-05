@@ -35,6 +35,7 @@ describe('tier registry', () => {
           minimumSpendVnd: 2_000_000,
           cashbackPercent: 3.5,
           referralRewardVnd: 13_000,
+          refereeDiscountVnd: 10_000,
         },
       }),
     );
@@ -46,6 +47,7 @@ describe('tier registry', () => {
       minimumSpendVnd: 2_000_000,
       cashbackPercent: 3.5,
       referralRewardVnd: 13_000,
+      refereeDiscountVnd: 10_000,
     });
   });
 
@@ -54,6 +56,17 @@ describe('tier registry', () => {
 
     expect(resolveTierSummary(0).benefits.cashbackPercent).toBe(2);
   });
+
+  it.each([-1, 100_001, 1.5])(
+    "should refuse %s off a friend's first order (vande-0411 #056)",
+    (refereeDiscountVnd) => {
+      expect(
+        validateTierLadder(
+          ladder({ [MembershipTierEnum.GOLD]: { refereeDiscountVnd } }),
+        ),
+      ).toMatchObject({ field: 'refereeDiscountVnd' });
+    },
+  );
 
   it('should accept the default ladder', () => {
     expect(validateTierLadder(defaultTable())).toBeNull();

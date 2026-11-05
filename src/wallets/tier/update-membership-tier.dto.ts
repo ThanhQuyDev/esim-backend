@@ -1,3 +1,4 @@
+import { REFERRAL_MIN_ORDER_VND } from '../wallets.enum';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsInt,
@@ -30,6 +31,14 @@ export class UpdateMembershipTierDto {
   @IsInt()
   @Min(0)
   referralRewardVnd?: number;
+
+  /** Off the first order of a friend this tier referred (vande-0411 #056). */
+  @ApiPropertyOptional({ type: Number, example: 10_000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(REFERRAL_MIN_ORDER_VND)
+  refereeDiscountVnd?: number;
 
   /** The name customers and admins read (vande #066). */
   @ApiPropertyOptional({ type: String, example: 'Bạch kim' })
@@ -82,4 +91,12 @@ export class CreateMembershipTierDto {
   @IsInt()
   @Min(0)
   referralRewardVnd!: number;
+
+  /** 10,000đ when left out, what every tier started with. */
+  @ApiPropertyOptional({ type: Number, example: 10_000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(REFERRAL_MIN_ORDER_VND)
+  refereeDiscountVnd?: number;
 }
