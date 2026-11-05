@@ -121,6 +121,14 @@ export class CreateRegionDto {
   parentId?: number | null;
 
   @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Ticked "Làm khu vực cha" (vande-0411 #073).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isParent?: boolean;
+
+  @ApiPropertyOptional({
     example: 'airalo,esimaccess',
     type: String,
     description: 'Comma-separated list of providers',

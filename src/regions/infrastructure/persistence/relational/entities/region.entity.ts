@@ -82,6 +82,10 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: 'int', nullable: true })
   parentId: number | null;
 
+  /** Ticked "Làm khu vực cha": it can be picked as a parent (vande-0411 #073). */
+  @Column({ type: 'boolean', default: false })
+  isParent: boolean;
+
   /** Units sold across this region's plans, recounted hourly (#053). */
   @Column({ type: 'int', default: 0 })
   soldCount: number;

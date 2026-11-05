@@ -83,6 +83,42 @@ export class RegionsRelationalRepository implements RegionRepository {
       });
     }
 
+    if (filterOptions?.isParent !== undefined) {
+      qb.andWhere('region."isParent" = :isParent', {
+        isParent: filterOptions.isParent,
+      });
+    }
+
+    if (filterOptions?.parentIds?.length) {
+      qb.andWhere('region."parentId" IN (:...parentIds)', {
+        parentIds: filterOptions.parentIds,
+      });
+    }
+
+    if (filterOptions?.regionTypes?.length) {
+      const typeSql: Record<string, string> = {
+        parent: 'region."isParent" = true',
+        child: 'region."parentId" IS NOT NULL',
+        standalone: '(region."isParent" = false AND region."parentId" IS NULL)',
+      };
+      const picked = filterOptions.regionTypes
+        .map((type) => typeSql[type])
+        .filter(Boolean);
+      if (picked.length) qb.andWhere(`(${picked.join(' OR ')})`);
+    }
+
+    if (filterOptions?.featuredTop) {
+      qb.andWhere(
+        `((region."parentId" IS NULL AND region."isPopular" = true)
+          OR region."parentId" IN (
+            SELECT featured.id FROM "region" featured
+             WHERE featured."isPopular" = true
+               AND featured."parentId" IS NULL
+               AND featured."deletedAt" IS NULL
+          ))`,
+      );
+    }
+
     const providersFilter = buildProvidersTextFilter(
       'region',
       filterOptions?.providers,
@@ -97,7 +133,8 @@ export class RegionsRelationalRepository implements RegionRepository {
       // record's name is still the provider's "Asia". Member destinations keep
       // matching by their own name/title, so searching a country still
       // suggests the regions that cover it.
-      // Slugs are deliberately not searched (they all start with "esim-").
+      // Slugs only for the CMS (`searchSlug`): they all start with "esim-", so
+      // the storefront's "esim" would match every region.
       // `dest` is a raw table join (not an entity alias), so its camelCase
       // columns must stay double-quoted or Postgres folds them to lowercase.
       qb.andWhere(
@@ -106,7 +143,8 @@ export class RegionsRelationalRepository implements RegionRepository {
           OR region."titleVi" ILIKE :search
           OR dest.name ILIKE :search
           OR dest.title ILIKE :search
-          OR dest."titleVi" ILIKE :search)`,
+          OR dest."titleVi" ILIKE :search
+          ${filterOptions.searchSlug ? 'OR region.slug ILIKE :search OR region."slugVi" ILIKE :search' : ''})`,
         { search: `%${filterOptions.search}%` },
       );
     }

@@ -94,6 +94,12 @@ export class Region {
   })
   parentId?: number | null;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Ticked "Làm khu vực cha" (vande-0411 #073).',
+  })
+  isParent?: boolean;
+
   /** The parent's name, when a plan list asks for its region. */
   parentName?: string | null;
 

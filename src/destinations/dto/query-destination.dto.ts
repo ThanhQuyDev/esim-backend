@@ -16,6 +16,12 @@ export class FilterDestinationDto {
   @IsString()
   search?: string;
 
+  /** Also match the slugs. The CMS only: every slug starts with "esim-". */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  searchSlug?: boolean;
+
   @ApiPropertyOptional({ type: Number, nullable: true })
   @IsOptional()
   @IsNumber()

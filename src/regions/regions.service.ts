@@ -52,7 +52,11 @@ export class RegionsService {
       }
     }
 
-    await this.assertParent(null, createRegionDto.parentId);
+    await this.assertParent(
+      null,
+      createRegionDto.parentId,
+      createRegionDto.isParent,
+    );
 
     return this.regionsRepository.create(
       {
@@ -71,7 +75,10 @@ export class RegionsService {
         providers: createRegionDto.providers ?? null,
         isActive: createRegionDto.isActive ?? true,
         isPopular: createRegionDto.isPopular ?? false,
-        parentId: createRegionDto.parentId ?? null,
+        parentId: createRegionDto.isParent
+          ? null
+          : (createRegionDto.parentId ?? null),
+        isParent: createRegionDto.isParent ?? false,
       },
       createRegionDto.destinationIds,
     );
@@ -137,7 +144,11 @@ export class RegionsService {
       }
     }
 
-    await this.assertParent(Number(id), updateRegionDto.parentId);
+    await this.assertParent(
+      Number(id),
+      updateRegionDto.parentId,
+      updateRegionDto.isParent,
+    );
 
     return this.regionsRepository.update(
       id,
@@ -156,7 +167,9 @@ export class RegionsService {
         providers: updateRegionDto.providers,
         isActive: updateRegionDto.isActive,
         isPopular: updateRegionDto.isPopular,
-        parentId: updateRegionDto.parentId,
+        // A parent has no parent of its own.
+        parentId: updateRegionDto.isParent ? null : updateRegionDto.parentId,
+        isParent: updateRegionDto.isParent,
       },
       updateRegionDto.destinationIds,
     );
@@ -165,23 +178,34 @@ export class RegionsService {
   /**
    * "Khu vực cha" (vande #035) is one level deep: the parent must exist, not be
    * the region itself, and not have a parent of its own; and a region that is
-   * already some region's parent cannot be put under another.
+   * already some region's parent cannot be put under another. Only a region
+   * ticked as a parent can be picked, and it keeps the tick while it has packs
+   * (vande-0411 #073).
    */
   private async assertParent(
     id: number | null,
     parentId: number | null | undefined,
+    isParent?: boolean,
   ): Promise<void> {
-    if (parentId === undefined || parentId === null) return;
     const fail = (reason: string) => {
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         errors: { parentId: reason },
       });
     };
+    if (
+      isParent === false &&
+      id !== null &&
+      (await this.regionsRepository.hasChildren(id))
+    ) {
+      fail('regionHasChildren');
+    }
+    if (isParent || parentId === undefined || parentId === null) return;
     if (id !== null && Number(parentId) === id) fail('parentIsSelf');
     const parent = await this.regionsRepository.findById(parentId);
     if (!parent) fail('parentNotFound');
     if (parent?.parentId) fail('parentHasParent');
+    if (!parent?.isParent) fail('parentNotMarked');
     if (id !== null && (await this.regionsRepository.hasChildren(id))) {
       fail('regionHasChildren');
     }

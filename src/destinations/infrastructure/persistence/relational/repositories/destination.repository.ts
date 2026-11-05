@@ -80,14 +80,15 @@ export class DestinationsRelationalRepository implements DestinationRepository {
       // Match the localized titles too, not just the internal `name`: the
       // storefront cards show `titleVi` / `title`, so a customer typing what
       // they can see must find the destination.
-      // Slugs are deliberately NOT searched — every slug starts with "esim-",
-      // so "esim" or "sim" would match the entire catalogue.
+      // Slugs only for the CMS (`searchSlug`): every slug starts with "esim-",
+      // so on the storefront "esim" or "sim" would match the entire catalogue.
       qb.andWhere(
         `(destination.name ILIKE :search
           OR destination.title ILIKE :search
           OR destination.titleVi ILIKE :search
           OR destination.keySearch ILIKE :search
-          OR destination.countryCode ILIKE :search)`,
+          OR destination.countryCode ILIKE :search
+          ${filterOptions.searchSlug ? 'OR destination.slug ILIKE :search OR destination.slugVi ILIKE :search' : ''})`,
         { search: `%${filterOptions.search}%` },
       );
     }
