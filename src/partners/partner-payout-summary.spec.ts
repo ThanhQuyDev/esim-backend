@@ -32,6 +32,7 @@ function buildService(
 const PAYOUTS = {
   requestedVnd: '12000000',
   requestedPartners: '3',
+  requestedCount: '5',
   paidMonthVnd: '40000000',
   paidMonthPartners: '7',
   paidAllVnd: '512000000',
@@ -41,6 +42,18 @@ const PAYOUTS = {
 const DEPOSITS = { totalVnd: '180000000', partners: '9' };
 
 describe('PartnersService.adminPayoutSummary (#067)', () => {
+  it('should count the withdrawal requests beside their partners (vande-0411 #057)', async () => {
+    const { service } = buildService(PAYOUTS, DEPOSITS);
+
+    const result = await service.adminPayoutSummary();
+
+    expect(result.payoutRequested).toEqual({
+      totalVnd: 12_000_000,
+      partners: 3,
+      requests: 5,
+    });
+  });
+
   it('should add up the deposits waiting on an admin (vande #067)', async () => {
     const { service, query } = buildService(PAYOUTS, DEPOSITS, {
       totalVnd: '75000000',
@@ -68,6 +81,7 @@ describe('PartnersService.adminPayoutSummary (#067)', () => {
     expect(result.payoutRequested).toEqual({
       totalVnd: 12_000_000,
       partners: 3,
+      requests: 5,
     });
   });
 
@@ -113,7 +127,7 @@ describe('PartnersService.adminPayoutSummary (#067)', () => {
     const result = await service.adminPayoutSummary();
 
     expect(result).toEqual({
-      payoutRequested: { totalVnd: 0, partners: 0 },
+      payoutRequested: { totalVnd: 0, partners: 0, requests: 0 },
       paidThisMonth: { totalVnd: 0, partners: 0 },
       paidAllTime: { totalVnd: 0, partners: 0 },
       distributionDeposit: { totalVnd: 0, partners: 0 },

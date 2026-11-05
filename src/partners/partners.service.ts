@@ -4534,7 +4534,7 @@ export class PartnersService {
    * it is the number an accountant reconciles against the bank statement.
    */
   async adminPayoutSummary(): Promise<{
-    payoutRequested: { totalVnd: number; partners: number };
+    payoutRequested: { totalVnd: number; partners: number; requests: number };
     paidThisMonth: { totalVnd: number; partners: number };
     paidAllTime: { totalVnd: number; partners: number };
     distributionDeposit: { totalVnd: number; partners: number };
@@ -4544,6 +4544,7 @@ export class PartnersService {
       `SELECT
          COALESCE(SUM("amountVnd") FILTER (WHERE status = $1), 0) AS "requestedVnd",
          COUNT(DISTINCT "partnerId") FILTER (WHERE status = $1) AS "requestedPartners",
+         COUNT(*) FILTER (WHERE status = $1) AS "requestedCount",
          COALESCE(SUM("amountVnd") FILTER (
            WHERE status = $2 AND "processedAt" >= ${VN_MONTH_START_SQL}
          ), 0) AS "paidMonthVnd",
@@ -4584,6 +4585,7 @@ export class PartnersService {
       payoutRequested: {
         totalVnd: n(payouts?.requestedVnd),
         partners: n(payouts?.requestedPartners),
+        requests: n(payouts?.requestedCount),
       },
       paidThisMonth: {
         totalVnd: n(payouts?.paidMonthVnd),
