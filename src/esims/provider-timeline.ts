@@ -29,6 +29,21 @@ export function utc8ToIso(value: string | null | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+/**
+ * Airalo writes "2026-11-11 13:00:03" with no timezone, in the same clock as its
+ * activation time, which is stored as UTC. Passed on as it was, a browser in
+ * Vietnam read it as local time, 7 hours early (vande-0411 #082).
+ */
+export function zonelessUtcToIso(
+  value: string | null | undefined,
+): string | null {
+  const text = (value ?? '').trim();
+  if (!text) return null;
+  const zoneless = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(text);
+  const date = new Date(zoneless ? `${text.replace(' ', 'T')}Z` : text);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 /** eSIM Access writes "2026-10-23T12:15:54+0000"; JS wants "+00:00". */
 export function esimAccessTimeToIso(
   value: string | null | undefined,

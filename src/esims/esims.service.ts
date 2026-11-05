@@ -34,6 +34,7 @@ import {
   billionTimeline,
   esimAccessTimeline,
   microEsimTimeline,
+  zonelessUtcToIso,
   sizeToMb,
   utc8ToIso,
 } from './provider-timeline';
@@ -535,7 +536,7 @@ export class EsimsService {
             Number.isFinite(airaloRemaining) && airaloTotal > 0
               ? Math.max(0, airaloTotal - airaloRemaining)
               : 0,
-          expiredAt: usage.expired_at,
+          expiredAt: zonelessUtcToIso(usage.expired_at),
           isUnlimited: usage.is_unlimited,
           status: usage.status,
           lastUpdateTime: null,
