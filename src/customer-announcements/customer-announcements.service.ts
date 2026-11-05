@@ -112,7 +112,10 @@ export class CustomerAnnouncementsService {
   }
 
   /** The email as it will arrive, for the CMS preview. */
-  async preview(subject: string, body: string): Promise<{ html: string }> {
+  async preview(
+    subject: string,
+    body: string,
+  ): Promise<{ html: string; from: string }> {
     const rendered = await this.mailService.renderCustomerAnnouncement({
       subject: subject || '(Chưa có tiêu đề)',
       body: sanitizeNotificationHtml(body),
@@ -122,7 +125,66 @@ export class CustomerAnnouncementsService {
       html:
         rendered?.html ??
         '<p style="font-family:sans-serif">Chưa có mẫu email "customer_announcement".</p>',
+      from: this.mailService.announcementSender(),
     };
+  }
+
+  /** "Xem" (vande-0411 #059): the email as sent, and who it went to. */
+  async detail(id: number): Promise<
+    CustomerAnnouncementRow & {
+      html: string;
+      from: string;
+      recipients: {
+        email: string;
+        sentAt: Date | null;
+        lastError: string | null;
+      }[];
+    }
+  > {
+    const [row] = (await this.dataSource.query(
+      `SELECT a.*,
+              (SELECT COUNT(*)::int FROM customer_announcement_recipient r
+                WHERE r."announcementId" = a.id AND r."sentAt" IS NOT NULL) AS "sentCount",
+              (SELECT COUNT(*)::int FROM customer_announcement_recipient r
+                WHERE r."announcementId" = a.id AND r."sentAt" IS NULL
+                  AND r.attempts >= ${MAX_ATTEMPTS}) AS "failedCount"
+         FROM customer_announcement a
+        WHERE a.id = $1 AND a."deletedAt" IS NULL`,
+      [id],
+    )) as CustomerAnnouncementRow[];
+    if (!row) throw new NotFoundException('Không tìm thấy thông báo.');
+    const recipients = (await this.dataSource.query(
+      `SELECT email, "sentAt", "lastError"
+         FROM customer_announcement_recipient
+        WHERE "announcementId" = $1
+        ORDER BY id
+        LIMIT 500`,
+      [id],
+    )) as { email: string; sentAt: Date | null; lastError: string | null }[];
+    const { html, from } = await this.preview(row.subject, row.body);
+    return { ...row, html, from, recipients };
+  }
+
+  /**
+   * "Xoá" (vande-0411 #059): off the list, the record kept. One still waiting
+   * or going out has to be cancelled first, so deleting cannot look like
+   * stopping it.
+   */
+  async remove(id: number): Promise<void> {
+    const [row] = (await this.dataSource.query(
+      `SELECT status FROM customer_announcement WHERE id = $1 AND "deletedAt" IS NULL`,
+      [id],
+    )) as { status: string }[];
+    if (!row) throw new NotFoundException('Không tìm thấy thông báo.');
+    if (row.status === 'scheduled' || row.status === 'sending') {
+      throw new BadRequestException(
+        'Thông báo này chưa gửi xong. Hãy hủy gửi trước khi xoá.',
+      );
+    }
+    await this.dataSource.query(
+      `UPDATE customer_announcement SET "deletedAt" = now() WHERE id = $1`,
+      [id],
+    );
   }
 
   async list(limit = 100): Promise<CustomerAnnouncementRow[]> {
@@ -134,6 +196,7 @@ export class CustomerAnnouncementsService {
                 WHERE r."announcementId" = a.id AND r."sentAt" IS NULL
                   AND r.attempts >= ${MAX_ATTEMPTS}) AS "failedCount"
          FROM customer_announcement a
+        WHERE a."deletedAt" IS NULL
         ORDER BY a."createdAt" DESC
         LIMIT $1`,
       [Math.min(Math.max(limit, 1), 500)],

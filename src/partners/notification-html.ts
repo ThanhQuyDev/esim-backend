@@ -40,10 +40,39 @@ const escapeHtml = (text: string) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+const BARE_ESIM_DOMAIN =
+  /(?<![\w.@/-])((?:[a-z0-9-]+\.)*esim\.vn(?:\/[^\s<]*)?)/gi;
+
+/**
+ * Links in an email always carry https (vande-0411 #059). An editor link typed
+ * as "esim.vn" gets it, and so does the bare word: left as text, mail clients
+ * make it a link of their own to http://esim.vn. Other sites only have a missing
+ * scheme added; text inside tags and existing links is left as it is.
+ */
+export function withHttpsLinks(html: string): string {
+  return html
+    .replace(
+      /(<a\b[^>]*?\shref\s*=\s*)(["'])\s*(?!https?:|mailto:|tel:|#|\/)([^"']+)\2/gi,
+      (_all, start: string, quote: string, url: string) =>
+        `${start}${quote}https://${url}${quote}`,
+    )
+    .replace(
+      /(<a\b[^>]*?\shref\s*=\s*["'])http:\/\/((?:[a-z0-9-]+\.)*esim\.vn)/gi,
+      '$1https://$2',
+    )
+    .split(/(<a\b[\s\S]*?<\/a>|<[^>]+>)/i)
+    .map((part, index) =>
+      index % 2 === 1
+        ? part
+        : part.replace(BARE_ESIM_DOMAIN, '<a href="https://$1">$1</a>'),
+    )
+    .join('');
+}
+
 /** The body as email HTML: old plain-text ones keep their line breaks. */
 export function notificationBodyHtml(body: string): string {
-  if (isHtmlBody(body)) return sanitizeNotificationHtml(body);
-  return escapeHtml(body ?? '').replace(/\r?\n/g, '<br>');
+  if (isHtmlBody(body)) return withHttpsLinks(sanitizeNotificationHtml(body));
+  return withHttpsLinks(escapeHtml(body ?? '').replace(/\r?\n/g, '<br>'));
 }
 
 /** The body as plain text, for the email's text part and previews. */

@@ -1123,10 +1123,14 @@ ${notificationBodyText(data.body)}`,
         context,
       ),
       html: Handlebars.compile(template.htmlBody, { strict: false })(context),
-      text: `${data.subject}
-
-${notificationBodyText(data.body)}`,
+      // The subject is on the subject line, not repeated here (vande-0411 #059).
+      text: notificationBodyText(data.body),
     };
+  }
+
+  /** The address announcements leave from right now (vande-0411 #059). */
+  announcementSender(): string {
+    return this.mailerService.announcementSender();
   }
 
   /** Send one customer announcement, as service@ when that is set up. */

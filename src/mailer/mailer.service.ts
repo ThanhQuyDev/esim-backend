@@ -86,6 +86,15 @@ export class MailerService {
       : null;
   }
 
+  /** Who customer announcements really leave as, for the CMS (vande-0411 #059). */
+  announcementSender(): string {
+    return this.serviceTransporter
+      ? (this.configService.get('mail.service.user', { infer: true }) ??
+          this.configService.get('mail.defaultEmail', { infer: true }) ??
+          '')
+      : (this.configService.get('mail.defaultEmail', { infer: true }) ?? '');
+  }
+
   async sendMail({
     templatePath,
     context,

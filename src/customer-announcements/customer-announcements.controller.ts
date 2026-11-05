@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -59,6 +60,18 @@ export class CustomerAnnouncementsController {
     @Request() req: { user: { id: number } },
   ) {
     return this.service.create(dto, { id: Number(req.user.id) });
+  }
+
+  @Get(':id')
+  @HttpCode(HttpStatus.OK)
+  detail(@Param('id', ParseIntPipe) id: number) {
+    return this.service.detail(id);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
   }
 
   @Post(':id/cancel')
