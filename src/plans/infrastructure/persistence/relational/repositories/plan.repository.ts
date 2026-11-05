@@ -32,6 +32,21 @@ function onlyIds(ids: Plan['id'][]): { sql: string; params: unknown[] } {
   return { sql: ` AND "id" = ANY($1::int[])`, params: [ids.map(Number)] };
 }
 
+/**
+ * A plan's region's countries and its destination's child places, as EXISTS
+ * (vande-0411 #054). Joined, every plan came back once per country of its
+ * region, and paging had to de-duplicate 48,000 plans on each search.
+ */
+function relatedPlaceMatches(param: string): string {
+  const place = (alias: string) =>
+    `(${alias}.name ILIKE :${param} OR ${alias}."keySearch" ILIKE :${param} OR ${alias}."countryCode" ILIKE :${param})`;
+  return `EXISTS (SELECT 1 FROM "destination" child WHERE child."parentId" = dest.id AND ${place('child')})
+    OR EXISTS (SELECT 1 FROM "destination_region" dr
+                 JOIN "destination" "regionDest" ON "regionDest".id = dr."destinationId"
+                  AND "regionDest"."deletedAt" IS NULL
+                WHERE dr."regionId" = plan."regionId" AND ${place('"regionDest"')})`;
+}
+
 @Injectable()
 export class PlansRelationalRepository implements PlanRepository {
   constructor(
@@ -67,13 +82,13 @@ export class PlansRelationalRepository implements PlanRepository {
       const qb = this.plansRepository
         .createQueryBuilder('plan')
         .leftJoinAndSelect('plan.destination', 'dest')
-        .leftJoinAndSelect('plan.region', 'region')
-        .leftJoin('region.destinations', 'regionDest')
-        .leftJoin('destination', 'child', 'child."parentId" = dest.id');
+        .leftJoinAndSelect('plan.region', 'region');
 
       if (filterOptions?.search) {
         qb.where(
-          '(plan.name ILIKE :search OR plan."standardName" ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
+          '(plan.name ILIKE :search OR plan."standardName" ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR ' +
+            relatedPlaceMatches('search') +
+            ')',
           { search: `%${filterOptions.search}%` },
         );
       }
@@ -173,8 +188,6 @@ export class PlansRelationalRepository implements PlanRepository {
       const qb = this.plansRepository.createQueryBuilder('plan');
       qb.leftJoinAndSelect('plan.destination', 'dest');
       qb.leftJoinAndSelect('plan.region', 'region');
-      qb.leftJoin('region.destinations', 'regionDest');
-      qb.leftJoin('destination', 'child', 'child."parentId" = dest.id');
 
       this.applyColumnFilters(qb, filterOptions);
       this.applyLocationAndCallSmsFilters(qb, filterOptions);
@@ -826,13 +839,13 @@ export class PlansRelationalRepository implements PlanRepository {
     const qb = this.plansRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.destination', 'dest')
-      .leftJoinAndSelect('plan.region', 'region')
-      .leftJoin('region.destinations', 'regionDest')
-      .leftJoin('destination', 'child', 'child."parentId" = dest.id');
+      .leftJoinAndSelect('plan.region', 'region');
 
     if (filterOptions?.search) {
       qb.where(
-        '(plan.name ILIKE :search OR plan."standardName" ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR child.name ILIKE :search OR child."keySearch" ILIKE :search OR child."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR regionDest.name ILIKE :search OR regionDest.keySearch ILIKE :search OR regionDest.countryCode ILIKE :search)',
+        '(plan.name ILIKE :search OR plan."standardName" ILIKE :search OR plan."providerPlanId" ILIKE :search OR plan.slug ILIKE :search OR plan."countryCode" ILIKE :search OR dest.name ILIKE :search OR dest."keySearch" ILIKE :search OR dest."countryCode" ILIKE :search OR region.name ILIKE :search OR region.slug ILIKE :search OR ' +
+          relatedPlaceMatches('search') +
+          ')',
         { search: `%${filterOptions.search}%` },
       );
     }
@@ -1063,7 +1076,9 @@ export class PlansRelationalRepository implements PlanRepository {
   ): void {
     if (filterOptions?.country) {
       qb.andWhere(
-        '(plan."countryCode" ILIKE :country OR dest."countryCode" ILIKE :country OR dest.name ILIKE :country OR dest."keySearch" ILIKE :country OR child."countryCode" ILIKE :country OR child.name ILIKE :country OR child."keySearch" ILIKE :country OR region.name ILIKE :country OR region.slug ILIKE :country OR regionDest.countryCode ILIKE :country OR regionDest.name ILIKE :country OR regionDest.keySearch ILIKE :country)',
+        '(plan."countryCode" ILIKE :country OR dest."countryCode" ILIKE :country OR dest.name ILIKE :country OR dest."keySearch" ILIKE :country OR region.name ILIKE :country OR region.slug ILIKE :country OR ' +
+          relatedPlaceMatches('country') +
+          ')',
         { country: `%${filterOptions.country}%` },
       );
     }

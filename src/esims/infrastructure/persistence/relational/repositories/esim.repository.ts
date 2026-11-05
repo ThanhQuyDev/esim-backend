@@ -97,7 +97,13 @@ export class EsimsRelationalRepository implements EsimRepository {
         { search: `%${filterOptions.search}%` },
       );
     }
-    if (filterOptions?.q?.trim()) {
+    if (/^\d{15,}$/.test(filterOptions?.q?.trim() ?? '')) {
+      // A whole ICCID can only be an ICCID: read off its index, not by looking
+      // through every plan and buyer as well (vande-0411 #054).
+      qb.andWhere('esim.iccid ILIKE :q', {
+        q: `%${filterOptions?.q?.trim()}%`,
+      });
+    } else if (filterOptions?.q?.trim()) {
       // One box for order number, buyer email, ICCID and plan name (vande
       // #021), instead of a separate input per field.
       qb.andWhere(

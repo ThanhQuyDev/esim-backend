@@ -94,9 +94,10 @@ describe('Plan list filtered by country / region', () => {
 
     const clause = captured.find((c) => c.sql.includes(':country'))!;
     // Typing a country must also surface the regional packs that include it,
-    // which is what `regionDest` is joined for.
-    expect(clause.sql).toContain('regionDest.name');
-    expect(joins.join(' ')).toContain('region.destinations');
+    // without joining them: that multiplied every plan by its countries (#054).
+    expect(clause.sql).toContain('"regionDest".name');
+    expect(clause.sql).toContain('destination_region');
+    expect(joins.join(' ')).not.toContain('region.destinations');
   });
 
   it('should switch to the joined query, not the plain finder', async () => {
