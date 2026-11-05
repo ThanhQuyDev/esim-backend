@@ -7,6 +7,7 @@ import { UpdateEmailTemplateDto } from './dto/update-email-template.dto';
 import { PreviewEmailTemplateResponseDto } from './dto/preview-email-template.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { AllConfigType } from '../config/config.type';
+import { brandLogoUrl } from '../mail/mail-branding';
 
 const SAMPLE_CONTEXT = {
   iccid: '8901234567890123456',
@@ -76,7 +77,7 @@ export class EmailTemplatesService {
     const context = {
       ...SAMPLE_CONTEXT,
       app_name: this.configService.get('app.name', { infer: true }) ?? 'eSIMVN',
-      logoUrl: `${this.configService.get('app.backendDomain', { infer: true }) ?? ''}/files/logo_esimvn.svg`,
+      logoUrl: brandLogoUrl(),
       subject,
     };
 

@@ -8,7 +8,7 @@ import {
   SUPPORT_PLACEHOLDER,
   TEXT_HEADER,
 } from '../database/migrations/1788025100000-FixInvoiceEmailBranding';
-import { BRAND_LOGO_URL, SUPPORT_EMAIL } from './mail-branding';
+import { brandLogoUrl, SUPPORT_EMAIL } from './mail-branding';
 
 /**
  * Invoice-request email branding (#079).
@@ -64,11 +64,11 @@ describe('invoice email branding', () => {
       address: '1 Trần Hưng Đạo, Hà Nội',
       totalAmountFormatted: '1.200.000',
       app_name: 'esim.vn',
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
     });
 
-    expect(html).toContain(`<img src="${BRAND_LOGO_URL}"`);
+    expect(html).toContain(`<img src="${brandLogoUrl()}"`);
     // The address comes from the code constant, not from the stored HTML — that
     // is the whole point of the placeholder the migration left behind.
     expect(html).toContain(`mailto:${SUPPORT_EMAIL}`);

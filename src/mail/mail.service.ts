@@ -9,7 +9,7 @@ import { Interval } from '@nestjs/schedule';
 import { I18nContext } from 'nestjs-i18n';
 import { MailData } from './interfaces/mail-data.interface';
 import {
-  BRAND_LOGO_URL,
+  brandLogoUrl,
   BRAND_NAME,
   SITE_URL,
   SUPPORT_EMAIL,
@@ -374,7 +374,7 @@ export class MailService {
         noteVi: params.noteVi,
         noteEn: params.noteEn,
         app_name: BRAND_NAME,
-        logoUrl: BRAND_LOGO_URL,
+        logoUrl: brandLogoUrl(),
         siteUrl: SITE_URL,
       },
     });
@@ -470,7 +470,7 @@ export class MailService {
         title: otpTitle,
         otp: mailData.data.otp,
         app_name: BRAND_NAME,
-        logoUrl: BRAND_LOGO_URL,
+        logoUrl: brandLogoUrl(),
         text1,
         text2,
         text3,
@@ -679,7 +679,7 @@ export class MailService {
         usageCheckUrl,
         frontendDomain ?? '',
       ),
-      logoUrl: overrides.logoUrl ?? BRAND_LOGO_URL,
+      logoUrl: overrides.logoUrl ?? brandLogoUrl(),
       app_name: overrides.brand?.displayName || appName,
       subject: template.subject,
     };
@@ -833,7 +833,7 @@ export class MailService {
       // The invoice email never got a logo or a support address of its own
       // (#079): the header could only render as plain text, and the footer
       // pointed at a mailbox nobody reads.
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
     };
@@ -905,7 +905,7 @@ export class MailService {
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       registerUrl: this.frontendUrl(PARTNER_REGISTER_PATH).toString(),
       app_name: appName,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
     };
@@ -958,7 +958,7 @@ export class MailService {
       bankSummary: data.bankSummary,
       expiresInMinutes: data.expiresInMinutes,
       app_name: BRAND_NAME,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
     };
@@ -1016,7 +1016,7 @@ export class MailService {
       temporaryPassword: data.temporaryPassword,
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       app_name: appName,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
     };
@@ -1068,7 +1068,7 @@ export class MailService {
       bodyHtml: notificationBodyHtml(data.body),
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       app_name: appName,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
     };
@@ -1114,7 +1114,7 @@ ${notificationBodyText(data.body)}`,
       bodyHtml: notificationBodyHtml(data.body),
       siteUrl: SITE_URL,
       app_name: BRAND_NAME,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
       subject: data.subject,
     };
@@ -1196,7 +1196,7 @@ ${notificationBodyText(data.body)}`,
       ticketDescription: data.ticketDescription ?? '',
       replyBody: data.replyBody ?? '',
       app_name: appName,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail,
       subject: template.subject,
       // Where a new request is opened — linked from the "ticket is closed" reply.
@@ -1315,7 +1315,7 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
       commissionVnd: vnd(data.commissionVnd),
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       app_name: appName,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
     };
@@ -1376,7 +1376,7 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
       amountDueVnd: vnd(data.amountDueVnd),
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       app_name: BRAND_NAME,
-      logoUrl: BRAND_LOGO_URL,
+      logoUrl: brandLogoUrl(),
       supportEmail: SUPPORT_EMAIL,
       subject: template.subject,
     };

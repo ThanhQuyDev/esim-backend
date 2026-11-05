@@ -66,13 +66,15 @@ describe('eSIM QR code', () => {
       logo,
     );
 
-    // The plate is white; measure the white band it leaves in the middle.
+    // On an all-black code, whatever is not black is the plate and its logo.
+    // Counting only white missed the logo's own colours, so the orange logo
+    // of vande-0411 #070 read as a narrower band than it is.
     const { data, info } = await sharp(branded)
       .greyscale()
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    const isWhite = (x: number, y: number) => data[y * info.width + x] > 200;
+    const isWhite = (x: number, y: number) => data[y * info.width + x] > 30;
 
     const middleRow = Math.floor(info.height / 2);
     let bandWidth = 0;

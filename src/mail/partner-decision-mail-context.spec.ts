@@ -4,7 +4,7 @@ import {
   PARTNER_REGISTER_PATH,
   PARTNER_SIGN_IN_PATH,
 } from './mail.service';
-import { BRAND_LOGO_URL, SUPPORT_EMAIL } from './mail-branding';
+import { brandLogoUrl, SUPPORT_EMAIL } from './mail-branding';
 
 /**
  * What the partner decision emails actually say (#095).
@@ -88,7 +88,7 @@ describe('MailService — partner decision email contents', () => {
     const html = sendMail.mock.calls[0][0].html as string;
     // Not the storefront: partners have no account there.
     expect(html).toContain(`href="${PORTAL}${PARTNER_SIGN_IN_PATH}"`);
-    expect(html).not.toContain(FRONTEND);
+    expect(html).not.toContain(`href="${FRONTEND}`);
   });
 
   it('should not double the slash when the domain is configured with one', async () => {
@@ -169,7 +169,7 @@ describe('MailService — partner decision email contents', () => {
     await service.sendPartnerApproved({ to: 'a@b.com', contactName: 'A' });
 
     const html = sendMail.mock.calls[0][0].html as string;
-    expect(html).toContain(BRAND_LOGO_URL);
+    expect(html).toContain(brandLogoUrl());
     expect(html).toContain(SUPPORT_EMAIL);
   });
 

@@ -7,9 +7,17 @@
  * next rebrand cannot leave one template behind.
  */
 
-/** Horizontal brand logo, hosted where a mail client can fetch it. */
-export const BRAND_LOGO_URL =
-  'https://res.cloudinary.com/drozbviwb/image/upload/v1780067058/logo_esimvn_zycejk.png';
+/**
+ * Horizontal brand logo, hosted where a mail client can fetch it: a PNG (Gmail
+ * shows no SVG) kept in the storefront's code, not Cloudinary (vande-0411 #070).
+ * Read from that environment's own site, so beta mail shows beta's file.
+ */
+export function brandLogoUrl(): string {
+  const site = (process.env.FRONTEND_DOMAIN || SITE_URL)
+    .trim()
+    .replace(/\/+$/, '');
+  return `${site}/email/esimvn-logo.png`;
+}
 
 /**
  * The mailbox support actually reads.
