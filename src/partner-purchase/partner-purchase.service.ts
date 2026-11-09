@@ -9,6 +9,12 @@ import { DataSource } from 'typeorm';
 import { OrdersService } from '../orders/orders.service';
 import { PartnersService } from '../partners/partners.service';
 import { TopupService } from '../topup/topup.service';
+import {
+  RETRY_UNAVAILABLE,
+  TOPUP_LIST_UNAVAILABLE,
+  TOPUP_UNAVAILABLE,
+  toPartnerSafeError,
+} from './partner-safe-error';
 
 /**
  * Đối tác phân phối tự đặt mua hàng, trả bằng ví ký quỹ (#046).
@@ -102,7 +108,18 @@ export class PartnerPurchaseService {
    */
   async listTopupPackages(partnerId: number, iccid: string) {
     await this.partnersService.assertOwnsEsim(partnerId, iccid);
-    const { packages } = await this.topupService.listPackagesWithCost(iccid);
+    let packages: Awaited<
+      ReturnType<TopupService['listPackagesWithCost']>
+    >['packages'];
+    try {
+      ({ packages } = await this.topupService.listPackagesWithCost(iccid));
+    } catch (err) {
+      // The supplier's own answer stays here (doitac-0911 #006).
+      this.logger.error(
+        `listTopupPackages ${iccid}: ${(err as Error).message}`,
+      );
+      throw toPartnerSafeError(err, TOPUP_LIST_UNAVAILABLE);
+    }
     return Promise.all(
       packages.map(async (pkg) => {
         const agentPriceVnd =
@@ -141,8 +158,29 @@ export class PartnerPurchaseService {
   ): Promise<{ orderNumber: string; status: string; amountVnd: number }> {
     await this.partnersService.assertOwnsEsim(partnerId, iccid);
     const partner = await this.partnersService.getPartnerOrThrowById(partnerId);
+    try {
+      return await this.checkoutTopup(
+        partnerId,
+        partner.userId,
+        iccid,
+        packageId,
+      );
+    } catch (err) {
+      // Our own refusals pass; a supplier's answer never reaches the
+      // partner (doitac-0911 #006).
+      this.logger.error(`topupEsim ${iccid}: ${(err as Error).message}`);
+      throw toPartnerSafeError(err, TOPUP_UNAVAILABLE);
+    }
+  }
+
+  private checkoutTopup(
+    partnerId: number,
+    userId: number,
+    iccid: string,
+    packageId: string,
+  ) {
     return this.topupService.checkoutForPartner(
-      partner.userId,
+      userId,
       { iccid, packageId },
       (costVnd, listVnd) =>
         this.partnersService.partnerAgentPriceVnd(partnerId, costVnd, listVnd),
@@ -379,10 +417,20 @@ export class PartnerPurchaseService {
         'Chưa thể gọi lại cho đơn này. Vui lòng liên hệ esim.vn để kiểm tra với nhà cung cấp.',
       );
     }
-    const result = await this.ordersService.retryProvisioning(orderId, {
-      itemIds,
-    });
-    return { retried: result.retriedItemIds.length, message: result.message };
+    try {
+      const result = await this.ordersService.retryProvisioning(orderId, {
+        itemIds,
+      });
+      return {
+        retried: result.retriedItemIds.length,
+        message: result.message,
+      };
+    } catch (err) {
+      this.logger.error(
+        `retryPurchase ${orderNumber}: ${(err as Error).message}`,
+      );
+      throw toPartnerSafeError(err, RETRY_UNAVAILABLE);
+    }
   }
 
   /** One of the partner's own orders as the bulk eSIM list (vande #057). */
