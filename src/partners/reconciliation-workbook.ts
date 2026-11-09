@@ -81,6 +81,59 @@ function mmyyyy(date: Date): string {
   return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 }
 
+/** Chiều rộng A..F của biên bản, theo đơn vị cột Excel. */
+const STATEMENT_WIDTH = 9 + 26 + 14 + 16 + 14 + 20;
+
+/**
+ * Chiều cao đủ cho `text` trong một ô gộp rộng `width` (doitac-0911 #010).
+ * Excel không tự giãn dòng của ô gộp, nên dòng dài 2–3 hàng chữ chỉ hiện một
+ * hàng và in ra bị mất chữ. Ước lượng theo số ký tự mỗi hàng ở cỡ chữ đó.
+ */
+export function wrappedRowHeight(
+  text: string,
+  width: number,
+  size = 11,
+): number {
+  const perLine = Math.max(1, Math.floor((width * 11) / size) * 1.1);
+  const lines = String(text)
+    .split(/\r?\n/)
+    .reduce(
+      (sum, part) => sum + Math.max(1, Math.ceil(part.length / perLine)),
+      0,
+    );
+  return Math.max(15, Math.ceil(lines * size * 1.35 + 2));
+}
+
+/**
+ * In ngay được, không phải căn chỉnh (doitac-0911 #010): A4 khổ ngang, vừa
+ * một trang chiều ngang, căn giữa, lề hẹp.
+ */
+export function printReady(
+  sheet: Worksheet,
+  lastCol: string,
+  opts: { onePage?: boolean; repeatHeader?: boolean } = {},
+): void {
+  sheet.pageSetup = {
+    ...sheet.pageSetup,
+    paperSize: 9,
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: opts.onePage ? 1 : 0,
+    horizontalCentered: true,
+    margins: {
+      left: 0.4,
+      right: 0.4,
+      top: 0.5,
+      bottom: 0.5,
+      header: 0.3,
+      footer: 0.3,
+    },
+    printArea: `A1:${lastCol}${sheet.rowCount}`,
+    ...(opts.repeatHeader ? { printTitlesRow: '1:1' } : {}),
+  };
+}
+
 /** Ghi một dòng chữ chiếm hết chiều ngang biên bản (A..F). */
 function fullWidthRow(
   sheet: Worksheet,
@@ -96,9 +149,11 @@ function fullWidthRow(
   sheet.mergeCells(rowNumber, 1, rowNumber, 6);
   const cell = sheet.getCell(rowNumber, 1);
   cell.value = text;
+  // Cỡ 11 như file mẫu (doitac-0911 #010).
+  const size = opts.size ?? 11;
   cell.font = {
     name: FONT,
-    size: opts.size ?? 12,
+    size,
     bold: opts.bold ?? false,
     italic: opts.italic ?? false,
   };
@@ -107,6 +162,11 @@ function fullWidthRow(
     vertical: 'middle',
     wrapText: true,
   };
+  sheet.getRow(rowNumber).height = wrappedRowHeight(
+    text,
+    STATEMENT_WIDTH,
+    size,
+  );
 }
 
 function buildStatementSheet(
@@ -114,7 +174,7 @@ function buildStatementSheet(
   data: ReconciliationWorkbookData,
 ): void {
   sheet.columns = [
-    // Wide enough for the logo in A1 (doitac-0911 #007).
+    // Wide enough for the logo in A1 (doitac-0911 #007). Sum: STATEMENT_WIDTH.
     { width: 9 },
     { width: 26 },
     { width: 14 },
@@ -138,7 +198,7 @@ function buildStatementSheet(
   const motto = sheet.getCell('D1');
   motto.value =
     'CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc';
-  motto.font = { name: FONT, size: 12, bold: true };
+  motto.font = { name: FONT, size: 11, bold: true };
   motto.alignment = {
     horizontal: 'center',
     vertical: 'middle',
@@ -166,20 +226,21 @@ function buildStatementSheet(
   issued.font = { name: FONT, size: 12, italic: true };
   issued.alignment = { horizontal: 'center' };
 
-  fullWidthRow(sheet, 4, 'BIÊN BẢN ĐỐI SOÁT DOANH THU, HOA HỒNG', {
+  // Một dòng trống giữa ngày lập và tiêu đề (doitac-0911 #010).
+  fullWidthRow(sheet, 5, 'BIÊN BẢN ĐỐI SOÁT DOANH THU, HOA HỒNG', {
     bold: true,
     center: true,
     size: 14,
   });
   fullWidthRow(
     sheet,
-    5,
+    6,
     `Từ ngày ${ddmmyyyy(data.periodStart)} đến ngày ${ddmmyyyy(data.periodEnd)}`,
-    { center: true, italic: true },
+    { center: true, bold: true },
   );
 
   // ── Hai bên ───────────────────────────────────────────────────────────
-  let row = 7;
+  let row = 8;
   const party = (label: string, p: ReconciliationParty) => {
     fullWidthRow(sheet, row++, `${label}: ${p.name}`, { bold: true });
     fullWidthRow(sheet, row++, `Địa chỉ: ${p.address}`);
@@ -190,10 +251,10 @@ function buildStatementSheet(
     sheet.mergeCells(row, 4, row, 6);
     const rep = sheet.getCell(row, 1);
     rep.value = `Đại diện: ${p.representative}`;
-    rep.font = { name: FONT, size: 12 };
+    rep.font = { name: FONT, size: 11, bold: true };
     const pos = sheet.getCell(row, 4);
     pos.value = `Chức vụ: ${p.position ?? ''}`;
-    pos.font = { name: FONT, size: 12 };
+    pos.font = { name: FONT, size: 11, bold: true };
     row += 2;
   };
 
@@ -299,13 +360,17 @@ function buildStatementSheet(
   payableLabel.value = `Tổng số tiền Bên A phải thanh toán cho Bên B (đã bao gồm thuế) tính đến ngày ${ddmmyyyy(
     data.periodEnd,
   )} là:`;
-  payableLabel.font = { name: FONT, size: 12 };
+  payableLabel.font = { name: FONT, size: 11 };
   payableLabel.alignment = { wrapText: true, vertical: 'middle' };
+  sheet.getRow(row).height = wrappedRowHeight(
+    String(payableLabel.value),
+    STATEMENT_WIDTH - 20,
+  );
   const payable = sheet.getCell(row, 6);
   payable.value = total;
   payable.numFmt = MONEY_FORMAT;
-  payable.font = { name: FONT, size: 12, bold: true };
-  payable.alignment = { horizontal: 'right' };
+  payable.font = { name: FONT, size: 11, bold: true };
+  payable.alignment = { horizontal: 'right', vertical: 'middle' };
   row++;
 
   fullWidthRow(sheet, row++, `Bằng chữ: ${vndInWords(total)}`, {
@@ -329,7 +394,7 @@ function buildStatementSheet(
   ] as [number, string][]) {
     const cell = sheet.getCell(row, col);
     cell.value = text;
-    cell.font = { name: FONT, size: 12, bold: true };
+    cell.font = { name: FONT, size: 11, bold: true };
     cell.alignment = { horizontal: 'center' };
   }
   const signatureRow = row + 6;
@@ -341,9 +406,12 @@ function buildStatementSheet(
   ] as [number, string][]) {
     const cell = sheet.getCell(signatureRow, col);
     cell.value = text;
-    cell.font = { name: FONT, size: 12, bold: true };
+    cell.font = { name: FONT, size: 11, bold: true };
     cell.alignment = { horizontal: 'center' };
   }
+
+  // Một trang A4 ngang, in là xong (doitac-0911 #010).
+  printReady(sheet, 'F', { onePage: true });
 }
 
 function buildTransactionSheet(
@@ -353,7 +421,8 @@ function buildTransactionSheet(
   // Cột lấy đúng theo sheet mẫu "Mẫu file Chi tiết giao dịch".
   sheet.columns = [
     { header: 'STT', key: 'stt', width: 6 },
-    { header: 'Mã đơn hàng', key: 'orderNumber', width: 28 },
+    // A whole order code in Times 11, printed (doitac-0911 #010).
+    { header: 'Mã đơn hàng', key: 'orderNumber', width: 33 },
     { header: 'Tên sản phẩm', key: 'products', width: 40 },
     { header: 'Doanh thu đơn hàng', key: 'revenueVnd', width: 20 },
     { header: 'Nguồn ghi nhận', key: 'source', width: 22 },
@@ -366,14 +435,27 @@ function buildTransactionSheet(
   ];
   const COLS = 11;
 
+  // Nền xanh dương, chữ trắng như sheet mẫu (doitac-0911 #010).
   const header = sheet.getRow(1);
-  header.font = { name: FONT, size: 12, bold: true };
+  header.font = {
+    name: FONT,
+    size: 11,
+    bold: true,
+    color: { argb: 'FFFFFFFF' },
+  };
   header.alignment = {
     horizontal: 'center',
     vertical: 'middle',
     wrapText: true,
   };
   header.height = 30;
+  for (let c = 1; c <= COLS; c++) {
+    header.getCell(c).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4472C4' },
+    };
+  }
 
   data.transactions.forEach((tx, index) => {
     sheet.addRow({
@@ -384,7 +466,11 @@ function buildTransactionSheet(
       source: tx.source,
       customer: tx.customer,
       esims: tx.esims,
-      commissionPercent: tx.commissionPercent ?? '',
+      // 18.1141 → 18.11 (doitac-0911 #010); "0.##" would print "20.".
+      commissionPercent:
+        tx.commissionPercent == null
+          ? ''
+          : Math.round(tx.commissionPercent * 100) / 100,
       commissionVnd: tx.commissionVnd,
       status: tx.status,
       createdAt: ddmmyyyy(tx.createdAt),
@@ -402,12 +488,18 @@ function buildTransactionSheet(
       0,
     ),
   });
-  totalRow.font = { name: FONT, size: 12, bold: true };
-
   for (let r = 2; r <= sheet.rowCount; r++) {
     sheet.getCell(r, 4).numFmt = MONEY_FORMAT;
     sheet.getCell(r, 9).numFmt = MONEY_FORMAT;
+    // Cỡ 11; tên sản phẩm dài xuống dòng thay vì bị cắt khi in
+    // (doitac-0911 #010).
+    const line = sheet.getRow(r);
+    line.font = { name: FONT, size: 11 };
+    line.alignment = { vertical: 'middle' };
+    line.getCell(3).alignment = { vertical: 'middle', wrapText: true };
+    line.height = wrappedRowHeight(String(line.getCell(3).value ?? ''), 40);
   }
+  totalRow.font = { name: FONT, size: 11, bold: true };
 
   for (let r = 1; r <= sheet.rowCount; r++) {
     for (let c = 1; c <= COLS; c++) {
@@ -421,6 +513,9 @@ function buildTransactionSheet(
   }
 
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
+  // Ngang, vừa chiều ngang trang, dòng tiêu đề lặp lại ở mỗi trang
+  // (doitac-0911 #010).
+  printReady(sheet, 'K', { repeatHeader: true });
 }
 
 /** Dựng file .xlsx hai sheet để đính kèm email đối soát. */

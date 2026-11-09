@@ -1,4 +1,5 @@
 import { Workbook } from 'exceljs';
+import { printReady } from './reconciliation-workbook';
 
 /**
  * The file attached to a no-deposit partner's monthly statement (vande #056).
@@ -145,6 +146,8 @@ export async function buildCreditStatementWorkbook(
     row.getCell(2).numFmt = MONEY_FORMAT;
   }
   summary.lastRow!.font = { name: FONT, size: 12, bold: true };
+  // In ngay được, như biên bản hoa hồng (doitac-0911 #010).
+  printReady(summary, 'B', { onePage: true });
 
   const sheet = wb.addWorksheet('Chi tiết giao dịch');
   sheet.columns = [
@@ -160,8 +163,21 @@ export async function buildCreditStatementWorkbook(
     { header: 'Ngày mua hàng', key: 'createdAt', width: 14 },
     { header: 'Trạng thái đơn hàng', key: 'status', width: 18 },
   ];
+  // Nền xanh dương, chữ trắng (doitac-0911 #010).
   const header = sheet.getRow(1);
-  header.font = { name: FONT, size: 12, bold: true };
+  header.font = {
+    name: FONT,
+    size: 11,
+    bold: true,
+    color: { argb: 'FFFFFFFF' },
+  };
+  for (let c = 1; c <= 11; c++) {
+    header.getCell(c).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4472C4' },
+    };
+  }
   header.alignment = {
     horizontal: 'center',
     vertical: 'middle',
@@ -201,6 +217,7 @@ export async function buildCreditStatementWorkbook(
     }
   }
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
+  printReady(sheet, 'K', { repeatHeader: true });
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

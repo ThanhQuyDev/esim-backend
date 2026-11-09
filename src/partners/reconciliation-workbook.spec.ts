@@ -83,6 +83,60 @@ describe('file đối soát đính kèm', () => {
     return parts.join(' | ');
   };
 
+  // doitac-0911 #010: printed as it comes, nothing to adjust.
+  it('should in được ngay: A4 ngang, vừa trang, tiêu đề cách ngày 1 dòng', async () => {
+    const wb = await openWorkbook(base());
+    const sheet = wb.getWorksheet('Đối soát')!;
+
+    expect(sheet.pageSetup).toMatchObject({
+      paperSize: 9,
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 1,
+    });
+    expect(String(sheet.getCell('E3').value)).toBe('Ngày 04/09/2026');
+    expect(sheet.getCell('A4').value).toBeNull();
+    expect(String(sheet.getCell('A5').value)).toBe(
+      'BIÊN BẢN ĐỐI SOÁT DOANH THU, HOA HỒNG',
+    );
+    expect(sheet.getCell('A5').font.size).toBe(14);
+    expect(sheet.getCell('A8').font.size).toBe(11);
+  });
+
+  it('should cho dòng dài đủ cao để in không mất chữ', async () => {
+    const data = base();
+    data.contractLines = [
+      'Căn cứ Hợp đồng đại lý ủy quyền phân phối sản phẩm, dịch vụ viễn thông số 012025/HĐĐL–MOBICAST–ESIM ký ngày 01/01/2025 giữa Công ty TNHH Viễn thông eSIM và Công ty Cổ phần Mobicast, cùng các phụ lục kèm theo',
+    ];
+    const sheet = (await openWorkbook(data)).getWorksheet('Đối soát')!;
+
+    let contractRow = 0;
+    sheet.eachRow((row, n) => {
+      if (String(row.getCell(1).value ?? '').startsWith('Căn cứ'))
+        contractRow = n;
+    });
+    expect(sheet.getCell(contractRow, 1).alignment.wrapText).toBe(true);
+    // Two lines of text at least, not the one-line default.
+    expect(sheet.getRow(contractRow).height).toBeGreaterThanOrEqual(30);
+  });
+
+  it('should tô dòng tiêu đề "Chi tiết giao dịch" nền xanh dương, chữ trắng', async () => {
+    const sheet = (await openWorkbook(base())).getWorksheet(
+      'Chi tiết giao dịch',
+    )!;
+
+    for (let c = 1; c <= 11; c++) {
+      const cell = sheet.getCell(1, c);
+      expect(cell.fill).toMatchObject({ fgColor: { argb: 'FF4472C4' } });
+      expect(cell.font.color).toEqual({ argb: 'FFFFFFFF' });
+    }
+    expect(sheet.pageSetup).toMatchObject({
+      orientation: 'landscape',
+      fitToWidth: 1,
+    });
+  });
+
   it('should có đúng 2 sheet, đặt tên như mô tả', async () => {
     const wb = await openWorkbook(base());
 
