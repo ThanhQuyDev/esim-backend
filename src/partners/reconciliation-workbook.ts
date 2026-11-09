@@ -56,7 +56,10 @@ export type ReconciliationWorkbookData = {
   issuedAt: Date;
   /** Các dòng "Căn cứ…", lấy từ `partner.contractInfo`. */
   contractLines: string[];
-  /** Hoa hồng của kỳ, trước thuế. */
+  /**
+   * Hoa hồng của kỳ, ĐÃ GỒM VAT: đúng số hệ thống trả vào ví đối tác
+   * (doitac-0911 #004). Biên bản tách ra phần trước thuế và tiền thuế.
+   */
   commissionVnd: number;
   /** Thuế suất VAT, phần trăm. */
   vatPercent: number;
@@ -218,16 +221,19 @@ function buildStatementSheet(
   }
   row++;
 
-  const vat = Math.round((data.commissionVnd * data.vatPercent) / 100);
-  const total = data.commissionVnd + vat;
+  // The commission already includes VAT (doitac-0911 #004): the money the
+  // partner is paid is the total; before tax is that divided by 1 + VAT.
+  const total = Math.round(data.commissionVnd);
+  const beforeVat = Math.round((total * 100) / (100 + data.vatPercent));
+  const vat = total - beforeVat;
 
   const moneyRows: [string, string, number][] = [
     [
       '1',
       `Chia sẻ doanh thu bán hàng tháng ${mmyyyy(data.periodStart)}`,
-      data.commissionVnd,
+      beforeVat,
     ],
-    ['2', 'Tổng số tiền trước thuế VAT', data.commissionVnd],
+    ['2', 'Tổng số tiền trước thuế VAT', beforeVat],
     ['3', `Thuế VAT (${data.vatPercent}%)`, vat],
     ['4', 'Tổng số tiền (gồm VAT)', total],
   ];

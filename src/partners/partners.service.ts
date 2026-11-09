@@ -807,6 +807,36 @@ function resolveSummaryRange(range: { from?: string; to?: string }): {
 }
 
 /**
+ * A reconciliation month (`YYYY-MM`) as a Vietnam-time range: 00:00:00 on the
+ * 1st to the end of 23:59:59 on the last day (doitac-0911 #004).
+ */
+export function reconciliationPeriodRange(period: string): {
+  from: Date;
+  to: Date;
+} {
+  const [year, month] = period.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return resolveSummaryRange({
+    from: `${period}-01`,
+    to: `${period}-${String(lastDay).padStart(2, '0')}`,
+  });
+}
+
+/**
+ * A commission belongs to the month it was APPROVED in (doitac-0911 #004):
+ * approved means credited to the wallet, which happens 24h after the order.
+ * An order still waiting is not money yet, so it is not in the statement; one
+ * bought on the 31st is approved on the 1st and counts for the next month.
+ * `$from`/`$to` are the placeholders of the period range.
+ */
+function creditedInPeriodSql(from: string, to: string): string {
+  return `c.status = 'credited'
+          AND EXISTS (SELECT 1 FROM partner_wallet_transaction ct
+                       WHERE ct.id = c."rewardTransactionId"
+                         AND ct."createdAt" >= ${from} AND ct."createdAt" < ${to})`;
+}
+
+/**
  * Growth against the same period last month, as a whole percent (#008).
  *
  * With nothing to compare against, a first month of earnings is not "+∞%": it
@@ -4664,12 +4694,7 @@ export class PartnersService {
       : new Date()
           .toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
           .slice(0, 7);
-    const [year, month] = period.split('-').map(Number);
-    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const { from: start, to: end } = resolveSummaryRange({
-      from: `${period}-01`,
-      to: `${period}-${String(lastDay).padStart(2, '0')}`,
-    });
+    const { from: start, to: end } = reconciliationPeriodRange(period);
 
     const search = query.search?.trim() || null;
     const asId = Number((query.search ?? '').trim().replace(/^#/, ''));
@@ -4700,14 +4725,13 @@ export class PartnersService {
                 COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
                   WHERE o.status = ANY($6)
                 ), 0) AS "revenueVnd",
-                COALESCE(SUM(c."commissionVnd") FILTER (
-                  WHERE c.status NOT IN ('reversed', 'unpaid')
-                ), 0) AS "commissionVnd"
+                COALESCE(SUM(c."commissionVnd"), 0) AS "commissionVnd"
          FROM order_partner_commission c
          JOIN "order" o
            ON o.id = c."orderId"
           AND o."deletedAt" IS NULL
-          AND o."createdAt" >= $1 AND o."createdAt" < $2
+          -- Approved in the month, not placed in it (doitac-0911 #004).
+          AND ${creditedInPeriodSql('$1', '$2')}
          LEFT JOIN LATERAL (
            SELECT COALESCE(SUM(oi.quantity), 0) AS qty
            FROM order_item oi WHERE oi."orderId" = o.id
@@ -7084,9 +7108,15 @@ export class PartnersService {
     filters: {
       search?: string;
       status?: string;
-      /** Chỉ lấy đơn đặt trong khoảng này — dùng cho file đối soát tháng (#006). */
+      /** Chỉ lấy đơn đặt trong khoảng này. */
       from?: Date;
       to?: Date;
+      /**
+       * Chỉ lấy đơn có hoa hồng được DUYỆT trong khoảng này — file đối soát
+       * tháng (doitac-0911 #004).
+       */
+      creditedFrom?: Date;
+      creditedTo?: Date;
       // The admin's "Đơn hàng đối tác" filters (doitac-1410 #058):
       planName?: string;
       iccid?: string;
@@ -7236,6 +7266,7 @@ export class PartnersService {
            OR ($10 = 'coupon' AND c."linkId" IS NULL AND o."couponCode" IS NOT NULL)
            OR ($10 = 'member' AND c."linkId" IS NULL AND o."couponCode" IS NULL)
          )
+         AND ($11::timestamptz IS NULL OR (${creditedInPeriodSql('$11', '$12')}))
        GROUP BY o.id, c."commissionVnd", c."commissionPercentSnapshot", c.status, c."rejectionReason", c."linkId", l.code, pa.id, pa."userId"
        ORDER BY o."createdAt" DESC
        LIMIT $2`,
@@ -7250,13 +7281,24 @@ export class PartnersService {
         text(filters.iccid),
         text(filters.email),
         source,
+        filters.creditedFrom ?? null,
+        filters.creditedTo ?? null,
       ],
     );
 
     return rows.map((r: Record<string, any>) => {
-      const commissionVnd =
-        r.commissionVnd == null ? null : Number(r.commissionVnd);
       const commissionStatus = r.commissionStatus ?? null;
+      const originalCommissionVnd =
+        r.commissionVnd == null ? null : Number(r.commissionVnd);
+      // A full refund takes the whole commission back, so the order earns
+      // 0đ, like its revenue (doitac-0911 #004); the record keeps the old
+      // figure for the history.
+      const commissionVnd =
+        originalCommissionVnd == null
+          ? null
+          : commissionStatus === 'reversed'
+            ? 0
+            : originalCommissionVnd;
       const { validity, invalidReason } = classifyPartnerOrder(
         r.status,
         commissionStatus,
@@ -7279,6 +7321,7 @@ export class PartnersService {
         refundedVnd,
         createdAt: r.createdAt,
         commissionVnd,
+        originalCommissionVnd,
         commissionPercent:
           r.commissionPercent == null ? null : Number(r.commissionPercent),
         commissionStatus,
@@ -7467,8 +7510,13 @@ export class PartnersService {
 
     const revenueVnd = Number(row.revenueVnd ?? 0);
     const refundedVnd = Number(row.refundedAmountVnd ?? 0);
+    // A full refund leaves the order 0đ of commission (doitac-0911 #004).
     const commissionVnd =
-      row.commissionVnd == null ? null : Number(row.commissionVnd);
+      row.commissionVnd == null
+        ? null
+        : row.commissionStatus === 'reversed'
+          ? 0
+          : Number(row.commissionVnd);
     // After a partial refund the commission left is the rate on what the
     // customer kept, so the rate is read against that — not against the
     // whole order, which showed 7% as 5.8% (doitac-1410 #020).
@@ -7813,11 +7861,14 @@ export class PartnersService {
     partnerId: number,
     period: string,
   ): Promise<ReconciliationTransaction[]> {
-    const [year, month] = period.split('-').map(Number);
-    const from = new Date(year, month - 1, 1);
-    const to = new Date(year, month, 1);
+    // The orders whose commission was approved in the month, in Vietnam
+    // time — the same set as the total on the statement (doitac-0911 #004).
+    const { from, to } = reconciliationPeriodRange(period);
 
-    const orders = await this.getMyOrders(partnerId, 5000, { from, to });
+    const orders = await this.getMyOrders(partnerId, 5000, {
+      creditedFrom: from,
+      creditedTo: to,
+    });
 
     // Cùng bộ nhãn với file xuất ở #027, để đối tác đọc hai file thấy giống nhau.
     const statusLabels: Record<string, string> = {

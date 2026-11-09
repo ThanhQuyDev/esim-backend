@@ -102,29 +102,32 @@ describe('file đối soát đính kèm', () => {
     expect(text).toContain('Hôm nay ngày 04/09/2026');
   });
 
-  it('should tính VAT và tổng tiền từ hoa hồng', async () => {
+  // doitac-0911 #004: the commission paid already includes VAT, so the
+  // statement splits it — it does not add 10% on top.
+  it('should tách VAT ra khỏi hoa hồng (hoa hồng đã gồm VAT)', async () => {
     const wb = await openWorkbook(base());
     const text = sheetText(wb, 'Đối soát');
 
     expect(text).toContain('Chia sẻ doanh thu bán hàng tháng 08/2026');
     expect(text).toContain('Thuế VAT (10%)');
-    // 1.500.000 + 10% = 1.650.000
+    // 1.500.000 gồm VAT = 1.363.636 trước thuế + 136.364 VAT
     const sheet = wb.getWorksheet('Đối soát')!;
     const amounts: number[] = [];
     sheet.eachRow((row) => {
       const v = row.getCell(6).value;
       if (typeof v === 'number') amounts.push(v);
     });
-    expect(amounts).toContain(1_500_000);
-    expect(amounts).toContain(150_000);
-    expect(amounts).toContain(1_650_000);
+    // Rows 1 and 2 (before tax), VAT, total with VAT, payable.
+    expect(amounts.slice(0, 5)).toEqual([
+      1_363_636, 1_363_636, 136_364, 1_500_000, 1_500_000,
+    ]);
   });
 
   it('should để dòng "Bằng chữ" khớp với số tiền', async () => {
     // Lỗi có thật trong file mẫu: số một đằng, chữ một nẻo.
     const text = sheetText(await openWorkbook(base()), 'Đối soát');
 
-    expect(text).toContain('Bằng chữ: Một triệu sáu trăm năm mươi nghìn đồng');
+    expect(text).toContain('Bằng chữ: Một triệu năm trăm nghìn đồng');
     expect(text).not.toContain('1,081,691');
   });
 
@@ -140,7 +143,8 @@ describe('file đối soát đính kèm', () => {
       }
     });
 
-    expect(payable).toBe(1_650_000);
+    // What the system pays the partner: the commission itself.
+    expect(payable).toBe(1_500_000);
   });
 
   it('should liệt kê từng đơn và cộng tổng khớp mục I', async () => {

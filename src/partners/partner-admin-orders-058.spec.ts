@@ -90,7 +90,7 @@ describe('getMyOrders filters (doitac-1410 #058)', () => {
     });
 
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(params.slice(6)).toEqual(['Nhật', '8985', 'khach@', 'link']);
+    expect(params.slice(6, 10)).toEqual(['Nhật', '8985', 'khach@', 'link']);
     expect(sql).toContain('fp.name ILIKE');
     expect(sql).toContain('fe.iccid ILIKE');
     expect(sql).toContain('fu.email ILIKE');

@@ -77,8 +77,13 @@ export class PartnerOrderRowDto {
   @ApiProperty()
   createdAt!: Date;
 
+  /** 0 once the order is refunded in full (doitac-0911 #004). */
   @ApiPropertyOptional({ type: Number, example: 29000, nullable: true })
   commissionVnd!: number | null;
+
+  /** What the order earned before a full refund took it back. */
+  @ApiPropertyOptional({ type: Number, example: 29000, nullable: true })
+  originalCommissionVnd?: number | null;
 
   @ApiPropertyOptional({ type: String, example: 'credited', nullable: true })
   commissionStatus!: string | null;
