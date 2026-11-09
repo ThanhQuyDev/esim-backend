@@ -208,6 +208,10 @@ export interface PartnerReconciliationMailData {
   validOrders: number;
   esimsSold: number;
   viaCouponPercent: number;
+  /** "Tỷ lệ khách hàng mới", % (doitac-0911 #007). */
+  newCustomerPercent?: number;
+  /** "Tỷ lệ đơn hoàn tiền", % (doitac-0911 #007). */
+  refundPercent?: number;
   revenueVnd: number;
   commissionVnd: number;
   /**
@@ -1311,6 +1315,9 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
       validOrders: vnd(data.validOrders),
       esimsSold: vnd(data.esimsSold),
       viaCouponPercent: data.viaCouponPercent,
+      // doitac-0911 #007, under "Tỷ lệ ghi nhận qua mã".
+      newCustomerPercent: data.newCustomerPercent ?? 0,
+      refundPercent: data.refundPercent ?? 0,
       revenueVnd: vnd(data.revenueVnd),
       commissionVnd: vnd(data.commissionVnd),
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),

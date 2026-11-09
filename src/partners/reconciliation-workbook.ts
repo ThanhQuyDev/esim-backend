@@ -47,6 +47,8 @@ export type ReconciliationTransaction = {
 };
 
 export type ReconciliationWorkbookData = {
+  /** PNG of the esim.vn icon for the top left corner (doitac-0911 #007). */
+  logo?: Buffer | null;
   partyA: ReconciliationParty;
   partyB: ReconciliationParty;
   /** Ngày đầu và ngày cuối của kỳ đối soát. */
@@ -112,7 +114,8 @@ function buildStatementSheet(
   data: ReconciliationWorkbookData,
 ): void {
   sheet.columns = [
-    { width: 6 },
+    // Wide enough for the logo in A1 (doitac-0911 #007).
+    { width: 9 },
     { width: 26 },
     { width: 14 },
     { width: 16 },
@@ -142,6 +145,20 @@ function buildStatementSheet(
     wrapText: true,
   };
   sheet.getRow(1).height = 36;
+
+  // The esim.vn mark at the top left, where the template has it
+  // (doitac-0911 #007): 197×126 kept in proportion, inside A1.
+  if (data.logo?.length) {
+    const imageId = sheet.workbook.addImage({
+      buffer: data.logo as never,
+      extension: 'png',
+    });
+    sheet.addImage(imageId, {
+      tl: { col: 0.08, row: 0.1 },
+      ext: { width: 59, height: 38 },
+      editAs: 'oneCell',
+    });
+  }
 
   sheet.mergeCells('E3:F3');
   const issued = sheet.getCell('E3');

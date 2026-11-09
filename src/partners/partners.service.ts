@@ -50,6 +50,7 @@ import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
+import { readFileSync } from 'fs';
 import {
   PARTNER_DEPOSIT_PROOFS_DIR,
   PARTNER_DOCUMENTS_DIR,
@@ -830,10 +831,38 @@ export function reconciliationPeriodRange(period: string): {
  * `$from`/`$to` are the placeholders of the period range.
  */
 function creditedInPeriodSql(from: string, to: string): string {
-  return `c.status = 'credited'
-          AND EXISTS (SELECT 1 FROM partner_wallet_transaction ct
-                       WHERE ct.id = c."rewardTransactionId"
-                         AND ct."createdAt" >= ${from} AND ct."createdAt" < ${to})`;
+  return `c.status = 'credited' AND ${approvedInPeriodSql(from, to)}`;
+}
+
+/**
+ * Approved in the period, whatever happened after — a refund that took the
+ * commission back still counts the order for "Tỷ lệ đơn hoàn tiền"
+ * (doitac-0911 #007).
+ */
+function approvedInPeriodSql(from: string, to: string): string {
+  // Typed timestamptz: an untyped Date parameter is read as a wall-clock
+  // time in the app's own time zone, so a machine on Vietnam time put the
+  // 04:00 1/11 approvals in October (doitac-0911 #007).
+  return `EXISTS (SELECT 1 FROM partner_wallet_transaction ct
+                   WHERE ct.id = c."rewardTransactionId"
+                     AND ct."createdAt" >= ${from}::timestamptz
+                     AND ct."createdAt" < ${to}::timestamptz)`;
+}
+
+/** The esim.vn icon for the statement's corner, or null when it is missing. */
+function reconciliationLogo(): Buffer | null {
+  try {
+    return readFileSync(
+      join(__dirname, '..', 'assets', 'logo_esimvn_icon.png'),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** `part` of `whole` as a percent with one decimal; 0 of nothing. */
+function percentOf(part: number, whole: number): number {
+  return whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 }
 
 /**
@@ -4681,6 +4710,10 @@ export class PartnersService {
       validOrders: number;
       esimsSold: number;
       viaCouponPercent: number;
+      /** "Tỷ lệ khách hàng mới" (doitac-0911 #007). */
+      newCustomerPercent: number;
+      /** "Tỷ lệ đơn hoàn tiền" (doitac-0911 #007). */
+      refundPercent: number;
       revenueVnd: number;
       commissionVnd: number;
       status: string;
@@ -4695,6 +4728,9 @@ export class PartnersService {
           .toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
           .slice(0, 7);
     const { from: start, to: end } = reconciliationPeriodRange(period);
+    // An order on the statement: its commission still stands and the order
+    // is settled (doitac-0911 #004).
+    const VALID = `c.status = 'credited' AND o.status = ANY($6)`;
 
     const search = query.search?.trim() || null;
     const asId = Number((query.search ?? '').trim().replace(/^#/, ''));
@@ -4709,6 +4745,9 @@ export class PartnersService {
               agg."validOrders",
               agg."esimsSold",
               agg."viaCouponOrders",
+              agg."newCustomerOrders",
+              agg."approvedOrders",
+              agg."refundedOrders",
               agg."revenueVnd",
               agg."commissionVnd",
               r.status AS "storedStatus",
@@ -4717,21 +4756,43 @@ export class PartnersService {
        JOIN LATERAL (
          -- One row per order inside here, so an order with five lines still
          -- counts once and its value is not multiplied by five.
-         SELECT COUNT(*) FILTER (WHERE o.status = ANY($6)) AS "validOrders",
-                COALESCE(SUM(items.qty) FILTER (WHERE o.status = ANY($6)), 0) AS "esimsSold",
+         SELECT COUNT(*) FILTER (WHERE ${VALID}) AS "validOrders",
+                COALESCE(SUM(items.qty) FILTER (WHERE ${VALID}), 0) AS "esimsSold",
                 COUNT(*) FILTER (
-                  WHERE o.status = ANY($6) AND o."couponCode" IS NOT NULL
+                  WHERE ${VALID} AND o."couponCode" IS NOT NULL
                 ) AS "viaCouponOrders",
+                -- First order of this customer through this partner, the
+                -- rule of "Khách mới" on the orders page (doitac-0911 #007).
+                COUNT(*) FILTER (
+                  WHERE ${VALID}
+                    AND NOT EXISTS (
+                      SELECT 1 FROM "order" prev
+                       WHERE prev."userId" = o."userId"
+                         AND prev."attributedPartnerId" = o."attributedPartnerId"
+                         AND prev.id <> o.id
+                         AND prev."deletedAt" IS NULL
+                         AND prev.status IN ('paid', 'completed')
+                         AND prev."createdAt" < o."createdAt")
+                ) AS "newCustomerOrders",
+                -- Of every order approved in the month, those the customer
+                -- got money back on, in part or in full (doitac-0911 #007).
+                COUNT(*) AS "approvedOrders",
+                COUNT(*) FILTER (
+                  WHERE c.status = 'reversed'
+                     OR COALESCE(o."refundedAmountVnd", 0) > 0
+                ) AS "refundedOrders",
                 COALESCE(SUM(${ORDER_REVENUE_SQL}) FILTER (
-                  WHERE o.status = ANY($6)
+                  WHERE ${VALID}
                 ), 0) AS "revenueVnd",
-                COALESCE(SUM(c."commissionVnd"), 0) AS "commissionVnd"
+                COALESCE(SUM(c."commissionVnd") FILTER (
+                  WHERE c.status = 'credited'
+                ), 0) AS "commissionVnd"
          FROM order_partner_commission c
          JOIN "order" o
            ON o.id = c."orderId"
           AND o."deletedAt" IS NULL
           -- Approved in the month, not placed in it (doitac-0911 #004).
-          AND ${creditedInPeriodSql('$1', '$2')}
+          AND ${approvedInPeriodSql('$1', '$2')}
          LEFT JOIN LATERAL (
            SELECT COALESCE(SUM(oi.quantity), 0) AS qty
            FROM order_item oi WHERE oi."orderId" = o.id
@@ -4772,6 +4833,14 @@ export class PartnersService {
               validOrders > 0
                 ? Math.round((viaCoupon / validOrders) * 1000) / 10
                 : 0,
+            newCustomerPercent: percentOf(
+              Number(row.newCustomerOrders ?? 0),
+              validOrders,
+            ),
+            refundPercent: percentOf(
+              Number(row.refundedOrders ?? 0),
+              Number(row.approvedOrders ?? 0),
+            ),
             revenueVnd: Number(row.revenueVnd ?? 0),
             commissionVnd: Number(row.commissionVnd ?? 0),
             // No row yet means nobody has looked at this month.
@@ -7809,12 +7878,16 @@ export class PartnersService {
         period,
       );
 
+      const partnerName = partner.companyName?.trim() || partner.contactName;
       const content = await buildReconciliationWorkbook({
         partyA: ESIM_COMPANY,
+        // The esim.vn mark at the top left, as on the template (doitac-0911
+        // #007); the statement still goes out without it.
+        logo: reconciliationLogo(),
         partyB: {
           // Đối tác cá nhân không có tên công ty hay MST — dùng tên liên hệ và
           // để trống, thay vì in ra chữ "null" trên văn bản hai bên ký.
-          name: partner.companyName?.trim() || partner.contactName,
+          name: partnerName,
           address: partner.businessAddress?.trim() || '',
           taxCode: partner.taxCode?.trim() || '',
           representative: partner.contactName,
@@ -7833,9 +7906,13 @@ export class PartnersService {
         transactions,
       });
 
+      // Thang-10-2026_Doi-soat-giao-dich_Hoang-Ha-Mobile_03-11-2026_22-24-34
+      // (doitac-0911 #007): the partner's name, not an id nobody can read.
+      const [year, month] = period.split('-');
       return {
-        // Ten-chuc-nang_ngay-thang-nam_gio-phut-giay (doitac-1410 #075).
-        filename: downloadFilename(`Doi-soat-${period}-doi-tac-${partnerId}`),
+        filename: downloadFilename(
+          `Thang-${month}-${year}_Doi-soat-giao-dich_${fileNamePart(partnerName) || `Doi-tac-${partnerId}`}`,
+        ),
         content,
       };
     } catch (err) {
@@ -7988,6 +8065,8 @@ export class PartnersService {
           validOrders: row.validOrders,
           esimsSold: row.esimsSold,
           viaCouponPercent: row.viaCouponPercent,
+          newCustomerPercent: row.newCustomerPercent,
+          refundPercent: row.refundPercent,
           revenueVnd: row.revenueVnd,
           commissionVnd: row.commissionVnd,
           ...(attachment ? { attachment } : {}),

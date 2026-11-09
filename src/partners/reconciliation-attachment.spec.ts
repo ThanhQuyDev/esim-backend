@@ -135,8 +135,9 @@ describe('email đối soát kèm file', () => {
     await service.sendScheduledReconciliationEmails();
 
     const arg = sendPartnerReconciliationStatement.mock.calls[0][0];
+    // The partner's name, not its id (doitac-0911 #007).
     expect(arg.attachment.filename).toBe(
-      'Doi-soat-2026-08-doi-tac-8_05-09-2026_00-00-00.xlsx',
+      'Thang-08-2026_Doi-soat-giao-dich_CONG-TY-CO-PHAN-MOBICAST_05-09-2026_00-00-00.xlsx',
     );
 
     const wb = await openAttachment(arg.attachment.content);
@@ -144,6 +145,11 @@ describe('email đối soát kèm file', () => {
       'Đối soát',
       'Chi tiết giao dịch',
     ]);
+    // The esim.vn mark in the top left corner, as on the template.
+    const images = wb.getWorksheet('Đối soát')!.getImages();
+    expect(images).toHaveLength(1);
+    expect(images[0].range.tl.nativeCol).toBe(0);
+    expect(images[0].range.tl.nativeRow).toBe(0);
   });
 
   it('should điền tên và MST của chính đối tác đó', async () => {
