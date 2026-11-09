@@ -42,9 +42,44 @@ describe('Commission statement email (doitac-0911 #007)', () => {
     });
 
     const mail = sendMail.mock.calls[0][0];
+    // From service@esim.com.vn, not no-reply@ (doitac-0911 #011).
+    expect(mail.transportName).toBe('service');
     expect(mail.subject).toBe('Bảng đối soát hoa hồng Tháng 10/2026 - ESIM.VN');
     expect(mail.html).toContain('Tỷ lệ khách hàng mới</td><td>42.1%');
     expect(mail.html).toContain('Tỷ lệ đơn hoàn tiền</td><td>5%');
+  });
+
+  it('should send the credit statement from service@ too (doitac-0911 #011)', async () => {
+    const sendMail = jest.fn().mockResolvedValue(undefined);
+    const service = Object.create(MailService.prototype) as MailService;
+    Object.assign(service, {
+      logger: { warn: jest.fn(), error: jest.fn() },
+      mailerService: { sendMail },
+      configService: {
+        get: () => 'https://doitac.esim.vn',
+        getOrThrow: () => 'https://esim.vn',
+      },
+      emailTemplatesService: {
+        findByName: jest.fn().mockResolvedValue({
+          subject: 'Đối soát {{periodLabel}}',
+          htmlBody: '<p></p>',
+        }),
+      },
+    });
+
+    await service.sendPartnerCreditStatement({
+      to: 'doitac@example.com',
+      contactName: 'Hoàng Hà Mobile',
+      periodLabel: 'Tháng 10/2026',
+      creditLimitVnd: 1,
+      orderCount: 1,
+      esimCount: 1,
+      purchasedVnd: 1,
+      refundedVnd: 0,
+      amountDueVnd: 1,
+    });
+
+    expect(sendMail.mock.calls[0][0].transportName).toBe('service');
   });
 
   it('should work out both shares for each partner', async () => {

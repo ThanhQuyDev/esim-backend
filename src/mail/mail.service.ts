@@ -1335,7 +1335,9 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
     })(context);
 
     await this.mailerService.sendMail({
-      transportName: 'otp',
+      // From service@esim.com.vn, the mailbox given for it, so the partner
+      // can answer as the email asks; no-reply@ before (doitac-0911 #011).
+      transportName: 'service',
       to: data.to,
       subject: subjectCompiled,
       text: subjectCompiled,
@@ -1396,7 +1398,9 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
     })(context);
 
     await this.mailerService.sendMail({
-      transportName: 'otp',
+      // From service@esim.com.vn, the mailbox given for it, so the partner
+      // can answer as the email asks; no-reply@ before (doitac-0911 #011).
+      transportName: 'service',
       to: data.to,
       subject: subjectCompiled,
       text: subjectCompiled,
