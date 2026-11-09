@@ -166,7 +166,7 @@ describe('PartnersService.adminRefundPartnerPurchase (doitac-1410 #058)', () => 
       1,
     );
 
-    expect(result).toEqual({ refundedVnd: 240000, esims: ['A1', 'A2'] });
+    expect(result).toMatchObject({ refundedVnd: 240000, esims: ['A1', 'A2'] });
     expect(refundWalletForPurchase).toHaveBeenCalledTimes(2);
     expect(refundWalletForPurchase).toHaveBeenCalledWith(
       11,

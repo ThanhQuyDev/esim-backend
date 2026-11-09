@@ -45,7 +45,13 @@ function build(topup: Record<string, unknown> = TOPUP) {
         Promise.resolve(iccid === 'A' ? [{ orderId: 70 }] : []),
       ),
     },
-    partnersService: { reverseCommissionForOrder: jest.fn() },
+    partnersService: {
+      reverseCommissionForOrder: jest.fn(),
+      refundPartnerTopupsOfIccids: jest.fn().mockResolvedValue({
+        refunded: [{ orderNumber: 'TOPUP-70', amountVnd: 138_000, iccid: 'A' }],
+        warnings: [],
+      }),
+    },
     logger: { log: jest.fn(), error: jest.fn() },
   });
   const run = (ctx: Record<string, unknown>, order: unknown = ORDER) =>
@@ -65,7 +71,7 @@ function build(topup: Record<string, unknown> = TOPUP) {
       orderItems: [],
       ...ctx,
     });
-  return { refundOrder, run };
+  return { refundOrder, run, service };
 }
 
 describe('Hoàn kèm đơn mua thêm của eSIM (vande-0411 #008)', () => {
@@ -125,8 +131,9 @@ describe('Hoàn kèm đơn mua thêm của eSIM (vande-0411 #008)', () => {
     expect(refundOrder).not.toHaveBeenCalled();
   });
 
-  it("should tell the admin about a partner's wallet instead of moving money", async () => {
-    const { refundOrder, run } = build({
+  // doitac-0911 #002: no longer left to the admin.
+  it("should refund a partner's topup into the deposit wallet", async () => {
+    const { refundOrder, run, service } = build({
       ...TOPUP,
       paymentMethod: 'partner_wallet',
     });
@@ -134,7 +141,32 @@ describe('Hoàn kèm đơn mua thêm của eSIM (vande-0411 #008)', () => {
     const result = await run({});
 
     expect(refundOrder).not.toHaveBeenCalled();
-    expect(result.warnings[0]).toContain('ví đối tác');
+    expect(
+      (
+        service as never as {
+          partnersService: { refundPartnerTopupsOfIccids: jest.Mock };
+        }
+      ).partnersService.refundPartnerTopupsOfIccids,
+    ).toHaveBeenCalledWith(['A'], expect.objectContaining({ adminId: 1 }));
+    expect(result.requests[0]).toContain('vào ví ký quỹ');
+  });
+
+  it("should leave a partner's topup already refunded alone", async () => {
+    const { run, service } = build({
+      ...TOPUP,
+      paymentMethod: 'partner_wallet',
+      status: 'refunded',
+    });
+
+    await run({});
+
+    expect(
+      (
+        service as never as {
+          partnersService: { refundPartnerTopupsOfIccids: jest.Mock };
+        }
+      ).partnersService.refundPartnerTopupsOfIccids,
+    ).not.toHaveBeenCalled();
   });
 
   it('should ask the admin to check a supplier not known to cancel it', async () => {

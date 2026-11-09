@@ -4257,7 +4257,12 @@ export class PartnersService {
     orderNumber: string,
     input: { iccids?: string[]; itemIds?: number[]; reason: string },
     adminId: number,
-  ): Promise<{ refundedVnd: number; esims: string[] }> {
+  ): Promise<{
+    refundedVnd: number;
+    esims: string[];
+    topups?: { orderNumber: string; amountVnd: number; iccid: string }[];
+    warnings?: string[];
+  }> {
     const reason = String(input.reason ?? '').trim();
     if (reason.length < 5) {
       throw new BadRequestException(
@@ -4385,7 +4390,18 @@ export class PartnersService {
                            WHERE oi."orderId" = o.id AND e.status <> 'refunded')`,
       [order.id],
     );
-    return { refundedVnd, esims: done };
+    // Their topups follow them back (doitac-0911 #002).
+    const linked = await this.refundPartnerTopupsOfIccids(done, {
+      sourceOrderNumber: order.orderNumber,
+      reason,
+      adminId,
+    });
+    return {
+      refundedVnd,
+      esims: done,
+      topups: linked.refunded,
+      warnings: linked.warnings,
+    };
   }
 
   /** The names for the "lọc theo đối tác" select box (#071). */
@@ -9960,6 +9976,92 @@ export class PartnersService {
   }
 
   /**
+   * The topups and add-ons a partner bought from the deposit wallet for these
+   * eSIMs, refunded with them (doitac-0911 #002): the eSIM is given back, so
+   * what was bought on top of it is too. Each topup gets back what its wallet
+   * has not had back yet, reads "Đã hoàn tiền", and carries a refund record.
+   * Never throws: a failure is returned for the admin to finish by hand.
+   */
+  async refundPartnerTopupsOfIccids(
+    iccids: string[],
+    ctx: { sourceOrderNumber: string; reason: string; adminId: number | null },
+  ): Promise<{
+    refunded: { orderNumber: string; amountVnd: number; iccid: string }[];
+    warnings: string[];
+  }> {
+    const refunded: {
+      orderNumber: string;
+      amountVnd: number;
+      iccid: string;
+    }[] = [];
+    const warnings: string[] = [];
+    const list = [...new Set(iccids.map((v) => String(v).trim()))].filter(
+      Boolean,
+    );
+    if (!list.length) return { refunded, warnings };
+    const topups: Record<string, any>[] = await this.dataSource.query(
+      `SELECT o.id, o."orderNumber", o."userId", o."targetIccid"
+         FROM "order" o
+        WHERE o."orderType" = 'TOPUP'
+          AND o."paymentMethod" = 'partner_wallet'
+          AND o."targetIccid" = ANY($1::text[])
+          AND o.status IN ('paid', 'completed')
+          AND o."deletedAt" IS NULL
+        ORDER BY o.id`,
+      [list],
+    );
+    for (const topup of topups) {
+      try {
+        const room = await this.partnerPurchaseRefundRoom(Number(topup.id));
+        if (!room || room.remainingVnd <= 0) continue;
+        const amount = room.remainingVnd;
+        await this.refundWalletForPurchase(room.partnerId, {
+          orderId: Number(topup.id),
+          orderNumber: topup.orderNumber,
+          amountVnd: amount,
+          suffix: 'with-esim',
+          reason: `Hoàn kèm eSIM ${topup.targetIccid} của đơn ${ctx.sourceOrderNumber}: ${ctx.reason}`,
+          createdByAdminId: ctx.adminId ?? undefined,
+        });
+        await this.dataSource.query(
+          `INSERT INTO order_refund
+             ("orderId", "userId", mode, "amountVnd", status, reason,
+              "adminNote", "createdByAdminId", "esimCount")
+           VALUES ($1, $2, 'partner_wallet', $3, 'completed', $4, $5, $6, 0)`,
+          [
+            topup.id,
+            topup.userId,
+            amount,
+            ctx.reason,
+            `Hoàn kèm eSIM ${topup.targetIccid} của đơn ${ctx.sourceOrderNumber}`,
+            ctx.adminId,
+          ],
+        );
+        await this.dataSource.query(
+          `UPDATE "order"
+              SET status = 'refunded', "refundStatus" = 'completed',
+                  "refundedAmountVnd" = "refundedAmountVnd" + $2
+            WHERE id = $1`,
+          [topup.id, amount],
+        );
+        refunded.push({
+          orderNumber: topup.orderNumber,
+          amountVnd: amount,
+          iccid: topup.targetIccid,
+        });
+      } catch (err) {
+        this.logger.error(
+          `refundPartnerTopupsOfIccids: ${topup.orderNumber}: ${(err as Error).message}`,
+        );
+        warnings.push(
+          `Chưa hoàn được đơn ${topup.orderNumber} vào ví ký quỹ: ${(err as Error).message}. Vui lòng hoàn đơn này thủ công.`,
+        );
+      }
+    }
+    return { refunded, warnings };
+  }
+
+  /**
    * Who paid an order from a partner deposit wallet, and how much of it the
    * wallet has not had back yet (doitac-0911 #001) — the cap of any refund.
    */
@@ -10130,7 +10232,23 @@ export class PartnersService {
       `SELECT e.id, e."orderItemId", e.iccid,
               ${esimLifecycleSql('e')} AS status, e."activatedAt",
               e."expiresAt", e."dataUsed", e."dataTotal",
-              ${OPEN_ESIM_REPORT_SQL} AS "openReport"
+              ${OPEN_ESIM_REPORT_SQL} AS "openReport",
+              -- Topups bought for it from the deposit wallet, refunded with
+              -- it (doitac-0911 #002), with what each would give back.
+              (SELECT COALESCE(json_agg(json_build_object(
+                        'orderNumber', t."orderNumber",
+                        'amountVnd', (SELECT COALESCE(-SUM(w."amountVnd"), 0)
+                                        FROM partner_wallet_transaction w
+                                       WHERE w."orderId" = t.id
+                                         AND w.type IN ('${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE}',
+                                                        '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')))
+                        ORDER BY t.id), '[]'::json)
+                 FROM "order" t
+                WHERE t."orderType" = 'TOPUP'
+                  AND t."paymentMethod" = 'partner_wallet'
+                  AND t."targetIccid" = e.iccid
+                  AND t.status IN ('paid', 'completed')
+                  AND t."deletedAt" IS NULL) AS "openTopups"
          FROM esim e
          JOIN order_item oi ON oi.id = e."orderItemId"
         WHERE oi."orderId" = $1 AND e."deletedAt" IS NULL
@@ -10203,6 +10321,12 @@ export class PartnersService {
             dataUsed: e.dataUsed == null ? null : Number(e.dataUsed),
             dataTotal: e.dataTotal == null ? null : Number(e.dataTotal),
             openReport: (e.openReport as 'fault' | 'refund' | null) ?? null,
+            openTopups: ((e.openTopups ?? []) as Record<string, any>[])
+              .map((t) => ({
+                orderNumber: String(t.orderNumber),
+                amountVnd: Number(t.amountVnd ?? 0),
+              }))
+              .filter((t) => t.amountVnd > 0),
           })),
       };
     });
@@ -11480,6 +11604,12 @@ export class PartnersService {
                            WHERE oi."orderId" = o.id AND e.status <> 'refunded')`,
       [report.orderId],
     );
+    // Its topups follow it back (doitac-0911 #002).
+    await this.refundPartnerTopupsOfIccids([report.iccid], {
+      sourceOrderNumber: report.orderNumber,
+      reason: `Hoàn kèm eSIM lỗi ${report.iccid}`,
+      adminId,
+    });
     return saved;
   }
 

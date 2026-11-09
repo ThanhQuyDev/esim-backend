@@ -3742,11 +3742,24 @@ export class OrdersService {
             Number(topup.payableVndPrice ?? topup.vndPrice ?? 0) +
             Number(topup.walletSpentVndAmount ?? 0) -
             Number(topup.refundedAmountVnd ?? 0);
-          // Bought from a partner's wallet: that money goes back another way.
+          // Bought from a partner's deposit wallet: back to that wallet
+          // (doitac-0911 #002).
           if (topup.paymentMethod === PARTNER_WALLET_PAYMENT_METHOD) {
-            warnings.push(
-              `Đơn ${topup.orderNumber} (eSIM ${iccid}) đối tác mua bằng ví ký quỹ: chưa tự hoàn, cần hoàn vào ví đối tác.`,
-            );
+            if (['refunded', 'failed', 'cancelled'].includes(topup.status)) {
+              continue;
+            }
+            const linked =
+              await this.partnersService.refundPartnerTopupsOfIccids([iccid], {
+                sourceOrderNumber: order.orderNumber,
+                reason: dto.reason ?? 'Hoàn kèm eSIM',
+                adminId,
+              });
+            for (const done of linked.refunded) {
+              requests.push(
+                `Đã hoàn kèm đơn ${done.orderNumber} vào ví ký quỹ: ${done.amountVnd.toLocaleString('vi-VN')}đ.`,
+              );
+            }
+            warnings.push(...linked.warnings);
             continue;
           }
           if (left <= 0) continue;
