@@ -24,6 +24,7 @@ import {
   AUTO_RETRY_PROVIDERS,
   isDefiniteRefusal,
   isDuplicateOrderRefusal,
+  nextAutoRetryAt,
 } from '../orders/provision-retry';
 import {
   Optional,
@@ -9959,6 +9960,33 @@ export class PartnersService {
   }
 
   /**
+   * Who paid an order from a partner deposit wallet, and how much of it the
+   * wallet has not had back yet (doitac-0911 #001) — the cap of any refund.
+   */
+  async partnerPurchaseRefundRoom(
+    orderId: number,
+  ): Promise<{ partnerId: number; remainingVnd: number } | null> {
+    const [row] = await this.dataSource.query(
+      `SELECT pa.id AS "partnerId",
+              (SELECT COALESCE(-SUM(t."amountVnd"), 0)::bigint
+                 FROM partner_wallet_transaction t
+                WHERE t."orderId" = o.id
+                  AND t.type IN ('${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE}',
+                                 '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')
+              ) AS "remainingVnd"
+         FROM "order" o
+         JOIN partner pa ON pa."userId" = o."userId" AND pa."deletedAt" IS NULL
+        WHERE o.id = $1`,
+      [orderId],
+    );
+    if (!row) return null;
+    return {
+      partnerId: Number(row.partnerId),
+      remainingVnd: Math.max(0, Number(row.remainingVnd ?? 0)),
+    };
+  }
+
+  /**
    * One of this partner's own orders, or a 404 (doitac-1410 #042) — an order
    * code is easy to guess, so every per-order action checks this first.
    */
@@ -9998,10 +10026,16 @@ export class PartnersService {
       missing: number;
       canRetry: boolean;
       accepted: boolean;
+      /** Tries made so far, the order's own first one included. */
+      attempts: number;
+      /** When the automatic retry asks again, or null when it will not. */
+      nextRetryAt: string | null;
     }[]
   > {
     const rows: Record<string, any>[] = await this.dataSource.query(
       `SELECT oi.id, oi.quantity, oi."orderRequestId", oi."lastProvisionError",
+              oi.status AS "itemStatus", oi."provisionAttempts",
+              oi."lastProvisionAttemptAt", o."createdAt",
               o.status, p.provider,
               (SELECT COUNT(*) FROM esim e
                 WHERE e."orderItemId" = oi.id AND e."deletedAt" IS NULL)::int AS delivered
@@ -10015,13 +10049,35 @@ export class PartnersService {
       .map((row) => {
         const missing = Number(row.quantity ?? 0) - Number(row.delivered ?? 0);
         const accepted = Boolean(row.orderRequestId);
+        // A line whose money already went back (the old automatic refund, or
+        // an admin's) must not be asked again: a delivery then hands the
+        // partner the eSIM for free (doitac-0911 #001).
+        const settled = ['failed', 'refunded', 'cancelled'].includes(
+          String(row.itemStatus ?? ''),
+        );
+        const next =
+          settled || accepted
+            ? null
+            : nextAutoRetryAt(
+                { status: row.status, createdAt: row.createdAt },
+                {
+                  orderRequestId: row.orderRequestId,
+                  provisionAttempts: row.provisionAttempts,
+                  lastProvisionError: row.lastProvisionError,
+                  lastProvisionAttemptAt: row.lastProvisionAttemptAt,
+                },
+                row.provider ?? null,
+              );
         return {
           itemId: Number(row.id),
           missing: Math.max(0, missing),
           accepted,
+          attempts: Number(row.provisionAttempts ?? 0),
+          nextRetryAt: next ? next.toISOString() : null,
           canRetry:
             missing > 0 &&
             !accepted &&
+            !settled &&
             row.status === 'paid' &&
             !isDuplicateOrderRefusal(row.lastProvisionError) &&
             (AUTO_RETRY_PROVIDERS.includes(
@@ -10100,6 +10156,9 @@ export class PartnersService {
         missingEsims: short?.missing ?? 0,
         canRetryEsims: short?.canRetry ?? false,
         supplierAccepted: short?.accepted ?? false,
+        /** For "đã thử N lần, tự gọi lại …" (doitac-0911 #001). */
+        provisionAttempts: short?.attempts ?? 0,
+        nextRetryAt: short?.nextRetryAt ?? null,
         /** One eSIM at the agent price — what a refund of it gives back (#058). */
         unitVnd: unit,
         agentTotalVnd,

@@ -33,6 +33,8 @@ export enum OrderReferralStatusEnum {
 export enum OrderRefundModeEnum {
   WALLET = 'wallet',
   DIRECT_BANK = 'direct_bank',
+  /** A partner's purchase: back to the deposit wallet (doitac-0911 #001). */
+  PARTNER_WALLET = 'partner_wallet',
 }
 
 export enum OrderRefundStatusEnum {

@@ -186,6 +186,7 @@ export class PartnerPurchaseService {
     marginVnd: number;
     esimCount: number;
     pendingEsims: number;
+    notReceivedEsims: number;
   }> {
     const partner = await this.partnersService.getPartnerOrThrowById(partnerId);
 
@@ -230,33 +231,14 @@ export class PartnerPurchaseService {
 
     const state = await this.provisioningState(order.id);
 
-    // Chỉ hoàn tiền khi nhà cung cấp KHÔNG nhận đơn (doitac-1410 #006).
-    //
-    // Trước đây đếm eSIM ngay sau khi gửi đơn, và 0 eSIM là hoàn tiền. Nhưng
-    // Airalo, eSIM Access, MicroEsim, Billion, Gadget Korea đều trả eSIM sau,
-    // qua webhook: đơn đã đặt và esim.vn đã trả tiền nhà cung cấp, đối tác vẫn
-    // được hoàn — và khi eSIM về thì đối tác cầm eSIM miễn phí (đơn
-    // PTN-261014031301833 trên beta: 3 eSIM Airalo, ví được hoàn 324.000đ).
-    // Giờ đơn nhà cung cấp đã nhận là đơn đang chờ cấp; chỉ đơn bị từ chối
-    // ngay (không có mã đơn nhà cung cấp, không có eSIM) mới được hoàn.
+    // A supplier refusal is never refunded on the spot (doitac-0911 #001).
+    // The line stays paid and pending: the automatic retry asks again, the
+    // partner can press "Gọi lại API lấy eSIM", and only an admin refunds,
+    // when the partner asks. Refunding here, then delivering on a retry, gave
+    // the partner the eSIM and the money both (PTN-261104004736115-O6YPBE).
     if (state.esims === 0 && state.waitingItems === 0) {
-      await this.partnersService.refundWalletForPurchase(partnerId, {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        amountVnd: quote.totalVnd,
-        suffix: 'provisioning-failed',
-        reason: `Hoàn tiền: đơn ${order.orderNumber} không cấp được eSIM nào`,
-      });
-      // Đơn đã hoàn tiền thì không được nằm ở "đã thanh toán".
-      await this.dataSource.query(
-        `UPDATE "order" SET status = 'failed' WHERE id = $1`,
-        [order.id],
-      );
-      this.logger.error(
-        `purchase: order ${order.orderNumber} rejected by the provider, refunded ${quote.totalVnd}đ to partner ${partnerId}`,
-      );
-      throw new BadRequestException(
-        `Nhà cung cấp chưa nhận đơn này. Tiền đã được hoàn lại ví, bạn có thể thử lại hoặc chọn gói khác.`,
+      this.logger.warn(
+        `purchase: order ${order.orderNumber} not taken by the supplier yet; left for the retry`,
       );
     }
 
@@ -273,6 +255,9 @@ export class PartnerPurchaseService {
       esimCount,
       /** eSIM nhà cung cấp còn đang cấp; hiện dần trong Quản lý eSIM. */
       pendingEsims: Math.max(0, quote.quantity - esimCount),
+      /** eSIMs the supplier has not taken yet; the retry asks again. */
+      notReceivedEsims:
+        state.esims === 0 && state.waitingItems === 0 ? quote.quantity : 0,
     };
   }
 
@@ -299,6 +284,7 @@ export class PartnerPurchaseService {
     refundedVnd: number;
     esimCount: number;
     pendingEsims: number;
+    notReceivedEsims: number;
   }> {
     const partner = await this.partnersService.getPartnerOrThrowById(partnerId);
     const quote = await this.partnersService.quoteCart(partnerId, input.items);
@@ -348,51 +334,18 @@ export class PartnerPurchaseService {
       [order.id],
     );
     const failed = items.filter((i) => i.n === 0 && !i.orderRequestId);
-    // Keyed by plan and days: a day pass for 7 and for 10 days cost differently.
-    const lineKey = (planId: number, days: number | null | undefined) =>
-      `${planId}:${days && days > 1 ? days : ''}`;
-    const priceOf = new Map(
-      quote.lines.map((l) => [lineKey(l.planId, l.periodNum), l.unitPriceVnd]),
-    );
-    const refundedVnd = failed.reduce(
-      (sum, i) =>
-        sum +
-        (priceOf.get(lineKey(Number(i.planId), i.periodNum)) ?? 0) *
-          Number(i.quantity),
+    const esimCount = items.reduce((sum, i) => sum + Number(i.n), 0);
+    const notReceivedEsims = failed.reduce(
+      (sum, i) => sum + Number(i.quantity),
       0,
     );
-    const esimCount = items.reduce((sum, i) => sum + Number(i.n), 0);
-
-    if (failed.length === items.length) {
-      await this.partnersService.refundWalletForPurchase(partnerId, {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        amountVnd: quote.totalVnd,
-        suffix: 'provisioning-failed',
-        reason: `Hoàn tiền: đơn ${order.orderNumber} không cấp được eSIM nào`,
-      });
-      await this.dataSource.query(
-        `UPDATE "order" SET status = 'failed' WHERE id = $1`,
-        [order.id],
+    // Lines the supplier turned down stay paid and pending, never refunded
+    // here (doitac-0911 #001): the retry asks again, and only an admin
+    // refunds. See `purchase`.
+    if (failed.length) {
+      this.logger.warn(
+        `purchaseCart: ${failed.length} line(s) of ${order.orderNumber} not taken by the supplier yet; left for the retry`,
       );
-      throw new BadRequestException(
-        'Nhà cung cấp chưa nhận đơn này. Tiền đã được hoàn lại ví, bạn có thể thử lại hoặc chọn gói khác.',
-      );
-    }
-    if (refundedVnd > 0) {
-      await this.partnersService.refundWalletForPurchase(partnerId, {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        amountVnd: refundedVnd,
-        suffix: `lines-failed:${failed.map((i) => i.id).join('-')}`,
-        reason: `Hoàn tiền: ${failed.length} gói trong đơn ${order.orderNumber} không cấp được eSIM`,
-      });
-      for (const item of failed) {
-        await this.dataSource.query(
-          `UPDATE order_item SET status = 'failed' WHERE id = $1`,
-          [item.id],
-        );
-      }
     }
 
     return {
@@ -400,15 +353,12 @@ export class PartnerPurchaseService {
       status: order.status,
       planCount: quote.planCount,
       quantity: quote.esimCount,
-      totalVnd: quote.totalVnd - refundedVnd,
-      refundedVnd,
+      totalVnd: quote.totalVnd,
+      /** Nothing is refunded at checkout any more; kept for the portal. */
+      refundedVnd: 0,
       esimCount,
-      pendingEsims: Math.max(
-        0,
-        quote.esimCount -
-          esimCount -
-          failed.reduce((sum, i) => sum + Number(i.quantity), 0),
-      ),
+      notReceivedEsims,
+      pendingEsims: Math.max(0, quote.esimCount - esimCount - notReceivedEsims),
     };
   }
 

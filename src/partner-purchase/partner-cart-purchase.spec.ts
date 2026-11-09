@@ -91,8 +91,11 @@ describe('PartnerPurchaseService.purchaseCart (doitac-1410 #035)', () => {
     });
   });
 
-  it('should refund only the line a supplier turned down', async () => {
-    const { service, refund } = build([
+  // doitac-0911 #001: a line the supplier turned down is left for the
+  // retry, never refunded at checkout — refunding it and then delivering it
+  // on a retry gave PTN-261104004736115-O6YPBE the eSIM and the money both.
+  it('should keep a line the supplier turned down paid, for the retry', async () => {
+    const { service, refund, query } = build([
       { id: 1, planId: 1, quantity: 2, orderRequestId: null, n: 0 },
       { id: 2, planId: 2, quantity: 1, orderRequestId: null, n: 1 },
     ]);
@@ -101,22 +104,34 @@ describe('PartnerPurchaseService.purchaseCart (doitac-1410 #035)', () => {
       items: [{ planId: 1, quantity: 2 }],
     });
 
-    expect(refund).toHaveBeenCalledTimes(1);
-    expect(refund.mock.calls[0][1].amountVnd).toBe(200000);
-    expect(result.refundedVnd).toBe(200000);
-    expect(result.totalVnd).toBe(50000);
+    expect(refund).not.toHaveBeenCalled();
+    expect(
+      query.mock.calls.some(([sql]: [string]) => /status = 'failed'/.test(sql)),
+    ).toBe(false);
+    expect(result).toMatchObject({
+      refundedVnd: 0,
+      totalVnd: 250000,
+      notReceivedEsims: 2,
+      esimCount: 1,
+      pendingEsims: 0,
+    });
   });
 
-  it('should refund everything when nothing could be provisioned', async () => {
-    const { service, refund } = build([
+  it('should not refund even when no line was taken', async () => {
+    const { service, refund, query } = build([
       { id: 1, planId: 1, quantity: 2, orderRequestId: null, n: 0 },
       { id: 2, planId: 2, quantity: 1, orderRequestId: null, n: 0 },
     ]);
 
-    await expect(
-      service.purchaseCart(8, { items: [{ planId: 1, quantity: 2 }] }),
-    ).rejects.toThrow('Nhà cung cấp chưa nhận đơn này');
-    expect(refund.mock.calls[0][1].amountVnd).toBe(250000);
+    const result = await service.purchaseCart(8, {
+      items: [{ planId: 1, quantity: 2 }],
+    });
+
+    expect(refund).not.toHaveBeenCalled();
+    expect(
+      query.mock.calls.some(([sql]: [string]) => /status = 'failed'/.test(sql)),
+    ).toBe(false);
+    expect(result.notReceivedEsims).toBe(3);
   });
 });
 

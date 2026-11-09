@@ -124,7 +124,8 @@ describe('PartnerPurchaseService', () => {
       expect(submitPartnerPurchase).not.toHaveBeenCalled();
     });
 
-    it('should hoàn nguyên tiền khi không cấp được eSIM nào', async () => {
+    // doitac-0911 #001: chỉ admin hoàn tiền, khi đối tác yêu cầu.
+    it('should KHÔNG tự hoàn tiền khi nhà cung cấp chưa nhận đơn, để hệ thống gọi lại', async () => {
       const { service, refundWalletForPurchase } = build({
         query: jest
           .fn()
@@ -132,17 +133,10 @@ describe('PartnerPurchaseService', () => {
           .mockResolvedValue([{ esims: 0, waitingItems: 0, failedItems: 1 }]),
       });
 
-      await expect(
-        service.purchase(8, { planId: 5, quantity: 100 }),
-      ).rejects.toThrow('Tiền đã được hoàn lại ví');
+      const result = await service.purchase(8, { planId: 5, quantity: 100 });
 
-      expect(refundWalletForPurchase).toHaveBeenCalledWith(
-        8,
-        expect.objectContaining({
-          amountVnd: 10800000,
-          suffix: 'provisioning-failed',
-        }),
-      );
+      expect(refundWalletForPurchase).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ esimCount: 0, notReceivedEsims: 100 });
     });
 
     it('should KHÔNG hoàn tiền khi nhà cung cấp đã nhận đơn mà eSIM chưa về (doitac-1410 #006)', async () => {
@@ -160,22 +154,20 @@ describe('PartnerPurchaseService', () => {
       expect(result).toMatchObject({ esimCount: 0, pendingEsims: 100 });
     });
 
-    it('should đánh dấu đơn thất bại khi đã hoàn tiền', async () => {
+    it('should giữ đơn ở trạng thái đã thanh toán khi nhà cung cấp chưa nhận', async () => {
       const query = jest
         .fn()
         .mockResolvedValueOnce([{ id: 5, slug: 'jp' }])
         .mockResolvedValue([{ esims: 0, waitingItems: 0, failedItems: 1 }]);
       const { service } = build({ query });
 
-      await expect(
-        service.purchase(8, { planId: 5, quantity: 100 }),
-      ).rejects.toThrow();
+      await service.purchase(8, { planId: 5, quantity: 100 });
 
       expect(
         query.mock.calls.some(([sql]: [string]) =>
           /UPDATE "order" SET status = 'failed'/.test(sql),
         ),
-      ).toBe(true);
+      ).toBe(false);
     });
 
     it('should giữ nguyên đơn khi chỉ cấp thiếu một phần', async () => {

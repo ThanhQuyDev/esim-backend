@@ -85,6 +85,7 @@ import { Plan } from '../plans/domain/plan';
 import { WalletsService } from '../wallets/wallets.service';
 import type { ReferralValidationResult } from '../wallets/wallets.service';
 import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
+import { OrderRefundModeEnum } from '../wallets/wallets.enum';
 import {
   MembershipTierEnum,
   TierSourceEnum,
@@ -1406,8 +1407,13 @@ export class OrdersService {
       const id = Number(item.id);
       const hasEsim = itemIdsWithEsim.has(id);
       const acceptedByProvider = !!item.orderRequestId;
+      // Its money already went back: a delivery now would be a free eSIM
+      // (doitac-0911 #001, PTN-261104004736115-O6YPBE).
+      const settled = ['failed', 'refunded', 'cancelled'].includes(
+        String(item.status ?? ''),
+      );
 
-      if (hasEsim || acceptedByProvider) {
+      if (hasEsim || acceptedByProvider || settled) {
         skippedItemIds.push(id);
       } else {
         retriedItemIds.push(id);
@@ -1420,7 +1426,7 @@ export class OrdersService {
         skippedItemIds,
         emailsSent: 0,
         message:
-          'Không có sản phẩm nào cần gọi lại: tất cả đã có eSIM hoặc đã được nhà cung cấp tiếp nhận.',
+          'Không có sản phẩm nào cần gọi lại: tất cả đã có eSIM, đã được nhà cung cấp tiếp nhận hoặc đã hoàn tiền.',
       };
     }
 
@@ -3499,6 +3505,32 @@ export class OrdersService {
       }
     }
 
+    // A partner paid from the deposit wallet, so the money goes back there,
+    // never to the eXU wallet of the partner's user account (doitac-0911
+    // #001: PTN-261104004736115-O6YPBE got 359.000đ in eXU). Checked before
+    // any supplier is asked, against what the deposit wallet has not had back.
+    const partnerRefund =
+      order.paymentMethod === PARTNER_WALLET_PAYMENT_METHOD
+        ? await this.partnersService.partnerPurchaseRefundRoom(order.id)
+        : null;
+    if (order.paymentMethod === PARTNER_WALLET_PAYMENT_METHOD) {
+      if (!partnerRefund) {
+        throw new UnprocessableEntityException(
+          'Không tìm thấy ví ký quỹ của đối tác đã mua đơn này.',
+        );
+      }
+      if (Math.round(Number(dto.amountVnd)) > partnerRefund.remainingVnd) {
+        throw new UnprocessableEntityException(
+          `Số tiền hoàn vượt số còn lại có thể hoàn vào ví ký quỹ (${partnerRefund.remainingVnd}đ).`,
+        );
+      }
+      dto = { ...dto, mode: OrderRefundModeEnum.PARTNER_WALLET };
+    } else if (dto.mode === OrderRefundModeEnum.PARTNER_WALLET) {
+      throw new UnprocessableEntityException(
+        'Chỉ đơn đối tác mua bằng ví ký quỹ mới hoàn vào ví ký quỹ.',
+      );
+    }
+
     // Cancel with suppliers before processing refund. A supplier refusing does
     // not stop the refund — the customer is owed it either way — but the admin
     // is told, so they can chase the supplier for our money (v3 #002).
@@ -3548,6 +3580,19 @@ export class OrdersService {
     }
 
     const refund = await this.walletsService.refundOrder(order, dto, adminId);
+    if (partnerRefund && refund?.id) {
+      await this.partnersService.refundWalletForPurchase(
+        partnerRefund.partnerId,
+        {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          amountVnd: Math.round(Number(dto.amountVnd)),
+          suffix: `order-refund:${refund.id}`,
+          reason: `Hoàn tiền đơn ${order.orderNumber}: ${dto.reason ?? 'admin hoàn tiền'}`,
+          createdByAdminId: adminId,
+        },
+      );
+    }
 
     // Mark the refunded lines so they drop out of revenue/cost reporting and
     // the CMS can show which part of the order was given back. The overview
