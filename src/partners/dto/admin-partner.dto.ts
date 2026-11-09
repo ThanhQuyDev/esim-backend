@@ -464,6 +464,13 @@ export class UpdatePartnerAdminNoteDto {
   adminNote!: string;
 }
 
+/** Tick/untick "Gửi email đối soát" (doitac-0911 #008). */
+export class UpdatePartnerReconciliationEmailDto {
+  @ApiProperty({ type: Boolean })
+  @IsBoolean()
+  sendReconciliationEmail!: boolean;
+}
+
 /** Tick/untick the affiliate grant for a distribution partner (#048). */
 export class UpdatePartnerAffiliateGrantDto {
   @ApiProperty({ type: Boolean })

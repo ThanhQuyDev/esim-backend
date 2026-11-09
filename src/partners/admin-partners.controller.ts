@@ -58,6 +58,7 @@ import {
   QueryPartnerPayoutDto,
   BulkPayoutDecisionDto,
   UpdatePartnerAffiliateGrantDto,
+  UpdatePartnerReconciliationEmailDto,
   UpdatePartnerLinkCodePermissionDto,
   UpdatePartnerCreditLimitDto,
   UpdatePartnerStatusDto,
@@ -958,6 +959,19 @@ export class AdminPartnersController {
     @Body() dto: UpdatePartnerAffiliateGrantDto,
   ) {
     return this.partnersService.setAffiliateGrant(Number(id), dto.canAffiliate);
+  }
+
+  /** Tick/untick "Gửi email đối soát" for this partner (doitac-0911 #008). */
+  @Patch(':id/reconciliation-email')
+  @HttpCode(HttpStatus.OK)
+  setReconciliationEmail(
+    @Param('id') id: number,
+    @Body() dto: UpdatePartnerReconciliationEmailDto,
+  ) {
+    return this.partnersService.setReconciliationEmail(
+      Number(id),
+      dto.sendReconciliationEmail,
+    );
   }
 
   @Patch(':id/tier')

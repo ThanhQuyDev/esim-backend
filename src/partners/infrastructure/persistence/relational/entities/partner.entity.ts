@@ -178,6 +178,14 @@ export class PartnerEntity extends EntityRelationalHelper {
   canAffiliate!: boolean;
 
   /**
+   * "Gửi email đối soát" (doitac-0911 #008): this partner receives the monthly
+   * statement email, whatever its type. Unticked, nothing is mailed; the
+   * month is still settled (a marketing partner's payout is still raised).
+   */
+  @Column({ type: Boolean, default: false })
+  sendReconciliationEmail!: boolean;
+
+  /**
    * When the current tier took effect (#042).
    *
    * A tier change is never retroactive: orders placed after this moment earn at

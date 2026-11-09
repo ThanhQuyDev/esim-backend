@@ -4707,6 +4707,8 @@ export class PartnersService {
       /** A company by its own name (doitac-1410 #056). */
       partnerName: string | null;
       contactEmail: string | null;
+      /** Ticked "Gửi email đối soát" (doitac-0911 #008). */
+      sendReconciliationEmail: boolean;
       validOrders: number;
       esimsSold: number;
       viaCouponPercent: number;
@@ -4742,6 +4744,7 @@ export class PartnersService {
               CASE WHEN p."legalType" = 'company' AND p."companyName" IS NOT NULL
                    THEN p."companyName" ELSE p."contactName" END AS "partnerName",
               p."contactEmail",
+              p."sendReconciliationEmail",
               agg."validOrders",
               agg."esimsSold",
               agg."viaCouponOrders",
@@ -4826,6 +4829,7 @@ export class PartnersService {
             contactName: row.contactName ?? null,
             partnerName: row.partnerName ?? row.contactName ?? null,
             contactEmail: row.contactEmail ?? null,
+            sendReconciliationEmail: Boolean(row.sendReconciliationEmail),
             validOrders,
             esimsSold: Number(row.esimsSold ?? 0),
             // Share of the completed orders that arrived through a code.
@@ -5852,6 +5856,16 @@ export class PartnersService {
       );
     }
     partner.canAffiliate = canAffiliate;
+    return this.partnerRepository.save(partner);
+  }
+
+  /** "Gửi email đối soát", for any type of partner (doitac-0911 #008). */
+  async setReconciliationEmail(
+    id: number,
+    sendReconciliationEmail: boolean,
+  ): Promise<PartnerEntity> {
+    const partner = await this.adminFindById(id);
+    partner.sendReconciliationEmail = sendReconciliationEmail;
     return this.partnerRepository.save(partner);
   }
 
@@ -8049,7 +8063,8 @@ export class PartnersService {
           }`,
         );
       }
-      if (!row.contactEmail) continue;
+      // Only a partner ticked "Gửi email đối soát" (doitac-0911 #008).
+      if (!row.contactEmail || !row.sendReconciliationEmail) continue;
       try {
         const attachment = await this.buildReconciliationAttachment(
           row.partnerId,
@@ -8426,7 +8441,11 @@ export class PartnersService {
     partnerId?: number,
   ): Promise<{ sent: number; partners: number }> {
     const partners = await this.partnerRepository.find({
-      where: partnerId ? { id: partnerId } : { noDepositRequired: true },
+      // The monthly run mails only partners ticked "Gửi email đối soát"
+      // (doitac-0911 #008); the admin's own button sends regardless.
+      where: partnerId
+        ? { id: partnerId }
+        : { noDepositRequired: true, sendReconciliationEmail: true },
     });
     let sent = 0;
     for (const partner of partners) {

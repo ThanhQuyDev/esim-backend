@@ -75,6 +75,7 @@ describe('email đối soát kèm file', () => {
       partner?: unknown;
       transactions?: unknown[];
       commissionVnd?: number;
+      sendReconciliationEmail?: boolean;
     } = {},
   ) {
     const service = Object.create(PartnersService.prototype) as PartnersService;
@@ -107,6 +108,7 @@ describe('email đối soát kèm file', () => {
             partnerId: 8,
             contactName: 'Trần Hoàng Vũ',
             contactEmail: 'vu@example.com',
+            sendReconciliationEmail: over.sendReconciliationEmail ?? true,
             validOrders: 2,
             esimsSold: 3,
             viaCouponPercent: 50,
@@ -128,6 +130,17 @@ describe('email đối soát kèm file', () => {
     await wb.xlsx.load(content as never);
     return wb;
   };
+
+  // doitac-0911 #008: "Gửi email đối soát" unticked on this partner.
+  it('should không gửi cho đối tác chưa tích "Gửi email đối soát"', async () => {
+    const { service, sendPartnerReconciliationStatement } = build({
+      sendReconciliationEmail: false,
+    });
+
+    await service.sendScheduledReconciliationEmails();
+
+    expect(sendPartnerReconciliationStatement).not.toHaveBeenCalled();
+  });
 
   it('should đính kèm file .xlsx 2 sheet', async () => {
     const { service, sendPartnerReconciliationStatement } = build();
