@@ -2108,6 +2108,17 @@ export class PartnersService {
                 FROM order_item oi JOIN plan p ON p.id = oi."planId"
                 WHERE oi."orderId" = o.id
               ) AS items,
+              -- Each product with its eSIMs and agent price, for "+ N sản
+              -- phẩm khác" (doitac-0911 #016); a line stores its unit price.
+              (
+                SELECT json_agg(json_build_object(
+                         -- The standard name, as on the orders page.
+                         'planName', COALESCE(NULLIF(p."standardName", ''), p.name),
+                         'quantity', oi.quantity,
+                         'vndPrice', oi."vndPrice" * oi.quantity) ORDER BY oi.id)
+                FROM order_item oi JOIN plan p ON p.id = oi."planId"
+                WHERE oi."orderId" = o.id
+              ) AS products,
               po.id AS "payoutId",
               dr."bankTransferCode" AS "depositCode",
               dr.method AS "depositMethod"
@@ -2162,6 +2173,17 @@ export class PartnersService {
         kindLabel: LEDGER_KIND_LABEL[rowKind],
         code: ledgerCode(source),
         description: ledgerDescription(source),
+        // An eSIM purchase or its refund: the products behind "+ N sản
+        // phẩm khác" (doitac-0911 #016). A top-up has none.
+        products:
+          (rowKind === 'purchase' || rowKind === 'refund') &&
+          Array.isArray(r.products)
+            ? (r.products as Record<string, unknown>[]).map((p) => ({
+                planName: String(p.planName ?? ''),
+                quantity: Number(p.quantity ?? 0),
+                vndPrice: Number(p.vndPrice ?? 0),
+              }))
+            : [],
         amountVnd: Number(r.amountVnd),
         balanceAfterVnd: Number(r.balanceAfterVnd),
       };
