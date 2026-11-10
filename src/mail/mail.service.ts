@@ -312,6 +312,12 @@ export class MailService {
       partnerName: brand?.displayName ?? '',
       partnerTagline: brand?.tagline ?? '',
       partnerWebsite: brand?.website ?? '',
+      // "Điện thoại liên hệ" above "Hỗ trợ / Support" (doitac-0911 #019).
+      partnerSupportPhone: brand?.supportPhone ?? '',
+      partnerSupportPhoneTel: (brand?.supportPhone ?? '').replace(
+        /[^\d+]/g,
+        '',
+      ),
       partnerSupportEmail: brand?.supportEmail ?? '',
     };
   }

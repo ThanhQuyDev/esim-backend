@@ -17,6 +17,8 @@ export type PartnerBrand = {
   tagline: string;
   /** "Trang web chính thức". */
   website: string;
+  /** "Số điện thoại", above the support email (doitac-0911 #019). */
+  supportPhone: string;
   /** "Email hỗ trợ". */
   supportEmail: string;
   /** "Màu chủ đạo": links and the install button of the email. */
@@ -32,6 +34,17 @@ export const DEFAULT_PRIMARY_COLOR = '#000000';
 const POSITIONS: LogoPosition[] = ['left', 'center', 'right'];
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Digits with the usual separators, 8 to 15 digits: 0901 234 567, +84 28 1234 5678. */
+const PHONE = /^\+?[0-9 .()-]{8,20}$/;
+
+/** A phone number as typed, or '' when it is not one. */
+function phone(value: unknown): string {
+  const raw = text(value, 30);
+  const digits = raw.replace(/\D/g, '');
+  return PHONE.test(raw) && digits.length >= 8 && digits.length <= 15
+    ? raw
+    : '';
+}
 
 const text = (value: unknown, max: number): string =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -65,6 +78,7 @@ export function readPartnerBrand(info: unknown): PartnerBrand {
     logoPosition: POSITIONS.includes(position) ? position : 'center',
     tagline: text(raw.tagline, 200),
     website: httpUrl(raw.website),
+    supportPhone: phone(raw.supportPhone),
     supportEmail: EMAIL.test(email) ? email : '',
     primaryColor: HEX_COLOR.test(color) ? color : DEFAULT_PRIMARY_COLOR,
     // Both blocks were always in the email; a partner switches them off.
@@ -86,6 +100,9 @@ export function sanitizeBrandInput(input: unknown): PartnerBrand {
   const brand = readPartnerBrand(raw);
   if (text(raw.website, 500) && !brand.website) {
     throw new Error('Trang web chính thức không hợp lệ.');
+  }
+  if (text(raw.supportPhone, 30) && !brand.supportPhone) {
+    throw new Error('Số điện thoại không hợp lệ.');
   }
   if (text(raw.supportEmail, 200) && !brand.supportEmail) {
     throw new Error('Email hỗ trợ không hợp lệ.');

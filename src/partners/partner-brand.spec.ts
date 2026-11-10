@@ -18,6 +18,7 @@ describe('Partner brand (doitac-1410 #044)', () => {
       logoPosition: 'center',
       tagline: '',
       website: '',
+      supportPhone: '',
       supportEmail: '',
       primaryColor: '#000000',
       showUsageCheck: true,
@@ -194,5 +195,29 @@ describe('PartnerBrandEsimEmail migration markers (doitac-1410 #044)', () => {
       expect(step.to).toContain(step.marker);
       expect(step.from).not.toContain(step.marker);
     }
+  });
+});
+
+describe('"Số điện thoại" of the brand (doitac-0911 #019)', () => {
+  it('should keep a phone number as typed', () => {
+    expect(
+      readPartnerBrand({ supportPhone: ' 0901 234 567 ' }).supportPhone,
+    ).toBe('0901 234 567');
+    expect(
+      readPartnerBrand({ supportPhone: '+84 28 1234 5678' }).supportPhone,
+    ).toBe('+84 28 1234 5678');
+  });
+
+  it('should refuse something that is not a phone number', () => {
+    expect(() => sanitizeBrandInput({ supportPhone: 'gọi tôi' })).toThrow(
+      'Số điện thoại không hợp lệ.',
+    );
+    expect(() => sanitizeBrandInput({ supportPhone: '123' })).toThrow(
+      'Số điện thoại không hợp lệ.',
+    );
+  });
+
+  it('should be empty when not set', () => {
+    expect(readPartnerBrand({}).supportPhone).toBe('');
   });
 });
