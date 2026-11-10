@@ -190,6 +190,19 @@ describe('Topup earns no promotion (#032)', () => {
       expect(captured).toEqual([9]);
     });
 
+    // doitac-0911 #021: an agent's own purchase earns neither.
+    it('should pay no eXu cashback and no referral reward on a partner purchase', async () => {
+      const { service, transactions, savedReferrals } = makeWallets();
+
+      await service.completePaidOrderBenefits({
+        ...(order(OrderType.BUY_NEW) as object),
+        paymentMethod: 'partner_wallet',
+      } as never);
+
+      expect(transactions).toEqual([]);
+      expect(savedReferrals).toEqual([]);
+    });
+
     it('should still pays both on a normal eSIM order', async () => {
       // Proves the two tests above fail for the reason claimed — the topup guard —
       // and not because the mocks never pay anything.

@@ -655,6 +655,17 @@ export class WalletsService {
       await this.captureHoldForOrder(order.id);
     }
 
+    // A distribution partner's own purchase earns no eXU cashback and no
+    // referral reward (doitac-0911 #021): the agent price is the whole deal.
+    if (order.paymentMethod === 'partner_wallet') {
+      if (order.cashbackAmountVnd > 0) {
+        this.logger.warn(
+          `Order ${order.id} is a partner purchase carrying cashbackAmountVnd=${order.cashbackAmountVnd}; not credited (doitac-0911 #021)`,
+        );
+      }
+      return;
+    }
+
     if (isTopup) {
       // Guard, not an assumption: a topup order is created with these fields at
       // zero, but that is the only thing stopping a reward today. If a figure

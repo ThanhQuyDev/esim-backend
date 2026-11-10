@@ -2112,6 +2112,9 @@ export class OrdersService {
       eligibleSpendVnd: totalVnd,
       discountAmount: 0,
       couponDiscountVndAmount: 0,
+      // An agent earns no eXU on what they buy (doitac-0911 #021): the
+      // order was first priced as a customer's, 1% cashback included.
+      cashbackAmountVnd: 0,
       // Set before any eSIM exists, so every mail of it — now or by a
       // supplier's webhook later — goes to the customer (doitac-1410 #034).
       deliveryEmail: input.deliveryEmail ?? null,
