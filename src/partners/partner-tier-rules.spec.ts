@@ -411,3 +411,33 @@ describe('monthly tier cycle (vande #053)', () => {
     expect(vnMonth(-1, new Date('2027-01-01T01:00:00Z'))).toBe('2026-12');
   });
 });
+
+describe('One evaluation row per partner and month (doitac-0911 #020)', () => {
+  it('should update the month row when another run already wrote it', async () => {
+    const { service } = buildService({
+      partner: {
+        id: 11,
+        partnerType: PartnerTypeEnum.DISTRIBUTION,
+        tierCode: 'SILVER',
+      },
+      currentTier: { tierCode: 'SILVER', minVolumeVnd: '0', isInternal: false },
+    });
+    const repo = (
+      service as unknown as {
+        tierEvaluationRepository: { save: jest.Mock; update?: jest.Mock };
+      }
+    ).tierEvaluationRepository;
+    // The database refuses a second row for the month (unique index).
+    repo.save.mockRejectedValueOnce(
+      Object.assign(new Error('duplicate key'), { code: '23505' }),
+    );
+    repo.update = jest.fn().mockResolvedValue({});
+
+    await service.runMonthlyTierReview({ period: '2026-10' });
+
+    expect(repo.update).toHaveBeenCalledWith(
+      { partnerId: 11, period: '2026-10' },
+      expect.objectContaining({ period: '2026-10', tierAfter: 'SILVER' }),
+    );
+  });
+});

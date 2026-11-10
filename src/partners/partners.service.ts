@@ -8891,18 +8891,31 @@ export class PartnersService {
           else demoted++;
         }
 
-        await this.tierEvaluationRepository.save(
-          this.tierEvaluationRepository.create({
-            partnerId: partner.id,
-            period,
-            revenueVnd,
-            validOrders,
-            depositVnd,
-            tierBefore: currentTier?.tierCode ?? tierBefore,
-            tierAfter: partner.tierCode ?? null,
-            result,
-          }),
-        );
+        // One row per partner and month (doitac-0911 #020): two runs at
+        // the same moment both passed "already reviewed?" and the history
+        // showed each month twice. The database refuses a second row now
+        // (migration 1805300000000); a rerun updates the month's row.
+        const evaluation = {
+          partnerId: partner.id,
+          period,
+          revenueVnd,
+          validOrders,
+          depositVnd,
+          tierBefore: currentTier?.tierCode ?? tierBefore,
+          tierAfter: partner.tierCode ?? null,
+          result,
+        };
+        try {
+          await this.tierEvaluationRepository.save(
+            this.tierEvaluationRepository.create(evaluation),
+          );
+        } catch (err) {
+          if ((err as { code?: string }).code !== '23505') throw err;
+          await this.tierEvaluationRepository.update(
+            { partnerId: partner.id, period },
+            { ...evaluation, evaluatedAt: new Date() },
+          );
+        }
       } catch (err) {
         this.logger.error(
           `Monthly tier review failed for partner ${partner.id}: ${(err as Error).message}`,
