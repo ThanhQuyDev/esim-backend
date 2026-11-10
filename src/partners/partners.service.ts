@@ -860,6 +860,20 @@ function reconciliationLogo(): Buffer | null {
   }
 }
 
+/**
+ * The name a partner is called by (doitac-0911 #012): a company by its own
+ * name everywhere, a person by theirs.
+ */
+export function partnerDisplayName(partner: {
+  legalType?: string | null;
+  companyName?: string | null;
+  contactName?: string | null;
+}): string | null {
+  const company = partner.companyName?.trim();
+  if (partner.legalType === 'company' && company) return company;
+  return partner.contactName?.trim() || company || null;
+}
+
 /** `part` of `whole` as a percent with one decimal; 0 of nothing. */
 function percentOf(part: number, whole: number): number {
   return whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
@@ -1187,11 +1201,11 @@ export class PartnersService {
       outcome === 'approved'
         ? this.mailService.sendPartnerApproved({
             to: partner.contactEmail,
-            contactName: partner.contactName,
+            contactName: partnerDisplayName(partner) ?? partner.contactName,
           })
         : this.mailService.sendPartnerRejected({
             to: partner.contactEmail,
-            contactName: partner.contactName,
+            contactName: partnerDisplayName(partner) ?? partner.contactName,
             reason: partner.rejectionReason,
           });
 
@@ -1437,7 +1451,7 @@ export class PartnersService {
 
     await this.mailService.sendPartnerBankChangeOtp({
       to: partner.contactEmail,
-      contactName: partner.contactName,
+      contactName: partnerDisplayName(partner) ?? partner.contactName,
       otp,
       bankSummary: `${dto.bankName} — ${dto.bankAccountNumber} — ${dto.bankAccountHolder}`,
       expiresInMinutes: Math.round(BANK_CHANGE_OTP_TTL_MS / 60000),
@@ -3242,7 +3256,7 @@ export class PartnersService {
     try {
       await this.mailService.sendPartnerNotification({
         to: partner.contactEmail,
-        contactName: partner.contactName ?? 'Quý đối tác',
+        contactName: partnerDisplayName(partner) ?? 'Quý đối tác',
         title,
         body,
       });
@@ -5208,7 +5222,7 @@ export class PartnersService {
 
     const where = this.notificationAudienceWhere(notification.audience);
     const recipients = await this.dataSource.query(
-      `SELECT p.id, p."contactName", p."contactEmail"
+      `SELECT p.id, p."contactName", p."contactEmail", p."legalType", p."companyName"
        FROM partner p
        WHERE ${where.sql} AND p."contactEmail" IS NOT NULL`,
       where.params,
@@ -5219,7 +5233,7 @@ export class PartnersService {
       try {
         await this.mailService.sendPartnerNotification({
           to: recipient.contactEmail,
-          contactName: recipient.contactName ?? 'Quý đối tác',
+          contactName: partnerDisplayName(recipient) ?? 'Quý đối tác',
           title: notification.title,
           body: notification.body,
         });
@@ -8075,7 +8089,8 @@ export class PartnersService {
 
         await this.mailService.sendPartnerReconciliationStatement({
           to: row.contactEmail,
-          contactName: row.contactName ?? 'Quý đối tác',
+          // A company by its own name (doitac-0911 #012).
+          contactName: row.partnerName ?? row.contactName ?? 'Quý đối tác',
           periodLabel,
           validOrders: row.validOrders,
           esimsSold: row.esimsSold,
@@ -8466,7 +8481,7 @@ export class PartnersService {
         }
         await this.mailService.sendPartnerCreditStatement({
           to,
-          contactName: partner.contactName || 'Quý đối tác',
+          contactName: partnerDisplayName(partner) || 'Quý đối tác',
           periodLabel: statement.periodLabel,
           creditLimitVnd: statement.creditLimitVnd,
           orderCount: statement.orderCount,
@@ -11498,7 +11513,7 @@ export class PartnersService {
 
     const content = await buildPurchaseDeliveryWorkbook({
       orderNumber: String(first.orderNumber),
-      partnerName: partner.contactName ?? `Đối tác #${partner.id}`,
+      partnerName: partnerDisplayName(partner) ?? `Đối tác #${partner.id}`,
       planName: first.planName ?? '',
       orderedAt: new Date(first.createdAt),
       quantity,
