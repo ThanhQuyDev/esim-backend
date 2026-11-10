@@ -516,6 +516,8 @@ export class TicketsService {
       status: string;
       iccid: string | null;
       orderId: string | null;
+      /** What the partner wrote, for a glance (doitac-0911 #022). */
+      excerpt: string;
       createdAt: Date;
     }[]
   > {
@@ -526,7 +528,7 @@ export class TicketsService {
     );
     if (!ticket || (!ticket.iccid && !ticket.orderId)) return [];
     const rows: Record<string, any>[] = await this.dataSource.query(
-      `SELECT id, subject, status, iccid, "orderId", "createdAt"
+      `SELECT id, subject, status, iccid, "orderId", description, "createdAt"
          FROM ticket
         WHERE id <> $1
           AND (CASE WHEN $2::text IS NOT NULL THEN iccid = $2
@@ -542,6 +544,7 @@ export class TicketsService {
       status: String(r.status ?? ''),
       iccid: r.iccid ?? null,
       orderId: r.orderId ?? null,
+      excerpt: ticketExcerpt(r.description),
       createdAt: r.createdAt,
     }));
   }
@@ -677,4 +680,30 @@ function tooManyTickets(retryAfterMs: number): HttpException {
     },
     HttpStatus.TOO_MANY_REQUESTS,
   );
+}
+
+/**
+ * What the partner wrote in a ticket, without the lines the system put on top
+ * of it — the kind of request, "Đơn hàng: …", "ICCID: …" (doitac-0911 #022).
+ * One line, cut at 200 characters; the screen shortens it further with "…".
+ */
+export function ticketExcerpt(description: unknown): string {
+  const lines = String(description ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .split(/\r?\n/)
+    .map((line) => line.trim());
+  const SYSTEM =
+    /^(Đơn hàng|Mã đơn( hàng)?|ICCID|Order|Gói|Thiết bị|Điểm đến)\s*:/i;
+  // The request kind leads a partner's report, followed by its codes.
+  const start =
+    lines.length > 1 && lines.slice(1, 3).some((line) => SYSTEM.test(line))
+      ? 1
+      : 0;
+  const text = lines
+    .slice(start)
+    .filter((line) => line && !SYSTEM.test(line))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > 200 ? `${text.slice(0, 197)}...` : text;
 }
