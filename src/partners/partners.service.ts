@@ -1651,11 +1651,65 @@ export class PartnersService {
   }
 
   async getWalletTransactions(partnerId: number, limit = 50) {
-    const take = Math.min(Math.max(Number(limit) || 50, 1), 200);
-    return this.transactionRepository.find({
+    // Up to a year of lines: the portal pages them itself (doitac-0911 #015).
+    const take = Math.min(Math.max(Number(limit) || 50, 1), 2000);
+    const rows = await this.transactionRepository.find({
       where: { partnerId },
       order: { createdAt: 'DESC' },
       take,
+    });
+    return this.withReferences(rows);
+  }
+
+  /**
+   * "Mã đối chiếu" of each wallet line (doitac-0911 #015): the order it is
+   * for, the withdrawal request (WD-000123) or the deposit's transfer code,
+   * so a line can be matched to what caused it.
+   */
+  private async withReferences(
+    rows: PartnerWalletTransactionEntity[],
+  ): Promise<
+    (PartnerWalletTransactionEntity & { reference: string | null })[]
+  > {
+    const orderIds = [
+      ...new Set(rows.map((r) => Number(r.orderId)).filter((id) => id > 0)),
+    ];
+    const depositIds = [
+      ...new Set(
+        rows
+          .filter((r) => r.sourceType === 'partner_deposit_request')
+          .map((r) => Number(r.sourceId))
+          .filter((id) => id > 0),
+      ),
+    ];
+    const orders: { id: number; orderNumber: string }[] = orderIds.length
+      ? await this.dataSource.query(
+          `SELECT id, "orderNumber" FROM "order" WHERE id = ANY($1::int[])`,
+          [orderIds],
+        )
+      : [];
+    const deposits: { id: number; code: string | null }[] = depositIds.length
+      ? await this.dataSource.query(
+          `SELECT id, "bankTransferCode" AS code
+             FROM partner_deposit_request WHERE id = ANY($1::int[])`,
+          [depositIds],
+        )
+      : [];
+    const orderNumberOf = new Map(
+      orders.map((o) => [Number(o.id), String(o.orderNumber)]),
+    );
+    const depositCodeOf = new Map(
+      deposits.map((d) => [Number(d.id), d.code ?? null]),
+    );
+    return rows.map((row) => {
+      let reference: string | null = null;
+      if (row.orderId)
+        reference = orderNumberOf.get(Number(row.orderId)) ?? null;
+      else if (row.sourceType === 'partner_payout' && Number(row.sourceId) > 0)
+        reference = payoutRequestCode(Number(row.sourceId));
+      else if (row.sourceType === 'partner_deposit_request')
+        reference = depositCodeOf.get(Number(row.sourceId)) ?? null;
+      return Object.assign(row, { reference });
     });
   }
 
