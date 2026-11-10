@@ -861,6 +861,40 @@ function reconciliationLogo(): Buffer | null {
 }
 
 /**
+ * What a partner is told when an admin locks or unlocks the account
+ * (doitac-0911 #023), or null for a change that is not one of those (an
+ * approval, a rejection).
+ */
+export function partnerStatusNotice(
+  from: string,
+  to: string,
+  reason?: string | null,
+): { title: string; body: string } | null {
+  const why = reason?.trim() ? ` Lý do: ${reason.trim()}.` : '';
+  const live = ['active', 'hold', 'disabled'];
+  if (!live.includes(from) || !live.includes(to) || from === to) return null;
+  if (to === 'hold') {
+    return {
+      title: 'Tài khoản đối tác của bạn đang bị tạm khoá',
+      body: `esim.vn đã tạm khoá tài khoản đối tác của bạn.${why}
+Trong thời gian tạm khoá, bạn chưa thể đặt mua eSIM, topup, nạp hay rút tiền. Vui lòng liên hệ admin để được hỗ trợ.`,
+    };
+  }
+  if (to === 'disabled') {
+    return {
+      title: 'Tài khoản đối tác của bạn đã bị khoá',
+      body: `esim.vn đã khoá tài khoản đối tác của bạn.${why}
+Bạn không thể đăng nhập cổng đối tác cho tới khi tài khoản được mở khoá. Vui lòng liên hệ admin để được hỗ trợ.`,
+    };
+  }
+  return {
+    title: 'Tài khoản đối tác của bạn đã được mở khoá',
+    body: `esim.vn đã mở khoá tài khoản đối tác của bạn.${why}
+Bạn có thể dùng lại đầy đủ các chức năng của cổng đối tác.`,
+  };
+}
+
+/**
  * The name a partner is called by (doitac-0911 #012): a company by its own
  * name everywhere, a person by theirs.
  */
@@ -5157,6 +5191,24 @@ export class PartnersService {
       reason: reason?.trim() || null,
       adminId: adminId ?? null,
     });
+
+    // Tạm khoá / khoá / mở khoá are told at once, by email and on the bell
+    // (doitac-0911 #023). An approval has its own email (#095).
+    const notice = partnerStatusNotice(fromStatus, dto.status, reason);
+    if (notice) {
+      try {
+        await this.notifyOnePartner(
+          saved.id,
+          notice.title,
+          notice.body,
+          adminId ?? null,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Status notice to partner ${saved.id} failed: ${(err as Error).message}`,
+        );
+      }
+    }
 
     return saved;
   }

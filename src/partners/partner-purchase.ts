@@ -222,6 +222,14 @@ export function partnerPurchaseRejection(
   if (eligibility.partnerType === PartnerTypeEnum.KOL) {
     return 'Đối tác tiếp thị không mua hàng bằng ví ký quỹ. Thu nhập của bạn là hoa hồng.';
   }
+  // Say what is really wrong (doitac-0911 #023): a held account read "chưa
+  // được kích hoạt", as if it had never been approved.
+  if (eligibility.partnerStatus === PartnerStatusEnum.HOLD) {
+    return 'Tài khoản đang bị tạm khoá nên không thể đặt mua eSIM. Vui lòng liên hệ admin để được hỗ trợ.';
+  }
+  if (eligibility.partnerStatus === PartnerStatusEnum.DISABLED) {
+    return 'Tài khoản đã bị khoá nên không thể đặt mua eSIM. Vui lòng liên hệ admin để được hỗ trợ.';
+  }
   if (eligibility.partnerStatus !== PartnerStatusEnum.ACTIVE) {
     return 'Tài khoản đối tác của bạn chưa được kích hoạt nên chưa đặt mua được.';
   }
