@@ -37,6 +37,21 @@ export type BulkEsimRow = {
   qrUrl: string;
   /** Why this row has no eSIM yet; null when it has one (vande-0411 #011). */
   missingReason?: string | null;
+  /**
+   * The eSIM's state when the file is made (doitac-0911 #018): "Đang dùng",
+   * "Đã hoàn tiền"… — a refunded eSIM read "Đã có eSIM" like the rest.
+   */
+  stateLabel?: string | null;
+};
+
+/** The portal's own words for each eSIM state (doitac-0911 #018). */
+export const ESIM_STATE_LABEL: Record<string, string> = {
+  available: 'Chưa kích hoạt',
+  sold: 'Chưa kích hoạt',
+  active: 'Đang dùng',
+  expired: 'Đã hết hạn',
+  deactivated: 'Đã ngừng',
+  refunded: 'Đã hoàn tiền',
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -130,7 +145,7 @@ export async function buildBulkEsimList(
   rows.forEach((row, index) => {
     const added = sheet.addRow({
       stt: index + 1,
-      state: row.missingReason ?? 'Đã có eSIM',
+      state: row.missingReason ?? row.stateLabel ?? 'Đã có eSIM',
       orderNumber: row.orderNumber,
       iccid: row.iccid,
       planName: row.planName,

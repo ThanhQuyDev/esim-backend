@@ -1,4 +1,4 @@
-import { esimLifecycleStatus } from '../esims/esim-lifecycle';
+import { esimLifecycleSql, esimLifecycleStatus } from '../esims/esim-lifecycle';
 import {
   discountedRetailVnd,
   MarginTier,
@@ -112,6 +112,7 @@ import {
   BulkOrderTag,
   buildBulkEsimList,
   bulkEmailInterval,
+  ESIM_STATE_LABEL,
 } from './bulk-esim-list';
 import { checkoutLocaleOf, isPaymentUsdIssue } from './payment-usd';
 
@@ -2338,6 +2339,7 @@ export class OrdersService {
       `SELECT e.id, e.iccid, e.lpa, e."smdpAddress", e."activationCode",
               e."qrAccessToken", e."phoneNumber", e."createdAt" AS "esimAt",
               e.provider AS "esimProvider",
+              ${esimLifecycleSql('e')} AS lifecycle,
               oi.quantity, oi."vndPrice", oi."vndCostPrice",
               p.name, p.slug, p."providerPlanId", p.provider, p.type,
               p."durationDays", p."dataMb", p."fupSpeed", p.call, p.sms,
@@ -2405,6 +2407,8 @@ export class OrdersService {
               new Date(r.esimAt),
             ),
         lpa,
+        // Its state now, refunded included (doitac-0911 #018).
+        stateLabel: ESIM_STATE_LABEL[String(r.lifecycle ?? '')] ?? null,
         qrUrl:
           r.id && r.qrAccessToken
             ? `${backendDomain}/api/v1/esims/${r.id}/qrcode/view?token=${r.qrAccessToken}`

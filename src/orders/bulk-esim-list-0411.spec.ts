@@ -99,3 +99,21 @@ describe('File danh sách eSIM (vande-0411 #011)', () => {
     expect(page).toContain('/qr?token=a&amp;b=1');
   });
 });
+
+describe('File danh sách eSIM — trạng thái thực tế (doitac-0911 #018)', () => {
+  it('should say each eSIM state as it is now', async () => {
+    const { cell } = await read(
+      [
+        { ...ROW, iccid: '1', stateLabel: 'Đang dùng' },
+        { ...ROW, iccid: '2', stateLabel: 'Đã hoàn tiền' },
+        { ...ROW, iccid: '3' },
+      ],
+      false,
+    );
+
+    expect(cell(2, 'Trạng thái eSIM')).toBe('Đang dùng');
+    expect(cell(3, 'Trạng thái eSIM')).toBe('Đã hoàn tiền');
+    // An older row without a state keeps the old wording.
+    expect(cell(4, 'Trạng thái eSIM')).toBe('Đã có eSIM');
+  });
+});
