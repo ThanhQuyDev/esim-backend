@@ -10922,6 +10922,8 @@ export class PartnersService {
           apn: plan.apn ?? null,
           ipExport: plan.ipExport ?? null,
           isNonHkIp: Boolean(plan.isNonHkIp),
+          // "Thời điểm bắt đầu tính gói" in the detail popup (doitac-0911 #017).
+          validityStart: plan.validityStart ?? null,
           speed: plan.speed ?? null,
           operatorName: plan.operatorName ?? null,
           dailyResetPolicy: plan.dailyResetPolicy ?? null,
