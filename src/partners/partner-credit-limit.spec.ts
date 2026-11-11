@@ -348,6 +348,7 @@ describe('the monthly statement (vande #056)', () => {
       deliveryEmail: 'khach1@example.com',
       products: 'Nhật Bản 5GB x 10',
       esims: 10,
+      onCredit: true,
     },
     {
       type: 'order_purchase',
@@ -357,6 +358,7 @@ describe('the monthly statement (vande #056)', () => {
       deliveryEmail: 'khach2@example.com',
       products: 'Hàn Quốc 3GB x 4',
       esims: 4,
+      onCredit: true,
     },
     {
       type: 'order_purchase_reversal',
@@ -366,6 +368,7 @@ describe('the monthly statement (vande #056)', () => {
       deliveryEmail: 'khach2@example.com',
       products: 'Hàn Quốc 3GB x 4',
       esims: 4,
+      onCredit: true,
     },
   ];
 
@@ -393,6 +396,45 @@ describe('the monthly statement (vande #056)', () => {
       status: 'Hoàn tiền',
       amountVnd: -300_000,
     });
+    // doitac-0911 #009: the figures of the email.
+    expect(statement).toMatchObject({
+      revenueVnd: 3_900_000,
+      paidVnd: 0,
+      refundPercent: 50,
+    });
+  });
+
+  it('should count what a deposit bought as paid (doitac-0911 #009)', async () => {
+    const { service } = buildService({
+      ledger: ledger.map((l) => ({ ...l, onCredit: false })),
+    });
+
+    const statement = await service.creditStatement(11, '2026-10');
+
+    expect(statement).toMatchObject({
+      orderCount: 2,
+      esimCount: 14,
+      revenueVnd: 3_900_000,
+      paidVnd: 3_900_000,
+      amountDueVnd: 0,
+    });
+  });
+
+  it('should not count a wholly refunded order as valid (doitac-0911 #009)', async () => {
+    const { service } = buildService({
+      ledger: [
+        ...ledger,
+        { ...ledger[0], type: 'order_purchase_reversal', amountVnd: '3000000' },
+      ],
+    });
+
+    const statement = await service.creditStatement(11, '2026-10');
+
+    expect(statement).toMatchObject({
+      orderCount: 1,
+      esimCount: 4,
+      refundPercent: 100,
+    });
   });
 
   it('should cut the month on Hanoi midnight off the wallet ledger', async () => {
@@ -402,8 +444,9 @@ describe('the monthly statement (vande #056)', () => {
       service as unknown as { dataSource: { query: jest.Mock } }
     ).dataSource.query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('partner_wallet_transaction');
-    // Only what was bought while on credit, not from a deposit.
+    // Each line says whether it was bought on credit or from a deposit.
     expect(sql).toContain(`r.metadata->>'creditOff'`);
+    expect(sql).toContain('"onCredit"');
     expect(sql).toContain(`AT TIME ZONE 'Asia/Ho_Chi_Minh'`);
     expect(params).toEqual([11, '2026-10-01']);
   });

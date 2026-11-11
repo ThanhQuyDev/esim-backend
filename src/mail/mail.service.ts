@@ -184,17 +184,28 @@ export interface PartnerNotificationMailData {
 }
 
 /** One partner's monthly statement, as the email shows it (#076). */
-/** What a no-deposit partner owes for a month (vande #056). */
+/** A distribution partner's sales statement for a month (vande #056, doitac-0911 #009). */
 export interface PartnerCreditStatementMailData {
   to: string;
   contactName: string;
   /** "Tháng 10/2026". */
   periodLabel: string;
   creditLimitVnd: number;
+  /** Buys on the credit limit ("Không cần ký quỹ"). */
+  onCredit?: boolean;
+  /** "Số đơn hợp lệ". */
   orderCount: number;
+  /** "Số eSIM đã bán". */
   esimCount: number;
+  /** "Tỷ lệ hoàn tiền", %. */
+  refundPercent?: number;
   purchasedVnd: number;
   refundedVnd: number;
+  /** "Tổng doanh số bán ra". */
+  revenueVnd?: number;
+  /** "Số tiền đã thanh toán". */
+  paidVnd?: number;
+  /** "Số tiền chưa thanh toán". */
   amountDueVnd: number;
   /** "Chi tiết giao dịch" .xlsx; the email still goes without it. */
   attachment?: { filename: string; content: Buffer };
@@ -1384,11 +1395,16 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
       contactName: data.contactName,
       periodLabel: data.periodLabel,
       creditLimitVnd: vnd(data.creditLimitVnd),
+      onCredit: Boolean(data.onCredit),
       orderCount: vnd(data.orderCount),
       esimCount: vnd(data.esimCount),
+      refundPercent: (data.refundPercent ?? 0).toLocaleString('vi-VN'),
       purchasedVnd: vnd(data.purchasedVnd),
       refundedVnd: vnd(data.refundedVnd),
+      revenueVnd: vnd(data.revenueVnd ?? data.purchasedVnd - data.refundedVnd),
+      paidVnd: vnd(data.paidVnd ?? 0),
       amountDueVnd: vnd(data.amountDueVnd),
+      hasAmountDue: data.amountDueVnd > 0,
       portalUrl: this.partnerPortalUrl(PARTNER_SIGN_IN_PATH),
       app_name: BRAND_NAME,
       logoUrl: brandLogoUrl(),

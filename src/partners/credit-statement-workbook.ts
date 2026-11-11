@@ -1,13 +1,21 @@
 import { Workbook } from 'exceljs';
-import { printReady } from './reconciliation-workbook';
+import {
+  buildStatementSheet,
+  printReady,
+  StatementSheetData,
+  wrappedRowHeight,
+} from './reconciliation-workbook';
 
 /**
- * The file attached to a no-deposit partner's monthly statement (vande #056).
+ * The file attached to a distribution partner's monthly statement (vande #056,
+ * doitac-0911 #009), built on anh Thọ's two templates "Mẫu file đối soát_đối
+ * tác phân phối" and "Mẫu file Chi tiết giao dịch_đối tác phân phối":
  *
- * "Chi tiết giao dịch" has one row per order, in the columns anh Thọ set out
- * (vande-0411 #013). It has nothing about marketing partners: a partner on
- * credit does not earn commission. Revenue less refunds adds up to exactly what
- * the email asks them to pay.
+ * - "Đối soát": the sales statement both sides sign — the month's sales
+ *   (agent prices include VAT 10%, so line 1 is before tax) and what the
+ *   partner still has to pay;
+ * - "Chi tiết giao dịch": one row per order. Paid and unpaid add up to the
+ *   sales, and the unpaid total is the statement's amount to pay.
  */
 
 export type CreditStatementLine = {
@@ -21,12 +29,21 @@ export type CreditStatementLine = {
   /** "Đã mua" or "Hoàn tiền". */
   status: string;
   createdAt: Date;
-  /** "Mua eSIM", "Topup" or "Addon". */
+  /** "Mua eSIM", "Nạp topup" or "Addon". */
   orderKind?: string;
   /** eSIMs bought, or 1 for a topup. */
   quantity?: number;
   /** The eSIMs of the order, or the one topped up, comma separated. */
   iccids?: string;
+  /**
+   * Bought on the credit limit (owed) rather than from a deposit (already
+   * paid). A line without it is on credit, as every line was before #009.
+   */
+  onCredit?: boolean;
+  /** The wallet — deposit or remaining limit — right after this line. */
+  balanceAfterVnd?: number;
+  /** When the order was placed; the line's own time when not given. */
+  orderedAt?: Date;
 };
 
 /** One row of the sheet: everything that moved on one order this month. */
@@ -36,6 +53,12 @@ export type CreditStatementRow = {
   quantity: number;
   revenueVnd: number;
   refundVnd: number;
+  /** Out of a deposit: paid when bought (doitac-0911 #009). */
+  paidVnd: number;
+  /** On the credit limit: still owed. */
+  unpaidVnd: number;
+  /** "Số dư / Hạn mức sau": the wallet after the order's last line. */
+  balanceAfterVnd: number | null;
   orderKind: string;
   iccids: string;
   customer: string;
@@ -55,10 +78,13 @@ export function creditStatementRows(
       quantity: 0,
       revenueVnd: 0,
       refundVnd: 0,
+      paidVnd: 0,
+      unpaidVnd: 0,
+      balanceAfterVnd: null,
       orderKind: line.orderKind ?? 'Mua eSIM',
       iccids: line.iccids ?? '',
       customer: line.customer,
-      createdAt: line.createdAt,
+      createdAt: line.orderedAt ?? line.createdAt,
       status: '',
     };
     if (line.amountVnd >= 0) {
@@ -69,6 +95,12 @@ export function creditStatementRows(
       // Refunded in a later month than it was bought: still say how many.
       row.quantity = row.quantity || (line.quantity ?? line.esims);
     }
+    // A refund goes back the way the money came: off the debt, or into
+    // the deposit.
+    if (line.onCredit === false) row.paidVnd += line.amountVnd;
+    else row.unpaidVnd += line.amountVnd;
+    if (line.balanceAfterVnd != null)
+      row.balanceAfterVnd = line.balanceAfterVnd;
     rows.set(line.orderNumber, row);
   }
   for (const row of rows.values()) {
@@ -92,13 +124,13 @@ export function fileNamePart(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-export type CreditStatementData = {
-  partnerName: string;
-  /** "Tháng 10/2026". */
-  periodLabel: string;
-  creditLimitVnd: number;
-  purchasedVnd: number;
-  refundedVnd: number;
+export type CreditStatementData = Omit<
+  StatementSheetData,
+  'kind' | 'totalVnd' | 'payableVnd'
+> & {
+  /** Sales less refunds, VAT included: section I of the statement. */
+  revenueVnd: number;
+  /** Still to pay: section II. */
   amountDueVnd: number;
   lines: CreditStatementLine[];
 };
@@ -115,54 +147,47 @@ function vnDate(date: Date): string {
   return `${d}/${m}/${vn.getUTCFullYear()}`;
 }
 
+/** The columns of "Mẫu file Chi tiết giao dịch_đối tác phân phối". */
+const COLUMNS = [
+  { header: 'STT', key: 'stt', width: 6 },
+  { header: 'Mã đơn hàng', key: 'orderNumber', width: 31 },
+  { header: 'Loại đơn', key: 'orderKind', width: 13 },
+  { header: 'Tên sản phẩm', key: 'products', width: 44 },
+  { header: 'Giá đại lý (VNĐ)', key: 'revenueVnd', width: 16 },
+  { header: 'Hoàn tiền (VNĐ)', key: 'refundVnd', width: 15 },
+  { header: 'Đã thanh toán (VNĐ)', key: 'paidVnd', width: 16 },
+  { header: 'Chưa thanh toán (VNĐ)', key: 'unpaidVnd', width: 17 },
+  { header: 'Số dư / Hạn mức sau', key: 'balanceAfterVnd', width: 18 },
+  { header: 'Số lượng eSIM', key: 'quantity', width: 11 },
+  { header: 'Trạng thái đơn hàng', key: 'status', width: 16 },
+  { header: 'Ngày đặt hàng', key: 'createdAt', width: 13 },
+];
+const MONEY_KEYS = [
+  'revenueVnd',
+  'refundVnd',
+  'paidVnd',
+  'unpaidVnd',
+  'balanceAfterVnd',
+];
+
 export async function buildCreditStatementWorkbook(
   data: CreditStatementData,
 ): Promise<Buffer> {
   const wb = new Workbook();
+  wb.creator = data.partyA.name;
+  wb.created = data.issuedAt;
 
-  const summary = wb.addWorksheet('Tổng hợp');
-  summary.columns = [
-    { key: 'label', width: 38 },
-    { key: 'value', width: 24 },
-  ];
-  const title = summary.addRow([
-    `ĐỐI SOÁT TIỀN HÀNG ${data.periodLabel.toUpperCase()}`,
-  ]);
-  title.font = { name: FONT, size: 14, bold: true };
-  summary.addRow([`Đối tác: ${data.partnerName}`]).font = {
-    name: FONT,
-    size: 12,
-  };
-  summary.addRow([]);
-  const rows: [string, number][] = [
-    ['Hạn mức giao dịch / tháng', data.creditLimitVnd],
-    ['Tiền hàng đã mua', data.purchasedVnd],
-    ['Đã hoàn lại (đơn huỷ / eSIM lỗi)', data.refundedVnd],
-    ['Số tiền cần thanh toán', data.amountDueVnd],
-  ];
-  for (const [label, value] of rows) {
-    const row = summary.addRow({ label, value });
-    row.font = { name: FONT, size: 12 };
-    row.getCell(2).numFmt = MONEY_FORMAT;
-  }
-  summary.lastRow!.font = { name: FONT, size: 12, bold: true };
-  // In ngay được, như biên bản hoa hồng (doitac-0911 #010).
-  printReady(summary, 'B', { onePage: true });
+  // Sheet 1: the statement to print and sign (doitac-0911 #009, #010).
+  buildStatementSheet(wb.addWorksheet('Đối soát'), {
+    ...data,
+    kind: 'sales',
+    totalVnd: data.revenueVnd,
+    payableVnd: data.amountDueVnd,
+  });
 
   const sheet = wb.addWorksheet('Chi tiết giao dịch');
-  sheet.columns = [
-    { header: 'STT', key: 'stt', width: 6 },
-    { header: 'Mã đơn hàng', key: 'orderNumber', width: 30 },
-    { header: 'Tên sản phẩm', key: 'products', width: 44 },
-    { header: 'Số lượng eSIM/gói topup', key: 'quantity', width: 14 },
-    { header: 'Doanh thu đơn hàng', key: 'revenueVnd', width: 18 },
-    { header: 'Hoàn tiền', key: 'refundVnd', width: 16 },
-    { header: 'Loại đơn', key: 'orderKind', width: 12 },
-    { header: 'ICCID', key: 'iccids', width: 26 },
-    { header: 'Khách hàng', key: 'customer', width: 30 },
-    { header: 'Ngày mua hàng', key: 'createdAt', width: 14 },
-    { header: 'Trạng thái đơn hàng', key: 'status', width: 18 },
-  ];
+  sheet.columns = COLUMNS;
+  const lastCol = COLUMNS.length;
   // Nền xanh dương, chữ trắng (doitac-0911 #010).
   const header = sheet.getRow(1);
   header.font = {
@@ -171,7 +196,7 @@ export async function buildCreditStatementWorkbook(
     bold: true,
     color: { argb: 'FFFFFFFF' },
   };
-  for (let c = 1; c <= 11; c++) {
+  for (let c = 1; c <= lastCol; c++) {
     header.getCell(c).fill = {
       type: 'pattern',
       pattern: 'solid',
@@ -187,27 +212,48 @@ export async function buildCreditStatementWorkbook(
 
   const orderRows = creditStatementRows(data.lines);
   orderRows.forEach((row, index) => {
-    const added = sheet.addRow({
-      ...row,
+    sheet.addRow({
       stt: index + 1,
+      orderNumber: row.orderNumber,
+      orderKind: row.orderKind,
+      products: row.products,
+      revenueVnd: row.revenueVnd,
+      refundVnd: row.refundVnd,
+      paidVnd: row.paidVnd,
+      unpaidVnd: row.unpaidVnd,
+      balanceAfterVnd: row.balanceAfterVnd ?? '',
+      quantity: row.quantity,
+      status: row.status,
       createdAt: vnDate(row.createdAt),
     });
-    added.getCell('iccids').alignment = { wrapText: true, vertical: 'top' };
   });
+  const sum = (key: 'revenueVnd' | 'refundVnd' | 'paidVnd' | 'unpaidVnd') =>
+    orderRows.reduce((total, r) => total + r[key], 0);
   const total = sheet.addRow({
     orderNumber: 'TỔNG CỘNG',
-    quantity: orderRows.reduce((sum, r) => sum + r.quantity, 0),
-    revenueVnd: orderRows.reduce((sum, r) => sum + r.revenueVnd, 0),
-    refundVnd: orderRows.reduce((sum, r) => sum + r.refundVnd, 0),
+    revenueVnd: sum('revenueVnd'),
+    refundVnd: sum('refundVnd'),
+    paidVnd: sum('paidVnd'),
+    unpaidVnd: sum('unpaidVnd'),
+    quantity: orderRows.reduce((n, r) => n + r.quantity, 0),
   });
-  total.font = { name: FONT, size: 12, bold: true };
 
   for (let r = 2; r <= sheet.rowCount; r++) {
-    sheet.getCell(r, 5).numFmt = MONEY_FORMAT;
-    sheet.getCell(r, 6).numFmt = MONEY_FORMAT;
+    const line = sheet.getRow(r);
+    line.font = { name: FONT, size: 11 };
+    line.alignment = { vertical: 'middle' };
+    for (const key of MONEY_KEYS) line.getCell(key).numFmt = MONEY_FORMAT;
+    // A long product list wraps instead of being cut off when printed.
+    line.getCell('products').alignment = { vertical: 'middle', wrapText: true };
+    line.height = wrappedRowHeight(
+      String(line.getCell('products').value ?? ''),
+      44,
+    );
   }
+  total.font = { name: FONT, size: 11, bold: true };
+
   for (let r = 1; r <= sheet.rowCount; r++) {
-    for (let c = 1; c <= 11; c++) {
+    for (let c = 1; c <= lastCol; c++) {
       sheet.getCell(r, c).border = {
         top: { style: 'thin' },
         left: { style: 'thin' },
@@ -217,7 +263,7 @@ export async function buildCreditStatementWorkbook(
     }
   }
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
-  printReady(sheet, 'K', { repeatHeader: true });
+  printReady(sheet, 'L', { repeatHeader: true });
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

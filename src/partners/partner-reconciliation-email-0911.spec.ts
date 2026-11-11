@@ -2,7 +2,7 @@ import { PartnersService } from './partners.service';
 
 /** doitac-0911 #008 — "Gửi email đối soát" on each partner. */
 describe('"Gửi email đối soát" (doitac-0911 #008)', () => {
-  it('should mail the monthly credit statement only to ticked partners', async () => {
+  it('should mail the monthly statement to every ticked distribution partner (#009)', async () => {
     const find = jest.fn().mockResolvedValue([]);
     const service = Object.create(PartnersService.prototype) as PartnersService;
     Object.assign(service as unknown as Record<string, unknown>, {
@@ -11,7 +11,7 @@ describe('"Gửi email đối soát" (doitac-0911 #008)', () => {
 
     await service.sendCreditStatements('2026-10');
     expect(find).toHaveBeenCalledWith({
-      where: { noDepositRequired: true, sendReconciliationEmail: true },
+      where: { partnerType: 'distribution', sendReconciliationEmail: true },
     });
 
     // The admin's own "Gửi email đối soát" button still sends.

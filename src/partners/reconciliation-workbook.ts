@@ -68,6 +68,26 @@ export type ReconciliationWorkbookData = {
   transactions: ReconciliationTransaction[];
 };
 
+/**
+ * Which statement the "Đối soát" sheet is (doitac-0911 #009):
+ * - `commission`: esim.vn pays a marketing partner their commission;
+ * - `sales`: a distribution partner pays esim.vn for what they bought — the
+ *   template's yellow cells: its title, opening sentence, section I, the unit
+ *   on every line, and Bên B paying Bên A.
+ */
+export type StatementKind = 'commission' | 'sales';
+
+export type StatementSheetData = Omit<
+  ReconciliationWorkbookData,
+  'transactions' | 'commissionVnd'
+> & {
+  kind: StatementKind;
+  /** Section I's total, VAT included. */
+  totalVnd: number;
+  /** Section II's amount; the total when not given. */
+  payableVnd?: number;
+};
+
 const MONEY_FORMAT = '#,##0';
 const FONT = 'Times New Roman';
 
@@ -169,10 +189,12 @@ function fullWidthRow(
   );
 }
 
-function buildStatementSheet(
+/** The "Đối soát" sheet, two parties' signed statement (#006, doitac-0911 #009). */
+export function buildStatementSheet(
   sheet: Worksheet,
-  data: ReconciliationWorkbookData,
+  data: StatementSheetData,
 ): void {
+  const sales = data.kind === 'sales';
   sheet.columns = [
     // Wide enough for the logo in A1 (doitac-0911 #007). Sum: STATEMENT_WIDTH.
     { width: 9 },
@@ -227,11 +249,18 @@ function buildStatementSheet(
   issued.alignment = { horizontal: 'center' };
 
   // Một dòng trống giữa ngày lập và tiêu đề (doitac-0911 #010).
-  fullWidthRow(sheet, 5, 'BIÊN BẢN ĐỐI SOÁT DOANH THU, HOA HỒNG', {
-    bold: true,
-    center: true,
-    size: 14,
-  });
+  fullWidthRow(
+    sheet,
+    5,
+    sales
+      ? 'BIÊN BẢN ĐỐI SOÁT CÔNG NỢ BÁN HÀNG'
+      : 'BIÊN BẢN ĐỐI SOÁT DOANH THU, HOA HỒNG',
+    {
+      bold: true,
+      center: true,
+      size: 14,
+    },
+  );
   fullWidthRow(
     sheet,
     6,
@@ -270,14 +299,25 @@ function buildStatementSheet(
   fullWidthRow(
     sheet,
     row++,
-    `Hôm nay ngày ${ddmmyyyy(data.issuedAt)}, hai bên cùng đối chiếu và xác nhận như sau:`,
+    sales
+      ? `Hôm nay ngày ${ddmmyyyy(data.issuedAt)}, chúng tôi xin gửi Quý đối tác chi tiết phần công nợ tháng ${mmyyyy(
+          data.periodStart,
+        )} (từ ngày ${ddmmyyyy(data.periodStart)} - ${ddmmyyyy(
+          data.periodEnd,
+        )}) theo kết quả kinh doanh của Quý đối tác. Chi tiết về công nợ Quý đối tác ghi nhận trong tháng như sau:`
+      : `Hôm nay ngày ${ddmmyyyy(data.issuedAt)}, hai bên cùng đối chiếu và xác nhận như sau:`,
   );
   row++;
 
-  // ── I. Chia sẻ doanh thu ──────────────────────────────────────────────
-  fullWidthRow(sheet, row++, 'I. Chia sẻ doanh thu cho đối tác đạt:', {
-    bold: true,
-  });
+  // ── I. Chia sẻ doanh thu / Công nợ bán hàng ───────────────────────────
+  fullWidthRow(
+    sheet,
+    row++,
+    sales
+      ? 'I. Công nợ bán hàng của Quý đối tác:'
+      : 'I. Chia sẻ doanh thu cho đối tác đạt:',
+    { bold: true },
+  );
 
   const headerRow = row;
   sheet.mergeCells(row, 2, row, 4);
@@ -299,16 +339,19 @@ function buildStatementSheet(
   }
   row++;
 
-  // The commission already includes VAT (doitac-0911 #004): the money the
-  // partner is paid is the total; before tax is that divided by 1 + VAT.
-  const total = Math.round(data.commissionVnd);
+  // The commission already includes VAT (doitac-0911 #004), and so does the
+  // agent price a distribution partner pays (#009): before tax is the total
+  // divided by 1 + VAT.
+  const total = Math.round(data.totalVnd);
   const beforeVat = Math.round((total * 100) / (100 + data.vatPercent));
   const vat = total - beforeVat;
 
   const moneyRows: [string, string, number][] = [
     [
       '1',
-      `Chia sẻ doanh thu bán hàng tháng ${mmyyyy(data.periodStart)}`,
+      sales
+        ? `Công nợ bán hàng tháng ${mmyyyy(data.periodStart)}`
+        : `Chia sẻ doanh thu bán hàng tháng ${mmyyyy(data.periodStart)}`,
       beforeVat,
     ],
     ['2', 'Tổng số tiền trước thuế VAT', beforeVat],
@@ -321,8 +364,8 @@ function buildStatementSheet(
     sheet.getCell(row, 1).value = stt;
     sheet.getCell(row, 1).alignment = { horizontal: 'center' };
     sheet.getCell(row, 2).value = label;
-    // Chỉ dòng đầu ghi đơn vị, như file mẫu.
-    if (stt === '1') sheet.getCell(row, 5).value = 'VNĐ';
+    // Chỉ dòng đầu ghi đơn vị, như file mẫu; mẫu phân phối ghi mọi dòng.
+    if (stt === '1' || sales) sheet.getCell(row, 5).value = 'VNĐ';
     sheet.getCell(row, 5).alignment = { horizontal: 'center' };
     const money = sheet.getCell(row, 6);
     money.value = amount;
@@ -355,11 +398,16 @@ function buildStatementSheet(
   // ── II. Thanh toán ────────────────────────────────────────────────────
   fullWidthRow(sheet, row++, 'II. Thanh toán', { bold: true });
 
+  // A distribution partner owes what they have not paid yet (#009): bought
+  // from a deposit is already paid.
+  const payableVnd = Math.round(data.payableVnd ?? total);
   sheet.mergeCells(row, 1, row, 5);
   const payableLabel = sheet.getCell(row, 1);
-  payableLabel.value = `Tổng số tiền Bên A phải thanh toán cho Bên B (đã bao gồm thuế) tính đến ngày ${ddmmyyyy(
-    data.periodEnd,
-  )} là:`;
+  payableLabel.value = `Tổng số tiền ${
+    sales
+      ? 'Bên B phải thanh toán cho Bên A'
+      : 'Bên A phải thanh toán cho Bên B'
+  } (đã bao gồm thuế) tính đến ngày ${ddmmyyyy(data.periodEnd)} là:`;
   payableLabel.font = { name: FONT, size: 11 };
   payableLabel.alignment = { wrapText: true, vertical: 'middle' };
   sheet.getRow(row).height = wrappedRowHeight(
@@ -367,13 +415,13 @@ function buildStatementSheet(
     STATEMENT_WIDTH - 20,
   );
   const payable = sheet.getCell(row, 6);
-  payable.value = total;
+  payable.value = payableVnd;
   payable.numFmt = MONEY_FORMAT;
   payable.font = { name: FONT, size: 11, bold: true };
   payable.alignment = { horizontal: 'right', vertical: 'middle' };
   row++;
 
-  fullWidthRow(sheet, row++, `Bằng chữ: ${vndInWords(total)}`, {
+  fullWidthRow(sheet, row++, `Bằng chữ: ${vndInWords(payableVnd)}`, {
     italic: true,
   });
   row++;
@@ -526,7 +574,11 @@ export async function buildReconciliationWorkbook(
   wb.creator = data.partyA.name;
   wb.created = data.issuedAt;
 
-  buildStatementSheet(wb.addWorksheet('Đối soát'), data);
+  buildStatementSheet(wb.addWorksheet('Đối soát'), {
+    ...data,
+    kind: 'commission',
+    totalVnd: data.commissionVnd,
+  });
   buildTransactionSheet(wb.addWorksheet('Chi tiết giao dịch'), data);
 
   const buffer = await wb.xlsx.writeBuffer();

@@ -161,9 +161,11 @@ import {
   fileNamePart,
   buildCreditStatementWorkbook,
   CreditStatementLine,
+  creditStatementRows,
 } from './credit-statement-workbook';
 import {
   buildReconciliationWorkbook,
+  ReconciliationParty,
   ReconciliationTransaction,
 } from './reconciliation-workbook';
 import { ESIM_COMPANY, RECONCILIATION_VAT_PERCENT } from './company-details';
@@ -8040,23 +8042,10 @@ export class PartnersService {
         // The esim.vn mark at the top left, as on the template (doitac-0911
         // #007); the statement still goes out without it.
         logo: reconciliationLogo(),
-        partyB: {
-          // Đối tác cá nhân không có tên công ty hay MST — dùng tên liên hệ và
-          // để trống, thay vì in ra chữ "null" trên văn bản hai bên ký.
-          name: partnerName,
-          address: partner.businessAddress?.trim() || '',
-          taxCode: partner.taxCode?.trim() || '',
-          representative: partner.contactName,
-          position: '',
-        },
+        ...this.statementPartyB(partner),
         periodStart: dates.periodStart,
         periodEnd: dates.periodEnd,
         issuedAt: dates.issuedAt,
-        contractLines: (partner.contractInfo ?? [])
-          .filter((line) => line?.label || line?.value)
-          .map((line) =>
-            [line.label, line.value].filter(Boolean).join(' ').trim(),
-          ),
         commissionVnd,
         vatPercent: RECONCILIATION_VAT_PERCENT,
         transactions,
@@ -8432,9 +8421,11 @@ export class PartnersService {
   }
 
   /**
-   * What a no-deposit partner bought in one Vietnamese month and what they
-   * owe for it (vande #056): purchases less what was given back, both read
-   * off the wallet ledger — the same lines that moved their balance.
+   * What a distribution partner bought in one Vietnamese month and what they
+   * still owe for it (vande #056, doitac-0911 #009): purchases less what was
+   * given back, read off the wallet ledger — the same lines that moved their
+   * balance. Bought from a deposit is paid; bought on the credit limit is
+   * owed.
    */
   async creditStatement(
     partnerId: number,
@@ -8443,10 +8434,19 @@ export class PartnersService {
     period: string;
     periodLabel: string;
     creditLimitVnd: number;
+    /** "Số đơn hợp lệ": bought this month and not wholly refunded. */
     orderCount: number;
+    /** "Số eSIM đã bán", of those orders. */
     esimCount: number;
+    /** "Tỷ lệ hoàn tiền": orders of the month with a refund, %. */
+    refundPercent: number;
     purchasedVnd: number;
     refundedVnd: number;
+    /** "Tổng doanh số bán ra": purchases less refunds. */
+    revenueVnd: number;
+    /** "Số tiền đã thanh toán": out of a deposit. */
+    paidVnd: number;
+    /** "Số tiền chưa thanh toán": on the credit limit. */
     amountDueVnd: number;
     lines: CreditStatementLine[];
   }> {
@@ -8454,6 +8454,9 @@ export class PartnersService {
     const rows: {
       type: string;
       amountVnd: string;
+      balanceAfterVnd: string | null;
+      onCredit: boolean;
+      orderCreatedAt: Date | null;
       createdAt: Date;
       orderNumber: string | null;
       deliveryEmail: string | null;
@@ -8466,7 +8469,8 @@ export class PartnersService {
       iccids: string | null;
       topupCustomer: string | null;
     }[] = await this.dataSource.query(
-      `SELECT t.type, t."amountVnd", t."createdAt", o."orderNumber",
+      `SELECT t.type, t."amountVnd", t."balanceAfterVnd", t."createdAt",
+              o."orderNumber", o."createdAt" AS "orderCreatedAt",
               o."orderType", o."topupPackageId", o."topupPackageName",
               o."targetIccid",
               -- No address of its own: the eSIMs went to the partner's login.
@@ -8487,7 +8491,18 @@ export class PartnersService {
                  JOIN "order" eo ON eo.id = oi."orderId"
                  LEFT JOIN "user" eu ON eu.id = eo."userId"
                 WHERE e.iccid = o."targetIccid"
-                ORDER BY e.id LIMIT 1) AS "topupCustomer"
+                ORDER BY e.id LIMIT 1) AS "topupCustomer",
+              -- On credit when the latest limit line before it is a grant or
+              -- a refill, not the one switching credit off: owed. Otherwise
+              -- it came out of a deposit and is already paid (#009).
+              COALESCE((
+                SELECT (r.metadata->>'creditOff') IS NULL
+                  FROM partner_wallet_transaction r
+                 WHERE r."partnerId" = t."partnerId"
+                   AND r.type = '${PartnerWalletTransactionTypeEnum.CREDIT_LIMIT_RESET}'
+                   AND r.id < t.id
+                 ORDER BY r.id DESC
+                 LIMIT 1), false) AS "onCredit"
          FROM partner_wallet_transaction t
          LEFT JOIN "order" o ON o.id = t."orderId"
          LEFT JOIN "user" u ON u.id = o."userId"
@@ -8495,17 +8510,6 @@ export class PartnersService {
           AND t.type IN ('${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE}',
                          '${PartnerWalletTransactionTypeEnum.ORDER_PURCHASE_REVERSAL}')
           AND ${vnMonthSql('t."createdAt"', '$2')}
-          -- Only what moved while on credit: the latest limit line before it
-          -- is a grant or a refill, not the one switching credit off. What
-          -- was bought from a deposit, before or after, is not billed.
-          AND COALESCE((
-                SELECT (r.metadata->>'creditOff') IS NULL
-                  FROM partner_wallet_transaction r
-                 WHERE r."partnerId" = t."partnerId"
-                   AND r.type = '${PartnerWalletTransactionTypeEnum.CREDIT_LIMIT_RESET}'
-                   AND r.id < t.id
-                 ORDER BY r.id DESC
-                 LIMIT 1), false)
         ORDER BY t."createdAt" ASC, t.id ASC`,
       [partnerId, `${period}-01`],
     );
@@ -8528,9 +8532,14 @@ export class PartnersService {
           ? 'Mua eSIM'
           : r.topupPackageId?.startsWith(BILLION_ADDON_PACKAGE_PREFIX)
             ? 'Addon'
-            : 'Topup',
+            : 'Nạp topup',
         quantity: isTopup ? 1 : Number(r.esims ?? 0),
         iccids: (isTopup ? r.targetIccid : r.iccids) ?? '',
+        onCredit: Boolean(r.onCredit),
+        ...(r.balanceAfterVnd == null
+          ? {}
+          : { balanceAfterVnd: Number(r.balanceAfterVnd) }),
+        ...(r.orderCreatedAt ? { orderedAt: new Date(r.orderCreatedAt) } : {}),
       };
     });
     const purchases = lines.filter((l) => l.status === 'Đã mua');
@@ -8538,17 +8547,57 @@ export class PartnersService {
     const refundedVnd = -lines
       .filter((l) => l.status !== 'Đã mua')
       .reduce((sum, l) => sum + l.amountVnd, 0);
+    const net = (onCredit: boolean) =>
+      lines
+        .filter((l) => Boolean(l.onCredit) === onCredit)
+        .reduce((sum, l) => sum + l.amountVnd, 0);
+
+    // The orders bought this month, each as one row (an order and its
+    // refunds together).
+    const bought = creditStatementRows(lines).filter((r) => r.revenueVnd > 0);
+    const valid = bought.filter((r) => r.status !== 'Đã hoàn tiền');
 
     return {
       period,
       periodLabel: `Tháng ${period.slice(5)}/${period.slice(0, 4)}`,
       creditLimitVnd: Number(partner.creditLimitVnd ?? 0),
-      orderCount: new Set(purchases.map((l) => l.orderNumber)).size,
-      esimCount: purchases.reduce((sum, l) => sum + l.esims, 0),
+      orderCount: valid.length,
+      esimCount: valid
+        .filter((r) => r.orderKind === 'Mua eSIM')
+        .reduce((sum, r) => sum + r.quantity, 0),
+      refundPercent: percentOf(
+        bought.filter((r) => r.refundVnd > 0).length,
+        bought.length,
+      ),
       purchasedVnd,
       refundedVnd,
-      amountDueVnd: Math.max(0, purchasedVnd - refundedVnd),
+      revenueVnd: purchasedVnd - refundedVnd,
+      paidVnd: Math.max(0, net(false)),
+      amountDueVnd: Math.max(0, net(true)),
       lines,
+    };
+  }
+
+  /** Bên B of a statement and its "Căn cứ…" lines (#006, doitac-0911 #009). */
+  private statementPartyB(partner: PartnerEntity): {
+    partyB: ReconciliationParty;
+    contractLines: string[];
+  } {
+    return {
+      partyB: {
+        // Đối tác cá nhân không có tên công ty hay MST — dùng tên liên hệ và
+        // để trống, thay vì in ra chữ "null" trên văn bản hai bên ký.
+        name: partner.companyName?.trim() || partner.contactName,
+        address: partner.businessAddress?.trim() || '',
+        taxCode: partner.taxCode?.trim() || '',
+        representative: partner.contactName,
+        position: '',
+      },
+      contractLines: (partner.contractInfo ?? [])
+        .filter((line) => line?.label || line?.value)
+        .map((line) =>
+          [line.label, line.value].filter(Boolean).join(' ').trim(),
+        ),
     };
   }
 
@@ -8560,9 +8609,19 @@ export class PartnersService {
     const partner = await this.getPartnerOrThrowById(partnerId);
     const statement = await this.creditStatement(partnerId, period);
     const partnerName = partner.companyName?.trim() || partner.contactName;
+    const [y, m] = period.split('-').map(Number);
     const content = await buildCreditStatementWorkbook({
-      partnerName,
-      ...statement,
+      partyA: ESIM_COMPANY,
+      logo: reconciliationLogo(),
+      ...this.statementPartyB(partner),
+      // 00:00:00 on the 1st to 23:59:59 on the last day (#009).
+      periodStart: new Date(y, m - 1, 1),
+      periodEnd: new Date(y, m, 0),
+      issuedAt: new Date(),
+      vatPercent: RECONCILIATION_VAT_PERCENT,
+      revenueVnd: statement.revenueVnd,
+      amountDueVnd: statement.amountDueVnd,
+      lines: statement.lines,
     });
     // Thang-10-2026_Doi-soat-giao-dich_Hoang-Ha-Mobile_03-11-2026_22-24-34
     // (vande-0411 #013): the name, since an id says nothing in a mailbox.
@@ -8576,8 +8635,10 @@ export class PartnersService {
   }
 
   /**
-   * Email every no-deposit partner what they owe for `period` (vande #056).
-   * `partnerId` limits it to one — the admin's "Gửi đối soát" button.
+   * Email every distribution partner ticked "Gửi email đối soát" their sales
+   * statement for `period` (vande #056, doitac-0911 #009) — what they owe on
+   * credit, or that a deposit already paid for it. `partnerId` limits it to
+   * one — the admin's "Gửi đối soát" button.
    */
   async sendCreditStatements(
     period: string,
@@ -8588,7 +8649,10 @@ export class PartnersService {
       // (doitac-0911 #008); the admin's own button sends regardless.
       where: partnerId
         ? { id: partnerId }
-        : { noDepositRequired: true, sendReconciliationEmail: true },
+        : {
+            partnerType: PartnerTypeEnum.DISTRIBUTION,
+            sendReconciliationEmail: true,
+          },
     });
     let sent = 0;
     for (const partner of partners) {
@@ -8596,8 +8660,8 @@ export class PartnersService {
       if (!to) continue;
       try {
         const statement = await this.creditStatement(partner.id, period);
-        // Somebody switched on or off mid-way may have bought nothing on
-        // credit: no statement for an empty month, unless asked for.
+        // Nothing bought or refunded: no statement for an empty month,
+        // unless asked for.
         if (!partnerId && statement.lines.length === 0) continue;
         let attachment: { filename: string; content: Buffer } | undefined;
         try {
@@ -8612,10 +8676,14 @@ export class PartnersService {
           contactName: partnerDisplayName(partner) || 'Quý đối tác',
           periodLabel: statement.periodLabel,
           creditLimitVnd: statement.creditLimitVnd,
+          onCredit: Boolean(partner.noDepositRequired),
           orderCount: statement.orderCount,
           esimCount: statement.esimCount,
+          refundPercent: statement.refundPercent,
           purchasedVnd: statement.purchasedVnd,
           refundedVnd: statement.refundedVnd,
+          revenueVnd: statement.revenueVnd,
+          paidVnd: statement.paidVnd,
           amountDueVnd: statement.amountDueVnd,
           ...(attachment ? { attachment } : {}),
         });
