@@ -11,14 +11,12 @@ import {
   Query,
   HttpStatus,
   HttpCode,
-  Headers,
   Request,
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
-import { SubmitOrderDto } from './dto/submit-order.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -44,8 +42,6 @@ import { UserOrderDetailDto } from './dto/user-order-detail.dto';
 import { AdminOrderDetailDto } from './dto/admin-order-detail.dto';
 import { RefundOrderDto } from '../wallets/dto/admin-wallet.dto';
 import { RetryProvisioningDto } from './dto/retry-provisioning.dto';
-import { clientIp } from '../tickets/ticket-spam-guard';
-import { hashIpForFraudWatch } from './order-fraud-signals';
 
 @ApiBearerAuth()
 @Roles(RoleEnum.admin)
@@ -68,26 +64,11 @@ export class OrdersController {
     return this.ordersService.create(createOrderDto);
   }
 
-  @Roles(RoleEnum.user, RoleEnum.admin)
-  @ApiCreatedResponse({ type: Order })
-  @Post('submit')
-  @HttpCode(HttpStatus.CREATED)
-  submitOrder(
-    @Request() req: { user: { id: number } } & Parameters<typeof clientIp>[0],
-    @Body() dto: SubmitOrderDto,
-    @Headers('user-agent') userAgent?: string,
-  ): Promise<Order> {
-    // Hashed on the way in: enough to spot several orders from one network
-    // (#036) without keeping the address itself.
-    return this.ordersService.submitOrder(
-      req.user.id,
-      dto,
-      hashIpForFraudWatch(clientIp(req)),
-      userAgent ?? null,
-      // The address itself only for the admin's "Vị trí & IP" (vande #058).
-      clientIp(req),
-    );
-  }
+  // SECURITY 12/11/2026: `POST /orders/submit` is gone. It let any signed-in
+  // account place real supplier orders with no payment at all (5 orders,
+  // 6 eSIMs taken on production 10–11/11). Customers buy through
+  // `payment/plan/checkout`, which provisions only after a verified payment;
+  // admins through `admin/orders/submit-manual`.
 
   @Roles(RoleEnum.user, RoleEnum.admin)
   @ApiOkResponse({ type: UserOrderDetailDto })
