@@ -1329,7 +1329,9 @@ export class OrdersService {
                 locationInfo: this.buildLocationInfo(plan),
               }
             : null,
-          orderRequestId: item.orderRequestId,
+          // The supplier's order id is what a forged supplier webhook needs
+          // (security 12/11/2026); the customer has no use for it.
+          orderRequestId: null,
           status: item.status,
           vndPrice: item.vndPrice,
           quantity: item.quantity,
