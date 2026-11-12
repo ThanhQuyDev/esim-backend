@@ -15,6 +15,7 @@ import { PlanMapper } from '../../../../../plans/infrastructure/persistence/rela
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { parsePlanOrder, sortByPlanOrder } from '../../../../blog-plan-order';
 import { toAuthorSlug } from '../../../../../authors/author-slug';
+import { applySafeSort } from '../../../../../utils/safe-sort';
 
 @Injectable()
 export class BlogRelationalRepository implements BlogRepository {
@@ -216,11 +217,7 @@ export class BlogRelationalRepository implements BlogRepository {
       );
     }
 
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(`blog.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
-      });
-    } else {
+    if (!applySafeSort(qb, 'blog', sortOptions)) {
       qb.orderBy('blog.createdAt', 'DESC');
       qb.addOrderBy('blog.id', 'ASC');
     }

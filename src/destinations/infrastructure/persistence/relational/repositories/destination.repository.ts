@@ -13,6 +13,7 @@ import { DestinationRepository } from '../../destination.repository';
 import { DestinationMapper } from '../mappers/destination.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { buildProvidersTextFilter } from '../../../../../utils/providers-text-filter';
+import { applySafeSort } from '../../../../../utils/safe-sort';
 
 @Injectable()
 export class DestinationsRelationalRepository implements DestinationRepository {
@@ -94,14 +95,7 @@ export class DestinationsRelationalRepository implements DestinationRepository {
 
     qb.andWhere('destination.deletedAt IS NULL');
 
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(
-          `destination.${sort.orderBy}`,
-          sort.order as 'ASC' | 'DESC',
-        );
-      });
-    } else {
+    if (!applySafeSort(qb, 'destination', sortOptions)) {
       qb.addOrderBy('destination.createdAt', 'DESC');
     }
 

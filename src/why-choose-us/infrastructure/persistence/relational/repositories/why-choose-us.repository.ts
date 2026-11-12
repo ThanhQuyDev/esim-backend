@@ -11,6 +11,7 @@ import {
   FilterWhyChooseUsDto,
   SortWhyChooseUsDto,
 } from '../../../../dto/find-all-why-choose-us.dto';
+import { applySafeSort } from '../../../../../utils/safe-sort';
 
 /** English page names an admin may type, in the stored types' wording. */
 const TYPE_ALIASES: Record<string, string> = {
@@ -114,14 +115,7 @@ export class WhyChooseUsRelationalRepository implements WhyChooseUsRepository {
       });
     }
 
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(
-          `whyChooseUs.${sort.orderBy}`,
-          sort.order as 'ASC' | 'DESC',
-        );
-      });
-    } else {
+    if (!applySafeSort(qb, 'whyChooseUs', sortOptions)) {
       qb.orderBy('whyChooseUs.createdAt', 'DESC');
       qb.addOrderBy('whyChooseUs.id', 'ASC');
     }
