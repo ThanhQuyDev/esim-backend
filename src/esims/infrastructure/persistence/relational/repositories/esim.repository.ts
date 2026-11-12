@@ -9,6 +9,7 @@ import { EsimRepository, EsimTopupSummary } from '../../esim.repository';
 import { EsimMapper } from '../mappers/esim.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { ESIM_LIFECYCLE_SQL } from '../../../../esim-lifecycle';
+import { applySafeSort } from '../../../../../utils/safe-sort';
 
 @Injectable()
 export class EsimsRelationalRepository implements EsimRepository {
@@ -42,11 +43,7 @@ export class EsimsRelationalRepository implements EsimRepository {
 
     this.applyEsimFilters(qb, filterOptions);
 
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(`esim.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
-      });
-    } else {
+    if (!applySafeSort(qb, 'esim', sortOptions)) {
       qb.orderBy('esim.createdAt', 'DESC');
     }
 

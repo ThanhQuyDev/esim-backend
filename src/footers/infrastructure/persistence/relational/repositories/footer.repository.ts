@@ -11,6 +11,7 @@ import {
   FilterFooterDto,
   SortFooterDto,
 } from '../../../../dto/find-all-footers.dto';
+import { applySafeSort } from '../../../../../utils/safe-sort';
 
 @Injectable()
 export class FooterRelationalRepository implements FooterRepository {
@@ -53,11 +54,7 @@ export class FooterRelationalRepository implements FooterRepository {
       );
     }
 
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(`footer.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
-      });
-    } else {
+    if (!applySafeSort(qb, 'footer', sortOptions)) {
       qb.orderBy('footer.sortOrder', 'ASC');
       qb.addOrderBy('footer.createdAt', 'ASC');
       qb.addOrderBy('footer.id', 'ASC');

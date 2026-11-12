@@ -11,6 +11,7 @@ import {
   FilterHeroBannerDto,
   SortHeroBannerDto,
 } from '../../../../dto/find-all-hero-banners.dto';
+import { applySafeSort } from '../../../../../utils/safe-sort';
 
 @Injectable()
 export class HeroBannerRelationalRepository implements HeroBannerRepository {
@@ -51,14 +52,7 @@ export class HeroBannerRelationalRepository implements HeroBannerRepository {
       );
     }
 
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(
-          `heroBanner.${sort.orderBy}`,
-          sort.order as 'ASC' | 'DESC',
-        );
-      });
-    } else {
+    if (!applySafeSort(qb, 'heroBanner', sortOptions)) {
       qb.orderBy('heroBanner.createdAt', 'DESC');
       qb.addOrderBy('heroBanner.id', 'ASC');
     }

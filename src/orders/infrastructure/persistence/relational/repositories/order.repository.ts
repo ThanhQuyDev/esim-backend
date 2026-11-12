@@ -18,6 +18,7 @@ import {
 } from '../../order.repository';
 import { OrderMapper } from '../mappers/order.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { applySafeSort } from '../../../../../utils/safe-sort';
 
 /**
  * A topup that went through ends as "completed", an eSIM order as "paid" —
@@ -464,11 +465,7 @@ export class OrdersRelationalRepository implements OrderRepository {
     this.applyAdvancedFilters(qb, filterOptions);
 
     // Sorting
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(`order.${sort.orderBy}`, sort.order as 'ASC' | 'DESC');
-      });
-    } else {
+    if (!applySafeSort(qb, 'order', sortOptions)) {
       qb.addOrderBy('order.createdAt', 'DESC');
     }
 

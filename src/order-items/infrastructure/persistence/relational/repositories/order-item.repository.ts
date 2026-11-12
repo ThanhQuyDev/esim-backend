@@ -11,6 +11,7 @@ import { OrderItem } from '../../../../domain/order-item';
 import { OrderItemRepository } from '../../order-item.repository';
 import { OrderItemMapper } from '../mappers/order-item.mapper';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
+import { applySafeSort } from '../../../../../utils/safe-sort';
 
 @Injectable()
 export class OrderItemsRelationalRepository implements OrderItemRepository {
@@ -54,14 +55,7 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
       });
     }
 
-    if (sortOptions?.length) {
-      sortOptions.forEach((sort) => {
-        qb.addOrderBy(
-          `orderItem.${sort.orderBy}`,
-          sort.order as 'ASC' | 'DESC',
-        );
-      });
-    } else {
+    if (!applySafeSort(qb, 'orderItem', sortOptions)) {
       qb.orderBy('orderItem.createdAt', 'DESC');
     }
 
