@@ -1,4 +1,5 @@
 ﻿import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { webhookMayUpdateEsim } from './webhook-esim-guard';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { EsimsService } from '../esims/esims.service';
@@ -79,9 +80,11 @@ export class WebhooksService {
     let planId: number | null = null;
 
     let dataTotal: string | null = null;
+    let matchedItemIds: number[] = [];
     if (requestId) {
       const orderItems =
         await this.orderItemsService.findByOrderRequestId(requestId);
+      matchedItemIds = orderItems.map((item) => Number(item.id));
 
       // Update all matching order items to completed with provider order info
       for (const item of orderItems) {
@@ -108,6 +111,14 @@ export class WebhooksService {
       }
     }
 
+    // Not one of our orders: nothing to deliver to anybody (security 12/11).
+    if (!matchedItemIds.length) {
+      this.logger.warn(
+        `Airalo webhook matches no order item (request_id=${requestId}), ignored`,
+      );
+      return;
+    }
+
     // 2. Create eSIM records from sims array
     for (const sim of sims) {
       if (!sim.iccid) continue;
@@ -126,6 +137,16 @@ export class WebhooksService {
         }
 
         const existing = await this.esimsService.findByIccid(sim.iccid);
+
+        if (
+          existing &&
+          !webhookMayUpdateEsim(existing, matchedItemIds, 'airalo')
+        ) {
+          this.logger.warn(
+            `Airalo webhook: iccid=${sim.iccid} belongs to another order, ignored (request_id=${requestId})`,
+          );
+          continue;
+        }
 
         if (existing) {
           await this.esimsService.update(existing.id, {
@@ -441,7 +462,11 @@ export class WebhooksService {
         `Updated ${orderItems.length} order item(s) to completed (topupId=${topupId})`,
       );
     } else {
-      this.logger.warn(`No order item found for topupId=${topupId}`);
+      // Not one of our orders: nothing to deliver to anybody (security 12/11).
+      this.logger.warn(
+        `No order item found for topupId=${topupId}, webhook ignored`,
+      );
+      return;
     }
 
     if (!iccid) {
@@ -466,6 +491,20 @@ export class WebhooksService {
     // 3. Upsert eSIM record
     try {
       const existing = await this.esimsService.findByIccid(iccid);
+
+      if (
+        existing &&
+        !webhookMayUpdateEsim(
+          existing,
+          orderItems.map((item) => Number(item.id)),
+          'gadgetkorea',
+        )
+      ) {
+        this.logger.warn(
+          `Gadget Korea webhook: iccid=${iccid} belongs to another order, ignored (topupId=${topupId})`,
+        );
+        return;
+      }
 
       if (existing) {
         await this.esimsService.update(existing.id, {

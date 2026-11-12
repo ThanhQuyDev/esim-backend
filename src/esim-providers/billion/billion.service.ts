@@ -1,3 +1,4 @@
+import { webhookMayUpdateEsim } from '../../webhooks/webhook-esim-guard';
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -1073,6 +1074,19 @@ export class BillionService {
       }
 
       const existing = await this.esimsService.findByIccid(sub.iccid);
+      if (
+        existing &&
+        !webhookMayUpdateEsim(
+          existing,
+          orderItems.map((item) => Number(item.id)),
+          PROVIDER,
+        )
+      ) {
+        this.logger.warn(
+          `[Billion] N009 iccid=${sub.iccid} belongs to another order, ignored (orderId=${orderId})`,
+        );
+        continue;
+      }
       if (existing) {
         await this.esimsService.update(existing.id, {
           smdpAddress: smdpAddress ?? existing.smdpAddress ?? undefined,

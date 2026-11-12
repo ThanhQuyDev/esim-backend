@@ -72,6 +72,7 @@ describe('Gadget Korea webhook', () => {
   it('should fill the topupId into an existing eSIM without overwriting one it has', async () => {
     const { service, esimsService } = makeService({
       id: 11,
+      orderItemId: 5,
       esimTranNo: null,
     });
 
@@ -82,7 +83,7 @@ describe('Gadget Korea webhook', () => {
       expect.objectContaining({ esimTranNo: 'GK-TOPUP-1' }),
     );
 
-    const kept = makeService({ id: 12, esimTranNo: 'EARLIER' });
+    const kept = makeService({ id: 12, orderItemId: 5, esimTranNo: 'EARLIER' });
     await kept.service.handleGadgetKoreaEvent(PAYLOAD);
     expect(kept.esimsService.update).toHaveBeenCalledWith(
       12,
@@ -97,7 +98,7 @@ describe('Gadget Korea webhook', () => {
       'expiresAt',
     );
 
-    const updated = makeService({ id: 11, esimTranNo: null });
+    const updated = makeService({ id: 11, orderItemId: 5, esimTranNo: null });
     await updated.service.handleGadgetKoreaEvent(PAYLOAD);
     expect(updated.esimsService.update.mock.calls[0][1]).not.toHaveProperty(
       'expiresAt',
@@ -116,5 +117,35 @@ describe('Gadget Korea webhook', () => {
     expect(esimsService.create).toHaveBeenCalledWith(
       expect.objectContaining({ qrcode: qrcodeImgUrl }),
     );
+  });
+
+  it("should not touch another customer's eSIM (security 12/11/2026)", async () => {
+    const { service, esimsService } = makeService({
+      id: 12,
+      orderItemId: 999,
+      userId: 42,
+      provider: 'gadgetkorea',
+    });
+
+    await service.handleGadgetKoreaEvent({
+      ...PAYLOAD,
+      downloadLink: 'LPA:$evil.example$X',
+    });
+
+    expect(esimsService.update).not.toHaveBeenCalled();
+    expect(esimsService.create).not.toHaveBeenCalled();
+  });
+
+  it('should ignore a webhook for a topupId we never ordered', async () => {
+    const { service, esimsService } = makeService(null);
+    (
+      service as unknown as {
+        orderItemsService: { findByOrderRequestId: jest.Mock };
+      }
+    ).orderItemsService.findByOrderRequestId.mockResolvedValue([]);
+
+    await service.handleGadgetKoreaEvent(PAYLOAD);
+
+    expect(esimsService.create).not.toHaveBeenCalled();
   });
 });
