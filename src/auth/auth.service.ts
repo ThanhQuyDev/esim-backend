@@ -715,7 +715,8 @@ export class AuthService {
 
     await this.otpService.deleteByUserId(user.id);
 
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Unpredictable, unlike Math.random (security 12/11/2026).
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
     const otpHash = await bcrypt.hash(otpCode, 10);
 
     await this.otpService.create({
@@ -758,7 +759,14 @@ export class AuthService {
       });
     }
 
-    if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
+    // The attempt is counted before the code is compared, in one statement
+    // (security 12/11/2026): checked and counted apart, a burst of parallel
+    // guesses all read 0 attempts and guessed without limit.
+    const mayTry = await this.otpService.claimAttempt(
+      otpRecord.id,
+      OTP_MAX_ATTEMPTS,
+    );
+    if (!mayTry) {
       await this.otpService.deleteByUserId(user.id);
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
@@ -769,7 +777,6 @@ export class AuthService {
     const isValid = await bcrypt.compare(otp, otpRecord.otpHash);
 
     if (!isValid) {
-      await this.otpService.incrementAttempts(otpRecord.id);
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         errors: { otp: 'otpInvalid' },
@@ -777,6 +784,10 @@ export class AuthService {
     }
 
     await this.otpService.deleteByUserId(user.id);
+
+    // A partner still pending or turned down cannot sign in this way either
+    // (security 12/11/2026), as with a password or Google.
+    await this.assertPartnerMaySignIn(user);
 
     const hash = crypto
       .createHash('sha256')

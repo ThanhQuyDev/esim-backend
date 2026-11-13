@@ -20,6 +20,10 @@ export class OtpService {
     return this.otpRepository.incrementAttempts(id);
   }
 
+  claimAttempt(id: Otp['id'], max: number): Promise<boolean> {
+    return this.otpRepository.claimAttempt(id, max);
+  }
+
   deleteByUserId(userId: User['id']): Promise<void> {
     return this.otpRepository.deleteByUserId(userId);
   }

@@ -11,5 +11,8 @@ export abstract class OtpRepository {
 
   abstract incrementAttempts(id: Otp['id']): Promise<void>;
 
+  /** Count one attempt if fewer than `max` were made; false otherwise. */
+  abstract claimAttempt(id: Otp['id'], max: number): Promise<boolean>;
+
   abstract deleteByUserId(userId: User['id']): Promise<void>;
 }
