@@ -3927,11 +3927,13 @@ export class OrdersService {
 
     // 1. Move the order to FAILED — this matches the cron-job terminology
     // and removes the order from the buyer's "đang chờ thanh toán" list.
-    const updated = await this.orderRepository.update(order.id, {
-      status: 'failed',
-    });
-    if (!updated) {
-      throw new NotFoundException(`Order ${orderId} not found after update`);
+    // Only while it is still pending (security 12/11/2026): a cancel racing
+    // the payment notice gave the eXU back while the eSIM was delivered.
+    const cancelled = await this.claimPendingOrder(order.id, 'failed');
+    if (!cancelled) {
+      throw new BadRequestException(
+        'Đơn hàng vừa được thanh toán hoặc đã huỷ, không thể huỷ nữa.',
+      );
     }
 
     // 2-4. Release wallet hold, decrement coupon usage, reverse pending
@@ -3945,15 +3947,9 @@ export class OrdersService {
       );
     }
 
-    if (order.couponCode) {
-      try {
-        await this.couponsService.releaseCoupon(order.couponCode);
-      } catch (err) {
-        this.logger.error(
-          `cancelOrder: failed to release coupon ${order.couponCode} for order ${order.id}: ${(err as Error).message}`,
-        );
-      }
-    }
+    // The coupon is counted when an order is paid, never before, so a
+    // cancelled pending order has nothing to give back (security 12/11/2026:
+    // giving it back reset the code's limit, one cancel at a time).
 
     try {
       await this.walletsService.reversePendingReferralForOrder(order.id);
@@ -3983,7 +3979,7 @@ export class OrdersService {
       } — coupon=${order.couponCode ?? '-'}, referral=${order.referralCode ?? '-'}, walletHold=${order.walletSpentVndAmount}`,
     );
 
-    return updated;
+    return { ...order, status: 'failed' } as Order;
   }
 
   async applyCouponAndClearCart(

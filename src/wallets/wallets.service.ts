@@ -560,6 +560,15 @@ export class WalletsService {
       if (existing) return existing;
 
       const wallet = await this.getOrCreateWalletWithManager(userId, manager);
+      // Concurrent checkouts wait for each other here, so each sees the
+      // holds the others made (security 12/11/2026: N parallel checkouts
+      // each spent the whole balance and got N orders).
+      await manager
+        .getRepository(UserWalletEntity)
+        .createQueryBuilder('wallet')
+        .setLock('pessimistic_write')
+        .where('wallet.id = :id', { id: wallet.id })
+        .getOne();
       if (wallet.status !== WalletStatusEnum.ACTIVE) {
         throw new BadRequestException('Ví eXu đang bị khóa.');
       }
@@ -590,7 +599,11 @@ export class WalletsService {
   ): Promise<WalletTransactionEntity | null> {
     return this.dataSource.transaction(async (manager) => {
       const holdRepo = manager.getRepository(WalletHoldEntity);
-      const hold = await holdRepo.findOne({ where: { orderId } });
+      // Locked: two captures of one hold must not both go through.
+      const hold = await holdRepo.findOne({
+        where: { orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!hold) return null;
       if (hold.status === WalletHoldStatusEnum.CAPTURED) return null;
       if (hold.status !== WalletHoldStatusEnum.HELD) return null;
