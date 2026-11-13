@@ -32,7 +32,9 @@ export class AuthGoogleService {
 
     const data = ticket.getPayload();
 
-    if (!data) {
+    // An unverified address could be anyone's (security 12/11/2026): the
+    // account is found by email, so it would sign in as that account.
+    if (!data || data.email_verified !== true) {
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         errors: {

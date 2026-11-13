@@ -40,6 +40,18 @@ export class OtpRelationalRepository implements OtpRepository {
     await this.otpRepository.increment({ id }, 'attempts', 1);
   }
 
+  async claimAttempt(id: Otp['id'], max: number): Promise<boolean> {
+    // One statement, so parallel guesses each take one of the attempts
+    // (security 12/11/2026: they all read 0 and guessed without limit).
+    const result = await this.otpRepository
+      .createQueryBuilder()
+      .update()
+      .set({ attempts: () => '"attempts" + 1' })
+      .where('id = :id AND "attempts" < :max', { id, max })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
   async deleteByUserId(userId: User['id']): Promise<void> {
     await this.otpRepository.delete({
       user: { id: Number(userId) },
