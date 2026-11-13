@@ -14,6 +14,9 @@ import {
   MinLength,
 } from 'class-validator';
 
+/** "", "/" or "/path?query" — never "//host", "/\host" or a full URL. */
+export const SAFE_TARGET_PATH = /^$|^\/(?![/\\])[^\\\s]*$/;
+
 /** Bounds for a code a partner names themselves (#014). */
 export const PARTNER_LINK_CODE_MIN_LENGTH = 8;
 export const PARTNER_LINK_CODE_MAX_LENGTH = 50;
@@ -54,6 +57,11 @@ export class CreatePartnerLinkDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  // A path on esim.vn only (security 12/11/2026): "//evil.com" or
+  // "https://evil.com" turned esim.vn/go/<code> into a redirect to anywhere.
+  @Matches(SAFE_TARGET_PATH, {
+    message: 'Trang đích phải là một đường dẫn trên esim.vn, bắt đầu bằng "/".',
+  })
   targetPath?: string;
 }
 
@@ -68,6 +76,11 @@ export class UpdatePartnerLinkDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  // A path on esim.vn only (security 12/11/2026): "//evil.com" or
+  // "https://evil.com" turned esim.vn/go/<code> into a redirect to anywhere.
+  @Matches(SAFE_TARGET_PATH, {
+    message: 'Trang đích phải là một đường dẫn trên esim.vn, bắt đầu bằng "/".',
+  })
   targetPath?: string;
 
   @ApiPropertyOptional()

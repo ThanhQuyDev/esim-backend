@@ -55,8 +55,15 @@ async function bootstrap() {
     })
     .build();
 
-  const document = SwaggerModule.createDocument(app, options);
-  SwaggerModule.setup('docs', app, document);
+  // Not on a live server unless asked for (security 12/11/2026): /docs-json
+  // handed attackers a map of every route, admin ones included.
+  if (
+    process.env.NODE_ENV !== 'production' ||
+    process.env.SWAGGER_ENABLED === 'true'
+  ) {
+    const document = SwaggerModule.createDocument(app, options);
+    SwaggerModule.setup('docs', app, document);
+  }
 
   await app.listen(configService.getOrThrow('app.port', { infer: true }));
 }
