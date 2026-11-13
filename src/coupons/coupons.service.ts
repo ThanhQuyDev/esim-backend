@@ -21,7 +21,7 @@ import {
   effectiveDiscountPercent,
 } from './coupon-discount';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { OrderEntity } from '../orders/infrastructure/persistence/relational/entities/order.entity';
 
 /**
@@ -165,13 +165,25 @@ export class CouponsService {
       throw new BadRequestException('Coupon has expired');
     }
 
-    if (coupon.maxUsage !== null && coupon.usageCount >= coupon.maxUsage) {
-      throw new BadRequestException('Coupon usage limit reached');
+    // Orders still waiting for payment count too (security 12/11/2026):
+    // the limit was only checked here and only counted paid orders, so a
+    // pile of pending orders all got the code and were all paid later.
+    if (coupon.maxUsage !== null) {
+      const pending = await this.orderRepo.count({
+        where: { couponCode: coupon.code, status: 'pending' },
+      });
+      if (coupon.usageCount + pending >= coupon.maxUsage) {
+        throw new BadRequestException('Coupon usage limit reached');
+      }
     }
 
     if (coupon.maxUsagePerUser !== null) {
       const userUsageCount = await this.orderRepo.count({
-        where: { userId, couponCode: coupon.code, status: 'paid' },
+        where: {
+          userId,
+          couponCode: coupon.code,
+          status: In(['paid', 'pending']),
+        },
       });
       if (userUsageCount >= coupon.maxUsagePerUser) {
         throw new BadRequestException(
