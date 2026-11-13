@@ -11,6 +11,9 @@ import {
   Min,
   MaxLength,
   IsInt,
+  Max,
+  ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -54,9 +57,12 @@ export class SubmitOrderItemDto {
   @IsNumber()
   planId!: number;
 
+  // Whole numbers only (security 12/11/2026): 1.01 was charged as 1.01
+  // and delivered as 2 Gadget Korea eSIMs.
   @ApiProperty({ example: 1 })
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(100)
   quantity!: number;
 
   @ApiPropertyOptional({
@@ -66,8 +72,9 @@ export class SubmitOrderItemDto {
       'Number of days for multidate plans (only when plan.isAbleMultidate is true)',
   })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(365)
   periodNum?: number;
 }
 
@@ -90,6 +97,8 @@ export class SubmitOrderDto {
 
   @ApiProperty({ type: [SubmitOrderItemDto] })
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => SubmitOrderItemDto)
   items!: SubmitOrderItemDto[];

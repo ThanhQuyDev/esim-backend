@@ -82,6 +82,13 @@ export class PaymentService {
 
     // If eXU wallet covers the entire amount, skip OnePay and finalize immediately
     if (order.vndPrice <= 0) {
+      // Nothing to pay is only right when eXU or a code paid for something
+      // (security 12/11/2026): an order of 0đ plans — or of none — is not a
+      // free eSIM.
+      if (!(Number(order.subtotalVndPrice ?? 0) > 0)) {
+        await this.ordersService.cancelOrder(order.id).catch(() => undefined);
+        throw new BadRequestException('Đơn hàng không hợp lệ.');
+      }
       const paid = await this.ordersService.finalizePaidOrder(order.id, {
         // Same name as a topup paid from the wallet (vande #023).
         paymentMethod: EXU_WALLET_PAYMENT_METHOD,
@@ -167,6 +174,13 @@ export class PaymentService {
 
     // Wallet covers the whole amount — nothing to transfer, finalize now.
     if (order.vndPrice <= 0) {
+      // Nothing to pay is only right when eXU or a code paid for something
+      // (security 12/11/2026): an order of 0đ plans — or of none — is not a
+      // free eSIM.
+      if (!(Number(order.subtotalVndPrice ?? 0) > 0)) {
+        await this.ordersService.cancelOrder(order.id).catch(() => undefined);
+        throw new BadRequestException('Đơn hàng không hợp lệ.');
+      }
       const paid = await this.ordersService.finalizePaidOrder(order.id, {
         // Same name as a topup paid from the wallet (vande #023).
         paymentMethod: EXU_WALLET_PAYMENT_METHOD,

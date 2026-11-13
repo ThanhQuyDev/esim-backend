@@ -1,10 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, Min } from 'class-validator';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class UpdateCartItemDto {
   @ApiProperty({ type: Number, example: 2 })
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(100)
   quantity: number;
 
   @ApiPropertyOptional({
@@ -13,7 +14,8 @@ export class UpdateCartItemDto {
     description: 'Number of days for multidate plans',
   })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(365)
   periodNum?: number;
 }
