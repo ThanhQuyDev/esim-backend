@@ -82,11 +82,14 @@ export class PaymentService {
 
     // If eXU wallet covers the entire amount, skip OnePay and finalize immediately
     if (order.vndPrice <= 0) {
-      await this.ordersService.finalizePaidOrder(order.id, {
+      const paid = await this.ordersService.finalizePaidOrder(order.id, {
         // Same name as a topup paid from the wallet (vande #023).
         paymentMethod: EXU_WALLET_PAYMENT_METHOD,
         paymentId: null,
       });
+      if (!paid) {
+        throw new BadRequestException('Đơn hàng không còn chờ thanh toán.');
+      }
       await this.ordersService.submitProviders(order.id);
       if (order.couponCode) {
         await this.ordersService.applyCouponAndClearCart(
@@ -164,11 +167,14 @@ export class PaymentService {
 
     // Wallet covers the whole amount — nothing to transfer, finalize now.
     if (order.vndPrice <= 0) {
-      await this.ordersService.finalizePaidOrder(order.id, {
+      const paid = await this.ordersService.finalizePaidOrder(order.id, {
         // Same name as a topup paid from the wallet (vande #023).
         paymentMethod: EXU_WALLET_PAYMENT_METHOD,
         paymentId: null,
       });
+      if (!paid) {
+        throw new BadRequestException('Đơn hàng không còn chờ thanh toán.');
+      }
       await this.ordersService.submitProviders(order.id);
       if (order.couponCode) {
         await this.ordersService.applyCouponAndClearCart(
@@ -364,11 +370,13 @@ export class PaymentService {
 
     // ── TOPUP ──────────────────────────────────────────────────────────────
     if (order.orderType === 'TOPUP') {
-      await this.ordersService.update(order.id, {
-        status: TOPUP_ORDER_STATUS.PAID,
-        paymentMethod: 'bank_transfer',
-        paymentId,
-      });
+      const claimed = await this.ordersService.claimPendingOrder(
+        order.id,
+        TOPUP_ORDER_STATUS.PAID,
+        { paymentMethod: 'bank_transfer', paymentId },
+      );
+      // Another delivery of the same transfer got there first.
+      if (!claimed) return { success: true };
 
       // Fire-and-forget: the provider call can be slow and must not hold the
       // webhook response. Failures surface as MANUAL_INTERVENTION inside.
@@ -388,10 +396,12 @@ export class PaymentService {
 
     // ── BUY_NEW ────────────────────────────────────────────────────────────
     try {
-      await this.ordersService.finalizePaidOrder(order.id, {
+      const paid = await this.ordersService.finalizePaidOrder(order.id, {
         paymentMethod: 'bank_transfer',
         paymentId,
       });
+      // Another delivery of the same transfer got there first.
+      if (!paid) return { success: true };
       await this.ordersService.submitProviders(order.id);
       if (order.couponCode) {
         await this.ordersService.applyCouponAndClearCart(
@@ -589,10 +599,12 @@ export class PaymentService {
 
     try {
       this.logger.log(`OnePay IPN: finalizing paid order ${orderNumber}...`);
-      await this.ordersService.finalizePaidOrder(order.id, {
+      const paid = await this.ordersService.finalizePaidOrder(order.id, {
         paymentMethod: 'onepay',
         paymentId: query['vpc_TransactionNo'] ?? null,
       });
+      // A replay of the same signed notice (security 12/11/2026).
+      if (!paid) return { code: '00' };
       await this.ordersService.submitProviders(order.id);
       if (order.couponCode) {
         await this.ordersService.applyCouponAndClearCart(
@@ -644,11 +656,16 @@ export class PaymentService {
     }
 
     // Mark PAID immediately, then trigger provider submission asynchronously.
-    await this.ordersService.update(order.id, {
-      status: TOPUP_ORDER_STATUS.PAID,
-      paymentMethod: 'onepay',
-      paymentId: query['vpc_TransactionNo'] ?? null,
-    });
+    const claimed = await this.ordersService.claimPendingOrder(
+      order.id,
+      TOPUP_ORDER_STATUS.PAID,
+      {
+        paymentMethod: 'onepay',
+        paymentId: query['vpc_TransactionNo'] ?? null,
+      },
+    );
+    // A replay of the same signed notice (security 12/11/2026).
+    if (!claimed) return { code: '00' };
 
     // Fire-and-forget — do not await. The provider call may be slow and we
     // must not hold the IPN response. Errors are caught inside executeTopup

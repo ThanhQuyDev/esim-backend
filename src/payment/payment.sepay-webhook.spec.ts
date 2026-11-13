@@ -18,7 +18,8 @@ function buildService(order: Record<string, unknown> | null) {
   const ordersService = {
     findByBankTransferCode: jest.fn().mockResolvedValue(order),
     update: jest.fn().mockResolvedValue(undefined),
-    finalizePaidOrder: jest.fn().mockResolvedValue(undefined),
+    finalizePaidOrder: jest.fn().mockResolvedValue({ id: 1 }),
+    claimPendingOrder: jest.fn().mockResolvedValue(true),
     submitProviders: jest.fn().mockResolvedValue(undefined),
     clearCartForUser: jest.fn().mockResolvedValue(undefined),
     applyCouponAndClearCart: jest.fn().mockResolvedValue(undefined),

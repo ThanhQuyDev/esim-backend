@@ -1855,11 +1855,16 @@ export class OrdersService {
     // 5. Mark as PAID via internal admin approval (no OnePay).
     // Mute auto invoice email — admin manually triggers it after verifying
     // the offline payment using `resendEsimEmail`.
-    await this.finalizePaidOrder(order.id, {
+    const paid = await this.finalizePaidOrder(order.id, {
       paymentMethod: 'admin_manual',
       paymentId: `ADMIN-${adminUserId}`,
       mutedEmail: true,
     });
+    if (!paid) {
+      throw new BadRequestException(
+        `Đơn ${orderNumber} không còn ở trạng thái chờ thanh toán.`,
+      );
+    }
 
     // 6. Provision with providers but mute the auto email
     try {
@@ -1995,11 +2000,17 @@ export class OrdersService {
     // thiếu tiền thì đơn phải dừng lại ở đây, không được cấp hàng.
     await input.onDebit(order.id, orderNumber);
 
-    await this.finalizePaidOrder(order.id, {
+    const paid = await this.finalizePaidOrder(order.id, {
       paymentMethod: 'partner_wallet',
       paymentId: `PARTNER-${input.buyerUserId}`,
       mutedEmail: true,
     });
+    // Cancelled (and refunded) while the wallet was being debited: no eSIM.
+    if (!paid) {
+      throw new BadRequestException(
+        `Đơn ${orderNumber} đã bị huỷ trước khi hoàn tất, không cấp eSIM.`,
+      );
+    }
 
     try {
       await this.submitProviders(order.id, { mutedEmail: true });
@@ -3048,11 +3059,21 @@ export class OrdersService {
       mutedEmail?: boolean;
     },
   ): Promise<Order | null> {
-    const updatedOrder = await this.update(id, {
-      status: 'paid',
+    // Only the call that moves the order out of `pending` goes on (security
+    // 12/11/2026): the signed OnePay parameters come back to the buyer on the
+    // return URL, and replaying them at once used to provision the order once
+    // per request. A cancelled or already-paid order is not paid again.
+    const claimed = await this.claimPendingOrder(id, 'paid', {
       paymentMethod: payload.paymentMethod,
       paymentId: payload.paymentId ?? null,
     });
+    if (!claimed) {
+      this.logger.warn(
+        `finalizePaidOrder: order ${id} is no longer pending — not paid again`,
+      );
+      return null;
+    }
+    const updatedOrder = await this.findById(id);
     if (updatedOrder) {
       await this.walletsService.completePaidOrderBenefits(updatedOrder);
       if (updatedOrder.attributedPartnerId) {
@@ -3073,6 +3094,36 @@ export class OrdersService {
       }
     }
     return updatedOrder;
+  }
+
+  /**
+   * Move an order from `pending` to `status` in one statement, so of several
+   * concurrent payment notices exactly one wins (security 12/11/2026).
+   * Returns false when the order was not pending any more.
+   */
+  async claimPendingOrder(
+    id: Order['id'],
+    status: string,
+    fields: { paymentMethod?: string | null; paymentId?: string | null } = {},
+  ): Promise<boolean> {
+    const rows: unknown[] = await this.dataSource.query(
+      `UPDATE "order"
+          SET status = $2,
+              "paymentMethod" = COALESCE($3, "paymentMethod"),
+              "paymentId" = COALESCE($4, "paymentId"),
+              "updatedAt" = now()
+        WHERE id = $1 AND status = 'pending'
+        RETURNING id`,
+      [
+        Number(id),
+        status,
+        fields.paymentMethod ?? null,
+        fields.paymentId ?? null,
+      ],
+    );
+    // pg returns [rows, count] for UPDATE … RETURNING through TypeORM.
+    const list = Array.isArray(rows[0]) ? (rows[0] as unknown[]) : rows;
+    return list.length > 0;
   }
 
   /**

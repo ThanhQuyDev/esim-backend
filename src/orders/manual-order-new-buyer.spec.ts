@@ -46,7 +46,7 @@ describe('Manual order for an unknown email (#041)', () => {
     internals.exchangeRateService = {
       getUsdToVndRate: jest.fn().mockResolvedValue(25000),
     };
-    internals.finalizePaidOrder = jest.fn().mockResolvedValue(undefined);
+    internals.finalizePaidOrder = jest.fn().mockResolvedValue({ id: 1 });
     internals.submitProviders = jest.fn().mockResolvedValue(undefined);
     internals.orderRepository = {
       findById: jest.fn().mockResolvedValue({ id: 11, orderNumber: 'MAN-1' }),
