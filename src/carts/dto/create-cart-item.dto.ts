@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsOptional, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateCartItemDto {
@@ -10,8 +17,9 @@ export class CreateCartItemDto {
 
   @ApiPropertyOptional({ type: Number, example: 1 })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(100)
   quantity?: number;
 
   @ApiPropertyOptional({
@@ -21,7 +29,8 @@ export class CreateCartItemDto {
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(365)
   periodNum?: number;
 }
