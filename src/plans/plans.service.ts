@@ -174,6 +174,14 @@ function groupPlansBySimType(plans: Plan[]): PlanGroups {
   };
 }
 
+/**
+ * Plans read for one destination or region page (vande-1411 #017). It was
+ * 1,000, cheapest first: since Billion and MicroEsim, China has 1,666 plans on
+ * sale and Japan 2,064, so the dearer ones — Gadget Korea's 4 GB/day for
+ * 12-30 days among them — never reached the page.
+ */
+export const STOREFRONT_PLAN_LIMIT = 10_000;
+
 /** Synced plans priced together (vande #078). */
 export const SYNC_REPRICE_BATCH = 200;
 /** How long a part-filled batch waits before it is priced anyway. */
@@ -968,7 +976,7 @@ export class PlansService implements OnApplicationBootstrap {
         isDomesticEsim: false,
       },
       sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
-      paginationOptions: { page: 1, limit: 1000 },
+      paginationOptions: { page: 1, limit: STOREFRONT_PLAN_LIMIT },
     });
 
     return groupPlansBySimType(await this.attachStorefrontFacts(all));
@@ -989,7 +997,7 @@ export class PlansService implements OnApplicationBootstrap {
         isDomesticEsim: false,
       },
       sortOptions: [{ orderBy: 'vndPrice', order: 'ASC' }],
-      paginationOptions: { page: 1, limit: 1000 },
+      paginationOptions: { page: 1, limit: STOREFRONT_PLAN_LIMIT },
     });
 
     return groupPlansBySimType(await this.attachStorefrontFacts(all));
