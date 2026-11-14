@@ -220,6 +220,22 @@ export class PlansController {
       },
     },
   })
+  /**
+   * eSIMs left per plan, `?ids=1,2,3` (vande-1411 #008): a number for local
+   * stock, null when the supplier issues eSIMs on demand. Public, like the
+   * stock the product page already shows.
+   */
+  @Get('stock')
+  @HttpCode(HttpStatus.OK)
+  stock(@Query('ids') ids?: string) {
+    return this.plansService.stockByPlanIds(
+      String(ids ?? '')
+        .split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isInteger(n) && n > 0),
+    );
+  }
+
   @Get('local-carriers')
   @HttpCode(HttpStatus.OK)
   listLocalCarriers() {

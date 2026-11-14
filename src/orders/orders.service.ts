@@ -603,6 +603,40 @@ export class OrdersService {
     });
   }
 
+  /**
+   * Refuses an order of more local eSIMs (Viettel, domestic carriers) than
+   * are left (vande-1411 #008). The cart used to let the quantity past the
+   * stock and the order went through; the eSIMs that did not exist were
+   * never delivered.
+   */
+  private async assertLocalStock(
+    planDetails: { quantity: number; plan: Plan }[],
+  ): Promise<void> {
+    const wanted = new Map<number, { quantity: number; plan: Plan }>();
+    for (const item of planDetails) {
+      if (!item.plan.isLocalInventory) continue;
+      const id = Number(item.plan.id);
+      const prev = wanted.get(id);
+      wanted.set(id, {
+        plan: item.plan,
+        quantity: (prev?.quantity ?? 0) + Number(item.quantity ?? 0),
+      });
+    }
+    if (!wanted.size) return;
+    const stock = await this.plansService.stockByPlanIds([...wanted.keys()]);
+    for (const [id, { plan, quantity }] of wanted) {
+      const left = Number(stock[id] ?? 0);
+      if (quantity > left) {
+        const name = plan.standardName || plan.name || `#${id}`;
+        throw new BadRequestException(
+          left > 0
+            ? `Gói "${name}" chỉ còn ${left} eSIM, vui lòng giảm số lượng.`
+            : `Gói "${name}" đã hết eSIM, vui lòng chọn gói khác.`,
+        );
+      }
+    }
+  }
+
   async submitOrder(
     userId: number,
     dto: SubmitOrderDto,
@@ -643,6 +677,8 @@ export class OrdersService {
         return { ...item, plan };
       }),
     );
+    // No more local eSIMs than there are (vande-1411 #008).
+    await this.assertLocalStock(planDetails);
 
     const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
     // An order an admin places for a customer is a direct sale (doitac-3010
@@ -998,6 +1034,8 @@ export class OrdersService {
         return { ...item, plan };
       }),
     );
+    // No more local eSIMs than there are (vande-1411 #008).
+    await this.assertLocalStock(planDetails);
 
     const pricing = await this.calculateOrderPricing(userId, dto, planDetails);
     // An order an admin places for a customer is a direct sale (doitac-3010

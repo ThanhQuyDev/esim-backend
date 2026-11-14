@@ -900,6 +900,37 @@ export class PlansService implements OnApplicationBootstrap {
     });
   }
 
+  /**
+   * eSIMs left of each plan (vande-1411 #008): a number for local stock
+   * (Viettel, the domestic carriers), null for a supplier that issues eSIMs
+   * on demand. For the cart and checkout, which must not take more than
+   * there is.
+   */
+  async stockByPlanIds(ids: number[]): Promise<Record<number, number | null>> {
+    const unique = [...new Set(ids.map(Number).filter((n) => n > 0))].slice(
+      0,
+      100,
+    );
+    const result: Record<number, number | null> = {};
+    if (!unique.length) return result;
+    const plans = await Promise.all(
+      unique.map((id) => this.plansRepository.findById(id)),
+    );
+    const local = plans
+      .filter((p): p is Plan => !!p && !!p.isLocalInventory)
+      .map((p) => Number(p.id));
+    const counts = local.length
+      ? await this.plansRepository.countAvailableEsimsByPlanIds(local)
+      : {};
+    for (const p of plans) {
+      if (!p) continue;
+      result[Number(p.id)] = p.isLocalInventory
+        ? Number(counts[Number(p.id)]?.count ?? 0)
+        : null;
+    }
+    return result;
+  }
+
   async findPlansByDestination(slug: string): Promise<PlanGroups> {
     const destination = await this.destinationsService.findBySlug(slug);
     if (!destination) {
