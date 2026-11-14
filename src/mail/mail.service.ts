@@ -1003,6 +1003,35 @@ export class MailService {
   }
 
   /**
+   * Code of the two-step sign-in, or of switching it off (vande-1411 #005).
+   */
+  async sendTwoFactorCode(data: {
+    to: string;
+    code: string;
+    expiresInMinutes: number;
+    purpose: 'login' | 'disable';
+  }): Promise<void> {
+    const what = data.purpose === 'login' ? 'đăng nhập' : 'tắt đăng nhập 2 lớp';
+    const subject = `Mã ${what} — ${BRAND_NAME}`;
+    const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111">
+<p>Chào bạn,</p>
+<p>Mã xác thực để ${what} vào tài khoản ${BRAND_NAME}:</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:6px">${data.code}</p>
+<p>Mã có hiệu lực trong ${data.expiresInMinutes} phút. Không chia sẻ mã này cho bất kỳ ai, kể cả nhân viên ${BRAND_NAME}.</p>
+<p>Nếu không phải bạn vừa thao tác, ai đó đã biết mật khẩu của bạn: hãy đổi mật khẩu ngay và báo cho ${SUPPORT_EMAIL}.</p>
+</div>`;
+    await this.mailerService.sendMail({
+      transportName: 'otp',
+      to: data.to,
+      subject,
+      text: `${subject}: ${data.code} (hiệu lực ${data.expiresInMinutes} phút)`,
+      templatePath: '',
+      context: {},
+      html,
+    });
+  }
+
+  /**
    * Code that sets or resets the sales password (vande-1411 #004). Plain and
    * short; the code is 6 digits, so nothing in it needs escaping.
    */

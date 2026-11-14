@@ -38,6 +38,8 @@ async function makeService(partner: Record<string, unknown> | null) {
   internals.partnersRepository = {
     findOne: jest.fn().mockResolvedValue(partner),
   };
+  // Two-step sign-in is off for this account (vande-1411 #005).
+  internals.twoFactor = { isEnabled: jest.fn().mockResolvedValue(false) };
   internals.getTokensData = jest.fn().mockResolvedValue({
     token: 't',
     refreshToken: 'r',

@@ -1,4 +1,9 @@
 import {
+  TwoFactorService,
+  twoFactorApplies,
+  type TwoFactorChallenge,
+} from './two-factor.service';
+import {
   HttpStatus,
   Injectable,
   NotFoundException,
@@ -51,6 +56,7 @@ export class AuthService {
     private otpService: OtpService,
     @InjectRepository(PartnerEntity)
     private partnersRepository: Repository<PartnerEntity>,
+    private twoFactor: TwoFactorService,
   ) {}
 
   /**
@@ -111,7 +117,9 @@ export class AuthService {
     });
   }
 
-  async validateLogin(loginDto: AuthEmailLoginDto): Promise<LoginResponseDto> {
+  async validateLogin(
+    loginDto: AuthEmailLoginDto,
+  ): Promise<LoginResponseDto | TwoFactorChallenge> {
     const user = await this.usersService.findByEmail(loginDto.email);
 
     if (!user) {
@@ -151,6 +159,38 @@ export class AuthService {
 
     await this.assertPartnerMaySignIn(user);
 
+    // Two-step sign-in switched on (vande-1411 #005): the right password
+    // earns a code by email, not a session.
+    if (twoFactorApplies(user) && (await this.twoFactor.isEnabled(user.id))) {
+      return this.twoFactor.startChallenge(user);
+    }
+
+    return this.openSession(user);
+  }
+
+  /** The second step: the code mailed after the right password (#005). */
+  async completeTwoFactorLogin(
+    challenge: string,
+    code: string,
+  ): Promise<LoginResponseDto> {
+    const userId = await this.twoFactor.verifyChallenge(challenge, code);
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { email: 'notFound' },
+      });
+    }
+    await this.assertPartnerMaySignIn(user);
+    return this.openSession(user);
+  }
+
+  resendTwoFactorCode(challenge: string) {
+    return this.twoFactor.resend(challenge);
+  }
+
+  /** A session for a user whose password (and code) checked out. */
+  private async openSession(user: User): Promise<LoginResponseDto> {
     // What the partner list reports as "hoạt động gần nhất" (#060). Wrapped,
     // not awaited: a failed bookkeeping write must not cost somebody their
     // sign-in, and that includes it throwing on the way out.
@@ -243,6 +283,8 @@ export class AuthService {
     }
 
     await this.assertPartnerMaySignIn(user);
+    // Google skips the password: closed with two-step on (vande-1411 #005).
+    await this.twoFactor.assertNoBypass(user);
 
     const hash = crypto
       .createHash('sha256')
@@ -701,6 +743,9 @@ export class AuthService {
       });
     }
 
+    // Not even a code for an account with two-step on (vande-1411 #005).
+    await this.twoFactor.assertNoBypass(user);
+
     const existingOtp = await this.otpService.findActiveByUserId(user.id);
     if (existingOtp) {
       const timeSinceCreated =
@@ -788,6 +833,8 @@ export class AuthService {
     // A partner still pending or turned down cannot sign in this way either
     // (security 12/11/2026), as with a password or Google.
     await this.assertPartnerMaySignIn(user);
+    // The email code alone is one factor: closed with two-step on (#005).
+    await this.twoFactor.assertNoBypass(user);
 
     const hash = crypto
       .createHash('sha256')

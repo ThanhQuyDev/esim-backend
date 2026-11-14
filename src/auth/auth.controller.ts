@@ -1,3 +1,8 @@
+import type { TwoFactorChallenge } from './two-factor.service';
+import {
+  AuthTwoFactorLoginDto,
+  AuthTwoFactorResendDto,
+} from './dto/auth-two-factor.dto';
 import {
   Body,
   Controller,
@@ -45,8 +50,33 @@ export class AuthController {
     type: LoginResponseDto,
   })
   @HttpCode(HttpStatus.OK)
-  public login(@Body() loginDto: AuthEmailLoginDto): Promise<LoginResponseDto> {
+  public login(
+    @Body() loginDto: AuthEmailLoginDto,
+  ): Promise<LoginResponseDto | TwoFactorChallenge> {
+    // With two-step sign-in on, `{ twoFactorRequired, challenge }` and no
+    // session yet (vande-1411 #005).
     return this.service.validateLogin(loginDto);
+  }
+
+  /** Second step of a two-step sign-in: the mailed code (vande-1411 #005). */
+  @SerializeOptions({
+    groups: ['me'],
+  })
+  @Post('email/login/2fa')
+  @ApiOkResponse({
+    type: LoginResponseDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  public loginTwoFactor(
+    @Body() dto: AuthTwoFactorLoginDto,
+  ): Promise<LoginResponseDto> {
+    return this.service.completeTwoFactorLogin(dto.challenge, dto.code);
+  }
+
+  @Post('email/login/2fa/resend')
+  @HttpCode(HttpStatus.OK)
+  public resendTwoFactor(@Body() dto: AuthTwoFactorResendDto) {
+    return this.service.resendTwoFactorCode(dto.challenge);
   }
 
   @Post('email/register')

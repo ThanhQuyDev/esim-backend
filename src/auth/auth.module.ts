@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { TwoFactorController } from './two-factor.controller';
+import { TwoFactorService } from './two-factor.service';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -24,8 +26,14 @@ import { PartnerEntity } from '../partners/infrastructure/persistence/relational
     // Sign-in has to know whether a partner profile is still pending (#001).
     TypeOrmModule.forFeature([PartnerEntity]),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtRefreshStrategy, AnonymousStrategy],
+  controllers: [AuthController, TwoFactorController],
+  providers: [
+    AuthService,
+    TwoFactorService,
+    JwtStrategy,
+    JwtRefreshStrategy,
+    AnonymousStrategy,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}
