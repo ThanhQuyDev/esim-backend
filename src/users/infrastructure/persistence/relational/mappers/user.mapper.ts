@@ -16,6 +16,8 @@ export class UserMapper {
     domainEntity.hasPassword = !!raw.password;
     domainEntity.mustChangePassword = raw.mustChangePassword ?? false;
     domainEntity.lastLoginAt = raw.lastLoginAt ?? null;
+    domainEntity.lockedAt = raw.lockedAt ?? null;
+    domainEntity.lockReason = raw.lockReason ?? null;
     domainEntity.provider = raw.provider;
     domainEntity.socialId = raw.socialId;
     domainEntity.firstName = raw.firstName;
@@ -78,6 +80,12 @@ export class UserMapper {
     }
     persistenceEntity.email = domainEntity.email;
     persistenceEntity.password = domainEntity.password;
+    if (domainEntity.lockedAt !== undefined) {
+      persistenceEntity.lockedAt = domainEntity.lockedAt;
+    }
+    if (domainEntity.lockReason !== undefined) {
+      persistenceEntity.lockReason = domainEntity.lockReason;
+    }
     persistenceEntity.mustChangePassword =
       domainEntity.mustChangePassword ?? false;
     persistenceEntity.provider = domainEntity.provider;

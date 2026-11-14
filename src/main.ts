@@ -13,10 +13,12 @@ import { AppModule } from './app.module';
 import validationOptions from './utils/validation-options';
 import { AllConfigType } from './config/config.type';
 import { ResolvePromisesInterceptor } from './utils/serializer.interceptor';
+import { corsOrigin } from './utils/cors-origins';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    cors: true,
+    // Only esim sites, from a browser (security 15/11/2026; was `true`).
+    cors: { origin: corsOrigin },
     rawBody: true,
   });
   useContainer(app.select(AppModule), { fallbackOnErrors: true });

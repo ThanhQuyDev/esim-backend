@@ -150,6 +150,8 @@ export class TicketInboundMailService implements OnModuleDestroy {
                 {
                   cloudName: process.env.CLOUDINARY_CLOUD_NAME,
                   uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET,
+                  apiKey: process.env.CLOUDINARY_API_KEY,
+                  apiSecret: process.env.CLOUDINARY_API_SECRET,
                 },
                 this.logger,
               );

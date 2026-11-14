@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { AllConfigType } from '../config/config.type';
 import { ChatService } from './chat.service';
 import { ChatAutomationsService } from '../chat-automations/chat-automations.service';
+import { corsOrigin } from '../utils/cors-origins';
 
 /**
  * Every connected admin socket (#032). A customer who opens a conversation after
@@ -29,7 +30,8 @@ interface AuthenticatedSocket extends Socket {
   };
 }
 
-@WebSocketGateway({ namespace: '/chat', cors: { origin: '*' } })
+// Only esim sites may open the chat socket (security 15/11/2026; was '*').
+@WebSocketGateway({ namespace: '/chat', cors: { origin: corsOrigin } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
