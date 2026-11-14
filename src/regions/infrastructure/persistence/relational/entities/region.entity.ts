@@ -58,6 +58,10 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isPopular: boolean;
 
+  /** Place among the five on the home page on a phone (vande-1411 #021). */
+  @Column({ type: 'smallint', nullable: true })
+  mobileHomeRank: number | null;
+
   @Column({ type: String, nullable: true })
   providers: string | null;
 

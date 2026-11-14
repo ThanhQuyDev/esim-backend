@@ -27,6 +27,7 @@ export class RegionMapper {
     domainEntity.noticeVi = raw.noticeVi ?? null;
     domainEntity.parentId = raw.parentId ?? null;
     domainEntity.isParent = !!raw.isParent;
+    domainEntity.mobileHomeRank = raw.mobileHomeRank ?? null;
     domainEntity.isActive = raw.isActive;
     domainEntity.isPopular = raw.isPopular;
     domainEntity.soldCount = Number(raw.soldCount ?? 0);
@@ -56,6 +57,10 @@ export class RegionMapper {
     persistenceEntity.noticeVi = domainEntity.noticeVi ?? null;
     persistenceEntity.parentId = domainEntity.parentId ?? null;
     persistenceEntity.isParent = !!domainEntity.isParent;
+    // Left as it is when a save does not mention it.
+    if (domainEntity.mobileHomeRank !== undefined) {
+      persistenceEntity.mobileHomeRank = domainEntity.mobileHomeRank;
+    }
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.isPopular = domainEntity.isPopular;
     // Owned by the recount job; an ordinary save keeps whatever it last wrote.

@@ -32,6 +32,12 @@ export class FilterDestinationDto {
   @IsBoolean()
   isPopular?: boolean;
 
+  /** The ones picked for the home page on a phone (vande-1411 #021). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  mobileHome?: boolean;
+
   @ApiPropertyOptional({ type: Boolean })
   @IsOptional()
   @IsBoolean()

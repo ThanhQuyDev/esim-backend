@@ -76,6 +76,14 @@ export class Destination {
   })
   isPopular: boolean;
 
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Place among the five on the home page on a phone (vande-1411 #021).',
+  })
+  mobileHomeRank?: number | null;
+
   @ApiProperty({
     type: Boolean,
     example: true,

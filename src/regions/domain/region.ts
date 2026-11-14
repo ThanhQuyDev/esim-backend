@@ -100,6 +100,14 @@ export class Region {
   })
   isParent?: boolean;
 
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Place among the five on the home page on a phone (vande-1411 #021).',
+  })
+  mobileHomeRank?: number | null;
+
   /** The parent's name, when a plan list asks for its region. */
   parentName?: string | null;
 

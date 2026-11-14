@@ -64,6 +64,16 @@ export class FilterRegionDto {
   featuredTop?: boolean;
 
   /**
+   * The ones picked for the home page on a phone, with the packs of a picked
+   * parent so its card can say how many options it has and the lowest price,
+   * as `featuredTop` does (vande-1411 #021).
+   */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  mobileHome?: boolean;
+
+  /**
    * Suppliers to match against the free-text `providers` column (#036), exactly
    * as the destination filter does: the column is typed by hand, so each entry
    * is a case-insensitive substring and a region qualifies if it mentions ANY

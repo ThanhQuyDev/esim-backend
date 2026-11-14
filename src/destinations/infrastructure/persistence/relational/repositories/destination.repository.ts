@@ -59,6 +59,9 @@ export class DestinationsRelationalRepository implements DestinationRepository {
         });
       }
     }
+    if (filterOptions?.mobileHome) {
+      qb.andWhere('destination.mobileHomeRank IS NOT NULL');
+    }
     if (filterOptions?.isPopular !== undefined) {
       qb.andWhere('destination.isPopular = :isPopular', {
         isPopular: filterOptions.isPopular,

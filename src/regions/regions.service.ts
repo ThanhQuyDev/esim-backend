@@ -79,6 +79,7 @@ export class RegionsService {
           ? null
           : (createRegionDto.parentId ?? null),
         isParent: createRegionDto.isParent ?? false,
+        mobileHomeRank: createRegionDto.mobileHomeRank ?? null,
       },
       createRegionDto.destinationIds,
     );
@@ -170,6 +171,10 @@ export class RegionsService {
         // A parent has no parent of its own.
         parentId: updateRegionDto.isParent ? null : updateRegionDto.parentId,
         isParent: updateRegionDto.isParent,
+        // Only when sent, so a save that leaves it out keeps it (vande-1411 #021).
+        ...(updateRegionDto.mobileHomeRank !== undefined && {
+          mobileHomeRank: updateRegionDto.mobileHomeRank,
+        }),
       },
       updateRegionDto.destinationIds,
     );

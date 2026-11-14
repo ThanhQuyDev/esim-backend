@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 export class CreateDestinationDto {
@@ -62,6 +65,17 @@ export class CreateDestinationDto {
   @IsOptional()
   @IsBoolean()
   isPopular?: boolean;
+
+  /**
+   * Its place among the five the home page shows on a phone, 1 to 5; null
+   * when it is not one of them (vande-1411 #021).
+   */
+  @ApiPropertyOptional({ type: Number, nullable: true, minimum: 1, maximum: 5 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  mobileHomeRank?: number | null;
 
   @ApiPropertyOptional({ example: true, type: Boolean })
   @IsOptional()

@@ -58,6 +58,7 @@ export class DestinationsService {
       avatarUrl: createDestinationDto.avatarUrl ?? null,
       keySearch: createDestinationDto.keySearch ?? null,
       isPopular: createDestinationDto.isPopular ?? false,
+      mobileHomeRank: createDestinationDto.mobileHomeRank ?? null,
       isActive: createDestinationDto.isActive ?? true,
       description: createDestinationDto.description ?? null,
       descriptionVi: createDestinationDto.descriptionVi ?? null,
@@ -144,6 +145,10 @@ export class DestinationsService {
       avatarUrl: updateDestinationDto.avatarUrl,
       keySearch: updateDestinationDto.keySearch,
       isPopular: updateDestinationDto.isPopular,
+      // Only when sent, so a save that leaves it out keeps it (vande-1411 #021).
+      ...(updateDestinationDto.mobileHomeRank !== undefined && {
+        mobileHomeRank: updateDestinationDto.mobileHomeRank,
+      }),
       isActive: updateDestinationDto.isActive,
       description: updateDestinationDto.description,
       descriptionVi: updateDestinationDto.descriptionVi,

@@ -14,6 +14,7 @@ export class DestinationMapper {
     domainEntity.avatarUrl = raw.avatarUrl;
     domainEntity.keySearch = raw.keySearch;
     domainEntity.isPopular = raw.isPopular;
+    domainEntity.mobileHomeRank = raw.mobileHomeRank ?? null;
     domainEntity.isActive = raw.isActive;
     domainEntity.description = raw.description;
     domainEntity.descriptionVi = raw.descriptionVi;
@@ -54,6 +55,10 @@ export class DestinationMapper {
     persistenceEntity.avatarUrl = domainEntity.avatarUrl;
     persistenceEntity.keySearch = domainEntity.keySearch;
     persistenceEntity.isPopular = domainEntity.isPopular;
+    // Left as it is when a save does not mention it.
+    if (domainEntity.mobileHomeRank !== undefined) {
+      persistenceEntity.mobileHomeRank = domainEntity.mobileHomeRank;
+    }
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.description = domainEntity.description;
     persistenceEntity.descriptionVi = domainEntity.descriptionVi;

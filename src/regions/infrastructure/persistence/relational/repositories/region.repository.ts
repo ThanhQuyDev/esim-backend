@@ -107,6 +107,17 @@ export class RegionsRelationalRepository implements RegionRepository {
       if (picked.length) qb.andWhere(`(${picked.join(' OR ')})`);
     }
 
+    if (filterOptions?.mobileHome) {
+      qb.andWhere(
+        `(region."mobileHomeRank" IS NOT NULL
+          OR region."parentId" IN (
+            SELECT picked.id FROM "region" picked
+             WHERE picked."mobileHomeRank" IS NOT NULL
+               AND picked."deletedAt" IS NULL
+          ))`,
+      );
+    }
+
     if (filterOptions?.featuredTop) {
       qb.andWhere(
         `((region."parentId" IS NULL AND region."isPopular" = true)
