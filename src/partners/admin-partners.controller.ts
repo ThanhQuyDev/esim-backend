@@ -833,6 +833,56 @@ export class AdminPartnersController {
     res.end(file.content);
   }
 
+  /**
+   * A marketing partner's commission statement for one month, `period` =
+   * YYYY-MM (default: last month) (vande-1411 #047).
+   */
+  @Get(':id/commission-statement')
+  @HttpCode(HttpStatus.OK)
+  commissionStatement(
+    @Param('id') id: number,
+    @Query('period') period?: string,
+  ) {
+    return this.partnersService.commissionStatement(
+      Number(id),
+      creditPeriod(period),
+    );
+  }
+
+  /** That statement as the .xlsx the monthly email carries (vande-1411 #047). */
+  @Get(':id/commission-statement/export-excel')
+  @HttpCode(HttpStatus.OK)
+  async exportCommissionStatement(
+    @Param('id') id: number,
+    @Query('period') period: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const file = await this.partnersService.commissionStatementWorkbook(
+      Number(id),
+      creditPeriod(period),
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${file.filename}"`,
+      'Content-Length': file.content.length.toString(),
+    });
+    res.end(file.content);
+  }
+
+  /** Email that statement to the partner now (vande-1411 #047). */
+  @Post(':id/commission-statement/send')
+  @HttpCode(HttpStatus.OK)
+  sendCommissionStatement(
+    @Param('id') id: number,
+    @Query('period') period?: string,
+  ) {
+    return this.partnersService.sendCommissionStatement(
+      Number(id),
+      creditPeriod(period),
+    );
+  }
+
   /** Email the statement to this partner now (vande #056). */
   @Post(':id/credit-statement/send')
   @HttpCode(HttpStatus.OK)

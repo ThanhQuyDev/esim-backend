@@ -8198,6 +8198,110 @@ export class PartnersService {
   }
 
   /**
+   * One marketing partner's statement for one month (vande-1411 #047), the
+   * figures and file of the monthly email, for the period an admin picks in
+   * the partner's page. A month with no commission reads as zeros.
+   */
+  async commissionStatement(
+    partnerId: number,
+    period: string,
+  ): Promise<{
+    period: string;
+    periodLabel: string;
+    validOrders: number;
+    esimsSold: number;
+    viaCouponPercent: number;
+    newCustomerPercent: number;
+    refundPercent: number;
+    revenueVnd: number;
+    commissionVnd: number;
+    status: string | null;
+  }> {
+    await this.getPartnerOrThrowById(partnerId);
+    const { rows } = await this.adminListReconciliations({ period });
+    const row = rows.find((r) => r.partnerId === Number(partnerId));
+    const [year, month] = period.split('-');
+    return {
+      period,
+      periodLabel: `Tháng ${month}/${year}`,
+      validOrders: row?.validOrders ?? 0,
+      esimsSold: row?.esimsSold ?? 0,
+      viaCouponPercent: row?.viaCouponPercent ?? 0,
+      newCustomerPercent: row?.newCustomerPercent ?? 0,
+      refundPercent: row?.refundPercent ?? 0,
+      revenueVnd: row?.revenueVnd ?? 0,
+      commissionVnd: row?.commissionVnd ?? 0,
+      status: row?.status ?? null,
+    };
+  }
+
+  /** The month's first and last day, as the monthly email dates them. */
+  private statementDates(period: string): {
+    periodStart: Date;
+    periodEnd: Date;
+    issuedAt: Date;
+  } {
+    const [year, month] = period.split('-').map(Number);
+    return {
+      periodStart: new Date(year, month - 1, 1),
+      periodEnd: new Date(year, month, 0),
+      issuedAt: new Date(),
+    };
+  }
+
+  /** The .xlsx of that statement (vande-1411 #047), as the email carries. */
+  async commissionStatementWorkbook(
+    partnerId: number,
+    period: string,
+  ): Promise<{ filename: string; content: Buffer }> {
+    const statement = await this.commissionStatement(partnerId, period);
+    const file = await this.buildReconciliationAttachment(
+      partnerId,
+      period,
+      this.statementDates(period),
+      statement.commissionVnd,
+    );
+    if (!file) {
+      throw new BadRequestException('Không dựng được file đối soát.');
+    }
+    return file;
+  }
+
+  /**
+   * Email that statement to the partner now (vande-1411 #047). Only the email:
+   * the payout is raised by the monthly run, never by a resend.
+   */
+  async sendCommissionStatement(
+    partnerId: number,
+    period: string,
+  ): Promise<{ sent: number }> {
+    const partner = await this.getPartnerOrThrowById(partnerId);
+    if (!partner.contactEmail) return { sent: 0 };
+    const statement = await this.commissionStatement(partnerId, period);
+    const attachment = await this.buildReconciliationAttachment(
+      partnerId,
+      period,
+      this.statementDates(period),
+      statement.commissionVnd,
+    );
+    await this.mailService.sendPartnerReconciliationStatement({
+      to: partner.contactEmail,
+      contactName:
+        partner.companyName?.trim() || partner.contactName || 'Quý đối tác',
+      periodLabel: statement.periodLabel,
+      validOrders: statement.validOrders,
+      esimsSold: statement.esimsSold,
+      viaCouponPercent: statement.viaCouponPercent,
+      newCustomerPercent: statement.newCustomerPercent,
+      refundPercent: statement.refundPercent,
+      revenueVnd: statement.revenueVnd,
+      commissionVnd: statement.commissionVnd,
+      ...(attachment ? { attachment } : {}),
+    });
+    return { sent: 1 };
+  }
+
+  /**
    * Email each partner the previous month's statement (#076).
    *
    * Runs daily and does nothing on all but one day: the schedule is a setting,
