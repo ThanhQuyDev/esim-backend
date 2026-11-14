@@ -154,6 +154,9 @@ export class Destination {
   @ApiPropertyOptional({ type: Number, example: 100000 })
   fromPrice?: number | null;
 
+  /** In a list: plans on sale now (vande-1411 #031). */
+  planCount?: number;
+
   @ApiProperty({
     type: Number,
     example: 350,

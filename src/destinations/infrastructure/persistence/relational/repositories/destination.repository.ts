@@ -48,7 +48,17 @@ export class DestinationsRelationalRepository implements DestinationRepository {
           .where('plan."destinationId" = destination.id')
           .andWhere('plan."isActive" = true')
           .andWhere('plan."deletedAt" IS NULL');
-      }, 'fromPrice');
+      }, 'fromPrice')
+      // Plans on sale now: the CMS column, and what the storefront lists by
+      // (vande-1411 #031).
+      .addSelect((subQuery) => {
+        return subQuery
+          .select('COUNT(*)', 'planCount')
+          .from(PlanEntity, 'plan')
+          .where('plan."destinationId" = destination.id')
+          .andWhere('plan."isActive" = true')
+          .andWhere('plan."deletedAt" IS NULL');
+      }, 'planCount');
 
     if (filterOptions?.parentId !== undefined) {
       if (filterOptions.parentId === null) {
@@ -66,6 +76,11 @@ export class DestinationsRelationalRepository implements DestinationRepository {
         travel: 'travel',
         esimType,
       });
+    }
+    if (filterOptions?.hasPlans) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM "plan" hp WHERE hp."destinationId" = destination.id AND hp."isActive" = true AND hp."deletedAt" IS NULL)`,
+      );
     }
     if (filterOptions?.mobileHome) {
       qb.andWhere('destination.mobileHomeRank IS NOT NULL');
@@ -123,6 +138,7 @@ export class DestinationsRelationalRepository implements DestinationRepository {
       domain.fromPrice = raw.raw[index]?.fromPrice
         ? Number(raw.raw[index].fromPrice)
         : null;
+      domain.planCount = Number(raw.raw[index]?.planCount ?? 0);
       return domain;
     });
 

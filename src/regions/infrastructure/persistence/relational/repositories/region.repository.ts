@@ -70,19 +70,24 @@ export class RegionsRelationalRepository implements RegionRepository {
         'dest_count',
       )
       .addSelect('MIN(plan."vndPrice")', 'from_price')
+      .addSelect('COUNT(DISTINCT plan.id)', 'plan_count')
       // Its parent's slugs and names, so a list missing the parent row (it
       // stops at 200) still links a pack's card to the parent's page
       // (vande-1411 #028).
       .addSelect(
         `(SELECT json_build_object('slug', p.slug, 'slugVi', p."slugVi", 'name', p.name, 'title', p.title, 'titleVi', p."titleVi", 'avatarUrl', p."avatarUrl", 'iconUrl', p."iconUrl",
-          'childCount', (SELECT COUNT(*) FROM "region" c WHERE c."parentId" = p.id AND c."isActive" = true AND c."deletedAt" IS NULL))
+          'childCount', (SELECT COUNT(*) FROM "region" c WHERE c."parentId" = p.id AND c."isActive" = true AND c."deletedAt" IS NULL
+            AND EXISTS (SELECT 1 FROM "plan" cp WHERE cp."regionId" = c.id AND cp."isActive" = true AND cp."deletedAt" IS NULL)),
+          'isActive', p."isActive",
+          'hasPlans', EXISTS (SELECT 1 FROM "plan" pp WHERE pp."regionId" = p.id AND pp."isActive" = true AND pp."deletedAt" IS NULL))
           FROM "region" p WHERE p.id = region."parentId" AND p."deletedAt" IS NULL)`,
         'parent_info',
       )
       // How many active packs a parent has, so its card counts every option
       // even when some are past this page of results (vande-1411 #030).
       .addSelect(
-        `(SELECT COUNT(*) FROM "region" c WHERE c."parentId" = region.id AND c."isActive" = true AND c."deletedAt" IS NULL)`,
+        `(SELECT COUNT(*) FROM "region" c WHERE c."parentId" = region.id AND c."isActive" = true AND c."deletedAt" IS NULL
+            AND EXISTS (SELECT 1 FROM "plan" cp WHERE cp."regionId" = c.id AND cp."isActive" = true AND cp."deletedAt" IS NULL))`,
         'child_count',
       )
       // Every pack, on or off: the badge in the CMS list.
@@ -133,6 +138,12 @@ export class RegionsRelationalRepository implements RegionRepository {
       qb.andWhere(`COALESCE(region."esimType", 'travel') = :esimType`, {
         esimType,
       });
+    }
+
+    if (filterOptions?.hasPlans) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM "plan" hp WHERE hp."regionId" = region.id AND hp."isActive" = true AND hp."deletedAt" IS NULL)`,
+      );
     }
 
     if (filterOptions?.mobileHome) {
@@ -222,6 +233,7 @@ export class RegionsRelationalRepository implements RegionRepository {
         | string
         | null
         | undefined;
+      domain.planCount = Number(rawResults.raw[index]?.plan_count ?? 0);
       domain.childCount = Number(rawResults.raw[index]?.child_count ?? 0);
       domain.childTotal = Number(rawResults.raw[index]?.child_total ?? 0);
       domain.parent =

@@ -74,6 +74,12 @@ export class FilterRegionDto {
   @IsBoolean()
   mobileHome?: boolean;
 
+  /** Only those selling plans now: the storefront's lists (vande-1411 #031). */
+  @ApiPropertyOptional({ type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  hasPlans?: boolean;
+
   /**
    * "travel", "local" or "all". Left out, the list is travel only, so a
    * domestic carrier never shows among the countries (vande-1411 #025).
