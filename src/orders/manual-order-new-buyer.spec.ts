@@ -73,6 +73,11 @@ describe('Manual order for an unknown email (#041)', () => {
       expect.anything(),
       expect.any(String),
       expect.any(Number),
+      undefined,
+      undefined,
+      undefined,
+      // One kind of eSIM: asked for at once (vande-1411 #003).
+      { oneEsimPerLine: false },
     );
   });
 
@@ -132,6 +137,11 @@ describe('Manual order for an unknown email (#041)', () => {
       expect.anything(),
       expect.any(String),
       expect.any(Number),
+      undefined,
+      undefined,
+      undefined,
+      // One kind of eSIM: asked for at once (vande-1411 #003).
+      { oneEsimPerLine: false },
     );
   });
 

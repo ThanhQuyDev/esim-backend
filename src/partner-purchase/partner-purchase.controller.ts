@@ -33,6 +33,11 @@ import {
 } from '../utils/order-import-file';
 import { downloadFilename } from '../utils/download-filename';
 import { bulkEmailInterval } from '../orders/bulk-esim-list';
+import {
+  PACING_EMAIL_DEFAULT,
+  PACING_FILE_DEFAULT,
+  pacingRange,
+} from '../orders/provision-pacing';
 
 /**
  * Hai hành động ghi của luồng đối tác tự mua hàng (#046).
@@ -140,8 +145,26 @@ export class PartnerPurchaseController {
             mode: dto.bulkMode,
             // Namespaced by partner: two partners' uploads never share a queue.
             batch: `P${partner.id}-${dto.bulkBatch ?? randomUUID()}`,
-            intervalSec: bulkEmailInterval(dto.emailIntervalSec),
+            // The gap between eSIMs is the gap between emails (#003).
+            intervalSec: 0,
           }
+        : null,
+      // A bulk upload asks for its eSIMs one by one, 10–30 seconds apart
+      // (5–10 for a file) unless the partner chose (vande-1411 #003).
+      pacing: dto.bulkMode
+        ? pacingRange(
+            dto.pacingMinSec != null || dto.pacingMaxSec != null
+              ? { minSec: dto.pacingMinSec, maxSec: dto.pacingMaxSec }
+              : dto.emailIntervalSec != null && dto.bulkMode === 'email'
+                ? {
+                    minSec: bulkEmailInterval(dto.emailIntervalSec),
+                    maxSec: bulkEmailInterval(dto.emailIntervalSec),
+                  }
+                : null,
+            dto.bulkMode === 'email'
+              ? PACING_EMAIL_DEFAULT
+              : PACING_FILE_DEFAULT,
+          )
         : null,
     });
   }

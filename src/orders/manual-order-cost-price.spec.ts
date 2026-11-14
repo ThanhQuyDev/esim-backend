@@ -41,6 +41,13 @@ describe('Cost price on a manual order (#042)', () => {
       .mockResolvedValue({ id: 11, orderNumber: 'MAN-1' });
     internals.finalizePaidOrder = jest.fn().mockResolvedValue({ id: 1 });
     internals.submitProviders = jest.fn().mockResolvedValue(undefined);
+    // Several kinds are paced (vande-1411 #003).
+    internals.schedulePacedProvisioning = jest
+      .fn()
+      .mockResolvedValue({ count: 0, endsAt: new Date() });
+    internals.dispatchPacedProvisioning = jest
+      .fn()
+      .mockResolvedValue(undefined);
     internals.orderRepository = {
       findById: jest.fn().mockResolvedValue({ id: 11 }),
     };
@@ -112,12 +119,22 @@ describe('Cost price on a manual order (#042)', () => {
       ],
     });
 
-    const [, submitDto] = (internals.createPendingOrder as jest.Mock).mock
-      .calls[0];
+    const [, submitDto, , , , , , options] = (
+      internals.createPendingOrder as jest.Mock
+    ).mock.calls[0];
     expect(submitDto.items).toEqual([
       { planId: 3, quantity: 2 },
       { planId: 4, quantity: 3 },
     ]);
+    // Two kinds: one line per eSIM, asked for one by one, 10–30 s apart
+    // (vande-1411 #003), and not all at once.
+    expect(options).toEqual({ oneEsimPerLine: true });
+    expect(internals.schedulePacedProvisioning).toHaveBeenCalledWith(
+      expect.any(Number),
+      { minSec: 10, maxSec: 30 },
+      undefined,
+    );
+    expect(internals.submitProviders).not.toHaveBeenCalled();
   });
 
   it('should refuse a line whose code does not match its plan (#031)', async () => {

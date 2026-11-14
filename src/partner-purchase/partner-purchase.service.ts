@@ -1,3 +1,4 @@
+import type { PacingRange } from '../orders/provision-pacing';
 import {
   BadRequestException,
   Injectable,
@@ -312,6 +313,8 @@ export class PartnerPurchaseService {
       recipientEmail?: string | null;
       /** Part of a bulk upload (vande #057). */
       bulk?: BulkOrderTag | null;
+      /** Ask for the eSIMs one by one, this far apart (vande-1411 #003). */
+      pacing?: PacingRange | null;
     },
   ): Promise<{
     orderNumber: string;
@@ -323,6 +326,8 @@ export class PartnerPurchaseService {
     esimCount: number;
     pendingEsims: number;
     notReceivedEsims: number;
+    /** When the last eSIM of a paced upload is asked for (#003). */
+    provisionEta: string | null;
   }> {
     const partner = await this.partnersService.getPartnerOrThrowById(partnerId);
     const quote = await this.partnersService.quoteCart(partnerId, input.items);
@@ -347,6 +352,7 @@ export class PartnerPurchaseService {
           ? null
           : input.recipientEmail?.trim().toLowerCase() || null,
       bulk: input.bulk ?? null,
+      pacing: input.pacing ?? null,
       onDebit: async (orderId, orderNumber) => {
         await this.partnersService.debitWalletForPurchase(partnerId, {
           orderId,
@@ -357,7 +363,8 @@ export class PartnerPurchaseService {
       },
     });
 
-    // Lines the supplier turned down on the spot.
+    // Lines the supplier turned down on the spot; a paced line not asked for
+    // yet is still coming (vande-1411 #003).
     const items: {
       id: number;
       planId: number;
@@ -365,13 +372,18 @@ export class PartnerPurchaseService {
       orderRequestId: string | null;
       periodNum: number | null;
       n: number;
+      scheduled: boolean;
     }[] = await this.dataSource.query(
       `SELECT oi.id, oi."planId", oi.quantity, oi."orderRequestId", oi."periodNum",
-              (SELECT count(*) FROM esim e WHERE e."orderItemId" = oi.id)::int AS n
+              (SELECT count(*) FROM esim e WHERE e."orderItemId" = oi.id)::int AS n,
+              (oi."provisionNotBefore" IS NOT NULL
+                 AND oi."provisionAttempts" = 0) AS scheduled
          FROM order_item oi WHERE oi."orderId" = $1`,
       [order.id],
     );
-    const failed = items.filter((i) => i.n === 0 && !i.orderRequestId);
+    const failed = items.filter(
+      (i) => i.n === 0 && !i.orderRequestId && !i.scheduled,
+    );
     const esimCount = items.reduce((sum, i) => sum + Number(i.n), 0);
     const notReceivedEsims = failed.reduce(
       (sum, i) => sum + Number(i.quantity),
@@ -397,6 +409,7 @@ export class PartnerPurchaseService {
       esimCount,
       notReceivedEsims,
       pendingEsims: Math.max(0, quote.esimCount - esimCount - notReceivedEsims),
+      provisionEta: order.provisionEta ?? null,
     };
   }
 

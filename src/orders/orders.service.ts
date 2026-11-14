@@ -16,6 +16,15 @@ import {
   provisionErrorText,
   retryStaggerMs,
 } from './provision-retry';
+import {
+  PACING_EMAIL_DEFAULT,
+  PACING_FILE_DEFAULT,
+  PACING_MAX_SEC,
+  pacingGapMs,
+  pacingRange,
+  pacingSchedule,
+  type PacingRange,
+} from './provision-pacing';
 import { deviceInfo, deviceType, storedUserAgent } from '../utils/device-info';
 import { isPlanRefundable } from '../plans/plan-refund-policy';
 import {
@@ -41,7 +50,7 @@ import {
   UnprocessableEntityException,
   forwardRef,
 } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron, CronExpression, Interval } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -942,6 +951,11 @@ export class OrdersService {
     clientUserAgent?: string | null,
     /** The buyer's address itself, for "Vị trí & IP" (vande #058). */
     clientIp?: string | null,
+    /**
+     * One line per eSIM, whatever the supplier (vande-1411 #003): a paced
+     * order asks for its eSIMs one by one, so each needs its own line.
+     */
+    options: { oneEsimPerLine?: boolean } = {},
   ): Promise<Order> {
     // Save phone number to user profile if provided and user doesn't have one yet
     if (dto.phoneNumber) {
@@ -1099,7 +1113,7 @@ export class OrdersService {
       // per topupId, so expand into one order-item per unit (quantity = 1
       // each). Total price/cost is preserved because each row carries the
       // per-unit amounts.
-      if (item.plan.provider === 'gadgetkorea') {
+      if (item.plan.provider === 'gadgetkorea' || options.oneEsimPerLine) {
         const count = Math.max(1, item.quantity);
         for (let u = 0; u < count; u++) {
           await this.orderItemsService.create({
@@ -1594,29 +1608,50 @@ export class OrdersService {
       }
     }
 
-    if (esimAccessItems.length > 0) {
-      const txnId = `${order.orderNumber}-esimaccess`;
+    // A paced order (vande-1411 #003) asks for each line on its own, so each
+    // line has its own transaction id — the same one on every repeat of it,
+    // which is what keeps a repeat from buying twice.
+    const pacedIds = await this.pacedItemIds(
+      esimAccessItems.map((i) => Number(i.id)),
+    );
+    const esimAccessCalls =
+      pacedIds.size > 0
+        ? esimAccessItems.map((i) => ({
+            txnId: pacedIds.has(Number(i.id))
+              ? `${order.orderNumber}-esimaccess-${i.id}`
+              : `${order.orderNumber}-esimaccess`,
+            items: [i],
+          }))
+        : esimAccessItems.length > 0
+          ? [
+              {
+                txnId: `${order.orderNumber}-esimaccess`,
+                items: esimAccessItems,
+              },
+            ]
+          : [];
+    for (const call of esimAccessCalls) {
       try {
         const result = await this.esimAccessService.submitPlanOrder({
-          transactionId: txnId,
+          transactionId: call.txnId,
           // Day passes are charged for every day bought (#013, round 4).
-          lines: esimAccessItems.map((i) => ({
+          lines: call.items.map((i) => ({
             packageCode: i.plan.providerPlanId,
             count: i.quantity,
             unitPriceUsd: Number(i.plan.costPrice),
             periodNum: i.periodNum,
           })),
         });
-        for (const item of esimAccessItems) {
+        for (const item of call.items) {
           await this.orderItemsService.update(item.id, {
             orderRequestId: result.orderNo ?? null,
           });
         }
-        await this.recordProvisionAttempt(esimAccessItems, null);
+        await this.recordProvisionAttempt(call.items, null);
       } catch (err) {
         this.logger.error(`EsimAccess order failed: ${(err as Error).message}`);
         // Kept on the line and retried by retryUnplacedProviderItems (#003).
-        await this.recordProvisionAttempt(esimAccessItems, err);
+        await this.recordProvisionAttempt(call.items, err);
       }
     }
 
@@ -1904,10 +1939,15 @@ export class OrdersService {
         /** Days of a day pass (vande #014). */
         periodNum?: number;
       }[];
+      /** Seconds between two supplier calls (vande-1411 #003). */
+      pacingMinSec?: number;
+      pacingMaxSec?: number;
     },
     /** Part of a bulk order from a file (vande #057). */
     bulk?: BulkOrderTag,
-  ): Promise<Order> {
+    /** Ask for the eSIMs one by one, this far apart (vande-1411 #003). */
+    pacingOverride?: PacingRange | null,
+  ): Promise<Order & { provisionEta?: string | null }> {
     // 1. Resolve every plan by slug (primary) and verify its packageCode.
     //
     // Before the buyer, because resolving the buyer now has a side effect: it
@@ -2008,11 +2048,25 @@ export class OrdersService {
     // Same readable date-time code as every other order (#051, test round 4):
     // MAN-yyMMddHHmmssSSS-XXXXXX.
     const orderNumber = generateOrderNumber('MAN-');
+    // Several kinds of eSIM are asked for one by one (vande-1411 #003): the
+    // admin sees the gap from the second kind on, 10–30 seconds by default.
+    const pacing =
+      pacingOverride ??
+      (resolved.length >= 2
+        ? pacingRange(
+            { minSec: dto.pacingMinSec, maxSec: dto.pacingMaxSec },
+            PACING_EMAIL_DEFAULT,
+          )
+        : null);
     const order = await this.createPendingOrder(
       Number(buyer.id),
       submitDto,
       orderNumber,
       vndRate,
+      undefined,
+      undefined,
+      undefined,
+      { oneEsimPerLine: !!pacing },
     );
     // Before any eSIM exists, so every mail of it — now or by a supplier's
     // webhook later — is queued or held back (vande #057).
@@ -2036,17 +2090,26 @@ export class OrdersService {
       );
     }
 
-    // 6. Provision with providers but mute the auto email
-    try {
-      await this.submitProviders(order.id, { mutedEmail: true });
-    } catch (err) {
-      this.logger.error(
-        `submitManualOrder: provider submission failed for ${orderNumber}: ${(err as Error).message}`,
-      );
+    // 6. Provision with providers but mute the auto email — one by one when
+    // paced (vande-1411 #003), all at once otherwise.
+    let provisionEta: string | null = null;
+    if (pacing) {
+      provisionEta = (
+        await this.schedulePacedProvisioning(order.id, pacing, bulk?.batch)
+      ).endsAt.toISOString();
+      void this.dispatchPacedProvisioning();
+    } else {
+      try {
+        await this.submitProviders(order.id, { mutedEmail: true });
+      } catch (err) {
+        this.logger.error(
+          `submitManualOrder: provider submission failed for ${orderNumber}: ${(err as Error).message}`,
+        );
+      }
     }
 
     const finalOrder = await this.orderRepository.findById(order.id);
-    return finalOrder ?? order;
+    return Object.assign(finalOrder ?? order, { provisionEta });
   }
 
   /**
@@ -2084,8 +2147,10 @@ export class OrdersService {
     deliveryEmail?: string | null;
     /** Part of a bulk order from a file (vande #057). */
     bulk?: BulkOrderTag | null;
+    /** Ask for the eSIMs one by one, this far apart (vande-1411 #003). */
+    pacing?: PacingRange | null;
     onDebit: (orderId: number, orderNumber: string) => Promise<void>;
-  }): Promise<Order> {
+  }): Promise<Order & { provisionEta?: string | null }> {
     const lines = input.items?.length
       ? input.items
       : [
@@ -2129,6 +2194,10 @@ export class OrdersService {
       } as SubmitOrderDto,
       orderNumber,
       vndRate,
+      undefined,
+      undefined,
+      undefined,
+      { oneEsimPerLine: !!input.pacing },
     );
 
     // Định giá lại theo giá đối tác. `createPendingOrder` tính theo giá bán lẻ
@@ -2183,6 +2252,21 @@ export class OrdersService {
       throw new BadRequestException(
         `Đơn ${orderNumber} đã bị huỷ trước khi hoàn tất, không cấp eSIM.`,
       );
+    }
+
+    // A paced upload (vande-1411 #003): the eSIMs are asked for one by one
+    // and each is mailed as it comes, by the dispatcher.
+    if (input.pacing) {
+      const { endsAt } = await this.schedulePacedProvisioning(
+        order.id,
+        input.pacing,
+        input.bulk?.batch,
+      );
+      void this.dispatchPacedProvisioning();
+      const pacedOrder = await this.orderRepository.findById(order.id);
+      return Object.assign(pacedOrder ?? order, {
+        provisionEta: endsAt.toISOString(),
+      });
     }
 
     try {
@@ -2244,6 +2328,9 @@ export class OrdersService {
     dto: {
       mode: 'email' | 'file';
       emailIntervalSec?: number;
+      /** Seconds between two eSIMs, a random value of the range (#003). */
+      pacingMinSec?: number;
+      pacingMaxSec?: number;
       rows: {
         slug: string;
         quantity: number;
@@ -2255,6 +2342,9 @@ export class OrdersService {
     batch: string;
     mode: 'email' | 'file';
     orders: { id: number; orderNumber: string; email: string; esims: number }[];
+    /** The gap used, and when the last eSIM is asked for (vande-1411 #003). */
+    pacing: PacingRange;
+    provisionEta: string | null;
   }> {
     if (!dto.rows?.length) {
       throw new BadRequestException('Chưa có dòng gói cước nào.');
@@ -2296,10 +2386,21 @@ export class OrdersService {
       });
     }
 
+    // Every eSIM is asked for on its own, a random gap after the one before,
+    // and mailed as soon as it comes (vande-1411 #003): the gap is the email
+    // gap too, so the mail queue no longer adds one of its own.
+    const pacing = pacingRange(
+      dto.pacingMinSec != null || dto.pacingMaxSec != null
+        ? { minSec: dto.pacingMinSec, maxSec: dto.pacingMaxSec }
+        : dto.emailIntervalSec != null && dto.mode === 'email'
+          ? { minSec: dto.emailIntervalSec, maxSec: dto.emailIntervalSec }
+          : null,
+      dto.mode === 'email' ? PACING_EMAIL_DEFAULT : PACING_FILE_DEFAULT,
+    );
     const tag: BulkOrderTag = {
       mode: dto.mode,
       batch: `BULK-${randomBytes(8).toString('hex')}`,
-      intervalSec: bulkEmailInterval(dto.emailIntervalSec),
+      intervalSec: 0,
     };
 
     // One order per customer, or one order for all of it.
@@ -2322,6 +2423,7 @@ export class OrdersService {
       email: string;
       esims: number;
     }[] = [];
+    let provisionEta: string | null = null;
     for (const [email, lines] of groups) {
       const order = await this.submitManualOrder(
         adminUserId,
@@ -2335,18 +2437,12 @@ export class OrdersService {
           })),
         },
         tag,
+        pacing,
       );
       // A manual order is muted until the admin confirms payment; a bulk
-      // email order is the admin asking for it to go out, through the queue.
-      if (dto.mode === 'email') {
-        try {
-          await this.resendEsimEmail(Number(order.id));
-        } catch (err) {
-          this.logger.error(
-            `submitBulkOrders: could not queue mail for ${order.orderNumber}: ${(err as Error).message}`,
-          );
-        }
-      }
+      // email order is the admin asking for it to go out — eSIM by eSIM, by
+      // the dispatcher, as each comes (vande-1411 #003).
+      if (order.provisionEta) provisionEta = order.provisionEta;
       orders.push({
         id: Number(order.id),
         orderNumber: order.orderNumber,
@@ -2354,7 +2450,7 @@ export class OrdersService {
         esims: lines.reduce((sum, l) => sum + l.quantity, 0),
       });
     }
-    return { batch: tag.batch, mode: dto.mode, orders };
+    return { batch: tag.batch, mode: dto.mode, orders, pacing, provisionEta };
   }
 
   /**
@@ -3077,6 +3173,7 @@ export class OrdersService {
     }
 
     const topup = await this.buildTopupDetail(order);
+    const pacedProvision = await this.pacedProvisionState(Number(order.id));
     const { notes, refunds } = await this.orderNotesAndRefunds(order.id);
 
     // Money before / after refunds (#009, round 4), and each line's share of
@@ -3153,6 +3250,7 @@ export class OrdersService {
       // Ordered in bulk from a file (vande #057).
       bulkMode: order.bulkMode ?? null,
       bulkEmailIntervalSec: order.bulkEmailIntervalSec ?? null,
+      pacedProvision,
       subtotalVndPrice: Number(order.subtotalVndPrice ?? 0),
       payableVndPrice: Number(order.payableVndPrice ?? 0),
       refundedAmountVnd: refundedVnd,
@@ -4645,6 +4743,170 @@ export class OrdersService {
       }
     }
   }
+
+  /**
+   * Give each line of a paced order the moment it is first asked for
+   * (vande-1411 #003). The first eSIM goes at once, or a gap after the last
+   * one of the same upload when other orders of it came before; every next
+   * one a random gap after that. Returns when the last one is due.
+   */
+  async schedulePacedProvisioning(
+    orderId: number,
+    range: PacingRange,
+    batch?: string | null,
+    random: () => number = Math.random,
+  ): Promise<{ count: number; endsAt: Date }> {
+    return this.dataSource.transaction(async (manager) => {
+      // Two checkouts of one upload must not take the same moments.
+      if (batch) {
+        await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+          `paced_provision:${batch}`,
+        ]);
+      }
+      const items: { id: number }[] = await manager.query(
+        `SELECT id FROM order_item
+          WHERE "orderId" = $1 AND "orderRequestId" IS NULL
+            AND status = 'pending'
+          ORDER BY id`,
+        [orderId],
+      );
+      const now = new Date();
+      let start = now;
+      if (batch) {
+        const [last] = await manager.query(
+          `SELECT max(oi."provisionNotBefore") AS at
+             FROM order_item oi JOIN "order" o ON o.id = oi."orderId"
+            WHERE o."bulkBatch" = $1 AND o.id <> $2`,
+          [batch, orderId],
+        );
+        if (last?.at) {
+          const next = new Date(
+            new Date(last.at).getTime() + pacingGapMs(range, random),
+          );
+          if (next > start) start = next;
+        }
+      }
+      const times = pacingSchedule(items.length, range, start, random);
+      for (const [i, item] of items.entries()) {
+        await manager.query(
+          `UPDATE order_item SET "provisionNotBefore" = $2 WHERE id = $1`,
+          [item.id, times[i]],
+        );
+      }
+      return { count: items.length, endsAt: times[times.length - 1] ?? now };
+    });
+  }
+
+  /**
+   * eSIMs of a paced order not asked for yet, and when the last is due
+   * (vande-1411 #003): "Đang lấy eSIM… dự kiến xong lúc …", so nobody
+   * downloads the list while it is still filling.
+   */
+  async pacedProvisionState(
+    orderId: number,
+  ): Promise<{ remaining: number; endsAt: string } | null> {
+    if (!this.dataSource) return null;
+    const [row] = await this.dataSource.query(
+      `SELECT count(*)::int AS remaining,
+              max(oi."provisionNotBefore") AS "endsAt"
+         FROM order_item oi
+        WHERE oi."orderId" = $1
+          AND oi."provisionNotBefore" IS NOT NULL
+          AND oi."provisionAttempts" = 0
+          AND oi."orderRequestId" IS NULL
+          AND oi.status = 'pending'
+          AND NOT EXISTS (SELECT 1 FROM esim e WHERE e."orderItemId" = oi.id)`,
+      [orderId],
+    );
+    if (!row || !Number(row.remaining)) return null;
+    return {
+      remaining: Number(row.remaining),
+      endsAt: new Date(row.endsAt).toISOString(),
+    };
+  }
+
+  /** Which of these lines belong to a paced order (vande-1411 #003). */
+  private async pacedItemIds(ids: number[]): Promise<Set<number>> {
+    if (!ids.length || !this.dataSource) return new Set();
+    const rows: { id: number }[] = await this.dataSource.query(
+      `SELECT id FROM order_item
+        WHERE id = ANY($1::int[]) AND "provisionNotBefore" IS NOT NULL`,
+      [ids],
+    );
+    return new Set(rows.map((r) => Number(r.id)));
+  }
+
+  /**
+   * Ask the supplier for the lines of paced orders whose moment has come
+   * (vande-1411 #003), one by one, and mail each eSIM of a bulk "email"
+   * order as soon as it is there. Lines already late (a restart) keep the
+   * gaps they were given. A line the supplier refuses goes on to the retry
+   * job like any other.
+   */
+  @Interval(5000)
+  async dispatchPacedProvisioning(now: Date = new Date()): Promise<void> {
+    if (this.pacedDispatchRunning) return;
+    this.pacedDispatchRunning = true;
+    try {
+      const due: {
+        id: number;
+        orderId: number;
+        at: Date;
+        bulkMode: string | null;
+      }[] = await this.dataSource.query(
+        `SELECT oi.id, oi."orderId", oi."provisionNotBefore" AS at,
+                o."bulkMode"
+           FROM order_item oi
+           JOIN "order" o ON o.id = oi."orderId"
+          WHERE oi."provisionNotBefore" IS NOT NULL
+            AND oi."provisionNotBefore" <= $1
+            AND oi."provisionAttempts" = 0
+            AND oi."orderRequestId" IS NULL
+            AND oi.status = 'pending'
+            AND o.status = 'paid' AND o."deletedAt" IS NULL
+            AND NOT EXISTS (SELECT 1 FROM esim e WHERE e."orderItemId" = oi.id)
+          ORDER BY oi."provisionNotBefore", oi.id
+          LIMIT 20`,
+        [now],
+      );
+      let previous: number | null = null;
+      for (const line of due) {
+        const at = new Date(line.at).getTime();
+        if (previous != null && at > previous) {
+          await this.pauseBetweenRetries(
+            Math.min(at - previous, PACING_MAX_SEC * 1000),
+          );
+        }
+        previous = at;
+        const orderId = Number(line.orderId);
+        if (this.provisionInFlight.has(orderId)) continue;
+        this.provisionInFlight.add(orderId);
+        try {
+          await this.submitProviders(orderId, {
+            onlyItemIds: [Number(line.id)],
+            mutedEmail: true,
+          });
+          // What came back at once (local stock, a synchronous supplier) is
+          // mailed now; a webhook delivery is mailed when it lands.
+          if (line.bulkMode === 'email') {
+            await this.resendEsimEmail(orderId, {
+              onlyOrderItemIds: [Number(line.id)],
+            });
+          }
+        } catch (err) {
+          this.logger.error(
+            `dispatchPacedProvisioning: line ${line.id} of order ${orderId}: ${(err as Error).message}`,
+          );
+        } finally {
+          this.provisionInFlight.delete(orderId);
+        }
+      }
+    } finally {
+      this.pacedDispatchRunning = false;
+    }
+  }
+
+  private pacedDispatchRunning = false;
 
   /**
    * Ask the supplier again for paid lines it refused (vande #003) — what the

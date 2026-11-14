@@ -498,6 +498,10 @@ export class AdminOrderDetailDto {
   @ApiPropertyOptional({ type: Number, nullable: true })
   bulkEmailIntervalSec?: number | null;
 
+  /** eSIMs still to be asked for, one by one, and when the last is due (#003). */
+  @ApiPropertyOptional({ nullable: true })
+  pacedProvision?: { remaining: number; endsAt: string } | null;
+
   @ApiPropertyOptional({ type: Number })
   subtotalVndPrice?: number;
 

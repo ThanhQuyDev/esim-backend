@@ -10734,10 +10734,29 @@ export class PartnersService {
       at: t.createdAt,
     }));
     const walletRefundedVnd = refunds.reduce((sum, r) => sum + r.amountVnd, 0);
+    // eSIMs of a paced upload not asked for yet (vande-1411 #003).
+    const [paced] = await this.dataSource.query(
+      `SELECT count(*)::int AS remaining,
+              max(oi."provisionNotBefore") AS "endsAt"
+         FROM order_item oi
+        WHERE oi."orderId" = $1
+          AND oi."provisionNotBefore" IS NOT NULL
+          AND oi."provisionAttempts" = 0
+          AND oi."orderRequestId" IS NULL
+          AND oi.status = 'pending'
+          AND NOT EXISTS (SELECT 1 FROM esim e WHERE e."orderItemId" = oi.id)`,
+      [orderId],
+    );
 
     return {
       // For the admin's buttons, which work by id (vande-0411 #011).
       orderId,
+      pacedProvision: Number(paced?.remaining)
+        ? {
+            remaining: Number(paced.remaining),
+            endsAt: new Date(paced.endsAt).toISOString(),
+          }
+        : null,
       orderNumber: code,
       status: summary?.status ?? null,
       orderType: summary?.orderType ?? null,

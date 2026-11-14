@@ -109,6 +109,25 @@ export class SubmitManualOrderDto {
   @IsInt()
   @Min(1)
   quantity?: number;
+  /**
+   * Seconds between two supplier calls, a random value in this range
+   * (vande-1411 #003). Left out: 10–30 (5–10 for a file).
+   */
+  @ApiPropertyOptional({ example: 10, minimum: 0, maximum: 600 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(600)
+  pacingMinSec?: number;
+
+  @ApiPropertyOptional({ example: 30, minimum: 0, maximum: 600 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(600)
+  pacingMaxSec?: number;
 }
 
 /** One row of a bulk upload (vande #057). */
@@ -156,6 +175,26 @@ export class SubmitBulkOrderDto {
   @Min(0)
   @Max(600)
   emailIntervalSec?: number;
+
+  /**
+   * Seconds between two supplier calls, a random value in this range
+   * (vande-1411 #003). Left out: 10–30 (5–10 for a file).
+   */
+  @ApiPropertyOptional({ example: 10, minimum: 0, maximum: 600 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(600)
+  pacingMinSec?: number;
+
+  @ApiPropertyOptional({ example: 30, minimum: 0, maximum: 600 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(600)
+  pacingMaxSec?: number;
 
   @ApiProperty({ type: [BulkOrderRowDto] })
   @IsArray()

@@ -201,11 +201,18 @@ describe('OrdersService.submitBulkOrders (vande #057)', () => {
     ];
     expect(first.email).toBe('an@example.com');
     expect(first.items).toHaveLength(2);
-    expect(tag).toMatchObject({ mode: 'email', intervalSec: 20 });
+    // The gap is now between eSIMs, which is the gap between emails too
+    // (vande-1411 #003): the queue adds none of its own.
+    expect(tag).toMatchObject({ mode: 'email', intervalSec: 0 });
+    expect((submitManualOrder.mock.calls[0] as unknown[])[3]).toEqual({
+      minSec: 20,
+      maxSec: 20,
+    });
     // Both orders share one upload, so their emails queue together.
     const secondTag = (submitManualOrder.mock.calls[1] as unknown[])[2];
     expect(secondTag).toBe(tag);
-    expect(resendEsimEmail).toHaveBeenCalledTimes(2);
+    // Mailed eSIM by eSIM by the dispatcher, not all at the end.
+    expect(resendEsimEmail).not.toHaveBeenCalled();
     expect(result.orders.map((o) => o.esims)).toEqual([3, 1]);
   });
 

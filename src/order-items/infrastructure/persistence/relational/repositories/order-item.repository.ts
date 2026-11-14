@@ -196,6 +196,10 @@ export class OrderItemsRelationalRepository implements OrderItemRepository {
       .andWhere('oi."provisionAttempts" < :max', {
         max: params.maxAttempts,
       })
+      // A paced line not asked for yet belongs to its dispatcher (#003).
+      .andWhere(
+        '(oi."provisionNotBefore" IS NULL OR oi."provisionAttempts" > 0)',
+      )
       .andWhere('lower(plan.provider) IN (:...providers)', {
         providers: params.providers,
       })
