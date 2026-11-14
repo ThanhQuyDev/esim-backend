@@ -1,3 +1,9 @@
+import { DataSource } from 'typeorm';
+import { Optional } from '@nestjs/common';
+import {
+  loadSurchargePercents,
+  surchargeFactor,
+} from '../provider-surcharges/surcharge-percent';
 import { PENDING_ORDER_TTL_MINUTES } from '../orders/pending-order-ttl';
 import { withExpiryAfter } from './package-expiry';
 import { generateOrderNumber } from '../utils/order-number';
@@ -171,6 +177,8 @@ export class TopupService {
     private readonly walletsService: WalletsService,
     private readonly invoicesService: InvoicesService,
     private readonly configService: ConfigService<AllConfigType>,
+    // The supplier's tax/fee table, for the cost (vande-1411 #006).
+    @Optional() private readonly dataSource?: DataSource,
   ) {}
 
   /**
@@ -586,10 +594,15 @@ export class TopupService {
     // Cost in đồng, so the order detail and the reports can state the margin on a
     // topup (#015). It used to be stored as 0, which made every topup look like
     // pure profit.
+    // With the supplier's tax/fee on top, like a purchase (vande-1411 #006).
     const vndCostPrice = Math.round(
       (await this.fetchVndRate().catch(() => FALLBACK_USD_VND_RATE)) *
         (Number(pkg.price) || 0) *
-        days,
+        days *
+        surchargeFactor(
+          await loadSurchargePercents(this.dataSource),
+          dto.provider,
+        ),
     );
 
     const order = await this.orderRepository.create({

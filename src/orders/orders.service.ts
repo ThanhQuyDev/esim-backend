@@ -1,3 +1,7 @@
+import {
+  loadSurchargePercents,
+  surchargeFactor,
+} from '../provider-surcharges/surcharge-percent';
 import { esimLifecycleSql, esimLifecycleStatus } from '../esims/esim-lifecycle';
 import {
   discountedRetailVnd,
@@ -236,12 +240,20 @@ export function getPlanUnitCostVnd(
   plan: Plan,
   periodNum: number | null | undefined,
   vndRate: number | null | undefined,
+  /**
+   * The supplier's tax/fee as a factor (vande-1411 #006). `vndCostExact`
+   * already has it; the fallbacks below did not, so an order of a plan whose
+   * đồng figures the rate job had not filled yet — every Billion plan just
+   * after a catalogue sync — kept its cost without the 20% on top, and the
+   * overview counted that as profit.
+   */
+  surcharge = 1,
 ): number {
   const days = getPlanPeriodMultiplier(plan, periodNum);
   const exact = Number(plan.vndCostExact ?? 0);
   if (exact > 0) return Math.round(exact * days);
-  const cost = plan.costPrice * days;
-  if (plan.isLocalInventory) return Math.round(cost);
+  const cost = Number(plan.costPrice ?? 0) * days * surcharge;
+  if (plan.isLocalInventory || plan.currency === 'VND') return Math.round(cost);
   return vndRate ? Math.round(cost * vndRate) : 0;
 }
 
@@ -1014,10 +1026,17 @@ export class OrdersService {
       clientUserAgent ?? null,
     );
 
+    // Cost with the supplier's tax/fee on top (vande-1411 #006).
+    const surcharges = await loadSurchargePercents(this.dataSource);
+    const costOf = (item: OrderPlanDetail) =>
+      getPlanUnitCostVnd(
+        item.plan,
+        item.periodNum,
+        vndRate,
+        surchargeFactor(surcharges, item.plan.provider),
+      );
     const totalVndCostPrice = planDetails.reduce(
-      (sum, item) =>
-        sum +
-        getPlanUnitCostVnd(item.plan, item.periodNum, vndRate) * item.quantity,
+      (sum, item) => sum + costOf(item) * item.quantity,
       0,
     );
 
@@ -1102,11 +1121,7 @@ export class OrdersService {
     // The same tiers the pricing used, for each line's price (vande #014).
     const tiers = await this.plansService.marginTiers();
     for (const item of planDetails) {
-      const unitVndCostPrice = getPlanUnitCostVnd(
-        item.plan,
-        item.periodNum,
-        vndRate,
-      );
+      const unitVndCostPrice = costOf(item);
       const itemVndCostPrice = unitVndCostPrice * item.quantity;
 
       // Gadget Korea returns one topupId per unit and the webhook fires once
