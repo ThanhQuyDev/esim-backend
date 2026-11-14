@@ -5,6 +5,9 @@ import { ChatRoom } from './domain/chat-room';
 import { ChatMessage } from './domain/chat-message';
 import { NullableType } from '../utils/types/nullable.type';
 
+/** The reactions a message takes: like, dislike, heart, laugh, wow, sad (vande-1411 #037). */
+export const CHAT_REACTIONS = ['👍', '👎', '❤️', '😂', '😮', '😢'];
+
 @Injectable()
 export class ChatService {
   constructor(
@@ -90,6 +93,30 @@ export class ChatService {
 
   async markAsRead(chatRoomId: number, readerId: number): Promise<void> {
     return this.chatMessageRepository.markRoomAsRead(chatRoomId, readerId);
+  }
+
+  /**
+   * React to a message, or take one's reaction back (vande-1411 #037). One
+   * reaction per person: the same one again removes it, another replaces it.
+   * Returns the message's reactions after the change.
+   */
+  async react(
+    messageId: number,
+    userId: number,
+    emoji: string | null,
+  ): Promise<Record<string, string> | null> {
+    if (emoji !== null && !CHAT_REACTIONS.includes(emoji)) {
+      throw new Error(`Unknown reaction ${emoji}`);
+    }
+    const message = await this.chatMessageRepository.findById(messageId);
+    if (!message) throw new Error('Message not found');
+    const next = { ...(message.reactions ?? {}) };
+    const key = String(userId);
+    if (emoji === null || next[key] === emoji) delete next[key];
+    else next[key] = emoji;
+    const stored = Object.keys(next).length ? next : null;
+    await this.chatMessageRepository.setReactions(messageId, stored);
+    return stored;
   }
 
   /** The other side's messages reached `recipientId` (vande-1411 #035). */

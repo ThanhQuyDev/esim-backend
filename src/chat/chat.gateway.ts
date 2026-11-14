@@ -143,6 +143,45 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /**
+   * React to a message (vande-1411 #037): anyone who may write in the room —
+   * its customer, or an admin. Everyone in the room sees the new reactions.
+   */
+  @SubscribeMessage('react')
+  async handleReact(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { messageId: number; emoji: string | null },
+  ) {
+    if (!data?.messageId) return;
+    const message = await this.chatService.getMessageById(
+      Number(data.messageId),
+    );
+    if (!message) return;
+    const room = await this.chatService.getRoomById(message.chatRoomId);
+    if (!room) return;
+    const isAdmin = client.data.roleId === 1;
+    if (!isAdmin && room.userId !== client.data.userId) {
+      client.emit('error', { message: 'Access denied' });
+      return;
+    }
+    try {
+      const reactions = await this.chatService.react(
+        message.id,
+        client.data.userId,
+        data.emoji ?? null,
+      );
+      this.server
+        .to(`chat_room_${message.chatRoomId}`)
+        .emit('messageReaction', {
+          chatRoomId: message.chatRoomId,
+          messageId: message.id,
+          reactions,
+        });
+    } catch (err) {
+      client.emit('error', { message: (err as Error).message });
+    }
+  }
+
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
     @ConnectedSocket() client: AuthenticatedSocket,

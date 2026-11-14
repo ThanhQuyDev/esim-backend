@@ -73,6 +73,13 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
     );
   }
 
+  async setReactions(
+    id: number,
+    reactions: Record<string, string> | null,
+  ): Promise<void> {
+    await this.repo.update({ id }, { reactions: reactions as never });
+  }
+
   async markRoomDelivered(
     chatRoomId: number,
     recipientId: number,

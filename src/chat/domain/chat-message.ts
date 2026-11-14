@@ -62,6 +62,9 @@ export class ChatMessage {
   /** Reached the other side: "Đã nhận" (vande-1411 #035). */
   deliveredAt?: Date | null;
 
+  /** One reaction per person, `{ "<userId>": "❤️" }` (vande-1411 #037). */
+  reactions?: Record<string, string> | null;
+
   @ApiProperty()
   createdAt: Date;
 

@@ -75,6 +75,12 @@ export class ChatMessageEntity extends EntityRelationalHelper {
   @Column({ type: 'timestamp', nullable: true })
   deliveredAt?: Date | null;
 
+  /**
+   * Reactions, one per person: `{ "<userId>": "❤️" }` (vande-1411 #037).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  reactions?: Record<string, string> | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
