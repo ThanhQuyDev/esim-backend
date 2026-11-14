@@ -130,10 +130,11 @@ describe('Customer list summary', () => {
       users: ids.map((id) => ({ id })),
     });
 
-    // One query per fact the list needs — referral code, paid orders and the eXu
-    // wallet (#038) — and each one takes the whole page's ids at once. Counting
-    // the queries is the point: a per-row lookup would be 5, then 50.
-    expect(queries).toHaveLength(3);
+    // One query per fact the list needs — referral code, paid orders, the eXu
+    // wallet (#038) and the last activity (vande-1411 #043) — and each one takes
+    // the whole page's ids at once. Counting the queries is the point: a
+    // per-row lookup would be 5, then 50.
+    expect(queries).toHaveLength(4);
     for (const query of queries) {
       expect(query.params[0]).toEqual(ids);
     }

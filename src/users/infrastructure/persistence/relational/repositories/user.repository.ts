@@ -25,6 +25,7 @@ import {
   WalletStatusEnum,
 } from '../../../../../wallets/wallets.enum';
 import { tierBands } from '../../../../../wallets/tier/tier-bands';
+import { customerLastActivity } from '../../../../customer-last-activity';
 
 /** Digits only — `KH-000123`, `kh 000123` and `123` all mean user 123 (#037). */
 function customerCodeToId(code: string): number | null {
@@ -173,35 +174,36 @@ export class UsersRelationalRepository implements UserRepository {
 
     const manager = this.usersRepository.manager;
 
-    const [referralRows, orderRows, walletRows] = await Promise.all([
-      manager.query<{ userId: number; code: string }[]>(
-        `SELECT "userId", "code" FROM "user_referral_profile"
+    const [referralRows, orderRows, walletRows, activityRows] =
+      await Promise.all([
+        manager.query<{ userId: number; code: string }[]>(
+          `SELECT "userId", "code" FROM "user_referral_profile"
          WHERE "userId" = ANY($1) AND "isActive" = true`,
-        [ids],
-      ),
-      // Same status set as the revenue dashboards (`COMPLETED_ORDER_STATUSES`):
-      // a refunded order is not a completed purchase and must not be counted.
-      manager.query<{ userId: number; count: string }[]>(
-        `SELECT "userId", COUNT(*)::text AS "count" FROM "order"
+          [ids],
+        ),
+        // Same status set as the revenue dashboards (`COMPLETED_ORDER_STATUSES`):
+        // a refunded order is not a completed purchase and must not be counted.
+        manager.query<{ userId: number; count: string }[]>(
+          `SELECT "userId", COUNT(*)::text AS "count" FROM "order"
          WHERE "userId" = ANY($1) AND "status" = ANY($2) AND "deletedAt" IS NULL
          GROUP BY "userId"`,
-        [ids, [...COMPLETED_ORDER_STATUSES]],
-      ),
-      // `available` mirrors `WalletsService.getAvailableBalanceWithManager`
-      // exactly: nothing is spendable while the wallet is not active or past its
-      // expiry, and money under an unexpired hold is already committed to an
-      // order. The gross balance travels too, so the list can explain a 0.
-      manager.query<
-        {
-          userId: number;
-          balance: string;
-          held: string;
-          available: string;
-          status: string;
-          expiresAt: Date | null;
-        }[]
-      >(
-        `SELECT w."userId",
+          [ids, [...COMPLETED_ORDER_STATUSES]],
+        ),
+        // `available` mirrors `WalletsService.getAvailableBalanceWithManager`
+        // exactly: nothing is spendable while the wallet is not active or past its
+        // expiry, and money under an unexpired hold is already committed to an
+        // order. The gross balance travels too, so the list can explain a 0.
+        manager.query<
+          {
+            userId: number;
+            balance: string;
+            held: string;
+            available: string;
+            status: string;
+            expiresAt: Date | null;
+          }[]
+        >(
+          `SELECT w."userId",
                 w."balanceVnd"::text AS "balance",
                 COALESCE(h."held", 0)::text AS "held",
                 CASE
@@ -219,9 +221,24 @@ export class UsersRelationalRepository implements UserRepository {
            GROUP BY "userId"
          ) h ON h."userId" = w."userId"
          WHERE w."userId" = ANY($1)`,
-        [ids, WalletStatusEnum.ACTIVE, WalletHoldStatusEnum.HELD],
-      ),
-    ]);
+          [ids, WalletStatusEnum.ACTIVE, WalletHoldStatusEnum.HELD],
+        ),
+        // "Hoạt động gần nhất", as on the partner list (vande-1411 #043): the
+        // customer's own acts, newest wins in `customerLastActivity`.
+        manager.query<Record<string, unknown>[]>(
+          `SELECT u.id AS "userId",
+                u."lastLoginAt" AS "lastLoginAt",
+                (SELECT MAX(o."createdAt") FROM "order" o
+                  WHERE o."userId" = u.id AND o."deletedAt" IS NULL) AS "lastOrderAt",
+                (SELECT MAX(tk."createdAt") FROM ticket tk
+                  WHERE lower(tk."customerEmail") = lower(u.email)) AS "lastTicketAt",
+                (SELECT MAX(m."createdAt") FROM chat_message m
+                  WHERE m."senderId" = u.id) AS "lastChatAt"
+         FROM "user" u
+         WHERE u.id = ANY($1)`,
+          [ids],
+        ),
+      ]);
 
     const codeByUser = new Map(
       referralRows.map((row) => [Number(row.userId), row.code]),
@@ -231,6 +248,9 @@ export class UsersRelationalRepository implements UserRepository {
     );
     const walletByUser = new Map(
       walletRows.map((row) => [Number(row.userId), row]),
+    );
+    const activityByUser = new Map(
+      activityRows.map((row) => [Number(row.userId), row]),
     );
 
     for (const user of users) {
@@ -246,6 +266,10 @@ export class UsersRelationalRepository implements UserRepository {
       user.exuHeldVnd = wallet ? Number(wallet.held) : 0;
       user.exuExpiresAt = wallet?.expiresAt ? new Date(wallet.expiresAt) : null;
       user.exuWalletStatus = wallet?.status ?? null;
+
+      const activity = customerLastActivity(activityByUser.get(id));
+      user.lastActivityAt = activity.lastActivityAt;
+      user.lastActivityLabel = activity.lastActivityLabel;
     }
   }
 

@@ -131,6 +131,17 @@ export class User {
   @ApiPropertyOptional({ type: String, nullable: true, example: 'active' })
   exuWalletStatus?: string | null;
 
+  /**
+   * The customer's latest act and what it was (vande-1411 #043): signing in,
+   * placing an order, a support ticket or a chat message. Filled in for the
+   * admin customer list; undefined elsewhere.
+   */
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  lastActivityAt?: Date | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'Đặt hàng' })
+  lastActivityLabel?: string | null;
+
   @ApiPropertyOptional({ type: String, nullable: true })
   tierOverride: MembershipTierCode | null;
 
