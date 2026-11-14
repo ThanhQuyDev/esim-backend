@@ -32,20 +32,81 @@ export const ALL_RETRY_PROVIDERS = [
   ...REFUSAL_RETRY_PROVIDERS,
 ];
 
-/** Lines of one supplier asked again per run, so a rate limit can recover. */
+/**
+ * Tries of one supplier per run, so a rate limit can recover. A "try" is one
+ * call: all the eSIM Access lines of an order (they share one transaction id),
+ * or one line of any other supplier.
+ */
 export const RETRY_LINES_PER_RUN = 5;
 
-/** Tries in total, the first one being the payment callback's own: about an hour. */
+/**
+ * Tries in total, the first one being the order's own. With a try every 1–4
+ * minutes that is about half an hour of automatic tries; after that the line
+ * waits for "Gọi lại API" or a refund (vande-1411 #001).
+ */
 export const MAX_PROVISION_ATTEMPTS = 13;
 
 /** Only orders this recent are retried: an old refusal needs a person. */
 export const AUTO_RETRY_WINDOW_HOURS = 24;
 
 /**
- * Wait between tries: the job runs every 5 minutes, and 4 keeps a try from
- * missing its run by a few seconds and waiting 10 (vande-0411 #005).
+ * Wait after a failed try (vande-1411 #001): between 1 and 4 minutes, a
+ * different wait for each eSIM so two lines refused together are not asked
+ * again at the same second. The job runs every minute, so the try happens at
+ * most a minute later: always within the 1–5 minutes anh Thọ asked for.
  */
-export const RETRY_DELAY_MINUTES = 4;
+export const RETRY_DELAY_MIN_SECONDS = 60;
+export const RETRY_DELAY_MAX_SECONDS = 240;
+
+/**
+ * Gap between two calls of one run (vande-1411 #001): 10–20 seconds, so ten
+ * refused eSIMs are never sent to the supplier in the same instant.
+ */
+export const RETRY_STAGGER_MIN_MS = 10_000;
+export const RETRY_STAGGER_MAX_MS = 20_000;
+
+/** A supplier's Retry-After is honoured up to this long. */
+export const MAX_RETRY_AFTER_SECONDS = 30 * 60;
+
+/** Random gap before the next call of a run, in milliseconds. */
+export function retryStaggerMs(random: () => number = Math.random): number {
+  return Math.round(
+    RETRY_STAGGER_MIN_MS +
+      random() * (RETRY_STAGGER_MAX_MS - RETRY_STAGGER_MIN_MS),
+  );
+}
+
+/**
+ * The wait after a failed try of this line, in seconds. Fixed for a given line
+ * and try, so the time the CMS shows is the time the job uses.
+ */
+export function retryDelaySeconds(
+  itemId: number | null | undefined,
+  attempts: number,
+): number {
+  const span = RETRY_DELAY_MAX_SECONDS - RETRY_DELAY_MIN_SECONDS;
+  if (itemId == null || !Number.isFinite(Number(itemId))) {
+    return RETRY_DELAY_MIN_SECONDS + Math.round(span / 2);
+  }
+  // A small integer hash: spreads neighbouring ids and tries over the span.
+  let h = (Math.imul(Number(itemId) | 0, 2654435761) + attempts * 40503) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  h = Math.imul(h, 2246822519) >>> 0;
+  h = (h ^ (h >>> 13)) >>> 0;
+  return RETRY_DELAY_MIN_SECONDS + (h % (span + 1));
+}
+
+/** The supplier's Retry-After kept in the error text, in seconds, if any. */
+export function retryAfterSeconds(message: string | null): number | null {
+  const m = (message ?? '').match(/Retry-After: (\d+)s/);
+  if (!m) return null;
+  return Math.min(Number(m[1]), MAX_RETRY_AFTER_SECONDS);
+}
+
+/** A rate limit: the supplier wants fewer calls, not none. */
+export function isRateLimited(message: string | null): boolean {
+  return /status code 429\b/.test(message ?? '');
+}
 
 /**
  * The supplier answered and refused, so nothing was bought: an HTTP 4xx (not
@@ -74,8 +135,27 @@ export function isDuplicateOrderRefusal(message: string | null): boolean {
 }
 
 export function provisionErrorText(err: unknown): string {
-  const text = err instanceof Error ? err.message : String(err);
+  let text = err instanceof Error ? err.message : String(err);
+  // Keep the supplier's Retry-After so the next try waits for it (#001).
+  const header = (
+    err as { response?: { headers?: Record<string, unknown> } } | null
+  )?.response?.headers?.['retry-after'];
+  const wait = parseRetryAfter(header);
+  if (wait != null) text = `${text} (Retry-After: ${wait}s)`;
   return text.length > 500 ? `${text.slice(0, 497)}...` : text;
+}
+
+/** Retry-After is either seconds or an HTTP date. */
+function parseRetryAfter(
+  value: unknown,
+  now: Date = new Date(),
+): number | null {
+  if (value == null) return null;
+  const raw = String(Array.isArray(value) ? value[0] : value).trim();
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const at = Date.parse(raw);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, Math.ceil((at - now.getTime()) / 1000));
 }
 
 /**
@@ -86,6 +166,9 @@ export function provisionErrorText(err: unknown): string {
 export function nextAutoRetryAt(
   order: { status?: string | null; createdAt?: Date | string | null },
   item: {
+    id?: number | string | null;
+    /** The job only takes pending lines: a refunded one is never asked again. */
+    status?: string | null;
     orderRequestId?: string | null;
     provisionAttempts?: number | null;
     lastProvisionError?: string | null;
@@ -105,6 +188,7 @@ export function nextAutoRetryAt(
     return null;
   }
   if (order.status !== 'paid' || item.orderRequestId) return null;
+  if (item.status != null && item.status !== 'pending') return null;
   const attempts = item.provisionAttempts ?? 0;
   if (attempts >= MAX_PROVISION_ATTEMPTS) return null;
   if (isDuplicateOrderRefusal(item.lastProvisionError ?? null)) return null;
@@ -119,5 +203,9 @@ export function nextAutoRetryAt(
     ? new Date(item.lastProvisionAttemptAt)
     : null;
   if (!last) return now;
-  return new Date(last.getTime() + RETRY_DELAY_MINUTES * 60_000);
+  const wait = Math.max(
+    retryDelaySeconds(item.id == null ? null : Number(item.id), attempts),
+    retryAfterSeconds(item.lastProvisionError ?? null) ?? 0,
+  );
+  return new Date(last.getTime() + wait * 1000);
 }

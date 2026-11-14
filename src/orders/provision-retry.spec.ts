@@ -4,7 +4,8 @@ import {
   MAX_PROVISION_ATTEMPTS,
   nextAutoRetryAt,
   provisionErrorText,
-  RETRY_DELAY_MINUTES,
+  RETRY_DELAY_MAX_SECONDS,
+  RETRY_DELAY_MIN_SECONDS,
 } from './provision-retry';
 
 /**
@@ -21,14 +22,14 @@ describe('Tự gọi lại nhà cung cấp cho dòng hàng chưa được nhận
     lastProvisionAttemptAt: new Date('2026-10-25T09:58:00Z'),
   };
 
-  it('should ask again every run of the 5-minute job (vande-0411 #005)', () => {
-    expect(RETRY_DELAY_MINUTES).toBeLessThan(5);
-    expect(RETRY_DELAY_MINUTES).toBeGreaterThanOrEqual(3);
+  it('should wait 1 to 4 minutes, so the every-minute job asks within 5 (vande-1411 #001)', () => {
+    expect(RETRY_DELAY_MIN_SECONDS).toBe(60);
+    expect(RETRY_DELAY_MAX_SECONDS + 60).toBeLessThanOrEqual(5 * 60);
   });
 
   it('should schedule the next try of a refused eSIM Access line', () => {
     expect(nextAutoRetryAt(paid, refused, 'esimaccess', NOW)).toEqual(
-      new Date('2026-10-25T10:02:00Z'),
+      new Date('2026-10-25T10:00:30Z'),
     );
   });
 
@@ -46,7 +47,7 @@ describe('Tự gọi lại nhà cung cấp cho dòng hàng chưa được nhận
           'airalo',
           NOW,
         ),
-      ).toEqual(new Date('2026-10-25T10:02:00Z'));
+      ).toEqual(new Date('2026-10-25T10:00:30Z'));
     });
 
     it('should ask the others again when they answered no', () => {

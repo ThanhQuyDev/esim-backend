@@ -11,8 +11,10 @@ import {
   AUTO_RETRY_WINDOW_HOURS,
   MAX_PROVISION_ATTEMPTS,
   RETRY_LINES_PER_RUN,
+  isRateLimited,
   nextAutoRetryAt,
   provisionErrorText,
+  retryStaggerMs,
 } from './provision-retry';
 import { deviceInfo, deviceType, storedUserAgent } from '../utils/device-info';
 import { isPlanRefundable } from '../plans/plan-refund-policy';
@@ -4618,12 +4620,18 @@ export class OrdersService {
 
   /**
    * Ask the supplier again for paid lines it refused (vande #003) — what the
-   * KDDI integration used to do. Runs every 5 minutes, gives up after
-   * {@link MAX_PROVISION_ATTEMPTS} tries or once the order is a day old; the
-   * refusal stays on the order for the admin either way. See `provision-retry`
-   * for which lines are safe to repeat.
+   * KDDI integration used to do. Gives up after {@link MAX_PROVISION_ATTEMPTS}
+   * tries or once the order is a day old; the refusal stays on the order for
+   * the admin either way. See `provision-retry` for which lines are safe to
+   * repeat.
+   *
+   * vande-1411 #001: runs every minute and asks again 1–4 minutes after a
+   * failed try (each line its own wait). The calls of one run go out one by
+   * one, 10–20 seconds apart, and a supplier that answers 429 is left alone
+   * for the rest of the run: two lines refused together used to be asked again
+   * at the same second, so the rate limit refused one of them every time.
    */
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  @Cron(CronExpression.EVERY_MINUTE)
   async retryUnplacedProviderItems(now: Date = new Date()): Promise<void> {
     if (this.provisionRetryRunning) return;
     this.provisionRetryRunning = true;
@@ -4636,43 +4644,80 @@ export class OrdersService {
         since,
         maxAttempts: MAX_PROVISION_ATTEMPTS,
       });
-      const dueByOrder = new Map<number, number[]>();
+      // One call each: the eSIM Access lines of an order together (they share
+      // one transaction id), any other line on its own.
+      const calls: { orderId: number; provider: string; itemIds: number[] }[] =
+        [];
       const askedPerSupplier = new Map<string, number>();
       for (const line of lines) {
         const order = await this.orderRepository.findById(line.orderId);
         if (!order) continue;
         const due = nextAutoRetryAt(order, line, line.provider, now);
         if (!due || due.getTime() > now.getTime()) continue;
-        // A few per run: Airalo's 429 means slow down, not ask harder. The
-        // rest wait for the next run.
-        const asked = askedPerSupplier.get(line.provider) ?? 0;
+        const supplier = String(line.provider ?? '').toLowerCase();
+        const shared =
+          supplier === 'esimaccess'
+            ? calls.find(
+                (c) => c.orderId === order.id && c.provider === supplier,
+              )
+            : undefined;
+        if (shared) {
+          shared.itemIds.push(Number(line.id));
+          continue;
+        }
+        // A few per run: a 429 means slow down, not ask harder.
+        const asked = askedPerSupplier.get(supplier) ?? 0;
         if (asked >= RETRY_LINES_PER_RUN) continue;
-        askedPerSupplier.set(line.provider, asked + 1);
-        const ids = dueByOrder.get(order.id) ?? [];
-        ids.push(Number(line.id));
-        dueByOrder.set(order.id, ids);
+        askedPerSupplier.set(supplier, asked + 1);
+        calls.push({
+          orderId: order.id,
+          provider: supplier,
+          itemIds: [Number(line.id)],
+        });
       }
-      for (const [orderId, itemIds] of dueByOrder) {
+      const throttled = new Set<string>();
+      let first = true;
+      for (const call of calls) {
+        if (throttled.has(call.provider)) continue;
         // The admin is re-sending this order right now: both going out at once
         // is how a line gets bought twice.
-        if (this.provisionInFlight.has(orderId)) continue;
-        this.provisionInFlight.add(orderId);
+        if (this.provisionInFlight.has(call.orderId)) continue;
+        if (!first) await this.pauseBetweenRetries(retryStaggerMs());
+        first = false;
+        this.provisionInFlight.add(call.orderId);
         this.logger.log(
-          `retryUnplacedProviderItems: order ${orderId}, lines ${itemIds.join(', ')}`,
+          `retryUnplacedProviderItems: order ${call.orderId}, lines ${call.itemIds.join(', ')}`,
         );
         try {
-          await this.submitProviders(orderId, { onlyItemIds: itemIds });
+          await this.submitProviders(call.orderId, {
+            onlyItemIds: call.itemIds,
+          });
+          const after = await this.orderItemsService.findByOrderId(
+            call.orderId,
+          );
+          const limited = (after ?? []).some(
+            (item) =>
+              call.itemIds.includes(Number(item.id)) &&
+              !item.orderRequestId &&
+              isRateLimited(item.lastProvisionError ?? null),
+          );
+          if (limited) throttled.add(call.provider);
         } catch (err) {
           this.logger.error(
-            `retryUnplacedProviderItems: order ${orderId}: ${(err as Error).message}`,
+            `retryUnplacedProviderItems: order ${call.orderId}: ${(err as Error).message}`,
           );
         } finally {
-          this.provisionInFlight.delete(orderId);
+          this.provisionInFlight.delete(call.orderId);
         }
       }
     } finally {
       this.provisionRetryRunning = false;
     }
+  }
+
+  /** The gap between two retry calls; replaced in tests. */
+  protected pauseBetweenRetries(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private provisionRetryRunning = false;

@@ -10536,6 +10536,7 @@ export class PartnersService {
             : nextAutoRetryAt(
                 { status: row.status, createdAt: row.createdAt },
                 {
+                  id: Number(row.id),
                   orderRequestId: row.orderRequestId,
                   provisionAttempts: row.provisionAttempts,
                   lastProvisionError: row.lastProvisionError,

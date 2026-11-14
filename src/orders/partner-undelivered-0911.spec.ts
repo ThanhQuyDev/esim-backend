@@ -1,5 +1,6 @@
 import { OrdersService } from './orders.service';
 import { PartnersService } from '../partners/partners.service';
+import { retryDelaySeconds } from './provision-retry';
 
 /**
  * doitac-0911 #001 — PTN-261104004736115-O6YPBE on beta: 5 Airalo lines, 2
@@ -230,7 +231,8 @@ describe('PartnersService.purchaseRetryLines (doitac-0911 #001)', () => {
     expect(line.canRetry).toBe(true);
     expect(line.attempts).toBe(1);
     expect(line.nextRetryAt).toBe(
-      new Date(last.getTime() + 4 * 60_000).toISOString(),
+      // Each line its own 1–4 minutes (vande-1411 #001).
+      new Date(last.getTime() + retryDelaySeconds(136, 1) * 1000).toISOString(),
     );
   });
 
