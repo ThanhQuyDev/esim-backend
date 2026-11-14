@@ -599,6 +599,28 @@ export class PlansRelationalRepository implements PlanRepository {
    * owned by a customer — otherwise a plan would look in stock while every
    * eSIM behind it is already sold.
    */
+  async countExpiredUnsoldEsimsByPlanIds(
+    planIds: number[],
+  ): Promise<Record<number, number>> {
+    if (!planIds.length) return {};
+    const rows: { planId: string | number; count: string | number }[] =
+      await this.plansRepository.query(
+        `SELECT "planId", COUNT(*) AS count
+           FROM "esim"
+          WHERE "planId" = ANY($1)
+            AND "status" = 'available'
+            AND "orderItemId" IS NULL
+            AND "userId" IS NULL
+            AND "deletedAt" IS NULL
+            AND "expiresAt" < now()
+          GROUP BY "planId"`,
+        [planIds],
+      );
+    return Object.fromEntries(
+      rows.map((row) => [Number(row.planId), Number(row.count)]),
+    );
+  }
+
   async countAvailableEsimsByPlanIds(
     planIds: number[],
   ): Promise<Record<number, LocalStockSummary>> {

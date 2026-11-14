@@ -179,6 +179,12 @@ export class Plan {
   })
   availableStock?: number | null;
 
+  /**
+   * Unsold eSIMs past their expiry, which cannot be sold any more (vande-1411
+   * #014). Only on the CMS plan list, for local-inventory plans.
+   */
+  expiredStock?: number | null;
+
   @ApiProperty({
     type: Boolean,
     example: false,

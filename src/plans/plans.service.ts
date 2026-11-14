@@ -405,7 +405,29 @@ export class PlansService implements OnApplicationBootstrap {
     });
 
     await this.enrichPlansWithRegionDestinations(plans);
+    await this.withLocalStock(plans);
     return [await this.withAppSupport(plans), count];
+  }
+
+  /**
+   * "Số lượng hàng tồn" on the CMS plan list (vande-1411 #014): the unsold
+   * eSIMs of a Viettel / domestic plan that can still be sold, and those past
+   * their expiry beside them. Plans of an API supplier carry neither.
+   */
+  private async withLocalStock(plans: Plan[]): Promise<void> {
+    const ids = plans
+      .filter((plan) => plan.isLocalInventory)
+      .map((plan) => Number(plan.id));
+    if (!ids.length) return;
+    const [sellable, expired] = await Promise.all([
+      this.plansRepository.countAvailableEsimsByPlanIds(ids),
+      this.plansRepository.countExpiredUnsoldEsimsByPlanIds(ids),
+    ]);
+    for (const plan of plans) {
+      if (!plan.isLocalInventory) continue;
+      plan.availableStock = sellable[Number(plan.id)]?.count ?? 0;
+      plan.expiredStock = expired[Number(plan.id)] ?? 0;
+    }
   }
 
   private async tiktokRefusedApns(): Promise<string[]> {

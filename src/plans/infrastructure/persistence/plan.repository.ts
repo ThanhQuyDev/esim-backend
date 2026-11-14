@@ -40,6 +40,11 @@ export abstract class PlanRepository {
     planIds: number[],
   ): Promise<Record<number, LocalStockSummary>>;
 
+  /** Unsold eSIMs whose expiry has passed, per plan (vande-1411 #014). */
+  abstract countExpiredUnsoldEsimsByPlanIds(
+    planIds: number[],
+  ): Promise<Record<number, number>>;
+
   abstract findBySlug(slug: Plan['slug']): Promise<NullableType<Plan>>;
 
   /** Every plan with this supplier code, whichever the supplier. */
