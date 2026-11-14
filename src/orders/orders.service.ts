@@ -1462,6 +1462,34 @@ export class OrdersService {
       this.provisionInFlight.delete(orderId);
     }
 
+    // Refused again (a 429 most often): say so, instead of "eSIM chưa về" as if
+    // the supplier had taken it (vande-1411 #002).
+    const after = await this.orderItemsService.findByOrderId(orderId);
+    const refused = (after ?? []).filter(
+      (item) =>
+        retriedItemIds.includes(Number(item.id)) &&
+        !item.orderRequestId &&
+        !!item.lastProvisionError,
+    );
+    const stillMissingEsim = new Set(
+      (
+        await this.esimsService.findByOrderItemIds(
+          refused.map((item) => Number(item.id)),
+        )
+      ).map((esim) => Number(esim.orderItemId)),
+    );
+    const stillRefused = refused.filter(
+      (item) => !stillMissingEsim.has(Number(item.id)),
+    );
+    if (stillRefused.length === retriedItemIds.length) {
+      return {
+        retriedItemIds,
+        skippedItemIds,
+        emailsSent: 0,
+        message: `Nhà cung cấp vẫn chưa nhận ${stillRefused.length} sản phẩm: ${stillRefused[0].lastProvisionError}. Vui lòng thử lại sau ít phút.`,
+      };
+    }
+
     // Mail whatever came back on this run (#014). Suppliers that deliver over a
     // webhook (Airalo, Billion, MicroEsim) have nothing yet, and their webhook
     // sends the email itself when the eSIM lands — so 0 here is a normal

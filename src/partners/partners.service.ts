@@ -10505,6 +10505,10 @@ export class PartnersService {
       attempts: number;
       /** When the automatic retry asks again, or null when it will not. */
       nextRetryAt: string | null;
+      /** The last try, for "Lần thử gần nhất" (vande-1411 #002). */
+      lastAttemptAt: string | null;
+      /** Its money went back (or it was cancelled): never asked again. */
+      settled: boolean;
     }[]
   > {
     const rows: Record<string, any>[] = await this.dataSource.query(
@@ -10550,6 +10554,10 @@ export class PartnersService {
           accepted,
           attempts: Number(row.provisionAttempts ?? 0),
           nextRetryAt: next ? next.toISOString() : null,
+          lastAttemptAt: row.lastProvisionAttemptAt
+            ? new Date(row.lastProvisionAttemptAt).toISOString()
+            : null,
+          settled,
           canRetry:
             missing > 0 &&
             !accepted &&
@@ -10651,6 +10659,9 @@ export class PartnersService {
         /** For "đã thử N lần, tự gọi lại …" (doitac-0911 #001). */
         provisionAttempts: short?.attempts ?? 0,
         nextRetryAt: short?.nextRetryAt ?? null,
+        lastAttemptAt: short?.lastAttemptAt ?? null,
+        /** Refunded or cancelled: out of "Hàng đợi eSIM lỗi" (#002). */
+        lineSettled: short?.settled ?? false,
         /** One eSIM at the agent price — what a refund of it gives back (#058). */
         unitVnd: unit,
         agentTotalVnd,

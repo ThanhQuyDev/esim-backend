@@ -25,6 +25,7 @@ import { RolesGuard } from '../roles/roles.guard';
 import { CreatePartnerPurchaseDto } from './dto/create-partner-purchase.dto';
 import { CreatePartnerCartPurchaseDto } from './dto/create-partner-cart-purchase.dto';
 import { PartnerEsimTopupDto } from './dto/partner-esim-topup.dto';
+import { RetryProvisioningDto } from '../orders/dto/retry-provisioning.dto';
 import { PartnerPurchaseService } from './partner-purchase.service';
 import {
   ORDER_IMPORT_MAX_BYTES,
@@ -175,9 +176,15 @@ export class PartnerPurchaseController {
   async retryPurchase(
     @Request() req: { user: { id: number } },
     @Param('orderNumber') orderNumber: string,
+    // One row of "Hàng đợi eSIM lỗi" (vande-1411 #002); omitted = all of them.
+    @Body() dto: RetryProvisioningDto = {},
   ) {
     const partner = await this.partnersService.getPartnerByUserId(req.user.id);
-    return this.purchaseService.retryPurchase(partner.id, orderNumber);
+    return this.purchaseService.retryPurchase(
+      partner.id,
+      orderNumber,
+      dto?.itemIds,
+    );
   }
 
   /** "Gửi lại email eSIM" for a whole order (doitac-1410 #042). */

@@ -251,3 +251,27 @@ describe('PartnersService.purchaseRetryLines (doitac-0911 #001)', () => {
     expect(line.nextRetryAt).toBeNull();
   });
 });
+
+describe('Gọi lại mà nhà cung cấp vẫn từ chối (vande-1411 #002)', () => {
+  it('should say the supplier refused again, not that the eSIM is on its way', async () => {
+    const { service } = retryService([{ id: 136, status: 'pending' }]);
+    (
+      service as unknown as {
+        orderItemsService: { findByOrderId: jest.Mock };
+      }
+    ).orderItemsService.findByOrderId.mockResolvedValue([
+      {
+        id: 136,
+        status: 'pending',
+        orderRequestId: null,
+        lastProvisionError: 'Request failed with status code 429',
+      },
+    ]);
+
+    const result = await service.retryProvisioning(107);
+
+    expect(result.retriedItemIds).toEqual([136]);
+    expect(result.message).toContain('vẫn chưa nhận 1 sản phẩm');
+    expect(result.message).toContain('429');
+  });
+});

@@ -405,13 +405,23 @@ export class PartnerPurchaseService {
    * supplier clearly refused, or eSIM Access, whose repeat cannot buy twice. A
    * line that timed out may have gone through and needs a person to check.
    */
-  async retryPurchase(partnerId: number, orderNumber: string) {
+  async retryPurchase(
+    partnerId: number,
+    orderNumber: string,
+    /** Only these lines (vande-1411 #002); still only those that qualify. */
+    onlyItemIds?: number[],
+  ) {
     const { orderId } = await this.partnersService.assertOwnsPurchase(
       partnerId,
       orderNumber,
     );
     const lines = await this.partnersService.purchaseRetryLines(orderId);
-    const itemIds = lines.filter((l) => l.canRetry).map((l) => l.itemId);
+    const chosen = onlyItemIds?.length
+      ? new Set(onlyItemIds.map(Number))
+      : null;
+    const itemIds = lines
+      .filter((l) => l.canRetry && (!chosen || chosen.has(l.itemId)))
+      .map((l) => l.itemId);
     if (!itemIds.length) {
       throw new BadRequestException(
         'Chưa thể gọi lại cho đơn này. Vui lòng liên hệ esim.vn để kiểm tra với nhà cung cấp.',
