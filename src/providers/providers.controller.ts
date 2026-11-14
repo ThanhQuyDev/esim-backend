@@ -1,10 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
+  Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
@@ -14,8 +17,10 @@ import { Roles } from '../roles/roles.decorator';
 import { RoleEnum } from '../roles/roles.enum';
 import { RolesGuard } from '../roles/roles.guard';
 import {
+  CreateProviderDto,
   ProviderSalesStatusDto,
   SetProviderSalesStatusDto,
+  UpdateProviderDto,
 } from './dto/provider-sales-status.dto';
 import { ProvidersService } from './providers.service';
 
@@ -33,6 +38,37 @@ export class ProvidersController {
   @HttpCode(HttpStatus.OK)
   async list(): Promise<{ data: ProviderSalesStatusDto[] }> {
     return { data: await this.service.list() };
+  }
+
+  /**
+   * "+ Thêm nhà cung cấp" (vande-1411 #024): a domestic supplier imported by
+   * file, without an API.
+   */
+  @ApiOkResponse({ type: ProviderSalesStatusDto })
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  async create(
+    @Body() dto: CreateProviderDto,
+  ): Promise<{ data: ProviderSalesStatusDto }> {
+    return { data: await this.service.create(dto) };
+  }
+
+  /** "Cập nhật": its name and overview code. */
+  @ApiOkResponse({ type: ProviderSalesStatusDto })
+  @Patch(':provider')
+  @HttpCode(HttpStatus.OK)
+  async update(
+    @Param('provider') provider: string,
+    @Body() dto: UpdateProviderDto,
+  ): Promise<{ data: ProviderSalesStatusDto }> {
+    return { data: await this.service.update(provider, dto) };
+  }
+
+  /** "Xoá": only one added by hand that nothing hangs off. */
+  @Delete(':provider')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('provider') provider: string): Promise<void> {
+    await this.service.remove(provider);
   }
 
   /**

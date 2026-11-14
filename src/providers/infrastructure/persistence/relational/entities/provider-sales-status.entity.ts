@@ -23,6 +23,21 @@ export class ProviderSalesStatusEntity extends EntityRelationalHelper {
   @Column({ type: 'timestamp', nullable: true })
   disabledAt: Date | null;
 
+  /** "Billion Connect": what the CMS calls it (vande-1411 #024). */
+  @Column({ type: String, length: 120, nullable: true })
+  displayName: string | null;
+
+  /** "BL": the masked code the overview shows instead of the name. */
+  @Column({ type: String, length: 16, nullable: true })
+  shortCode: string | null;
+
+  /**
+   * Added by hand in "Danh sách Nhà cung cấp": a domestic supplier whose eSIMs
+   * come in by file, with no API. Only these can be deleted there.
+   */
+  @Column({ type: Boolean, default: false })
+  isManual: boolean;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }
