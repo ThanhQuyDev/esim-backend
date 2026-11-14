@@ -107,6 +107,14 @@ export class RegionsRelationalRepository implements RegionRepository {
       if (picked.length) qb.andWhere(`(${picked.join(' OR ')})`);
     }
 
+    // Travel only unless asked (vande-1411 #025).
+    const esimType = filterOptions?.esimType ?? 'travel';
+    if (esimType !== 'all') {
+      qb.andWhere(`COALESCE(region."esimType", 'travel') = :esimType`, {
+        esimType,
+      });
+    }
+
     if (filterOptions?.mobileHome) {
       qb.andWhere(
         `(region."mobileHomeRank" IS NOT NULL

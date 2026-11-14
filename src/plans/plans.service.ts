@@ -1,3 +1,4 @@
+import { Destination } from '../destinations/domain/destination';
 import { carrierOf, domesticProviderOf } from './domestic-provider';
 import { MarginTier } from './multiday-price';
 import {
@@ -28,6 +29,22 @@ import {
   earliestActivationDeadline,
   activationDeadlineFromExpiry,
 } from './plan-activation';
+
+/**
+ * What a local destination gives its domestic carrier's page and button
+ * (vande-1411 #025).
+ */
+export interface LocalCarrierPage {
+  id: number;
+  name: string;
+  title: string | null;
+  titleVi: string | null;
+  description: string | null;
+  descriptionVi: string | null;
+  avatarUrl: string | null;
+  flagUrl: string | null;
+  parentId: number | null;
+}
 
 type PlanGroups = {
   dataPlans: Plan[];
@@ -1020,12 +1037,63 @@ export class PlansService implements OnApplicationBootstrap {
       carrier: string;
       fromVndPrice: number;
       planCount: number;
+      destination: LocalCarrierPage | null;
     }[]
   > {
     // `carrier` is the bare carrier ("itel") the storefront puts in the
     // /esim-noi-dia/[carrier] URL; `provider` is the supplier ("itel-noidia").
     const rows = await this.plansRepository.getLocalCarriers();
-    return rows.map((row) => ({ ...row, carrier: carrierOf(row.provider) }));
+    const pages = await this.localCarrierPages();
+    const list = rows.map((row) => ({
+      ...row,
+      carrier: carrierOf(row.provider),
+      destination: pages.get(row.provider.toLowerCase()) ?? null,
+    }));
+    // A local destination makes its carrier's button even before its eSIMs
+    // are imported (vande-1411 #025).
+    for (const [provider, page] of pages) {
+      if (list.some((row) => row.provider.toLowerCase() === provider)) continue;
+      list.push({
+        provider,
+        carrier: carrierOf(provider),
+        fromVndPrice: 0,
+        planCount: 0,
+        destination: page,
+      });
+    }
+    return list;
+  }
+
+  /**
+   * The local destinations by supplier (vande-1411 #025): what a domestic
+   * carrier's page and button show — its title, picture, icon, description.
+   */
+  private async localCarrierPages(): Promise<Map<string, LocalCarrierPage>> {
+    const [rows] = (await this.destinationsService
+      ?.findManyWithPagination({
+        filterOptions: { esimType: 'local', isActive: true },
+        sortOptions: null,
+        paginationOptions: { page: 1, limit: 500 },
+      })
+      .catch(() => [[]])) ?? [[]];
+    const pages = new Map<string, LocalCarrierPage>();
+    for (const d of (rows ?? []) as Destination[]) {
+      if (!d.localProvider) continue;
+      const provider = d.localProvider.toLowerCase();
+      if (pages.has(provider)) continue;
+      pages.set(provider, {
+        id: Number(d.id),
+        name: d.name,
+        title: d.title ?? null,
+        titleVi: d.titleVi ?? null,
+        description: d.description ?? null,
+        descriptionVi: d.descriptionVi ?? null,
+        avatarUrl: d.avatarUrl ?? null,
+        flagUrl: d.flagUrl ?? null,
+        parentId: d.parentId ?? null,
+      });
+    }
+    return pages;
   }
 
   /**
@@ -1048,6 +1116,11 @@ export class PlansService implements OnApplicationBootstrap {
     });
 
     if (all.length === 0) {
+      // A local destination's page stands before its eSIMs are imported
+      // (vande-1411 #025), empty; any other carrier has no page.
+      if ((await this.localCarrierPages()).has(provider)) {
+        return groupPlansBySimType([]);
+      }
       throw new NotFoundException(
         `No domestic eSIM plans found for carrier '${provider}'`,
       );

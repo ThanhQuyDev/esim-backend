@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -72,6 +73,15 @@ export class FilterRegionDto {
   @IsOptional()
   @IsBoolean()
   mobileHome?: boolean;
+
+  /**
+   * "travel", "local" or "all". Left out, the list is travel only, so a
+   * domestic carrier never shows among the countries (vande-1411 #025).
+   */
+  @ApiPropertyOptional({ type: String, enum: ['travel', 'local', 'all'] })
+  @IsOptional()
+  @IsIn(['travel', 'local', 'all'])
+  esimType?: string;
 
   /**
    * Suppliers to match against the free-text `providers` column (#036), exactly

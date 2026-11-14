@@ -84,6 +84,20 @@ export class Destination {
   })
   mobileHomeRank?: number | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['travel', 'local'],
+    description: 'Travel, or a domestic eSIM carrier page (vande-1411 #025).',
+  })
+  esimType?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'Supplier of a local destination, "vietnamobile-noidia".',
+  })
+  localProvider?: string | null;
+
   @ApiProperty({
     type: Boolean,
     example: true,

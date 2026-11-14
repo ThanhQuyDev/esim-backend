@@ -59,6 +59,14 @@ export class DestinationsRelationalRepository implements DestinationRepository {
         });
       }
     }
+    // Travel only unless asked: a domestic carrier is no country (vande-1411 #025).
+    const esimType = filterOptions?.esimType ?? 'travel';
+    if (esimType !== 'all') {
+      qb.andWhere('COALESCE(destination.esimType, :travel) = :esimType', {
+        travel: 'travel',
+        esimType,
+      });
+    }
     if (filterOptions?.mobileHome) {
       qb.andWhere('destination.mobileHomeRank IS NOT NULL');
     }

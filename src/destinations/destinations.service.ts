@@ -14,6 +14,19 @@ import {
 import { DestinationRepository } from './infrastructure/persistence/destination.repository';
 import { Destination } from './domain/destination';
 import { IPaginationOptions } from '../utils/types/pagination-options';
+import { domesticProviderOf } from '../plans/domestic-provider';
+
+/**
+ * A local destination's supplier as its plans carry it, "vietnamobile-noidia";
+ * a travel one has none (vande-1411 #025).
+ */
+export function localProviderOf(
+  esimType: string | undefined,
+  provider: string | null | undefined,
+): string | null {
+  if (esimType !== 'local' || !provider?.trim()) return null;
+  return domesticProviderOf(provider);
+}
 
 @Injectable()
 export class DestinationsService {
@@ -59,6 +72,11 @@ export class DestinationsService {
       keySearch: createDestinationDto.keySearch ?? null,
       isPopular: createDestinationDto.isPopular ?? false,
       mobileHomeRank: createDestinationDto.mobileHomeRank ?? null,
+      esimType: createDestinationDto.esimType ?? 'travel',
+      localProvider: localProviderOf(
+        createDestinationDto.esimType,
+        createDestinationDto.localProvider,
+      ),
       isActive: createDestinationDto.isActive ?? true,
       description: createDestinationDto.description ?? null,
       descriptionVi: createDestinationDto.descriptionVi ?? null,
@@ -148,6 +166,13 @@ export class DestinationsService {
       // Only when sent, so a save that leaves it out keeps it (vande-1411 #021).
       ...(updateDestinationDto.mobileHomeRank !== undefined && {
         mobileHomeRank: updateDestinationDto.mobileHomeRank,
+      }),
+      ...(updateDestinationDto.esimType !== undefined && {
+        esimType: updateDestinationDto.esimType,
+        localProvider: localProviderOf(
+          updateDestinationDto.esimType,
+          updateDestinationDto.localProvider,
+        ),
       }),
       isActive: updateDestinationDto.isActive,
       description: updateDestinationDto.description,

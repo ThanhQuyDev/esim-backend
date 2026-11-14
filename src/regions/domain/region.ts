@@ -108,6 +108,13 @@ export class Region {
   })
   mobileHomeRank?: number | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['travel', 'local'],
+    description: 'Travel, or a domestic eSIM carrier page (vande-1411 #025).',
+  })
+  esimType?: string;
+
   /** The parent's name, when a plan list asks for its region. */
   parentName?: string | null;
 

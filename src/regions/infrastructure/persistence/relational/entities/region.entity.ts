@@ -62,6 +62,14 @@ export class RegionEntity extends EntityRelationalHelper {
   @Column({ type: 'smallint', nullable: true })
   mobileHomeRank: number | null;
 
+  /**
+   * "eSIM Type": travel (a country or region page) or local, a domestic eSIM
+   * carrier's page (vande-1411 #025). A local one stays out of the travel
+   * lists.
+   */
+  @Column({ type: String, length: 16, default: 'travel' })
+  esimType: string;
+
   @Column({ type: String, nullable: true })
   providers: string | null;
 

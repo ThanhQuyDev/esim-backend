@@ -15,6 +15,8 @@ export class DestinationMapper {
     domainEntity.keySearch = raw.keySearch;
     domainEntity.isPopular = raw.isPopular;
     domainEntity.mobileHomeRank = raw.mobileHomeRank ?? null;
+    domainEntity.esimType = raw.esimType ?? 'travel';
+    domainEntity.localProvider = raw.localProvider ?? null;
     domainEntity.isActive = raw.isActive;
     domainEntity.description = raw.description;
     domainEntity.descriptionVi = raw.descriptionVi;
@@ -58,6 +60,12 @@ export class DestinationMapper {
     // Left as it is when a save does not mention it.
     if (domainEntity.mobileHomeRank !== undefined) {
       persistenceEntity.mobileHomeRank = domainEntity.mobileHomeRank;
+    }
+    if (domainEntity.esimType !== undefined) {
+      persistenceEntity.esimType = domainEntity.esimType;
+    }
+    if (domainEntity.localProvider !== undefined) {
+      persistenceEntity.localProvider = domainEntity.localProvider;
     }
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.description = domainEntity.description;

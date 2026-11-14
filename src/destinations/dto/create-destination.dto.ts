@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -76,6 +77,23 @@ export class CreateDestinationDto {
   @Min(1)
   @Max(5)
   mobileHomeRank?: number | null;
+
+  /** "eSIM Type": travel, or local for a domestic carrier (vande-1411 #025). */
+  @ApiPropertyOptional({ type: String, enum: ['travel', 'local'] })
+  @IsOptional()
+  @IsIn(['travel', 'local'])
+  esimType?: string;
+
+  /** Supplier of a local destination, as listed in "Danh sách Nhà cung cấp". */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'vietnamobile-noidia',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  localProvider?: string | null;
 
   @ApiPropertyOptional({ example: true, type: Boolean })
   @IsOptional()

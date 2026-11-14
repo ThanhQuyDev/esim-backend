@@ -28,6 +28,7 @@ export class RegionMapper {
     domainEntity.parentId = raw.parentId ?? null;
     domainEntity.isParent = !!raw.isParent;
     domainEntity.mobileHomeRank = raw.mobileHomeRank ?? null;
+    domainEntity.esimType = raw.esimType ?? 'travel';
     domainEntity.isActive = raw.isActive;
     domainEntity.isPopular = raw.isPopular;
     domainEntity.soldCount = Number(raw.soldCount ?? 0);
@@ -60,6 +61,9 @@ export class RegionMapper {
     // Left as it is when a save does not mention it.
     if (domainEntity.mobileHomeRank !== undefined) {
       persistenceEntity.mobileHomeRank = domainEntity.mobileHomeRank;
+    }
+    if (domainEntity.esimType !== undefined) {
+      persistenceEntity.esimType = domainEntity.esimType;
     }
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.isPopular = domainEntity.isPopular;

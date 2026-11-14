@@ -80,6 +80,7 @@ export class RegionsService {
           : (createRegionDto.parentId ?? null),
         isParent: createRegionDto.isParent ?? false,
         mobileHomeRank: createRegionDto.mobileHomeRank ?? null,
+        esimType: createRegionDto.esimType ?? 'travel',
       },
       createRegionDto.destinationIds,
     );
@@ -174,6 +175,9 @@ export class RegionsService {
         // Only when sent, so a save that leaves it out keeps it (vande-1411 #021).
         ...(updateRegionDto.mobileHomeRank !== undefined && {
           mobileHomeRank: updateRegionDto.mobileHomeRank,
+        }),
+        ...(updateRegionDto.esimType !== undefined && {
+          esimType: updateRegionDto.esimType,
         }),
       },
       updateRegionDto.destinationIds,

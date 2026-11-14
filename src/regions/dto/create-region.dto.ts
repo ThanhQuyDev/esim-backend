@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -140,6 +141,12 @@ export class CreateRegionDto {
   @Min(1)
   @Max(5)
   mobileHomeRank?: number | null;
+
+  /** "eSIM Type": travel, or local for a domestic carrier (vande-1411 #025). */
+  @ApiPropertyOptional({ type: String, enum: ['travel', 'local'] })
+  @IsOptional()
+  @IsIn(['travel', 'local'])
+  esimType?: string;
 
   @ApiPropertyOptional({
     example: 'airalo,esimaccess',
