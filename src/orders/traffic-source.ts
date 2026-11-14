@@ -214,7 +214,11 @@ export function classifyTraffic(
   if (signals.secFetchSite === 'cross-site') {
     return { group: 'hidden', source: 'Từ link, không rõ nơi' };
   }
-  return { group: 'unknown', source: 'Không rõ' };
+  // Nothing says it came from elsewhere: no referrer, campaign, click id or
+  // app, and no "cross-site". A browser that does not send Sec-Fetch-Site
+  // (Safari before 16.4), or a session whose first page was lost, lands here.
+  // Counted as direct, as analytics tools do (vande-1411 #038).
+  return { group: 'direct', source: 'Trực tiếp' };
 }
 
 const word = (value?: string | null): string | null => {

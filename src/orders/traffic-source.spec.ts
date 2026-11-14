@@ -55,7 +55,9 @@ describe('traffic source', () => {
     ],
     [{ secFetchSite: 'none' }, 'direct', 'Trực tiếp (tự tìm đến)'],
     [{ secFetchSite: 'cross-site' }, 'hidden', 'Từ link, không rõ nơi'],
-    [{}, 'unknown', 'Không rõ'],
+    // Nothing points elsewhere: direct (vande-1411 #038).
+    [{}, 'direct', 'Trực tiếp'],
+    [{ secFetchSite: 'same-origin' }, 'direct', 'Trực tiếp'],
   ])('should read %j', (signals, group, source) => {
     expect(classifyTraffic(signals, IPHONE)).toEqual({ group, source });
   });
