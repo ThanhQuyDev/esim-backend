@@ -74,9 +74,21 @@ export class RegionsRelationalRepository implements RegionRepository {
       // stops at 200) still links a pack's card to the parent's page
       // (vande-1411 #028).
       .addSelect(
-        `(SELECT json_build_object('slug', p.slug, 'slugVi', p."slugVi", 'name', p.name, 'title', p.title, 'titleVi', p."titleVi", 'avatarUrl', p."avatarUrl", 'iconUrl', p."iconUrl")
+        `(SELECT json_build_object('slug', p.slug, 'slugVi', p."slugVi", 'name', p.name, 'title', p.title, 'titleVi', p."titleVi", 'avatarUrl', p."avatarUrl", 'iconUrl', p."iconUrl",
+          'childCount', (SELECT COUNT(*) FROM "region" c WHERE c."parentId" = p.id AND c."isActive" = true AND c."deletedAt" IS NULL))
           FROM "region" p WHERE p.id = region."parentId" AND p."deletedAt" IS NULL)`,
         'parent_info',
+      )
+      // How many active packs a parent has, so its card counts every option
+      // even when some are past this page of results (vande-1411 #030).
+      .addSelect(
+        `(SELECT COUNT(*) FROM "region" c WHERE c."parentId" = region.id AND c."isActive" = true AND c."deletedAt" IS NULL)`,
+        'child_count',
+      )
+      // Every pack, on or off: the badge in the CMS list.
+      .addSelect(
+        `(SELECT COUNT(*) FROM "region" c WHERE c."parentId" = region.id AND c."deletedAt" IS NULL)`,
+        'child_total',
       );
 
     if (filterOptions?.isActive !== undefined) {
@@ -210,6 +222,8 @@ export class RegionsRelationalRepository implements RegionRepository {
         | string
         | null
         | undefined;
+      domain.childCount = Number(rawResults.raw[index]?.child_count ?? 0);
+      domain.childTotal = Number(rawResults.raw[index]?.child_total ?? 0);
       domain.parent =
         typeof parent === 'string'
           ? (JSON.parse(parent) as Region['parent'])

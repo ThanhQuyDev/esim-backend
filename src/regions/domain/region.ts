@@ -115,6 +115,12 @@ export class Region {
   })
   esimType?: string;
 
+  /** In a list: how many active packs this region is the parent of (vande-1411 #030). */
+  childCount?: number;
+
+  /** In a list: every pack it is the parent of, on or off (the CMS badge). */
+  childTotal?: number;
+
   /** The parent's name, when a plan list asks for its region. */
   parentName?: string | null;
 
@@ -132,6 +138,8 @@ export class Region {
     /** Its pictures, for a pack with none of its own (vande-1411 #029). */
     avatarUrl?: string | null;
     iconUrl?: string | null;
+    /** Its active packs (vande-1411 #030). */
+    childCount?: number;
   } | null;
 
   @ApiProperty({
