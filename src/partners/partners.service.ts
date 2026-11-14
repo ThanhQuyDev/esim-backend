@@ -9797,6 +9797,8 @@ export class PartnersService {
       updatedAt: row.updatedAt ?? null,
       dataUsed: row.dataUsed == null ? null : Number(row.dataUsed),
       dataTotal,
+      // Unlimited plans read "100 MB / ∞" (vande-1411 #044).
+      planType: (row.planType as string) ?? null,
       // doitac-3010 #006, as on the admin's eSIM page:
       /** "Tốc độ sau khi hết data". */
       throttleSpeed: (row.fupSpeed as string) ?? null,
