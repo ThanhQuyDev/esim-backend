@@ -8,6 +8,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Query,
   Request,
   Res,
   UploadedFile,
@@ -154,6 +155,21 @@ export class AdminOrdersController {
       'Content-Length': file.content.length.toString(),
     });
     res.end(file.content);
+  }
+
+  /** "Đặt đơn hộ": a line's cost and price (vande-1411 #015). */
+  @Get('manual-quote')
+  @ApiOperation({ summary: 'Cost and price of a manual order line' })
+  manualQuote(
+    @Query('planId') planId: string,
+    @Query('days') days?: string,
+    @Query('quantity') quantity?: string,
+  ) {
+    return this.ordersService.manualOrderQuote({
+      planId: Number(planId),
+      days: days ? Number(days) : null,
+      quantity: quantity ? Number(quantity) : 1,
+    });
   }
 
   @Post('submit-manual')

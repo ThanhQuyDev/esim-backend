@@ -1971,6 +1971,51 @@ export class OrdersService {
   }
 
   /**
+   * "Đặt đơn hộ": what a line will cost us and sell for, once the plan, the
+   * days and the quantity are picked (vande-1411 #015) — by the very rules
+   * the order is then placed with: the cost with the supplier's tax/fee, the
+   * price of a day pass on its whole cost.
+   */
+  async manualOrderQuote(input: {
+    planId: number;
+    days?: number | null;
+    quantity?: number | null;
+  }): Promise<{
+    days: number | null;
+    quantity: number;
+    unitCostVnd: number;
+    unitPriceVnd: number;
+    totalCostVnd: number;
+    totalPriceVnd: number;
+  }> {
+    const plan = await this.plansService.findForSale(Number(input.planId));
+    if (!plan) throw new NotFoundException(`Plan ${input.planId} not found`);
+    const days =
+      plan.isAbleMultidate && Number(input.days) > 1
+        ? Math.min(365, Math.round(Number(input.days)))
+        : null;
+    const quantity = Math.max(1, Math.round(Number(input.quantity) || 1));
+    const tiers = await this.plansService.marginTiers();
+    const vndRate = await this.exchangeRateService.getUsdToVndRate();
+    const surcharges = await loadSurchargePercents(this.dataSource);
+    const unitCostVnd = getPlanUnitCostVnd(
+      plan,
+      days,
+      vndRate,
+      surchargeFactor(surcharges, plan.provider),
+    );
+    const unitPriceVnd = getDiscountedVndPrice(plan, days, tiers);
+    return {
+      days,
+      quantity,
+      unitCostVnd,
+      unitPriceVnd,
+      totalCostVnd: unitCostVnd * quantity,
+      totalPriceVnd: unitPriceVnd * quantity,
+    };
+  }
+
+  /**
    * Admin "đặt đơn hộ" — bypass OnePay/QR generation, mark order PAID immediately,
    * provision eSIMs via providers, and never auto-send the eSIM email.
    * The admin will trigger {@link resendEsimEmail} manually after verifying
