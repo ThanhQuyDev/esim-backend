@@ -69,7 +69,15 @@ export class RegionsRelationalRepository implements RegionRepository {
         '(SELECT COUNT(*) FROM "destination_region" dr2 WHERE dr2."regionId" = region.id)',
         'dest_count',
       )
-      .addSelect('MIN(plan."vndPrice")', 'from_price');
+      .addSelect('MIN(plan."vndPrice")', 'from_price')
+      // Its parent's slugs and names, so a list missing the parent row (it
+      // stops at 200) still links a pack's card to the parent's page
+      // (vande-1411 #028).
+      .addSelect(
+        `(SELECT json_build_object('slug', p.slug, 'slugVi', p."slugVi", 'name', p.name, 'title', p.title, 'titleVi', p."titleVi")
+          FROM "region" p WHERE p.id = region."parentId" AND p."deletedAt" IS NULL)`,
+        'parent_info',
+      );
 
     if (filterOptions?.isActive !== undefined) {
       qb.andWhere('region."isActive" = :isActive', {
@@ -197,6 +205,15 @@ export class RegionsRelationalRepository implements RegionRepository {
       );
       const rawFromPrice = rawResults.raw[index]?.from_price;
       domain.fromPrice = rawFromPrice ? Number(rawFromPrice) : null;
+      const parent = rawResults.raw[index]?.parent_info as
+        | Region['parent']
+        | string
+        | null
+        | undefined;
+      domain.parent =
+        typeof parent === 'string'
+          ? (JSON.parse(parent) as Region['parent'])
+          : (parent ?? null);
       return domain;
     });
 

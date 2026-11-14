@@ -118,6 +118,19 @@ export class Region {
   /** The parent's name, when a plan list asks for its region. */
   parentName?: string | null;
 
+  /**
+   * In a list: its parent's slugs and names, so a pack's card can link to the
+   * parent's page when the parent is not in the same page of results
+   * (vande-1411 #028).
+   */
+  parent?: {
+    slug: string;
+    slugVi: string | null;
+    name: string;
+    title: string | null;
+    titleVi: string | null;
+  } | null;
+
   @ApiProperty({
     type: Number,
     example: 120,
