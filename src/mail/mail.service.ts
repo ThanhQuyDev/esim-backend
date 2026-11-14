@@ -1271,7 +1271,8 @@ ${notificationBodyText(data.body)}`,
       | 'ticket_acknowledgement'
       | 'ticket_admin_reply'
       | 'ticket_resolved_closed'
-      | 'ticket_closed_reply',
+      | 'ticket_closed_reply'
+      | 'ticket_closed',
     data: TicketMailData,
   ): Promise<void> {
     const template = await this.emailTemplatesService.findByName(templateName);
@@ -1375,6 +1376,15 @@ ${data.replyBody ?? data.ticketDescription ?? ''}`,
    */
   async sendTicketResolved(data: TicketMailData): Promise<void> {
     await this.sendTicketEmail('ticket_resolved_closed', data);
+  }
+
+  /**
+   * The notice that a ticket was closed, by an admin or by the 48-hour rule
+   * (vande-1411 #033): "closed — open a new request here", with the storefront
+   * form for a customer and the portal's "Hỗ trợ" page for a partner.
+   */
+  async sendTicketClosed(data: TicketMailData): Promise<void> {
+    await this.sendTicketEmail('ticket_closed', data);
   }
 
   /**

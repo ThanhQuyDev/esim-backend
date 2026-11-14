@@ -42,7 +42,7 @@ describe('Ticket lifecycle (#061)', () => {
     const mailService = {
       sendTicketAcknowledgement: jest.fn().mockResolvedValue(undefined),
       sendTicketReply: jest.fn().mockResolvedValue(undefined),
-      sendTicketResolved: jest.fn().mockResolvedValue(undefined),
+      sendTicketClosed: jest.fn().mockResolvedValue(undefined),
     };
 
     const service = new TicketsService(
@@ -169,11 +169,14 @@ describe('Ticket lifecycle (#061)', () => {
       expect(closed).toBe(1);
       expect(updates[0].data).toEqual({ status: TicketStatus.CLOSED });
       // In the thread too, because a partner follows their ticket in the portal.
-      expect(String(saved[0].body)).toContain('Đã giải quyết');
-      expect(mailService.sendTicketResolved).toHaveBeenCalledWith({
+      // Closed, with where to open a new one — not "Đã giải quyết" (vande-1411 #033).
+      expect(String(saved[0].body)).toContain('đã được đóng lại');
+      expect(String(saved[0].body)).not.toContain('Đã giải quyết');
+      expect(mailService.sendTicketClosed).toHaveBeenCalledWith({
         to: 'khach@example.com',
         ticketNumber: 'HT-000007',
         ticketSubject: DUE.subject,
+        isPartner: false,
       });
     });
 
@@ -184,7 +187,7 @@ describe('Ticket lifecycle (#061)', () => {
 
       expect(await service.closeResolvedTickets()).toBe(0);
       expect(repository.update).not.toHaveBeenCalled();
-      expect(mailService.sendTicketResolved).not.toHaveBeenCalled();
+      expect(mailService.sendTicketClosed).not.toHaveBeenCalled();
     });
 
     it('should not claim a close that failed', async () => {
@@ -197,7 +200,7 @@ describe('Ticket lifecycle (#061)', () => {
       const closed = await service.closeResolvedTickets();
 
       expect(closed).toBe(0);
-      expect(mailService.sendTicketResolved).not.toHaveBeenCalled();
+      expect(mailService.sendTicketClosed).not.toHaveBeenCalled();
       expect(saved).toEqual([]);
     });
 
@@ -206,7 +209,7 @@ describe('Ticket lifecycle (#061)', () => {
       const { service, updates, mailService } = makeService(DUE, {
         due: [DUE],
       });
-      mailService.sendTicketResolved.mockRejectedValueOnce(
+      mailService.sendTicketClosed.mockRejectedValueOnce(
         new Error('SMTP down'),
       );
 
@@ -219,14 +222,14 @@ describe('Ticket lifecycle (#061)', () => {
     it('should keep going after one ticket fails', async () => {
       const second = { ...DUE, id: 8, ticketNumber: 'HT-000008' };
       const { service, mailService } = makeService(DUE, { due: [DUE, second] });
-      mailService.sendTicketResolved.mockRejectedValueOnce(
+      mailService.sendTicketClosed.mockRejectedValueOnce(
         new Error('SMTP down'),
       );
 
       const closed = await service.closeResolvedTickets();
 
       expect(closed).toBe(2);
-      expect(mailService.sendTicketResolved).toHaveBeenCalledTimes(2);
+      expect(mailService.sendTicketClosed).toHaveBeenCalledTimes(2);
     });
   });
 });
@@ -244,7 +247,7 @@ describe('TicketsService — partner portal notice on close (doitac-1410 #023)',
       save: jest.fn((v: unknown) => Promise.resolve(v)),
     };
     const mailService = {
-      sendTicketResolved: jest.fn().mockResolvedValue(undefined),
+      sendTicketClosed: jest.fn().mockResolvedValue(undefined),
     };
     const query = jest.fn().mockResolvedValue([]);
     const service = new TicketsService(
@@ -278,7 +281,7 @@ describe('TicketsService — partner portal notice on close (doitac-1410 #023)',
     expect(sql).toContain('INSERT INTO partner_notification');
     expect(params[0]).toContain('HT-000005');
     expect(params[2]).toBe('kol@esim.test');
-    expect(mailService.sendTicketResolved).toHaveBeenCalled();
+    expect(mailService.sendTicketClosed).toHaveBeenCalled();
   });
 
   it('should not touch partner notices for a customer ticket', async () => {

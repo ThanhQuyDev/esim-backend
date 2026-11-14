@@ -36,7 +36,7 @@ function makeService(ticket: Record<string, unknown> | null) {
   const mailService = {
     sendTicketAcknowledgement: jest.fn(),
     sendTicketReply: jest.fn(),
-    sendTicketResolved: jest.fn(),
+    sendTicketClosed: jest.fn(),
     sendTicketClosedReply: jest.fn(),
   };
   const service = new TicketsService(
@@ -83,11 +83,26 @@ describe('Ticket conversation (#041, test round 4)', () => {
 
       await service.updateStatus(5, TicketStatus.CLOSED);
 
-      expect(mailService.sendTicketResolved).toHaveBeenCalledWith(
+      expect(mailService.sendTicketClosed).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'khach@example.com',
           ticketNumber: 'HT-000005',
+          isPartner: false,
         }),
+      );
+    });
+
+    // vande-1411 #033: a partner's close notice points at the portal's form.
+    it("should send a partner the closed email with the portal's form", async () => {
+      const { service, mailService } = makeService({
+        ...TICKET,
+        fromPartner: true,
+      });
+
+      await service.updateStatus(5, TicketStatus.CLOSED);
+
+      expect(mailService.sendTicketClosed).toHaveBeenCalledWith(
+        expect.objectContaining({ isPartner: true }),
       );
     });
 
@@ -99,7 +114,7 @@ describe('Ticket conversation (#041, test round 4)', () => {
 
       await service.updateStatus(5, TicketStatus.CLOSED);
 
-      expect(mailService.sendTicketResolved).not.toHaveBeenCalled();
+      expect(mailService.sendTicketClosed).not.toHaveBeenCalled();
     });
 
     it('should accept the new "cần bổ sung thông tin" status', async () => {

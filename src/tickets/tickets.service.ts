@@ -33,6 +33,7 @@ import {
   TICKET_AUTO_CLOSE_HOURS,
 } from './ticket-status';
 import { MailService } from '../mail/mail.service';
+import { SITE_URL } from '../mail/mail-branding';
 
 @Injectable()
 export class TicketsService {
@@ -490,7 +491,7 @@ export class TicketsService {
       status === TicketStatus.CLOSED &&
       before?.status !== TicketStatus.CLOSED
     ) {
-      await this.notifyResolved(updated);
+      await this.notifyClosed(updated);
     }
 
     return updated;
@@ -593,7 +594,7 @@ export class TicketsService {
         continue;
       }
 
-      await this.notifyResolved(ticket);
+      await this.notifyClosed(ticket);
     }
 
     if (closed > 0) {
@@ -612,7 +613,12 @@ export class TicketsService {
    * the portal (#060), and best-effort on both halves: the ticket is already
    * closed, and a mail outage must not undo that or stop the rest of the sweep.
    */
-  private async notifyResolved(ticket: Ticket): Promise<void> {
+  /**
+   * A ticket was closed (vande-1411 #033): the thread, the partner portal and
+   * the customer's inbox are told it is closed and where to open a new one —
+   * not that it was "Đã giải quyết".
+   */
+  private async notifyClosed(ticket: Ticket): Promise<void> {
     const ticketNumber =
       ticket.ticketNumber ?? ticketNumberFor(Number(ticket.id));
 
@@ -622,7 +628,7 @@ export class TicketsService {
           ticketId: Number(ticket.id),
           authorRole: 'admin',
           authorName: 'Hệ thống',
-          body: this.resolvedNoticeBody(),
+          body: this.closedNoticeBody(ticketNumber, !!ticket.fromPartner),
           attachments: null,
         }),
       );
@@ -641,10 +647,12 @@ export class TicketsService {
     if (!ticket.customerEmail) return;
 
     try {
-      await this.mailService.sendTicketResolved({
+      await this.mailService.sendTicketClosed({
         to: ticket.customerEmail,
         ticketNumber,
         ticketSubject: ticket.subject,
+        // A partner opens a new request from the portal's Hỗ trợ page.
+        isPartner: !!ticket.fromPartner,
       });
     } catch (err) {
       this.logger.error(
@@ -654,15 +662,17 @@ export class TicketsService {
   }
 
   /** The close notice as it reads in the thread; same words as the email. */
-  private resolvedNoticeBody(): string {
+  private closedNoticeBody(ticketNumber: string, isPartner: boolean): string {
+    const where = isPartner
+      ? 'menu Hỗ trợ trong trang quản trị đối tác'
+      : `${SITE_URL}/help-center/support`;
     return [
       'Chào bạn,',
       '',
-      'Chúng tôi đã đánh dấu yêu cầu của bạn là "Đã giải quyết". Chúng tôi luôn nỗ lực cải thiện sản phẩm và dịch vụ, và những phản hồi của bạn đóng vai trò vô cùng quan trọng đối với chúng tôi.',
-      '',
-      'Chúng tôi rất mong được tiếp tục hỗ trợ bạn duy trì kết nối trong những chuyến đi sắp tới. Nếu có bất kỳ thắc mắc nào, xin đừng ngần ngại liên hệ với chúng tôi bất cứ lúc nào.',
+      `Mã số hỗ trợ ${ticketNumber} này đã được đóng lại, vui lòng điền biểu mẫu để tạo mã số hỗ trợ mới tại đây: ${where}`,
       '',
       'Trân trọng,',
+      'Đội ngũ hỗ trợ esim.vn',
     ].join('\n');
   }
 
