@@ -50,7 +50,14 @@ export class EsimAccessService {
     private readonly providerSyncLogsService: ProviderSyncLogsService,
   ) {}
 
+  /** Slug → package code within the running sync (vande-1411 #010). */
+  private slugsThisSyncMap?: Map<string, string>;
+  private get slugsThisSync(): Map<string, string> {
+    return (this.slugsThisSyncMap ??= new Map());
+  }
+
   async syncPlans(): Promise<void> {
+    this.slugsThisSyncMap = new Map();
     this.logger.log('Starting esimaccess plan sync...');
     const syncStartedAt = new Date();
 
@@ -377,7 +384,7 @@ export class EsimAccessService {
       planType = dataTypeMap[pkg.dataType] ?? 'fixed';
     }
 
-    const slug =
+    let slug =
       this.buildPlanSlug(
         locationName,
         dataMb,
@@ -386,6 +393,17 @@ export class EsimAccessService {
         planType,
         pkg,
       ) + slugSuffix;
+    // Never two packages on one slug in a sync: the second would overwrite the
+    // first, which then vanished from the catalogue (vande-1411 #010). The
+    // later one gets its own, by its package code, and the log says so.
+    const owner = this.slugsThisSync.get(slug);
+    if (owner && owner !== pkg.packageCode) {
+      this.logger.warn(
+        `Slug ${slug} already taken by ${owner} in this sync; ${pkg.packageCode} (${pkg.name}) gets its own`,
+      );
+      slug = `${slug}-${pkg.packageCode.toLowerCase()}`;
+    }
+    this.slugsThisSync.set(slug, pkg.packageCode);
     const existing = await this.plansService.findBySlug(slug);
 
     const planName = this.buildPlanName(
@@ -849,11 +867,17 @@ function variantOf(pkg: { slug?: string | null }): string | null {
   return last && last !== 'daily' && last !== 'nonhkip' ? last : null;
 }
 
-function fupGroup(fupPolicy: string | null | undefined): string {
+export function fupGroup(fupPolicy: string | null | undefined): string {
   const lower = (fupPolicy ?? '').toLowerCase().trim();
   // 1 Mbps and up is its own kind of plan; anything slower is one group.
   const mbpsMatch = lower.match(/^([\d.]+)\s*mbps$/);
-  if (mbpsMatch && parseFloat(mbpsMatch[1]) >= 1) return fupPolicy ?? '';
+  // As a number: esimaccess writes "1 Mbps" on one package and "1Mbps" on its
+  // twin, and the raw text put Hong Kong 1GB/Day FUP1Mbps (PXJD5G42G) and its
+  // "(nonhkip)" twin in two groups — both then built the same slug and the
+  // twin overwrote it at every sync (vande-1411 #010).
+  if (mbpsMatch && parseFloat(mbpsMatch[1]) >= 1) {
+    return `${parseFloat(mbpsMatch[1])}mbps`;
+  }
   return 'sub1mbps';
 }
 

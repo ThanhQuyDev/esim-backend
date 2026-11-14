@@ -1,4 +1,8 @@
-import { HK_TWIN_SLUG_SUFFIX, pairNonhkipVariants } from './esimaccess.service';
+import {
+  fupGroup,
+  HK_TWIN_SLUG_SUFFIX,
+  pairNonhkipVariants,
+} from './esimaccess.service';
 import { EsimAccessPackage } from './esimaccess-api.types';
 
 function pkg(over: Partial<EsimAccessPackage>): EsimAccessPackage {
@@ -141,5 +145,46 @@ describe('Gói IP theo nước của eSIM Access (vande-0411 #031)', () => {
     expect(codes(pairNonhkipVariants([auip]))).toEqual([
       ['PR1JV40NN', '-auip'],
     ]);
+  });
+});
+
+/**
+ * vande-1411 #010 — Hong Kong 1/2/3GB/Day FUP1Mbps (PXJD5G42G, PF2H57CSU,
+ * PD65GTS2Y) never reached the catalogue: the API writes "1 Mbps" on them and
+ * "1Mbps" on their "(nonhkip)" twins, the two landed in different groups, both
+ * took the plain slug and the twin overwrote them.
+ */
+describe('esimaccess FUP written two ways (vande-1411 #010)', () => {
+  it('should read "1 Mbps" and "1Mbps" as the same speed', () => {
+    expect(fupGroup('1 Mbps')).toBe(fupGroup('1Mbps'));
+    expect(fupGroup('10 Mbps')).not.toBe(fupGroup('1Mbps'));
+    expect(fupGroup('384 Kbps')).toBe('sub1mbps');
+  });
+
+  it('should keep the Hong Kong regular package beside its nonhkip twin', () => {
+    const regular = pkg({
+      packageCode: 'PXJD5G42G',
+      name: 'Hong Kong 1GB/Day FUP1Mbps',
+      slug: 'HK_1_Daily_1Mbps',
+      locationCode: 'HK',
+      location: 'HK',
+      fupPolicy: '1 Mbps',
+    });
+    const twin = pkg({
+      packageCode: 'P45FNTPV6',
+      name: 'Hong Kong 1GB/Day FUP1Mbps (nonhkip)',
+      slug: 'HK_1_Daily_1Mbps_nonhkip',
+      locationCode: 'HK',
+      location: 'HK',
+      fupPolicy: '1Mbps',
+    });
+    const result = pairNonhkipVariants([regular, twin]);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { pkg: twin, slugSuffix: '' },
+        { pkg: regular, slugSuffix: HK_TWIN_SLUG_SUFFIX },
+      ]),
+    );
+    expect(result).toHaveLength(2);
   });
 });
