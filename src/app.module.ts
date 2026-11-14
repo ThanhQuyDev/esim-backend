@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SalesPasswordModule } from './sales-password/sales-password.module';
 import { UsersModule } from './users/users.module';
 import { FilesModule } from './files/files.module';
 import { AuthModule } from './auth/auth.module';
@@ -94,6 +95,8 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
 
 @Module({
   imports: [
+    // vande-1411 #004: the second password of money transactions.
+    SalesPasswordModule,
     TopupModule,
     CustomPaymentLinksModule,
     InvoicesModule,

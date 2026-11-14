@@ -15,6 +15,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { SalesPasswordGuard } from '../sales-password/sales-password.guard';
 import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -302,6 +303,7 @@ export class AdminPartnersController {
   }
 
   @Post('deposit-requests/:id/confirm')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   confirmDepositRequest(
     @Param('id') id: number,
@@ -584,6 +586,7 @@ export class AdminPartnersController {
 
   /** "Hoàn tiền" on a distribution partner's order (doitac-1410 #058). */
   @Post('orders/:orderNumber/refund')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   refundPartnerPurchase(
     @Param('orderNumber') orderNumber: string,
@@ -623,6 +626,7 @@ export class AdminPartnersController {
 
   /** "Duyệt chi" or "Từ chối" for the rows an admin ticked (#069). */
   @Patch('payouts/bulk-decision')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   bulkPayoutDecision(
     @Body() dto: BulkPayoutDecisionDto,
@@ -638,6 +642,7 @@ export class AdminPartnersController {
   }
 
   @Post('payouts/:id/approve')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   approvePayout(
     @Param('id') id: number,
@@ -661,6 +666,7 @@ export class AdminPartnersController {
   }
 
   @Post('payouts/:id/mark-paid')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   markPayoutPaid(
     @Param('id') id: number,
@@ -773,6 +779,7 @@ export class AdminPartnersController {
 
   /** "Không cần ký quỹ" + "Hạn mức giao dịch" (vande #056). */
   @Patch(':id/credit-limit')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   setCreditLimit(
     @Param('id') id: number,
@@ -1005,6 +1012,7 @@ export class AdminPartnersController {
   }
 
   @Post(':id/wallet/adjust')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   adjustWallet(
     @Param('id') id: number,

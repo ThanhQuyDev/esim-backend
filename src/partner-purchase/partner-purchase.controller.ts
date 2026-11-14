@@ -13,6 +13,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { SalesPasswordGuard } from '../sales-password/sales-password.guard';
 import { randomUUID } from 'crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -58,7 +59,8 @@ export class PartnerPurchaseController {
   /** Đặt mua và trừ ví ngay. */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  // Money moves: the sales password too (vande-1411 #004).
+  @UseGuards(AuthGuard('jwt'), RolesGuard, SalesPasswordGuard)
   @Post('me/purchases')
   @HttpCode(HttpStatus.CREATED)
   async purchase(
@@ -129,7 +131,8 @@ export class PartnerPurchaseController {
   /** Thanh toán cả giỏ hàng trong một đơn (doitac-1410 #035). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  // Money moves: the sales password too (vande-1411 #004).
+  @UseGuards(AuthGuard('jwt'), RolesGuard, SalesPasswordGuard)
   @Post('me/purchases/cart')
   @HttpCode(HttpStatus.CREATED)
   async purchaseCart(
@@ -255,7 +258,8 @@ export class PartnerPurchaseController {
   /** "Topup hộ khách", paid from the deposit wallet (doitac-1410 #039). */
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  // Money moves: the sales password too (vande-1411 #004).
+  @UseGuards(AuthGuard('jwt'), RolesGuard, SalesPasswordGuard)
   @Post('me/esims/:iccid/topup')
   @HttpCode(HttpStatus.CREATED)
   async topupEsim(

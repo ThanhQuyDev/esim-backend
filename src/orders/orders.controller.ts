@@ -14,6 +14,7 @@ import {
   Request,
   Res,
 } from '@nestjs/common';
+import { SalesPasswordGuard } from '../sales-password/sales-password.guard';
 import { Response } from 'express';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -196,6 +197,7 @@ export class OrdersController {
   }
 
   @Post(':id/refund')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', type: String, required: true })
   refundOrder(

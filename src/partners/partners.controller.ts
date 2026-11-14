@@ -18,6 +18,7 @@ import {
   UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
+import { SalesPasswordGuard } from '../sales-password/sales-password.guard';
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -1224,7 +1225,8 @@ export class PartnersController {
 
   @ApiBearerAuth()
   @Roles(RoleEnum.partner, RoleEnum.admin)
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  // Money moves: the sales password too (vande-1411 #004).
+  @UseGuards(AuthGuard('jwt'), RolesGuard, SalesPasswordGuard)
   @Post('me/payouts')
   @HttpCode(HttpStatus.CREATED)
   async createPayoutRequest(

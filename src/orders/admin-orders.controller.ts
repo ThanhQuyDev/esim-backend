@@ -14,6 +14,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { SalesPasswordGuard } from '../sales-password/sales-password.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
@@ -125,6 +126,7 @@ export class AdminOrdersController {
 
   /** "Đặt eSIM hàng loạt": mailed spaced out, or as a list (vande #057). */
   @Post('bulk')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Place a bulk eSIM order from file rows' })
   submitBulkOrders(
@@ -155,6 +157,7 @@ export class AdminOrdersController {
   }
 
   @Post('submit-manual')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary:

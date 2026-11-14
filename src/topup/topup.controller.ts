@@ -10,6 +10,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { SalesPasswordGuard } from '../sales-password/sales-password.guard';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { TopupService } from './topup.service';
@@ -126,7 +127,8 @@ export class TopupController {
    */
   @Post('admin/manual')
   @Roles(RoleEnum.admin)
-  @UseGuards(RolesGuard)
+  // Money moves: the sales password too (vande-1411 #004).
+  @UseGuards(RolesGuard, SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: AdminManualTopupResponse })
   async adminManual(

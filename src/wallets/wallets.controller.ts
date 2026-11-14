@@ -11,6 +11,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { SalesPasswordGuard } from '../sales-password/sales-password.guard';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../roles/roles.decorator';
@@ -172,6 +173,7 @@ export class WalletsController {
 
   @Roles(RoleEnum.admin)
   @Post('admin/:userId/adjust')
+  @UseGuards(SalesPasswordGuard)
   @HttpCode(HttpStatus.OK)
   adjustWallet(
     @Param('userId') userId: number,
