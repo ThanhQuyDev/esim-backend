@@ -966,9 +966,14 @@ export class WalletsService {
     dto: RefundOrderDto,
     adminId: number,
   ): Promise<OrderRefundEntity> {
-    if (!['paid', 'refunded'].includes(order.status)) {
+    // A failed order is refunded only for an eSIM it delivered anyway
+    // (vande-1411 #009); OrdersService checks that.
+    if (!['paid', 'refunded', 'failed'].includes(order.status)) {
       throw new BadRequestException('Only paid orders can be refunded');
     }
+    // A failed order's eXU hold was released when it failed: only the cash
+    // can come back, or the eXU would be given twice.
+    const failed = order.status === 'failed';
 
     const amount = Math.round(Number(dto.amountVnd));
     if (amount <= 0) {
@@ -978,7 +983,7 @@ export class WalletsService {
     // Total order value = cash paid + eXU spent
     const totalOrderValue =
       Number(order.payableVndPrice ?? order.vndPrice ?? 0) +
-      Number(order.walletSpentVndAmount ?? 0);
+      (failed ? 0 : Number(order.walletSpentVndAmount ?? 0));
     const alreadyRefunded = Number(order.refundedAmountVnd ?? 0);
 
     if (amount > totalOrderValue - alreadyRefunded) {
@@ -988,7 +993,7 @@ export class WalletsService {
     }
 
     // Calculate how much goes back to eXU wallet vs external
-    const walletSpent = Number(order.walletSpentVndAmount ?? 0);
+    const walletSpent = failed ? 0 : Number(order.walletSpentVndAmount ?? 0);
 
     // Proportional refund: eXU portion = amount * (walletSpent / totalOrderValue)
     const exuRefundAmount =

@@ -3627,6 +3627,25 @@ export class OrdersService {
     const order = await this.orderRepository.findById(id);
     if (!order) throw new NotFoundException(`Order ${id} not found`);
 
+    // Checked before any supplier is asked to cancel. An order marked failed
+    // whose eSIM came back anyway can be refunded too (vande-1411 #009), from
+    // the eSIM's page; one with no eSIM delivered has nothing to refund.
+    if (order.status === 'failed') {
+      const lines = await this.orderItemsService.findByOrderId(order.id);
+      const delivered = await this.esimsService.findByOrderItemIds(
+        lines.map((line) => Number(line.id)),
+      );
+      if (!delivered.some((esim) => esim.status !== 'refunded')) {
+        throw new UnprocessableEntityException(
+          `Đơn ${order.orderNumber} đang lỗi và chưa có eSIM nào được giao, không có gì để hoàn.`,
+        );
+      }
+    } else if (order.status && !['paid', 'refunded'].includes(order.status)) {
+      // The wallet checks it again, after the suppliers; refusing here
+      // spares a supplier cancel of an order that cannot be refunded.
+      throw new BadRequestException('Only paid orders can be refunded');
+    }
+
     // Per-item refund (#027) and per-eSIM refund (#008, round 4): validate the
     // selection belongs to this order before touching any supplier, and cap the
     // amount at what it is actually worth so a slip cannot refund more than was
