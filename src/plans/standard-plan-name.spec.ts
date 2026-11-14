@@ -1,4 +1,4 @@
-import { standardPlanName } from './standard-plan-name';
+import { withChosenDays, standardPlanName } from './standard-plan-name';
 
 const GB5 = 5 * 1024;
 
@@ -126,8 +126,8 @@ describe('Standard plan name (vande #020)', () => {
   });
 });
 
-describe('Standard name of a day pass sold by the day (vande #020)', () => {
-  it('should leave out the stored 1 day, which is not what the customer buys', () => {
+describe('Standard name of a day pass sold by the day (vande-1411 #011)', () => {
+  it('should say "- 1 day" like every other plan', () => {
     expect(
       standardPlanName(
         {
@@ -139,7 +139,35 @@ describe('Standard name of a day pass sold by the day (vande #020)', () => {
         },
         'China',
       ),
-    ).toBe('China - Daily 1 GB/day - Unlimited 1 Mbps');
+    ).toBe('China - Daily 1 GB/day - Unlimited 1 Mbps - 1 day');
+  });
+
+  it('should name PLAC920MD "Australia - Daily 5 GB/day - 1 day"', () => {
+    expect(
+      standardPlanName(
+        {
+          type: 'daily',
+          dataMb: 5120,
+          durationDays: 1,
+          fupSpeed: '384 Kbps',
+          isAbleMultidate: true,
+        },
+        'Australia',
+      ),
+    ).toBe('Australia - Daily 5 GB/day - 1 day');
+  });
+
+  it('should put in the days the customer chose', () => {
+    expect(withChosenDays('Australia - Daily 5 GB/day - 1 day', 30)).toBe(
+      'Australia - Daily 5 GB/day - 30 days',
+    );
+    expect(withChosenDays('Australia - Daily 5 GB/day - 1 day', 1)).toBe(
+      'Australia - Daily 5 GB/day - 1 day',
+    );
+    expect(withChosenDays('Vietnam - Total 5 GB - 7 days', 30)).toBe(
+      'Vietnam - Total 5 GB - 7 days',
+    );
+    expect(withChosenDays(null, 30)).toBe('');
   });
 });
 

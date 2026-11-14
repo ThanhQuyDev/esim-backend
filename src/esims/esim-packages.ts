@@ -1,3 +1,4 @@
+import { withChosenDays } from '../plans/standard-plan-name';
 import { derivedExpiry } from './daily-cycle';
 import { daysGainedByTopup } from '../topup/billion-addon';
 
@@ -100,7 +101,10 @@ export function buildEsimPackages(
     kind: 'initial',
     orderId: input.baseLine?.orderId ?? null,
     orderNumber: input.baseLine?.orderNumber ?? null,
-    name: plan?.standardName || plan?.name || null,
+    // The days the customer chose, not the day pass's 1 (vande-1411 #011).
+    name: plan?.standardName
+      ? withChosenDays(plan.standardName, input.chosenDays)
+      : plan?.name || null,
     dataText: dataText(Number(plan?.dataMb) || 0),
     isUnlimited: type !== 'fixed' && type !== 'daily',
     perDay: type === 'daily',

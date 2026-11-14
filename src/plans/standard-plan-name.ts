@@ -31,8 +31,10 @@ export interface StandardNameInput {
   sms?: number | null;
   name?: string | null;
   /**
-   * A day pass sold for the days the customer picks: its stored length (1 day)
-   * is not what they buy, so the name leaves the days out.
+   * A day pass sold for the days the customer picks. Its name still states
+   * the stored length, "- 1 day", like every other supplier's plan
+   * (vande-1411 #011); what a customer bought is put in by
+   * {@link withChosenDays}.
    */
   isAbleMultidate?: boolean | null;
   /** Our own stock (Viettel, eSIM nội địa): its imported name is the standard. */
@@ -101,8 +103,36 @@ export function standardPlanName(
   if (Number(plan.call) > 0) parts.push(`${Number(plan.call)} Mins`);
   if (Number(plan.sms) > 0) parts.push(`${Number(plan.sms)} SMS`);
 
-  const days = plan.isAbleMultidate ? 0 : Number(plan.durationDays ?? 0);
+  // Every plan says its days, a day pass sold by the day too: "Australia -
+  // Daily 5 GB/day - 1 day" (vande-1411 #011).
+  const days = Number(plan.durationDays ?? 0);
   if (days > 0) parts.push(`${days} ${days === 1 ? 'day' : 'days'}`);
 
   return parts.join(' - ');
+}
+
+/**
+ * The name of a day pass as bought: "… - 1 day" becomes "… - 30 days" for
+ * 30 days chosen (vande-1411 #011). Anything else is left as it is.
+ */
+export function withChosenDays(
+  name: string | null | undefined,
+  days: number | null | undefined,
+): string {
+  const text = String(name ?? '');
+  const n = Math.round(Number(days ?? 0));
+  if (!(n > 1) || !/ - 1 day$/.test(text)) return text;
+  return text.replace(/ - 1 day$/, ` - ${n} days`);
+}
+
+/**
+ * {@link withChosenDays} in SQL, for a plan `p` bought on an order line `oi`:
+ * the standard name with the days the customer chose, else the supplier's.
+ */
+export function planNameWithDaysSql(p = 'p', oi = 'oi'): string {
+  return `(CASE WHEN COALESCE(${oi}."periodNum", 1) > 1
+                 AND ${p}."standardName" ~ ' - 1 day$'
+            THEN regexp_replace(${p}."standardName", ' - 1 day$',
+                                ' - ' || ${oi}."periodNum" || ' days')
+            ELSE COALESCE(NULLIF(${p}."standardName", ''), ${p}.name) END)`;
 }

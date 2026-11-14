@@ -1,3 +1,4 @@
+import { planNameWithDaysSql } from '../plans/standard-plan-name';
 import { topupDataMb } from '../esims/esims.service';
 import { esimLifecycleSql } from '../esims/esim-lifecycle';
 import { fetchPartnerLogo } from '../esims/partner-qr-logo';
@@ -2149,7 +2150,7 @@ export class PartnersService {
               (
                 SELECT json_agg(json_build_object(
                          -- The standard name, as on the orders page.
-                         'planName', COALESCE(NULLIF(p."standardName", ''), p.name),
+                         'planName', ${planNameWithDaysSql()},
                          'quantity', oi.quantity,
                          'vndPrice', oi."vndPrice" * oi.quantity) ORDER BY oi.id)
                 FROM order_item oi JOIN plan p ON p.id = oi."planId"
@@ -8475,7 +8476,7 @@ export class PartnersService {
               o."targetIccid",
               -- No address of its own: the eSIMs went to the partner's login.
               COALESCE(NULLIF(o."deliveryEmail", ''), u.email) AS "deliveryEmail",
-              (SELECT string_agg(COALESCE(NULLIF(p."standardName", ''), p.name) || CASE WHEN oi.quantity > 1
+              (SELECT string_agg(${planNameWithDaysSql()} || CASE WHEN oi.quantity > 1
                                    THEN ' x' || oi.quantity ELSE '' END, ' + ')
                  FROM order_item oi JOIN plan p ON p.id = oi."planId"
                 WHERE oi."orderId" = o.id) AS products,
@@ -9239,7 +9240,7 @@ export class PartnersService {
               ${esimLifecycleSql('e')} AS status,
               -- The standard name, as the admin shows it (doitac-3010 #028);
               -- the supplier's own name still decides the refund rule.
-              COALESCE(NULLIF(p."standardName", ''), p.name) AS "planName",
+              ${planNameWithDaysSql()} AS "planName",
               p.name AS "supplierPlanName",
               -- A supplier eSIM is made after the order; one from local stock
               -- was imported before it — either way, issued to this order no
@@ -9994,7 +9995,7 @@ export class PartnersService {
                 json_agg(
                   json_build_object(
                     -- The standard name, as the admin shows it (doitac-3010 #029).
-                    'planName', COALESCE(NULLIF(p."standardName", ''), p.name),
+                    'planName', ${planNameWithDaysSql()},
                     'quantity', oi.quantity,
                     'vndPrice', oi."vndPrice"
                   ) ORDER BY oi.id

@@ -1,3 +1,4 @@
+import { withChosenDays } from '../plans/standard-plan-name';
 import { DataSource } from 'typeorm';
 import {
   notificationBodyHtml,
@@ -499,6 +500,24 @@ export class MailService {
     });
   }
 
+  /** The plan name with the days chosen for this eSIM (vande-1411 #011). */
+  private async planNameAsBought(data: EsimPurchaseMailData): Promise<string> {
+    const name = data.planName ?? '';
+    if (!/ - 1 day$/.test(name) || !data.esimId || !this.dataSource)
+      return name;
+    try {
+      const [row] = await this.dataSource.query(
+        `SELECT oi."periodNum" FROM esim e
+           JOIN order_item oi ON oi.id = e."orderItemId"
+          WHERE e.id = $1`,
+        [data.esimId],
+      );
+      return withChosenDays(name, row?.periodNum);
+    } catch {
+      return name;
+    }
+  }
+
   async sendEsimPurchase(
     data: EsimPurchaseMailData,
     options: {
@@ -511,6 +530,9 @@ export class MailService {
       force?: boolean;
     } = {},
   ): Promise<void> {
+    // A day pass is named "… - 1 day"; the email says the days the customer
+    // chose (vande-1411 #011).
+    data = { ...data, planName: await this.planNameAsBought(data) };
     const overrides = await this.esimMailOverrides(data.orderNumber);
     // Ordered in bulk (vande #057): a "file" order mails nobody — its eSIMs
     // are handed over as a list; an "email" order is mailed from the queue,

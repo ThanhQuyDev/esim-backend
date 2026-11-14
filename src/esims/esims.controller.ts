@@ -1,3 +1,4 @@
+import { planNameWithDaysSql } from '../plans/standard-plan-name';
 import { downloadFilename } from '../utils/download-filename';
 import {
   Controller,
@@ -145,7 +146,7 @@ export class EsimsPublicController {
     }
     const [line] =
       (await this.dataSource?.query(
-        `SELECT COALESCE(NULLIF(p."standardName", ''), p.name) AS "planName",
+        `SELECT ${planNameWithDaysSql()} AS "planName",
                 o."orderNumber"
            FROM esim e
            JOIN order_item oi ON oi.id = e."orderItemId"
