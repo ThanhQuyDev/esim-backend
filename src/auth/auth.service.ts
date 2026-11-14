@@ -34,11 +34,24 @@ import { OtpService } from '../otp/otp.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PartnerEntity } from '../partners/infrastructure/persistence/relational/entities/partner.entity';
-import { PARTNER_LOCKED_MESSAGE } from './strategies/jwt.strategy';
+import {
+  ACCOUNT_LOCKED_MESSAGE,
+  PARTNER_LOCKED_MESSAGE,
+} from './strategies/jwt.strategy';
 import { PartnerStatusEnum, PartnerTypeEnum } from '../partners/partners.enum';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
+
+/** What a locked account reads at sign-in (security 15/11/2026). */
+export function assertAccountNotLocked(user: Pick<User, 'lockedAt'>): void {
+  if (!user.lockedAt) return;
+  throw new UnprocessableEntityException({
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: ACCOUNT_LOCKED_MESSAGE,
+    errors: { email: 'accountLocked' },
+  });
+}
 
 @Injectable()
 export class AuthService {
@@ -59,6 +72,8 @@ export class AuthService {
    * of dropping them into a portal where every menu is empty.
    */
   private async assertPartnerMaySignIn(user: User): Promise<void> {
+    // Every sign-in (password, OTP, Google/Facebook/Apple) passes here first.
+    assertAccountNotLocked(user);
     if (Number(user.role?.id) !== RoleEnum.partner) return;
 
     const partner = await this.partnersRepository.findOne({

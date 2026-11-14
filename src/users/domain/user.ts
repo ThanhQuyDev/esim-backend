@@ -49,6 +49,15 @@ export class User {
   @Expose({ groups: ['me', 'admin'] })
   lastLoginAt?: Date | null;
 
+  /** When an admin locked this account (security 15/11/2026). */
+  @ApiProperty({ type: Date, nullable: true })
+  @Expose({ groups: ['admin'] })
+  lockedAt?: Date | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  @Expose({ groups: ['admin'] })
+  lockReason?: string | null;
+
   @ApiProperty({
     type: String,
     example: 'email',

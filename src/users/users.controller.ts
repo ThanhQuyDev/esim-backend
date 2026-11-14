@@ -11,7 +11,9 @@ import {
   HttpStatus,
   HttpCode,
   SerializeOptions,
+  Request,
 } from '@nestjs/common';
+import { LockUserDto } from './dto/lock-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import {
@@ -123,6 +125,29 @@ export class UsersController {
     @Body() updateProfileDto: UpdateUserDto,
   ): Promise<User | null> {
     return this.usersService.update(id, updateProfileDto);
+  }
+
+  /** "Khoá tài khoản" (security 15/11/2026): signs it out on every device. */
+  @ApiOkResponse({ type: User })
+  @SerializeOptions({ groups: ['admin'] })
+  @Post(':id/lock')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: String, required: true })
+  lock(
+    @Param('id') id: User['id'],
+    @Body() dto: LockUserDto,
+    @Request() request: { user?: { id?: User['id'] } },
+  ): Promise<User | null> {
+    return this.usersService.lock(id, dto.reason, request.user?.id);
+  }
+
+  @ApiOkResponse({ type: User })
+  @SerializeOptions({ groups: ['admin'] })
+  @Post(':id/unlock')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: String, required: true })
+  unlock(@Param('id') id: User['id']): Promise<User | null> {
+    return this.usersService.unlock(id);
   }
 
   @Delete(':id')

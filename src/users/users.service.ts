@@ -21,6 +21,7 @@ import { Role } from '../roles/domain/role';
 import { Status } from '../statuses/domain/status';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthorsService } from '../authors/authors.service';
+import { SessionService } from '../session/session.service';
 
 @Injectable()
 export class UsersService {
@@ -28,7 +29,47 @@ export class UsersService {
     private readonly usersRepository: UserRepository,
     private readonly filesService: FilesService,
     private readonly authorsService: AuthorsService,
+    private readonly sessionService?: SessionService,
   ) {}
+
+  /**
+   * "Khoá tài khoản" (security 15/11/2026). The account cannot sign in again,
+   * and every device is signed out: its sessions go, and the JWT strategy
+   * refuses any token of a locked account however long it still has to live.
+   * An admin cannot lock themselves or another admin.
+   */
+  async lock(id: User['id'], reason: string, actorId?: User['id']) {
+    const user = await this.usersRepository.findById(id);
+    if (!user) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        errors: { id: 'userNotFound' },
+      });
+    }
+    if (
+      String(user.id) === String(actorId) ||
+      Number(user.role?.id) === RoleEnum.admin
+    ) {
+      throw new UnprocessableEntityException({
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        message: 'Không thể khoá tài khoản quản trị.',
+        errors: { id: 'cannotLockAdmin' },
+      });
+    }
+    const locked = await this.usersRepository.update(id, {
+      lockedAt: user.lockedAt ?? new Date(),
+      lockReason: reason.trim(),
+    });
+    await this.sessionService?.deleteByUserId({ userId: id });
+    return locked;
+  }
+
+  unlock(id: User['id']) {
+    return this.usersRepository.update(id, {
+      lockedAt: null,
+      lockReason: null,
+    });
+  }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     // Do not remove comment below.

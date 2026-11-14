@@ -91,6 +91,7 @@ import { CustomPaymentLinksModule } from './custom-payment-links/custom-payment-
 import { TopupModule } from './topup/topup.module';
 
 import { ChatAutomationsModule } from './chat-automations/chat-automations.module';
+import { CloudinaryModule } from './cloudinary/cloudinary.module';
 
 @Module({
   imports: [
@@ -155,6 +156,7 @@ import { ChatAutomationsModule } from './chat-automations/chat-automations.modul
     }),
     UsersModule,
     FilesModule,
+    CloudinaryModule,
     AuthModule,
     EmailChangeModule,
     AuthGoogleModule,
