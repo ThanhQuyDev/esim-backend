@@ -26,6 +26,7 @@ import {
   EsimAccessOrderLine,
   isAmountMismatch,
 } from './esimaccess-order';
+import { regionNameFromPlan } from '../catalogue-naming';
 
 /**
  * 2 is a fixed plan's top-up; 3 is a day pass, bought by the day (their article
@@ -248,13 +249,23 @@ export class EsimAccessService {
     const externalCode = `esimaccess-${pkg.locationCode.toLowerCase()}`;
     const existing = await this.regionsService.findByExternalCode(externalCode);
 
+    // The supplier's own name without the data, calls/SMS or validity:
+    // "Asia (12 areas)", not "Asia" (vande-1411 #027).
+    const name = regionNameFromPlan(pkg.name) || pkg.locationCode;
     let region: { id: number; name?: string };
     if (existing) {
       region = existing;
+      // Renamed only while it still has the first word the old sync gave it
+      // ("Middle", "South"); a name set in the CMS ("Asia (Châu Á)") stays.
+      const oldGenerated = pkg.name.split(' ')[0] || pkg.locationCode;
+      if (existing.name === oldGenerated && name !== existing.name) {
+        await this.regionsService.update(existing.id, { name });
+        region = { ...existing, name };
+      }
     } else {
       try {
         region = await this.regionsService.create({
-          name: pkg.name.split(' ')[0] || pkg.locationCode,
+          name,
           slug: externalCode,
           externalCode,
           isActive: true,

@@ -28,6 +28,24 @@ export function shortRegionName(packageName: string): string {
 }
 
 /**
+ * A region's name from one of its plan names, the supplier's own words with only
+ * the data, calls/SMS and validity cut (vande-1411 #027):
+ * "Asia (12 areas) 2GB/Day" → "Asia (12 areas)",
+ * "Singapore & Malaysia & Vietnam 10GB/Day" → "Singapore & Malaysia & Vietnam".
+ */
+export function regionNameFromPlan(planName: string): string {
+  const name = (planName ?? '').replace(/\s+/g, ' ').trim();
+  const cut = name
+    .replace(
+      /\s*(?:\d+(?:\.\d+)?\s*(?:GB|MB|TB)\b|unlimited\b|\d+\s*(?:days?|ngày)\b|\d+\s*(?:mins?|minutes?|sms)\b).*$/i,
+      '',
+    )
+    .replace(/[\s,+/-]+$/, '')
+    .trim();
+  return cut || name;
+}
+
+/**
  * A region name a sync generated from the raw country-code list. Subdivision
  * codes count too ("PT-20", "US-HI"): with them the list was not recognised,
  * so "UK+EU45 Local" and "Global 108 Regions" kept a 140- and 326-character
