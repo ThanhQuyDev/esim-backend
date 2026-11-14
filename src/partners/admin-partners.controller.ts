@@ -733,6 +733,16 @@ export class AdminPartnersController {
     );
   }
 
+  /**
+   * The two SePay accounts an admin picks between for a partner (vande-1411
+   * #046), named by bank and last digits. Before `:id`, like the routes above.
+   */
+  @Get('sepay-accounts')
+  @HttpCode(HttpStatus.OK)
+  sepayAccounts() {
+    return this.partnersService.sepayAccountChoices();
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   findOne(@Param('id') id: number) {

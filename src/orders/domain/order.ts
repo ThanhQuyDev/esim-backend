@@ -112,6 +112,9 @@ export class Order {
   })
   bankTransferCode?: string | null;
 
+  /** The SePay account the transfer QR named (vande-1411 #046). */
+  sepayAccount?: string | null;
+
   @ApiPropertyOptional({
     type: String,
     example: 'SUMMER10',

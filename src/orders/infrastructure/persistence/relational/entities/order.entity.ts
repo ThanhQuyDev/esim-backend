@@ -99,6 +99,10 @@ export class OrderEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true })
   bankTransferCode?: string | null;
 
+  /** "personal" / "company": the SePay account the QR named (vande-1411 #046). */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  sepayAccount?: string | null;
+
   @Index()
   @Column({ type: String, nullable: true })
   couponCode?: string | null;

@@ -204,6 +204,14 @@ export class PartnerEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   noDepositRequired!: boolean;
 
+  /**
+   * The SePay account this partner's transfers go to (vande-1411 #046): a
+   * marketing partner's customers' bank transfers, a distribution partner's
+   * deposits. "personal" (the VietinBank one) or "company".
+   */
+  @Column({ type: 'varchar', length: 16, default: 'personal' })
+  sepayAccount!: string;
+
   /** "Hạn mức giao dịch" — how much a no-deposit partner may spend a month. */
   @Column({ type: 'decimal', precision: 14, scale: 0, default: 0 })
   creditLimitVnd!: number;

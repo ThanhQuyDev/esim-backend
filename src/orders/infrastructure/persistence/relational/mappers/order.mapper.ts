@@ -26,6 +26,7 @@ export class OrderMapper {
     domainEntity.paymentMethod = raw.paymentMethod;
     domainEntity.paymentId = raw.paymentId;
     domainEntity.bankTransferCode = raw.bankTransferCode;
+    domainEntity.sepayAccount = raw.sepayAccount ?? null;
     domainEntity.couponCode = raw.couponCode;
     domainEntity.discountAmount = Number(raw.discountAmount);
     domainEntity.couponDiscountVndAmount = Number(raw.couponDiscountVndAmount);
@@ -126,6 +127,7 @@ export class OrderMapper {
     persistenceEntity.paymentMethod = domainEntity.paymentMethod;
     persistenceEntity.paymentId = domainEntity.paymentId;
     persistenceEntity.bankTransferCode = domainEntity.bankTransferCode;
+    persistenceEntity.sepayAccount = domainEntity.sepayAccount;
     persistenceEntity.couponCode = domainEntity.couponCode;
     persistenceEntity.discountAmount = domainEntity.discountAmount ?? 0;
     persistenceEntity.vndPrice = domainEntity.vndPrice ?? 0;

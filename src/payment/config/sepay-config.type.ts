@@ -17,4 +17,15 @@ export type SepayConfig = {
    * "SEVQR"; without it the money lands but SePay never sees it, so no webhook.
    */
   memoPrefix: string;
+  /**
+   * The company account also linked on SePay (vande-1411 #046), chosen per
+   * partner. Empty until `SEPAY_COMPANY_ACCOUNT_NUMBER` is set; until then
+   * "company" falls back to the personal account above.
+   */
+  company: {
+    accountNumber: string;
+    accountName: string;
+    bankCode: string;
+    memoPrefix: string;
+  };
 };

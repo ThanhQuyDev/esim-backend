@@ -62,6 +62,10 @@ export class PartnerDepositRequestEntity extends EntityRelationalHelper {
   @Column({ type: String })
   bankTransferCode!: string;
 
+  /** "personal" / "company": the SePay account the QR named (vande-1411 #046). */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  sepayAccount?: string | null;
+
   @Index()
   @Column({ type: String, default: PartnerDepositRequestStatusEnum.PENDING })
   status!: PartnerDepositRequestStatusEnum;

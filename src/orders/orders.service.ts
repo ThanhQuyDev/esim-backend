@@ -3545,6 +3545,10 @@ export class OrdersService {
       ...(updateOrderDto.bankTransferCode !== undefined && {
         bankTransferCode: updateOrderDto.bankTransferCode,
       }),
+      // The SePay account the QR named (vande-1411 #046).
+      ...(updateOrderDto.sepayAccount !== undefined && {
+        sepayAccount: updateOrderDto.sepayAccount,
+      }),
       ...(updateOrderDto.cashbackTransactionId !== undefined && {
         cashbackTransactionId: updateOrderDto.cashbackTransactionId,
       }),

@@ -132,6 +132,7 @@ import {
   buildVietQrUrl,
   generateBankTransferCode,
 } from '../payment/bank-transfer.util';
+import { sepayAccountFor } from '../payment/sepay-account';
 import { PartnerEntity } from './infrastructure/persistence/relational/entities/partner.entity';
 import { PartnerWalletEntity } from './infrastructure/persistence/relational/entities/partner-wallet.entity';
 import { PartnerWalletTransactionEntity } from './infrastructure/persistence/relational/entities/partner-wallet-transaction.entity';
@@ -1865,12 +1866,15 @@ export class PartnersService {
       );
     }
 
-    const sepay = this.configService.get('sepay', { infer: true });
-    if (!sepay?.accountNumber) {
+    const sepayConfig = this.configService.get('sepay', { infer: true });
+    if (!sepayConfig?.accountNumber) {
       throw new BadRequestException(
         'Chưa cấu hình tài khoản nhận chuyển khoản (SEPAY_ACCOUNT_NUMBER).',
       );
     }
+    // The personal or company account the admin chose for this partner
+    // (vande-1411 #046).
+    const sepay = sepayAccountFor(sepayConfig, partner.sepayAccount);
 
     const amountVnd = Math.round(dto.amountVnd);
     await this.assertDepositWithinLimits(partner, amountVnd);
@@ -1895,6 +1899,8 @@ export class PartnersService {
         creditedVnd,
         bankTransferCode,
         status: PartnerDepositRequestStatusEnum.PENDING,
+        // Card payments never reach SePay.
+        sepayAccount: method === PartnerTopupMethodEnum.CARD ? null : sepay.key,
       }),
     );
 
@@ -5724,6 +5730,10 @@ export class PartnersService {
     if (dto.depositMinVnd !== undefined) {
       partner.depositMinVnd = dto.depositMinVnd;
     }
+    // "Sepay cá nhân / Sepay công ty" (vande-1411 #046), either kind of partner.
+    if (dto.sepayAccount !== undefined) {
+      partner.sepayAccount = dto.sepayAccount;
+    }
     if (dto.depositMaxVnd !== undefined) {
       partner.depositMaxVnd = dto.depositMaxVnd;
     }
@@ -6197,6 +6207,53 @@ export class PartnersService {
     request.rejectedByAdminId = adminId;
     request.rejectedAt = new Date();
     return this.depositRequestRepository.save(request);
+  }
+
+  /**
+   * The SePay accounts an admin can pick for a partner (vande-1411 #046):
+   * each one's bank, holder and last 4 digits, and whether the company one is
+   * set up yet. A partner set to "company" before then pays the personal one.
+   */
+  sepayAccountChoices(): {
+    key: 'personal' | 'company';
+    configured: boolean;
+    bankCode: string;
+    accountName: string;
+    last4: string;
+  }[] {
+    const config = this.configService.get('sepay', { infer: true });
+    const last4 = (n?: string) => String(n ?? '').slice(-4);
+    return [
+      {
+        key: 'personal',
+        configured: Boolean(config?.accountNumber),
+        bankCode: config?.bankCode ?? '',
+        accountName: config?.accountName ?? '',
+        last4: last4(config?.accountNumber),
+      },
+      {
+        key: 'company',
+        configured: Boolean(config?.company?.accountNumber),
+        bankCode: config?.company?.bankCode || config?.bankCode || '',
+        accountName: config?.company?.accountName ?? '',
+        last4: last4(config?.company?.accountNumber),
+      },
+    ];
+  }
+
+  /**
+   * The SePay account a partner's transfers go to (vande-1411 #046), for a
+   * customer's order that came through this partner. Null for no partner.
+   */
+  async sepayAccountOfPartner(
+    partnerId: number | null | undefined,
+  ): Promise<string | null> {
+    if (!partnerId) return null;
+    const partner = await this.partnerRepository.findOne({
+      where: { id: Number(partnerId) },
+      select: { id: true, sepayAccount: true },
+    });
+    return partner?.sepayAccount ?? null;
   }
 
   /**

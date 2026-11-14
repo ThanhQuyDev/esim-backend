@@ -19,4 +19,13 @@ export default registerAs<SepayConfig>('sepay', () => ({
   bankCode: process.env.SEPAY_BANK_CODE || 'VietinBank',
   // `??`, not `||`: an empty SEPAY_MEMO_PREFIX turns the prefix off.
   memoPrefix: process.env.SEPAY_MEMO_PREFIX ?? 'SEVQR',
+  // The company account (vande-1411 #046). Its memo word defaults to none:
+  // "SEVQR" is what a personal VietinBank account needs, and a company account
+  // may not — check on SePay that a test transfer is seen before going live.
+  company: {
+    accountNumber: process.env.SEPAY_COMPANY_ACCOUNT_NUMBER || '',
+    accountName: process.env.SEPAY_COMPANY_ACCOUNT_NAME || '',
+    bankCode: process.env.SEPAY_COMPANY_BANK_CODE || '',
+    memoPrefix: process.env.SEPAY_COMPANY_MEMO_PREFIX ?? '',
+  },
 }));

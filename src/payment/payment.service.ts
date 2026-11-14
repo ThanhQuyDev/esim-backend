@@ -23,6 +23,7 @@ import {
   extractBankTransferCode,
 } from './bank-transfer.util';
 import { generateOrderNumber } from '../utils/order-number';
+import { landedOnExpectedAccount, sepayAccountFor } from './sepay-account';
 
 /** Shape returned by both bank-transfer checkout endpoints (buy-new + topup). */
 export interface BankTransferCheckoutResult {
@@ -220,17 +221,28 @@ export class PaymentService {
       };
     }
 
+    // A customer who came through a marketing partner's link or code pays
+    // into the SePay account the admin chose for that partner (vande-1411
+    // #046); everyone else into the personal one.
+    const account = sepayAccountFor(
+      sepay,
+      await this.partnersService
+        .sepayAccountOfPartner(order.attributedPartnerId)
+        .catch(() => null),
+    );
+
     const bankTransferCode = generateBankTransferCode();
     await this.ordersService.update(order.id, {
       paymentMethod: 'bank_transfer',
       bankTransferCode,
+      sepayAccount: account.key,
     });
 
-    const memo = buildTransferMemo(bankTransferCode, sepay.memoPrefix);
+    const memo = buildTransferMemo(bankTransferCode, account.memoPrefix);
     const qrUrl = buildVietQrUrl({
-      bankCode: sepay.bankCode,
-      accountNumber: sepay.accountNumber,
-      accountName: sepay.accountName,
+      bankCode: account.bankCode,
+      accountNumber: account.accountNumber,
+      accountName: account.accountName,
       amountVnd: order.vndPrice,
       transferCode: memo,
     });
@@ -245,9 +257,9 @@ export class PaymentService {
       bankTransferCode: memo,
       qrUrl,
       amount: order.vndPrice,
-      accountNumber: sepay.accountNumber,
-      accountName: sepay.accountName,
-      bankCode: sepay.bankCode,
+      accountNumber: account.accountNumber,
+      accountName: account.accountName,
+      bankCode: account.bankCode,
       expiresInSeconds: PENDING_ORDER_TTL_MINUTES * 60,
     };
   }
@@ -374,6 +386,17 @@ export class PaymentService {
       return { success: true };
     }
 
+    // Money on the other SePay account than the QR named (vande-1411 #046):
+    // left pending for an admin, like an underpayment.
+    if (
+      !this.landedOnExpectedAccount(order.sepayAccount, payload.accountNumber)
+    ) {
+      this.logger.warn(
+        `SePay webhook: order ${order.orderNumber} was paid into account ${payload.accountNumber}, not its ${order.sepayAccount} account. Left pending for manual review.`,
+      );
+      return { success: true };
+    }
+
     // Never provision on an underpayment — leave it pending for an admin.
     const paidAmount = Number(payload.transferAmount ?? 0);
     const expected = Number(order.payableVndPrice ?? order.vndPrice ?? 0);
@@ -453,6 +476,7 @@ export class PaymentService {
       id?: number | string;
       transferAmount?: number;
       referenceCode?: string;
+      accountNumber?: string;
     },
   ): Promise<{ success: boolean }> {
     const request =
@@ -467,6 +491,16 @@ export class PaymentService {
     if (request.status !== 'pending') {
       this.logger.log(
         `SePay webhook: deposit request ${request.id} already processed (status=${request.status})`,
+      );
+      return { success: true };
+    }
+
+    // Same rule as an order (vande-1411 #046).
+    if (
+      !this.landedOnExpectedAccount(request.sepayAccount, payload.accountNumber)
+    ) {
+      this.logger.warn(
+        `SePay webhook: deposit request ${request.id} was paid into account ${payload.accountNumber}, not its ${request.sepayAccount} account. Left pending for manual review.`,
       );
       return { success: true };
     }
@@ -489,6 +523,14 @@ export class PaymentService {
       `SePay webhook: partner deposit request ${request.id} confirmed (code=${code})`,
     );
     return { success: true };
+  }
+
+  private landedOnExpectedAccount(
+    expected: string | null | undefined,
+    received: string | null | undefined,
+  ): boolean {
+    const sepay = this.configService.get('sepay', { infer: true });
+    return !sepay || landedOnExpectedAccount(sepay, expected, received);
   }
 
   /** Constant-time-ish check of the SePay webhook Apikey header. */

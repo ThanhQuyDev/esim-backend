@@ -24,6 +24,10 @@ import {
   PartnerStatusEnum,
   PartnerTopupMethodEnum,
 } from '../partners.enum';
+import {
+  SEPAY_ACCOUNT_KEYS,
+  type SepayAccountKey,
+} from '../../payment/sepay-account';
 
 export class RejectPartnerDto {
   @ApiProperty({ example: 'Thông tin doanh nghiệp chưa đầy đủ' })
@@ -131,6 +135,15 @@ export class UpdatePartnerProfileByAdminDto {
   @IsInt()
   @Min(0)
   depositMaxVnd?: number | null;
+
+  /**
+   * The SePay account this partner's transfers go to (vande-1411 #046):
+   * "personal" (VietinBank) or "company".
+   */
+  @ApiPropertyOptional({ enum: SEPAY_ACCOUNT_KEYS })
+  @IsOptional()
+  @IsIn(SEPAY_ACCOUNT_KEYS)
+  sepayAccount?: SepayAccountKey;
 
   /** "Nạp tiền tự động" / "Nạp tiền thủ công" (vande #068). */
   @ApiPropertyOptional({ enum: PartnerDepositModeEnum })
