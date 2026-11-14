@@ -44,6 +44,22 @@ export interface LocalCarrierPage {
   avatarUrl: string | null;
   flagUrl: string | null;
   parentId: number | null;
+  /**
+   * The destination it belongs to, "Việt Nam": the search suggests it along
+   * with the carrier (vande-1411 #026).
+   */
+  parent?: LocalCarrierParent | null;
+}
+
+export interface LocalCarrierParent {
+  id: number;
+  name: string;
+  title: string | null;
+  titleVi: string | null;
+  slug: string;
+  slugVi: string | null;
+  countryCode: string | null;
+  flagUrl: string | null;
 }
 
 type PlanGroups = {
@@ -1077,6 +1093,31 @@ export class PlansService implements OnApplicationBootstrap {
       })
       .catch(() => [[]])) ?? [[]];
     const pages = new Map<string, LocalCarrierPage>();
+    const parents = new Map<number, LocalCarrierParent | null>();
+    const parentOf = async (id: number | null | undefined) => {
+      if (!id) return null;
+      if (!parents.has(id)) {
+        const p = (await this.destinationsService
+          .findById(id)
+          .catch(() => null)) as Destination | null;
+        parents.set(
+          id,
+          p
+            ? {
+                id: Number(p.id),
+                name: p.name,
+                title: p.title ?? null,
+                titleVi: p.titleVi ?? null,
+                slug: p.slug,
+                slugVi: p.slugVi ?? null,
+                countryCode: p.countryCode ?? null,
+                flagUrl: p.flagUrl ?? null,
+              }
+            : null,
+        );
+      }
+      return parents.get(id) ?? null;
+    };
     for (const d of (rows ?? []) as Destination[]) {
       if (!d.localProvider) continue;
       const provider = d.localProvider.toLowerCase();
@@ -1091,6 +1132,7 @@ export class PlansService implements OnApplicationBootstrap {
         avatarUrl: d.avatarUrl ?? null,
         flagUrl: d.flagUrl ?? null,
         parentId: d.parentId ?? null,
+        parent: await parentOf(d.parentId),
       });
     }
     return pages;

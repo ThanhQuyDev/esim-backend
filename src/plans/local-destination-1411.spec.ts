@@ -39,7 +39,19 @@ describe('Điểm đến eSIM Type Local (vande-1411 #025)', () => {
           .fn()
           .mockResolvedValue([plans, plans.length]),
       },
-      destinationsService: { findManyWithPagination: findMany },
+      destinationsService: {
+        findManyWithPagination: findMany,
+        findById: jest.fn().mockResolvedValue({
+          id: 5,
+          name: 'Vietnam',
+          title: 'Vietnam eSIM',
+          titleVi: 'eSIM Việt Nam',
+          slug: 'esim-vietnam',
+          slugVi: 'esim-viet-nam',
+          countryCode: 'VN',
+          flagUrl: 'https://img/vn.png',
+        }),
+      },
     });
     return { s, findMany };
   }
@@ -78,6 +90,12 @@ describe('Điểm đến eSIM Type Local (vande-1411 #025)', () => {
       avatarUrl: 'https://img/avatar.png',
       flagUrl: 'https://img/icon.png',
       parentId: 5,
+    });
+    // vande-1411 #026: its parent, for the search to suggest with it.
+    expect(vnm?.destination?.parent).toMatchObject({
+      id: 5,
+      slugVi: 'esim-viet-nam',
+      countryCode: 'VN',
     });
   });
 
