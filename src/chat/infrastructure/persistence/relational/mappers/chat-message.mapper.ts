@@ -29,6 +29,7 @@ export class ChatMessageMapper {
       ? ChatMessageMapper.toQuote(entity.replyTo)
       : null;
     domain.isRead = entity.isRead;
+    domain.deliveredAt = entity.deliveredAt ?? null;
     domain.createdAt = entity.createdAt;
     domain.updatedAt = entity.updatedAt;
     return domain;

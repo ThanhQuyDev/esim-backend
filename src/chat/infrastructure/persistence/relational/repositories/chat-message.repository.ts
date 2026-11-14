@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { ChatMessageEntity } from '../entities/chat-message.entity';
 import { ChatMessageRepository } from '../../chat-message.repository';
 import { ChatMessageMapper } from '../mappers/chat-message.mapper';
@@ -66,6 +66,22 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
       { chatRoomId, isRead: false, senderId: Not(senderId) },
       { isRead: true },
     );
+    // Seen means it arrived too (vande-1411 #035).
+    await this.repo.update(
+      { chatRoomId, isRead: true, deliveredAt: IsNull() },
+      { deliveredAt: () => 'NOW()' },
+    );
+  }
+
+  async markRoomDelivered(
+    chatRoomId: number,
+    recipientId: number,
+  ): Promise<number> {
+    const result = await this.repo.update(
+      { chatRoomId, deliveredAt: IsNull(), senderId: Not(recipientId) },
+      { deliveredAt: () => 'NOW()' },
+    );
+    return result.affected ?? 0;
   }
 
   async countUnread(chatRoomId: number, senderId: number): Promise<number> {

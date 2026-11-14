@@ -91,4 +91,15 @@ export class ChatService {
   async markAsRead(chatRoomId: number, readerId: number): Promise<void> {
     return this.chatMessageRepository.markRoomAsRead(chatRoomId, readerId);
   }
+
+  /** The other side's messages reached `recipientId` (vande-1411 #035). */
+  async markDelivered(
+    chatRoomId: number,
+    recipientId: number,
+  ): Promise<number> {
+    return this.chatMessageRepository.markRoomDelivered(
+      chatRoomId,
+      recipientId,
+    );
+  }
 }

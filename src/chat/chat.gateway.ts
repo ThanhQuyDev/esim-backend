@@ -88,7 +88,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     await client.join(roomName);
 
-    void this.chatService.markAsRead(room.id, client.data.userId);
+    if (isAdmin) {
+      // The admin opened the conversation: the customer's messages are seen.
+      void this.chatService.markAsRead(room.id, client.data.userId);
+    } else {
+      // The storefront joins on every page, chat open or not: the admin's
+      // messages have reached the customer, not been seen (vande-1411 #035).
+      // "Seen" comes from the customer's own markAsRead, sent when the chat
+      // window is open.
+      void this.markDeliveredAndTell(room.id, roomName, client.data.userId);
+    }
 
     client.emit('joinedRoom', { roomId: room.id, userId: targetUserId });
 
@@ -199,6 +208,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const roomName = `chat_room_${data.chatRoomId}`;
     this.server.to(roomName).emit('newMessage', message);
 
+    // The customer is connected: the admin's message has reached them
+    // (vande-1411 #035).
+    if (isAdmin) void this.deliverIfCustomerOnline(data.chatRoomId, roomName);
+
     // Trigger 2: Send first-response message when user sends their first message
     if (!isAdmin) {
       void this.sendFirstResponseIfApplicable(
@@ -282,6 +295,55 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     await this.chatService.markAsRead(data.chatRoomId, client.data.userId);
     client.emit('markedAsRead', { chatRoomId: data.chatRoomId });
+
+    // The customer saw the admin's messages: tell the CMS (vande-1411 #035).
+    if (client.data.roleId !== 1) {
+      this.server.to(`chat_room_${data.chatRoomId}`).emit('messagesStatus', {
+        chatRoomId: data.chatRoomId,
+        status: 'read',
+      });
+    }
+  }
+
+  /** Mark the admin's messages delivered and tell the CMS (vande-1411 #035). */
+  private async markDeliveredAndTell(
+    chatRoomId: number,
+    roomName: string,
+    customerId: number,
+  ): Promise<void> {
+    try {
+      const changed = await this.chatService.markDelivered(
+        chatRoomId,
+        customerId,
+      );
+      if (changed > 0) {
+        this.server
+          .to(roomName)
+          .emit('messagesStatus', { chatRoomId, status: 'delivered' });
+      }
+    } catch {
+      // A status is a nicety; never fail a chat over it.
+    }
+  }
+
+  /** An admin's message reaches a customer whose page is open now. */
+  private async deliverIfCustomerOnline(
+    chatRoomId: number,
+    roomName: string,
+  ): Promise<void> {
+    try {
+      const sockets = await this.server.in(roomName).fetchSockets();
+      const customer = sockets.find(
+        (s) => (s.data as { roleId?: number }).roleId !== 1,
+      );
+      const customerId = (customer?.data as { userId?: number } | undefined)
+        ?.userId;
+      if (customerId) {
+        await this.markDeliveredAndTell(chatRoomId, roomName, customerId);
+      }
+    } catch {
+      // Same: a status never fails a chat.
+    }
   }
 
   @SubscribeMessage('subscribeAllRooms')

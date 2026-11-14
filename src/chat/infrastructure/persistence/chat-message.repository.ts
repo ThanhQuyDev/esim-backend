@@ -10,6 +10,11 @@ export abstract class ChatMessageRepository {
     limit: number,
   ): Promise<ChatMessage[]>;
   abstract markRoomAsRead(chatRoomId: number, senderId: number): Promise<void>;
+  /** The other side's messages reached `recipientId` (vande-1411 #035). */
+  abstract markRoomDelivered(
+    chatRoomId: number,
+    recipientId: number,
+  ): Promise<number>;
   abstract countUnread(chatRoomId: number, senderId: number): Promise<number>;
   /** Unread messages written BY `senderId` — the customer, for the admin view (#032). */
   abstract countUnreadFrom(

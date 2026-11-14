@@ -68,6 +68,13 @@ export class ChatMessageEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   isRead: boolean;
 
+  /**
+   * When it reached the other side's open connection: "Đã nhận" in the CMS,
+   * between "Đã gửi" and "Đã xem" (vande-1411 #035).
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  deliveredAt?: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

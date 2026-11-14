@@ -59,6 +59,9 @@ export class ChatMessage {
   @ApiProperty({ type: Boolean })
   isRead: boolean;
 
+  /** Reached the other side: "Đã nhận" (vande-1411 #035). */
+  deliveredAt?: Date | null;
+
   @ApiProperty()
   createdAt: Date;
 
