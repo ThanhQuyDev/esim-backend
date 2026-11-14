@@ -74,7 +74,7 @@ export class RegionsRelationalRepository implements RegionRepository {
       // stops at 200) still links a pack's card to the parent's page
       // (vande-1411 #028).
       .addSelect(
-        `(SELECT json_build_object('slug', p.slug, 'slugVi', p."slugVi", 'name', p.name, 'title', p.title, 'titleVi', p."titleVi")
+        `(SELECT json_build_object('slug', p.slug, 'slugVi', p."slugVi", 'name', p.name, 'title', p.title, 'titleVi', p."titleVi", 'avatarUrl', p."avatarUrl", 'iconUrl', p."iconUrl")
           FROM "region" p WHERE p.id = region."parentId" AND p."deletedAt" IS NULL)`,
         'parent_info',
       );
