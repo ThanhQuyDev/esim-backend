@@ -113,6 +113,17 @@ export class UserEntity extends EntityRelationalHelper {
   @Column({ type: Boolean, default: false })
   mustChangePassword?: boolean;
 
+  /**
+   * Set when an admin locked the account (security 15/11/2026). A locked
+   * account cannot sign in, and every token it already holds stops working.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  lockedAt?: Date | null;
+
+  /** Why it was locked — for admins only. */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  lockReason?: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

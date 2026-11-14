@@ -14,6 +14,8 @@ import { join, relative } from 'path';
  */
 const ALLOWED_JWT_ONLY = [
   'auth/auth.controller.ts#POST refresh',
+  // Signed chat upload for anyone signed in (security 15/11/2026).
+  'cloudinary/cloudinary.controller.ts#POST chat',
   'auth/auth.controller.ts#PATCH me',
   'auth/auth.controller.ts#PATCH me/profile',
   'auth/auth.controller.ts#POST me/password',

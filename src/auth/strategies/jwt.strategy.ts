@@ -10,8 +10,13 @@ import { RoleEnum } from '../../roles/roles.enum';
 import { SessionService } from '../../session/session.service';
 import { PartnerEntity } from '../../partners/infrastructure/persistence/relational/entities/partner.entity';
 import { PartnerStatusEnum } from '../../partners/partners.enum';
+import { UserEntity } from '../../users/infrastructure/persistence/relational/entities/user.entity';
 
 /** What a locked partner reads, at sign-in and when an open tab is cut off. */
+/** Same words as the sign-in refusal in auth.service (security 15/11/2026). */
+export const ACCOUNT_LOCKED_MESSAGE =
+  'Tài khoản của bạn đã bị khoá. Vui lòng liên hệ esim.vn để được hỗ trợ.';
+
 export const PARTNER_LOCKED_MESSAGE =
   'Tài khoản của Quý đối tác hiện đang bị khóa, vui lòng liên hệ admin để được hỗ trợ';
 
@@ -22,6 +27,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private readonly sessionService: SessionService,
     @InjectRepository(PartnerEntity)
     private readonly partnersRepository: Repository<PartnerEntity>,
+    @InjectRepository(UserEntity)
+    private readonly usersRepository: Repository<UserEntity>,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -40,6 +47,19 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   public async validate(payload: JwtPayloadType): Promise<JwtPayloadType> {
     if (!payload.id) {
       throw new UnauthorizedException();
+    }
+
+    // Security 15/11/2026: a token lives for months, so "Khoá tài khoản" and a
+    // deleted account must end it now, for every role. A primary-key lookup.
+    const account = await this.usersRepository.findOne({
+      where: { id: Number(payload.id) },
+      select: { id: true, lockedAt: true },
+    });
+    if (!account) {
+      throw new UnauthorizedException();
+    }
+    if (account.lockedAt) {
+      throw new UnauthorizedException(ACCOUNT_LOCKED_MESSAGE);
     }
 
     if (Number(payload.role?.id) === RoleEnum.partner) {

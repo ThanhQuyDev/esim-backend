@@ -1,4 +1,8 @@
 import { Logger } from '@nestjs/common';
+import {
+  cloudinaryFormFields,
+  cloudinaryUploadTicket,
+} from '../cloudinary/cloudinary-upload';
 
 /** One file carried by a customer's email reply. */
 export type EmailAttachment = {
@@ -37,17 +41,28 @@ export function pickEmailAttachments(
  * uses (#041, test round 4), so it shows in the CMS thread like a file sent
  * through the support form.
  *
- * Uses the unsigned upload preset the storefront already uploads with — the
- * cloud name and preset are public values, not credentials. Returns null when
- * they are not configured or the upload fails; the caller then names the file
- * in the message instead, so nothing is silently lost.
+ * Signed with CLOUDINARY_API_SECRET when it is set (security 15/11/2026),
+ * otherwise through the server's upload preset. Returns null when Cloudinary
+ * is not configured or the upload fails; the caller then names the file in the
+ * message instead, so nothing is silently lost.
  */
 export async function uploadEmailAttachment(
   file: EmailAttachment,
-  env: { cloudName?: string; uploadPreset?: string },
+  env: {
+    cloudName?: string;
+    uploadPreset?: string;
+    apiKey?: string;
+    apiSecret?: string;
+  },
   logger?: Logger,
 ): Promise<string | null> {
-  if (!env.cloudName || !env.uploadPreset) return null;
+  const ticket = cloudinaryUploadTicket('ticket', {
+    CLOUDINARY_CLOUD_NAME: env.cloudName,
+    CLOUDINARY_UPLOAD_PRESET: env.uploadPreset,
+    CLOUDINARY_API_KEY: env.apiKey,
+    CLOUDINARY_API_SECRET: env.apiSecret,
+  } as NodeJS.ProcessEnv);
+  if (!ticket) return null;
   try {
     const form = new FormData();
     form.append(
@@ -57,10 +72,12 @@ export async function uploadEmailAttachment(
       }),
       file.filename ?? 'attachment',
     );
-    form.append('upload_preset', env.uploadPreset);
-    form.append('folder', 'tickets');
+    for (const [key, value] of Object.entries(cloudinaryFormFields(ticket))) {
+      form.append(key, value);
+    }
+    if (ticket.mode === 'unsigned') form.append('folder', 'tickets');
     const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${env.cloudName}/auto/upload`,
+      `https://api.cloudinary.com/v1_1/${ticket.cloudName}/auto/upload`,
       { method: 'POST', body: form },
     );
     if (!res.ok) {
