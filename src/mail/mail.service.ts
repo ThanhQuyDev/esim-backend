@@ -157,6 +157,63 @@ export interface TicketMailData {
   replyBody?: string | null;
   /** The ticket belongs to a partner — links go to the portal (#042). */
   isPartner?: boolean;
+  /** Files sent with an admin's reply, attached to the email (vande-1411 #034). */
+  attachments?: string[];
+}
+
+/** Where an admin's uploads live; nothing else is fetched (vande-1411 #034). */
+const ATTACHMENT_HOSTS = ['res.cloudinary.com'];
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_TIMEOUT_MS = 15_000;
+
+/**
+ * The files of an admin's reply, downloaded to go with the email
+ * (vande-1411 #034). Only https files on our upload host, each at most 10 MB;
+ * one that fails is left out, and stays linked in the email's text.
+ */
+export async function fetchEmailAttachments(
+  urls: string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ filename: string; content: Buffer; contentType?: string }[]> {
+  const out: { filename: string; content: Buffer; contentType?: string }[] = [];
+  for (const [index, url] of urls.entries()) {
+    try {
+      const parsed = new URL(url);
+      if (
+        parsed.protocol !== 'https:' ||
+        !ATTACHMENT_HOSTS.includes(parsed.hostname)
+      ) {
+        continue;
+      }
+      const res = await fetchImpl(url, {
+        signal: AbortSignal.timeout(ATTACHMENT_TIMEOUT_MS),
+      });
+      if (!res.ok) continue;
+      const content = Buffer.from(await res.arrayBuffer());
+      if (content.length > ATTACHMENT_MAX_BYTES) continue;
+      out.push({
+        filename: attachmentFileName(url, index),
+        content,
+        contentType: res.headers.get('content-type') ?? undefined,
+      });
+    } catch {
+      // Left out; the link in the text part still reaches the file.
+    }
+  }
+  return out;
+}
+
+/** "loi-kich-hoat.png" from an uploaded file's address; a fallback otherwise. */
+export function attachmentFileName(url: string, index: number): string {
+  try {
+    const last = decodeURIComponent(
+      new URL(url).pathname.split('/').pop() ?? '',
+    );
+    if (last) return last;
+  } catch {
+    // Not a URL; fall through.
+  }
+  return `tep-dinh-kem-${index + 1}`;
 }
 
 /** The Message-ID of a ticket's first email, which every later one points to. */
@@ -1351,10 +1408,19 @@ ${notificationBodyText(data.body)}`,
       // never render the HTML.
       text: `[${data.ticketNumber}] ${data.ticketSubject}
 
-${data.replyBody ?? data.ticketDescription ?? ''}`,
+${data.replyBody ?? data.ticketDescription ?? ''}${
+        data.attachments?.length
+          ? `\n\nTệp đính kèm:\n${data.attachments.join('\n')}`
+          : ''
+      }`,
       templatePath: '',
       context: {},
       html: htmlCompiled,
+      // An admin's files travel with the email itself (vande-1411 #034); one
+      // that cannot be fetched is still linked in the text part above.
+      ...(data.attachments?.length && {
+        attachments: await fetchEmailAttachments(data.attachments),
+      }),
     });
   }
 

@@ -35,6 +35,26 @@ import {
 import { MailService } from '../mail/mail.service';
 import { SITE_URL } from '../mail/mail-branding';
 
+/**
+ * The attachments a reply may carry: https addresses only, at most ten
+ * (vande-1411 #034). Anything else — a local path, a data URL — is dropped,
+ * since the reply email attaches each one by fetching it.
+ */
+export function safeAttachmentUrls(urls: unknown): string[] {
+  if (!Array.isArray(urls)) return [];
+  return urls
+    .filter((u): u is string => typeof u === 'string')
+    .map((u) => u.trim())
+    .filter((u) => {
+      try {
+        return new URL(u).protocol === 'https:';
+      } catch {
+        return false;
+      }
+    })
+    .slice(0, 10);
+}
+
 @Injectable()
 export class TicketsService {
   private readonly logger = new Logger(TicketsService.name);
@@ -123,7 +143,14 @@ export class TicketsService {
   ): Promise<TicketMessageEntity> {
     await this.assertCanSeeTicket(ticketId, requester);
 
-    const body = input.body?.trim();
+    // Only web addresses of uploaded files: a reply's files go out with the
+    // email, and a mailer would read a local path off the server's disk
+    // (vande-1411 #034).
+    const attachments = safeAttachmentUrls(input.attachments);
+    // A reply that is only a file is still a reply.
+    const body =
+      input.body?.trim() ||
+      (attachments.length ? '(Gửi kèm tệp đính kèm)' : '');
     if (!body) {
       throw new BadRequestException('Nội dung phản hồi không được để trống.');
     }
@@ -134,7 +161,7 @@ export class TicketsService {
         authorRole: requester.isAdmin ? 'admin' : 'customer',
         authorName: requester.name ?? null,
         body,
-        attachments: input.attachments?.length ? input.attachments : null,
+        attachments: attachments.length ? attachments : null,
       }),
     );
 
@@ -194,6 +221,9 @@ export class TicketsService {
           ticketNumber,
           ticketSubject: ticket.subject,
           replyBody: body,
+          // The files go with the email too (vande-1411 #034).
+          attachments,
+          isPartner: !!ticket.fromPartner,
         });
       } catch (err) {
         // The message is already saved and visible in the CMS; losing the email

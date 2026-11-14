@@ -182,12 +182,15 @@ describe('Support ticket emails (#059)', () => {
         { body: 'Bạn thử bật dữ liệu di động nhé.' },
       );
 
-      expect(mailService.sendTicketReply).toHaveBeenCalledWith({
-        to: 'khach@example.com',
-        ticketNumber: 'HT-000123',
-        ticketSubject: OPEN.subject,
-        replyBody: 'Bạn thử bật dữ liệu di động nhé.',
-      });
+      // Files (none here) ride along since vande-1411 #034.
+      expect(mailService.sendTicketReply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'khach@example.com',
+          ticketNumber: 'HT-000123',
+          ticketSubject: OPEN.subject,
+          replyBody: 'Bạn thử bật dữ liệu di động nhé.',
+        }),
+      );
     });
 
     it("should not be emailed when it is the customer's own reply", async () => {
