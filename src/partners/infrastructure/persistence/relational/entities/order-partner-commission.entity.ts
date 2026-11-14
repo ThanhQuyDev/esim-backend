@@ -78,6 +78,19 @@ export class OrderPartnerCommissionEntity extends EntityRelationalHelper {
   @Column({ type: Number, nullable: true })
   rewardTransactionId!: number | null;
 
+  /**
+   * "Duyệt hoa hồng" / "Xoá hoa hồng" by hand (vande-1411 #048): who decided,
+   * when, and what a removed commission was worth before it became 0đ.
+   */
+  @Column({ type: Number, nullable: true })
+  decidedByAdminId?: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  decidedAt?: Date | null;
+
+  @Column({ type: 'decimal', precision: 14, scale: 0, nullable: true })
+  removedCommissionVnd?: number | null;
+
   @Column({ type: Number, nullable: true })
   reversedTransactionId!: number | null;
 

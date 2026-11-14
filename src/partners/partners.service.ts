@@ -14817,6 +14817,128 @@ export class PartnersService {
   }
 
   /**
+   * "Duyệt hoa hồng" (vande-1411 #048): credit a commission stuck at "chờ
+   * duyệt" now, past the 24h hold and whatever kept the sweep from it.
+   *
+   * The row is claimed with one conditional UPDATE, so a second click (or a
+   * second admin) finds nothing to claim; the wallet line is keyed on the
+   * order too, as the sweep's is. If the wallet write fails the claim is
+   * undone and nothing has moved.
+   */
+  async adminCreditCommission(
+    commissionId: number,
+    adminId: number,
+  ): Promise<{ id: number; status: string; commissionVnd: number }> {
+    const claimed: { id: number }[] = await this.dataSource.query(
+      `UPDATE order_partner_commission
+          SET status = $3, "decidedByAdminId" = $2, "decidedAt" = now()
+        WHERE id = $1 AND status = $4
+        RETURNING id`,
+      [
+        commissionId,
+        adminId,
+        OrderPartnerCommissionStatusEnum.CREDITED,
+        OrderPartnerCommissionStatusEnum.PENDING,
+      ],
+    );
+    const rows = Array.isArray(claimed?.[0]) ? claimed[0] : claimed;
+    if (!rows?.length) {
+      throw new BadRequestException(
+        'Hoa hồng này không còn ở trạng thái chờ duyệt.',
+      );
+    }
+    const commission = await this.commissionRepository.findOneOrFail({
+      where: { id: commissionId },
+    });
+    try {
+      const transaction = await this.createWalletTransaction(
+        commission.partnerId,
+        PartnerWalletTransactionTypeEnum.COMMISSION_EARNED,
+        Number(commission.commissionVnd),
+        {
+          orderId: commission.orderId,
+          sourceType: 'order_partner_commission',
+          sourceId: String(commission.id),
+          idempotencyKey: `partner_commission:${commission.orderId}`,
+          reason: 'Hoa hồng đơn hàng qua link tiếp thị (admin duyệt)',
+        },
+      );
+      commission.rewardTransactionId = transaction.id;
+      await this.commissionRepository.save(commission);
+    } catch (err) {
+      await this.dataSource.query(
+        `UPDATE order_partner_commission
+            SET status = $2, "decidedByAdminId" = NULL, "decidedAt" = NULL
+          WHERE id = $1`,
+        [commissionId, OrderPartnerCommissionStatusEnum.PENDING],
+      );
+      throw err;
+    }
+    if (commission.linkId) {
+      await this.linkRepository.increment(
+        { id: commission.linkId },
+        'conversionCount',
+        1,
+      );
+      await this.linkRepository.increment(
+        { id: commission.linkId },
+        'totalCommissionVnd',
+        Number(commission.commissionVnd),
+      );
+    }
+    this.logger.log(
+      `Admin ${adminId} credited commission ${commissionId} (order ${commission.orderId}, ${commission.commissionVnd}đ).`,
+    );
+    return {
+      id: commission.id,
+      status: OrderPartnerCommissionStatusEnum.CREDITED,
+      commissionVnd: Number(commission.commissionVnd),
+    };
+  }
+
+  /**
+   * "Xoá hoa hồng" (vande-1411 #048): the order earns nothing — 0đ, "Bị loại
+   * hoa hồng", and the partner reads "Admin từ chối chi trả hoa hồng". Only
+   * one not yet in the wallet; what it was worth is kept for the record.
+   */
+  async adminRejectCommission(
+    commissionId: number,
+    adminId: number,
+  ): Promise<{ id: number; status: string; commissionVnd: number }> {
+    const claimed: { id: number; removed: string }[] =
+      await this.dataSource.query(
+        `UPDATE order_partner_commission
+            SET "removedCommissionVnd" = "commissionVnd", "commissionVnd" = 0,
+                status = $3, "rejectionReason" = $4,
+                "decidedByAdminId" = $2, "decidedAt" = now()
+          WHERE id = $1 AND status IN ($5, $6)
+          RETURNING id, "removedCommissionVnd" AS removed`,
+        [
+          commissionId,
+          adminId,
+          OrderPartnerCommissionStatusEnum.REJECTED,
+          CommissionRejectionReasonEnum.ADMIN_REJECTED,
+          OrderPartnerCommissionStatusEnum.PENDING,
+          OrderPartnerCommissionStatusEnum.UNPAID,
+        ],
+      );
+    const rows = Array.isArray(claimed?.[0]) ? claimed[0] : claimed;
+    if (!rows?.length) {
+      throw new BadRequestException(
+        'Chỉ xoá được hoa hồng chưa cộng vào ví (đang chờ duyệt).',
+      );
+    }
+    this.logger.log(
+      `Admin ${adminId} removed commission ${commissionId} (was ${rows[0].removed}đ).`,
+    );
+    return {
+      id: commissionId,
+      status: OrderPartnerCommissionStatusEnum.REJECTED,
+      commissionVnd: 0,
+    };
+  }
+
+  /**
    * Take a commission back when its order dies (#007).
    *
    * PENDING commission → REVERSED, nothing moved yet. A commission already

@@ -96,6 +96,8 @@ export enum CommissionRejectionReasonEnum {
   SELF_PHONE = 'self_phone',
   SELF_TAX_CODE = 'self_tax_code',
   SELF_BANK_ACCOUNT = 'self_bank_account',
+  /** "Xoá hoa hồng" by an admin (vande-1411 #048). */
+  ADMIN_REJECTED = 'admin_rejected',
 }
 
 export enum PartnerPayoutStatusEnum {

@@ -282,6 +282,37 @@ export class AdminPartnersController {
     );
   }
 
+  /**
+   * "Duyệt hoa hồng" on one order's commission stuck waiting (vande-1411 #048).
+   * Money: the sales password guard of #004 covers it below.
+   */
+  @Patch('commissions/:commissionId/credit')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(SalesPasswordGuard)
+  creditCommission(
+    @Request() req: { user: { id: number } },
+    @Param('commissionId') commissionId: number,
+  ) {
+    return this.partnersService.adminCreditCommission(
+      Number(commissionId),
+      req.user.id,
+    );
+  }
+
+  /** "Xoá hoa hồng": 0đ, "Bị loại hoa hồng" (vande-1411 #048). */
+  @Patch('commissions/:commissionId/reject')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(SalesPasswordGuard)
+  rejectCommission(
+    @Request() req: { user: { id: number } },
+    @Param('commissionId') commissionId: number,
+  ) {
+    return this.partnersService.adminRejectCommission(
+      Number(commissionId),
+      req.user.id,
+    );
+  }
+
   /** A proof file of a manual top-up (vande #069), for the admin only. */
   @Get('deposit-requests/:id/proofs/:fileId')
   async getDepositProof(
