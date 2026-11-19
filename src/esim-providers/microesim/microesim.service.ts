@@ -1,3 +1,4 @@
+import { nonEmpty, normalizeLpa } from '../../esims/lpa';
 import type { MicroEsimEvent } from '../../esims/provider-timeline';
 import { MicroEsimAllowance, microEsimAllowance } from './microesim-plan-type';
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
@@ -784,8 +785,10 @@ export class MicroEsimService {
     qrcode?: string;
     ios_esim_install_link?: string;
     msisdn?: string;
+    /** MicroEsim wraps the eSIM as `{ code, msg, data: {…} }` (vande-2011 #004). */
+    data?: { topup_id?: string };
   }): Promise<void> {
-    const topupId = payload.topup_id;
+    const topupId = payload.topup_id ?? payload.data?.topup_id;
     if (!topupId) {
       this.logger.warn('[MicroEsim] Callback missing topup_id');
       return;
@@ -840,13 +843,14 @@ export class MicroEsimService {
       const deviceId = deviceIds[i];
       if (!deviceId) continue;
 
-      const lpa = detail.lpa_str?.[i] ?? null;
+      // An empty or HTML answer must not wipe a good LPA (vande-2011 #004).
+      const lpa = normalizeLpa(detail.lpa_str?.[i]);
       const smdpAddress = lpa ? this.extractSmdpFromLpa(lpa) : null;
       const activationCode = lpa
         ? this.extractActivationCodeFromLpa(lpa)
         : null;
-      const qrcode = detail.qrcode?.[i] ?? null;
-      const iosLink = detail.ios_esim_install_link?.[i] ?? null;
+      const qrcode = nonEmpty(detail.qrcode?.[i]);
+      const iosLink = nonEmpty(detail.ios_esim_install_link?.[i]);
       const msisdn = detail.msisdn?.[i] ?? null;
 
       let dataTotal: string | null = null;

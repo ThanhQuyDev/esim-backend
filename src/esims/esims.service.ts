@@ -1,5 +1,6 @@
 import { buildEsimPackages, type EsimPackage } from './esim-packages';
 import { DataSource } from 'typeorm';
+import { lpaOf } from './lpa';
 import { PlansService } from '../plans/plans.service';
 import { derivedExpiry } from './daily-cycle';
 import {
@@ -951,6 +952,94 @@ export class EsimsService {
     this.logger.log(
       `Usage refresh: ${refreshed}/${esims.length} eSIMs updated`,
     );
+  }
+
+  /**
+   * Fill in the LPA (and so the QR) of eSIMs that have none (vande-2011 #004).
+   *
+   * - The LPA is rebuilt from the SM-DP+ address and activation code when both
+   *   are stored, and an HTML or padded LPA is cleaned.
+   * - A MicroEsim eSIM with nothing at all is asked for again (`topupDetail`,
+   *   a read): its first answers can come before the LPA is ready.
+   *
+   * Only eSIMs of the last 7 days that someone bought; returns how many got
+   * an LPA.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async repairMissingLpa(onlyEsimId?: number): Promise<number> {
+    if (!this.dataSource) return 0;
+    const rows: {
+      id: number;
+      provider: string | null;
+      lpa: string | null;
+      smdpAddress: string | null;
+      activationCode: string | null;
+      topupId: string | null;
+    }[] = await this.dataSource.query(
+      `SELECT e.id, e.provider, e.lpa, e."smdpAddress", e."activationCode",
+              oi."orderRequestId" AS "topupId"
+         FROM esim e
+         LEFT JOIN order_item oi ON oi.id = e."orderItemId"
+        WHERE e."deletedAt" IS NULL
+          AND e."orderItemId" IS NOT NULL
+          AND (e.lpa IS NULL OR e.lpa !~ $2)
+          AND ($1::int IS NOT NULL OR e."createdAt" > now() - interval '7 days')
+          AND ($1::int IS NULL OR e.id = $1)
+        ORDER BY e.id
+        LIMIT 200`,
+      // A clean LPA: "LPA:1$<address>$<code>", no HTML, no spaces.
+      [onlyEsimId ?? null, '^LPA:1[$][^$<> ]+[$][^$<> ]+$'],
+    );
+    let fixed = 0;
+    const asked = new Set<string>();
+    for (const row of rows) {
+      let lpa = lpaOf(row);
+      if (!lpa && row.provider === 'microesim' && row.topupId) {
+        if (!asked.has(row.topupId)) {
+          asked.add(row.topupId);
+          try {
+            await this.microEsimService.provisionFromTopupDetail(row.topupId);
+          } catch (err) {
+            this.logger.warn(
+              `LPA repair: MicroEsim ${row.topupId}: ${(err as Error).message}`,
+            );
+          }
+        }
+        const [again] = await this.dataSource.query(
+          `SELECT lpa, "smdpAddress", "activationCode" FROM esim WHERE id = $1`,
+          [row.id],
+        );
+        lpa = again ? lpaOf(again) : null;
+      }
+      if (!lpa || lpa === row.lpa) continue;
+      const [, smdp, code] = lpa.split('$');
+      await this.dataSource.query(
+        `UPDATE esim
+            SET lpa = $2,
+                "smdpAddress" = COALESCE(NULLIF("smdpAddress", ''), $3),
+                "activationCode" = COALESCE(NULLIF("activationCode", ''), $4)
+          WHERE id = $1`,
+        [row.id, lpa, smdp, code],
+      );
+      fixed++;
+    }
+    if (fixed) this.logger.log(`LPA repair: ${fixed} eSIM(s) got their LPA`);
+    return fixed;
+  }
+
+  /**
+   * "Lấy lại thông tin eSIM" (vande-2011 #004): the admin's button for one
+   * eSIM. Reads from the supplier only; never buys or changes anything there.
+   */
+  async refetchEsimInfo(id: number): Promise<{ lpa: string | null }> {
+    await this.repairMissingLpa(Number(id));
+    const [row] = this.dataSource
+      ? await this.dataSource.query(
+          `SELECT lpa, "smdpAddress", "activationCode" FROM esim WHERE id = $1`,
+          [Number(id)],
+        )
+      : [];
+    return { lpa: row ? lpaOf(row) : null };
   }
 
   /**

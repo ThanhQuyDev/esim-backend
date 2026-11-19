@@ -423,6 +423,17 @@ export class EsimsController {
     return esim;
   }
 
+  /**
+   * "Lấy lại thông tin eSIM" (vande-2011 #004): read the LPA / QR again from
+   * what is stored or from the supplier (a read, nothing is bought).
+   */
+  @Post(':id/refetch-info')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', type: String, required: true })
+  refetchInfo(@Param('id') id: Esim['id']): Promise<{ lpa: string | null }> {
+    return this.esimsService.refetchEsimInfo(Number(id));
+  }
+
   @ApiOkResponse({ type: Esim })
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
