@@ -177,7 +177,49 @@ export function tiktokReplacements(plans: Plan[]): Plan[] {
   return picked;
 }
 
-function groupPlansBySimType(plans: Plan[]): PlanGroups {
+/**
+ * The destination as a plan on a product page needs it (vande-2011 #011).
+ * Every plan carried the whole destination — descriptions, notices, search
+ * keys, its supplier list — so China's page was 2.4 MB on beta, over the
+ * 2 MB that Next.js/Vercel keeps in its fetch cache: the new answer was never
+ * stored and the page kept showing an old one, without Gadget Korea's 4 GB/day
+ * for 12-30 days. The fields a product page reads are kept.
+ */
+const DESTINATION_ON_PLAN = [
+  'id',
+  'name',
+  'slug',
+  'slugVi',
+  'countryCode',
+  'parentId',
+  'flagUrl',
+  'avatarUrl',
+  'esimType',
+  'title',
+  'titleVi',
+  'isActive',
+] as const;
+
+export function slimPlanDestination<T extends { destination?: unknown }>(
+  plan: T,
+): T {
+  const dest = plan.destination as Record<string, unknown> | null | undefined;
+  if (!dest || typeof dest !== 'object') return plan;
+  const slim: Record<string, unknown> = {};
+  for (const key of DESTINATION_ON_PLAN) {
+    if (key in dest) slim[key] = dest[key];
+  }
+  // Same class, so what the serializer hides on a Plan stays hidden.
+  const copy = Object.assign(
+    Object.create(Object.getPrototypeOf(plan) as object) as T,
+    plan,
+  );
+  (copy as { destination?: unknown }).destination = slim;
+  return copy;
+}
+
+function groupPlansBySimType(rawPlans: Plan[]): PlanGroups {
+  const plans = rawPlans.map((p) => slimPlanDestination(p));
   // Our own stock: domestic eSIMs, and the travel eSIMs of a Vietnamese
   // carrier (vande #015) — shown as their own block, never mixed in.
   const isOwnStock = (p: Plan) => !!p.isDomesticEsim || !!p.isLocalInventory;
