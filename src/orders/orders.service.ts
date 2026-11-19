@@ -17,6 +17,7 @@ import {
   RETRY_LINES_PER_RUN,
   isRateLimited,
   nextAutoRetryAt,
+  autoRetryStopReason,
   provisionErrorText,
   retryStaggerMs,
 } from './provision-retry';
@@ -3463,6 +3464,11 @@ export class OrdersService {
                 lastError: item.lastProvisionError,
                 lastAttemptAt: item.lastProvisionAttemptAt ?? null,
                 nextAutoRetryAt: nextAutoRetryAt(
+                  order,
+                  item,
+                  plans[idx]?.provider ?? null,
+                ),
+                stopReason: autoRetryStopReason(
                   order,
                   item,
                   plans[idx]?.provider ?? null,

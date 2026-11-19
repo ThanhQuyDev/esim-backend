@@ -151,6 +151,8 @@ export class AdminOrderItemDto {
     lastError: string | null;
     lastAttemptAt: Date | null;
     nextAutoRetryAt: Date | null;
+    /** Why no more automatic tries will happen (vande-2011 #001). */
+    stopReason?: 'unsure' | 'duplicate' | 'attempts' | 'window' | null;
   } | null;
 
   @ApiProperty({ type: String })

@@ -109,12 +109,35 @@ export function isRateLimited(message: string | null): boolean {
 }
 
 /**
- * The supplier answered and refused, so nothing was bought: an HTTP 4xx (not
- * 408, a timeout), or the refusal our MicroEsim and Billion clients raise from a
- * normal answer. Anything else may have gone through.
+ * The call never reached the supplier, so nothing can have been bought
+ * (vande-2011 #001): the supplier's name did not resolve (DNS `EAI_AGAIN`,
+ * `ENOTFOUND` — production's resolver fails now and then), the connection was
+ * refused or the network unreachable, or the supplier said 503 "unavailable".
+ * Gadget Korea's `getaddrinfo EAI_AGAIN open-api.usimsa.com` was left for a
+ * person after one try although asking again was perfectly safe.
+ */
+export function isNeverSent(message: string | null): boolean {
+  const text = message ?? '';
+  if (
+    /\b(EAI_AGAIN|ENOTFOUND|EAI_NONAME|EAI_FAIL|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH)\b/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  return /status code 503\b/.test(text);
+}
+
+/**
+ * Nothing was bought, so asking again is safe: the supplier answered and
+ * refused — an HTTP 4xx (not 408, a timeout), or the refusal our MicroEsim and
+ * Billion clients raise from a normal answer — or the call never reached it
+ * ({@link isNeverSent}). Anything else (a timeout, a reset connection, a 500)
+ * may have gone through.
  */
 export function isDefiniteRefusal(message: string | null): boolean {
   const text = message ?? '';
+  if (isNeverSent(text)) return true;
   const status = text.match(/status code (\d{3})/i);
   if (status) {
     const code = Number(status[1]);
@@ -156,6 +179,53 @@ function parseRetryAfter(
   const at = Date.parse(raw);
   if (Number.isNaN(at)) return null;
   return Math.max(0, Math.ceil((at - now.getTime()) / 1000));
+}
+
+/**
+ * Why the automatic retry will not ask the supplier again (vande-2011 #001),
+ * so the order can say what to do instead of a bare "stopped":
+ *
+ * - `unsure`: the last error may have bought the eSIM (a timeout, a reset, a
+ *   500) and this supplier has no safe repeat — check its portal first.
+ * - `duplicate`: the supplier says it already has this order.
+ * - `attempts` / `window`: tries used up, or the order is over a day old.
+ *
+ * Null while the retry is still going (or for a line that needs none).
+ */
+export type AutoRetryStop = 'unsure' | 'duplicate' | 'attempts' | 'window';
+
+export function autoRetryStopReason(
+  order: { status?: string | null; createdAt?: Date | string | null },
+  item: {
+    status?: string | null;
+    orderRequestId?: string | null;
+    provisionAttempts?: number | null;
+    lastProvisionError?: string | null;
+  },
+  provider: string | null,
+  now: Date = new Date(),
+): AutoRetryStop | null {
+  if (!item.lastProvisionError || item.orderRequestId) return null;
+  if (order.status !== 'paid') return null;
+  if (item.status != null && item.status !== 'pending') return null;
+  const supplier = (provider ?? '').toLowerCase();
+  if (isDuplicateOrderRefusal(item.lastProvisionError)) return 'duplicate';
+  if (
+    !AUTO_RETRY_PROVIDERS.includes(supplier) &&
+    !isDefiniteRefusal(item.lastProvisionError)
+  ) {
+    return 'unsure';
+  }
+  if ((item.provisionAttempts ?? 0) >= MAX_PROVISION_ATTEMPTS)
+    return 'attempts';
+  const created = order.createdAt ? new Date(order.createdAt) : null;
+  if (
+    !created ||
+    now.getTime() - created.getTime() > AUTO_RETRY_WINDOW_HOURS * 3600_000
+  ) {
+    return 'window';
+  }
+  return null;
 }
 
 /**
