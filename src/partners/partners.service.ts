@@ -5201,25 +5201,44 @@ export class PartnersService {
       adminId: adminId ?? null,
     });
 
-    // Tạm khoá / khoá / mở khoá are told at once, by email and on the bell
-    // (doitac-0911 #023). An approval has its own email (#095).
-    const notice = partnerStatusNotice(fromStatus, dto.status, reason);
-    if (notice) {
-      try {
-        await this.notifyOnePartner(
-          saved.id,
-          notice.title,
-          notice.body,
-          adminId ?? null,
-        );
-      } catch (err) {
-        this.logger.error(
-          `Status notice to partner ${saved.id} failed: ${(err as Error).message}`,
-        );
-      }
-    }
+    await this.sendStatusNotice(
+      saved.id,
+      fromStatus,
+      dto.status,
+      reason,
+      adminId,
+    );
 
     return saved;
+  }
+
+  /**
+   * Tạm khoá / khoá / mở khoá are told at once, by email and on the bell
+   * (doitac-0911 #023). An approval has its own email (#095). Both the detail
+   * page and the list's row menu (the bulk path) send it: the row menu did not,
+   * which is why partners locked from the list heard nothing (vande-2011 #024).
+   */
+  private async sendStatusNotice(
+    partnerId: number,
+    fromStatus: string,
+    toStatus: string,
+    reason: string | null | undefined,
+    adminId: number | null | undefined,
+  ): Promise<void> {
+    const notice = partnerStatusNotice(fromStatus, toStatus, reason);
+    if (!notice) return;
+    try {
+      await this.notifyOnePartner(
+        partnerId,
+        notice.title,
+        notice.body,
+        adminId ?? null,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Status notice to partner ${partnerId} failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -5922,6 +5941,13 @@ export class PartnersService {
         reason: dto.reason?.trim() || null,
         adminId,
       });
+      await this.sendStatusNotice(
+        partner.id,
+        fromStatus,
+        dto.status,
+        dto.reason,
+        adminId,
+      );
       updated += 1;
     }
 

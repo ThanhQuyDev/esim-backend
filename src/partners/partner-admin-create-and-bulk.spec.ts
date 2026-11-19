@@ -332,3 +332,54 @@ describe('PartnersService.bulkUpdateStatus (#059, #060)', () => {
     expect(result.skipped).toEqual([999]);
   });
 });
+
+describe('PartnersService.bulkUpdateStatus — the partner is told (vande-2011 #024)', () => {
+  it('should email and bell each partner locked, held or unlocked from the list', async () => {
+    const { service } = buildService({
+      partners: [
+        { id: 1, status: PartnerStatusEnum.ACTIVE },
+        { id: 2, status: PartnerStatusEnum.HOLD },
+      ],
+    });
+    const notify = jest.fn().mockResolvedValue(undefined);
+    Object.assign(service, { notifyOnePartner: notify });
+
+    await service.bulkUpdateStatus(
+      { ids: [1, 2], status: PartnerStatusEnum.DISABLED, reason: 'Vi phạm' },
+      9,
+    );
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(notify).toHaveBeenCalledWith(
+      1,
+      'Tài khoản đối tác của bạn đã bị khoá',
+      expect.stringContaining('Lý do: Vi phạm.'),
+      9,
+    );
+
+    notify.mockClear();
+    await service.bulkUpdateStatus(
+      { ids: [1], status: PartnerStatusEnum.ACTIVE },
+      9,
+    );
+    expect(notify).toHaveBeenCalledWith(
+      1,
+      'Tài khoản đối tác của bạn đã được mở khoá',
+      expect.any(String),
+      9,
+    );
+  });
+
+  it('should not fail the status change when the notice cannot be sent', async () => {
+    const { service } = buildService({
+      partners: [{ id: 1, status: PartnerStatusEnum.ACTIVE }],
+    });
+    Object.assign(service, {
+      notifyOnePartner: jest.fn().mockRejectedValue(new Error('smtp down')),
+    });
+    const result = await service.bulkUpdateStatus(
+      { ids: [1], status: PartnerStatusEnum.HOLD, reason: 'Kiểm tra' },
+      9,
+    );
+    expect(result.updated).toBe(1);
+  });
+});
