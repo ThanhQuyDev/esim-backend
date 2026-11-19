@@ -128,6 +128,13 @@ export class Esim {
    */
   partnerReport?: 'fault' | 'refund' | null;
 
+  /**
+   * The distribution / API partner whose account the eSIM was bought on
+   * (vande-2011 #027): the CMS shows the partner, not the account's contact
+   * person, under "Thông tin người dùng". Null for a customer's eSIM.
+   */
+  ownerPartner?: EsimOwnerPartner | null;
+
   @ApiPropertyOptional({ type: String })
   esimTranNo: string | null;
 
@@ -206,3 +213,15 @@ export class Esim {
   @ApiProperty()
   deletedAt: Date;
 }
+
+/** See Esim.ownerPartner (vande-2011 #027). */
+export type EsimOwnerPartner = {
+  id: number;
+  /** A company by its name, a person by theirs (not the contact person). */
+  name: string;
+  email: string | null;
+  phone: string | null;
+  /** 'api' when the partner signed up for the API (they run as distribution). */
+  type: 'distribution' | 'api';
+  status: string;
+};

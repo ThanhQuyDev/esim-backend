@@ -18,7 +18,7 @@ import { UpdateEsimDto } from './dto/update-esim.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { FilterEsimDto, SortEsimDto } from './dto/query-esim.dto';
 import { EsimRepository } from './infrastructure/persistence/esim.repository';
-import { Esim } from './domain/esim';
+import { Esim, EsimOwnerPartner } from './domain/esim';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { AiraloService } from '../esim-providers/airalo/airalo.service';
 import { EsimAccessService } from '../esim-providers/esimaccess/esimaccess.service';
@@ -391,6 +391,9 @@ export class EsimsService {
           withTopup.plan)
         : withTopup.plan;
     const supplierRefunds = await this.supplierRefundsOf(esim.iccid);
+    const ownerPartner = await this.ownerPartnerOf(
+      Number(esim.user?.id) || null,
+    );
     const baseLine = await this.esimsRepository.findBaseOrderLine(esim.id);
     const packages = buildEsimPackages({
       ...withTopup,
@@ -406,7 +409,55 @@ export class EsimsService {
       chosenDays,
       supplierRefunds,
       packages,
+      ownerPartner,
     };
+  }
+
+  /**
+   * The distribution / API partner an account belongs to (vande-2011 #027),
+   * or null for a customer. A marketing partner buys as a customer would.
+   */
+  private async ownerPartnerOf(
+    userId: number | null | undefined,
+  ): Promise<EsimOwnerPartner | null> {
+    if (!this.dataSource || !userId) return null;
+    try {
+      const [row]: {
+        id: number;
+        legalType: string | null;
+        companyName: string | null;
+        contactName: string | null;
+        contactEmail: string | null;
+        contactPhone: string | null;
+        requestedType: string | null;
+        status: string;
+      }[] = await this.dataSource.query(
+        `SELECT id, "legalType", "companyName", "contactName", "contactEmail",
+                "contactPhone", "requestedType", status
+           FROM partner
+          WHERE "userId" = $1 AND "partnerType" = 'distribution'
+            AND "deletedAt" IS NULL
+          LIMIT 1`,
+        [userId],
+      );
+      if (!row) return null;
+      const company = row.companyName?.trim();
+      const name =
+        (row.legalType === 'company' && company) ||
+        row.contactName?.trim() ||
+        company ||
+        `Đối tác #${row.id}`;
+      return {
+        id: row.id,
+        name,
+        email: row.contactEmail ?? null,
+        phone: row.contactPhone ?? null,
+        type: row.requestedType === 'api' ? 'api' : 'distribution',
+        status: row.status,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**
