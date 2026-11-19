@@ -14,4 +14,16 @@ export abstract class ChatRoomRepository {
     email?: string;
   }): Promise<ChatRoom[]>;
   abstract create(data: Partial<ChatRoom>): Promise<ChatRoom>;
+  /** A visitor's conversation, by the key they hold (vande-2011 #023). */
+  abstract findByGuestKey(guestKey: string): Promise<NullableType<ChatRoom>>;
+  abstract createForGuest(guestKey: string, ip: string): Promise<ChatRoom>;
+  /**
+   * The visitor signed in: their conversation becomes the account's, or is
+   * folded into the one the account already has. Returns the account's room id,
+   * or null when the visitor had no conversation.
+   */
+  abstract adoptGuestRoom(
+    guestKey: string,
+    userId: number,
+  ): Promise<number | null>;
 }

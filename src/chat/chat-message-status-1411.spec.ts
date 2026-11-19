@@ -10,6 +10,7 @@ describe('Trạng thái tin nhắn trong CMS (vande-1411 #035)', () => {
     const emitted: { room: string; event: string; payload: unknown }[] = [];
     const chatService = {
       getOrCreateRoom: jest.fn().mockResolvedValue({ id: 5 }),
+      getRoomById: jest.fn().mockResolvedValue({ id: 5, userId: 7 }),
       markAsRead: jest.fn().mockResolvedValue(undefined),
       markDelivered: jest.fn().mockResolvedValue(2),
       getMessages: jest.fn().mockResolvedValue([{ id: 1 }]),

@@ -6,6 +6,7 @@ import { ChatMessageRepository } from '../../chat-message.repository';
 import { ChatMessageMapper } from '../mappers/chat-message.mapper';
 import { ChatMessage } from '../../../../domain/chat-message';
 import { NullableType } from '../../../../../utils/types/nullable.type';
+import { GUEST_SENDER_ID } from '../../../../chat-guest';
 
 @Injectable()
 export class ChatMessageRelationalRepository implements ChatMessageRepository {
@@ -15,9 +16,11 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
   ) {}
 
   async create(data: Partial<ChatMessage>): Promise<ChatMessage> {
+    const fromGuest = data.senderId === GUEST_SENDER_ID;
     const entity = this.repo.create({
       chatRoomId: data.chatRoomId,
-      senderId: data.senderId,
+      senderId: fromGuest ? null : data.senderId,
+      fromGuest,
       message: data.message,
       fileUrl: data.fileUrl ?? null,
       fileName: data.fileName ?? null,
@@ -62,6 +65,18 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
   }
 
   async markRoomAsRead(chatRoomId: number, senderId: number): Promise<void> {
+    if (senderId === GUEST_SENDER_ID) {
+      // A visitor read the conversation: everything not theirs (#023).
+      await this.repo.update(
+        { chatRoomId, isRead: false, fromGuest: false },
+        { isRead: true },
+      );
+      await this.repo.update(
+        { chatRoomId, isRead: true, deliveredAt: IsNull() },
+        { deliveredAt: () => 'NOW()' },
+      );
+      return;
+    }
     // The automatic messages have no sender, and "senderId <> x" is never true
     // for NULL: they stayed unread for good and kept the storefront's badge
     // up (vande-2011 #022).
@@ -91,7 +106,9 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
     recipientId: number,
   ): Promise<number> {
     const result = await this.repo.update(
-      { chatRoomId, deliveredAt: IsNull(), senderId: Not(recipientId) },
+      recipientId === GUEST_SENDER_ID
+        ? { chatRoomId, deliveredAt: IsNull(), fromGuest: false }
+        : { chatRoomId, deliveredAt: IsNull(), senderId: Not(recipientId) },
       { deliveredAt: () => 'NOW()' },
     );
     return result.affected ?? 0;
@@ -105,7 +122,10 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
 
   async countUnreadFrom(chatRoomId: number, senderId: number): Promise<number> {
     return this.repo.count({
-      where: { chatRoomId, isRead: false, senderId },
+      where:
+        senderId === GUEST_SENDER_ID
+          ? { chatRoomId, isRead: false, fromGuest: true }
+          : { chatRoomId, isRead: false, senderId },
     });
   }
 

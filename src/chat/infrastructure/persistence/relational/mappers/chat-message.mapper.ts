@@ -1,12 +1,18 @@
 import { ChatMessage, ChatMessageQuote } from '../../../../domain/chat-message';
 import { ChatMessageEntity } from '../entities/chat-message.entity';
+import { GUEST_SENDER_ID } from '../../../../chat-guest';
+
+/** A visitor's message shows as sent by GUEST_SENDER_ID (#023). */
+function senderOf(entity: ChatMessageEntity): number | null {
+  return entity.fromGuest ? GUEST_SENDER_ID : entity.senderId;
+}
 
 export class ChatMessageMapper {
   /** Only what the quote block renders — see ChatMessageQuote (#073). */
   static toQuote(entity: ChatMessageEntity): ChatMessageQuote {
     const quote = new ChatMessageQuote();
     quote.id = entity.id;
-    quote.senderId = entity.senderId;
+    quote.senderId = senderOf(entity);
     quote.message = entity.message;
     quote.fileUrl = entity.fileUrl ?? null;
     quote.fileName = entity.fileName ?? null;
@@ -18,7 +24,7 @@ export class ChatMessageMapper {
     const domain = new ChatMessage();
     domain.id = entity.id;
     domain.chatRoomId = entity.chatRoomId;
-    domain.senderId = entity.senderId;
+    domain.senderId = senderOf(entity);
     domain.message = entity.message;
     domain.fileUrl = entity.fileUrl ?? null;
     domain.fileName = entity.fileName ?? null;
@@ -40,7 +46,8 @@ export class ChatMessageMapper {
     const entity = new ChatMessageEntity();
     if (domain.id) entity.id = domain.id;
     entity.chatRoomId = domain.chatRoomId;
-    entity.senderId = domain.senderId;
+    entity.fromGuest = domain.senderId === GUEST_SENDER_ID;
+    entity.senderId = entity.fromGuest ? null : domain.senderId;
     entity.message = domain.message;
     entity.fileUrl = domain.fileUrl ?? null;
     entity.fileName = domain.fileName ?? null;

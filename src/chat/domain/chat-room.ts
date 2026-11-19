@@ -18,8 +18,13 @@ export class ChatRoom {
   @ApiProperty({ type: Number })
   id: number;
 
+  /** -1 for a visitor without an account (vande-2011 #023). */
   @ApiProperty({ type: Number })
   userId: number;
+
+  /** A visitor's conversation, not an account's (#023). */
+  @ApiPropertyOptional({ type: Boolean })
+  isGuest?: boolean;
 
   /**
    * Feature 5.1 — surface a small user summary (email + name) so the admin

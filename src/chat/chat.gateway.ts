@@ -8,12 +8,23 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { AllConfigType } from '../config/config.type';
 import { ChatService } from './chat.service';
 import { ChatAutomationsService } from '../chat-automations/chat-automations.service';
 import { corsOrigin } from '../utils/cors-origins';
+import { randomUUID } from 'crypto';
+import { clientIp } from '../tickets/ticket-spam-guard';
+import { ChatRoom } from './domain/chat-room';
+import {
+  GUEST_SENDER_ID,
+  GUEST_TOKEN_TTL,
+  guestLimits,
+  guestMessageProblem,
+  guestSecret,
+} from './chat-guest';
 
 /**
  * Every connected admin socket (#032). A customer who opens a conversation after
@@ -24,9 +35,19 @@ export const ADMINS_CHANNEL = 'admins';
 
 interface AuthenticatedSocket extends Socket {
   data: {
+    /** GUEST_SENDER_ID for a visitor without an account (vande-2011 #023). */
     userId: number;
     roleId: number;
     sessionId: number;
+    /** A visitor's key; their conversation is the room holding it (#023). */
+    guestKey?: string;
+    /** A visitor's freshly signed key, handed over in "joinedRoom". */
+    newGuestToken?: string;
+    /** The visitor's room, once joined: the only room they may use. */
+    guestRoomId?: number;
+    /** A signed-in customer's earlier visitor key, to adopt on join. */
+    adoptGuestKey?: string;
+    ip?: string;
   };
 }
 
@@ -35,6 +56,8 @@ interface AuthenticatedSocket extends Socket {
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
+
+  private readonly logger = new Logger(ChatGateway.name);
 
   constructor(
     private readonly chatService: ChatService,
@@ -47,26 +70,90 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const token =
         client.handshake.auth?.token || client.handshake.query?.token;
+      const guestToken = client.handshake.auth?.guest as string | undefined;
+      client.data.ip = clientIp({
+        headers: client.handshake.headers as Record<string, string>,
+        socket: { remoteAddress: client.handshake.address },
+      });
 
-      if (!token) {
-        client.disconnect();
+      if (token) {
+        const payload = this.jwtService.verify(token as string, {
+          secret: this.configService.getOrThrow('auth.secret', { infer: true }),
+        });
+
+        client.data.userId = payload.id;
+        client.data.roleId = payload.role?.id;
+        client.data.sessionId = payload.sessionId;
+
+        if (client.data.roleId === 1) {
+          void client.join(ADMINS_CHANNEL);
+        } else if (guestToken) {
+          // Chatted as a visitor before signing in: that conversation
+          // becomes this account's when it joins (vande-2011 #023).
+          client.data.adoptGuestKey = this.guestKeyOf(guestToken) ?? undefined;
+        }
         return;
       }
 
-      const payload = this.jwtService.verify(token as string, {
-        secret: this.configService.getOrThrow('auth.secret', { infer: true }),
-      });
-
-      client.data.userId = payload.id;
-      client.data.roleId = payload.role?.id;
-      client.data.sessionId = payload.sessionId;
-
-      if (client.data.roleId === 1) {
-        void client.join(ADMINS_CHANNEL);
+      // No account: a visitor (vande-2011 #023).
+      const key = guestToken ? this.guestKeyOf(guestToken) : null;
+      if (key) {
+        client.data.guestKey = key;
+      } else if (client.handshake.auth?.asGuest === true) {
+        if (!guestLimits.mintPerIp.hit(client.data.ip).ok) {
+          client.emit('error', { message: 'Too many new chats, try later' });
+          client.disconnect();
+          return;
+        }
+        client.data.guestKey = randomUUID();
+        client.data.newGuestToken = this.jwtService.sign(
+          { chatGuest: client.data.guestKey },
+          { secret: this.guestSecret(), expiresIn: GUEST_TOKEN_TTL },
+        );
+      } else {
+        client.disconnect();
+        return;
       }
+      client.data.userId = GUEST_SENDER_ID;
+      client.data.roleId = 0;
     } catch {
       client.disconnect();
     }
+  }
+
+  private guestSecret(): string {
+    return guestSecret(
+      this.configService.getOrThrow('auth.secret', { infer: true }),
+    );
+  }
+
+  /** The key in a visitor token, or null when it is not a valid one. */
+  private guestKeyOf(token: string): string | null {
+    try {
+      const payload = this.jwtService.verify(token, {
+        secret: this.guestSecret(),
+      });
+      return typeof payload?.chatGuest === 'string' ? payload.chatGuest : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * May this client use the room? An admin any room, a customer their own,
+   * a visitor only the room of the key they hold — never by the visitors'
+   * shared stand-in id (vande-2011 #023).
+   */
+  private ownsRoom(client: AuthenticatedSocket, room: ChatRoom): boolean {
+    if (client.data.roleId === 1) return true;
+    if (client.data.guestKey) {
+      return room.isGuest === true && client.data.guestRoomId === room.id;
+    }
+    return (
+      client.data.userId > 0 &&
+      room.isGuest !== true &&
+      room.userId === client.data.userId
+    );
   }
 
   handleDisconnect() {}
@@ -74,18 +161,67 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('joinRoom')
   async handleJoinRoom(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { userId?: number },
+    @MessageBody() data: { userId?: number; roomId?: number; create?: boolean },
   ) {
     const isAdmin = client.data.roleId === 1;
-    let targetUserId: number;
+    let room: ChatRoom | null;
 
-    if (isAdmin && data?.userId) {
-      targetUserId = data.userId;
+    if (client.data.guestKey) {
+      // A visitor: their own conversation, made only when they open the chat
+      // (not on every page they visit) and within the per-IP limit (#023).
+      room = await this.chatService.findGuestRoom(client.data.guestKey);
+      if (!room && data?.create) {
+        if (!guestLimits.roomsPerIp.hit(client.data.ip ?? 'unknown').ok) {
+          client.emit('error', {
+            message:
+              'Bạn đã mở quá nhiều cuộc trò chuyện, vui lòng thử lại sau.',
+          });
+          return;
+        }
+        room = await this.chatService.createGuestRoom(
+          client.data.guestKey,
+          client.data.ip ?? 'unknown',
+        );
+      }
+      if (!room) {
+        client.emit('joinedRoom', {
+          roomId: null,
+          userId: GUEST_SENDER_ID,
+          guestToken: client.data.newGuestToken,
+        });
+        return;
+      }
+      client.data.guestRoomId = room.id;
+    } else if (isAdmin && data?.roomId) {
+      // A visitor's conversation has no user to find it by (#023).
+      room = await this.chatService.getRoomById(Number(data.roomId));
+      if (!room) {
+        client.emit('error', { message: 'Room not found' });
+        return;
+      }
     } else {
-      targetUserId = client.data.userId;
+      if (client.data.adoptGuestKey) {
+        const key = client.data.adoptGuestKey;
+        client.data.adoptGuestKey = undefined;
+        try {
+          await this.chatService.adoptGuestRoom(key, client.data.userId);
+          client.emit('guestAdopted');
+        } catch (err) {
+          // The visitor's conversation stays where it was.
+          this.logger.warn(
+            `Could not move a visitor chat to user ${client.data.userId}: ${(err as Error).message}`,
+          );
+        }
+      }
+      const targetUserId =
+        isAdmin && data?.userId ? Number(data.userId) : client.data.userId;
+      if (!(targetUserId > 0)) {
+        client.emit('error', { message: 'Room not found' });
+        return;
+      }
+      room = await this.chatService.getOrCreateRoom(targetUserId);
     }
 
-    const room = await this.chatService.getOrCreateRoom(targetUserId);
     const roomName = `chat_room_${room.id}`;
 
     await client.join(roomName);
@@ -101,7 +237,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       void this.markDeliveredAndTell(room.id, roomName, client.data.userId);
     }
 
-    client.emit('joinedRoom', { roomId: room.id, userId: targetUserId });
+    client.emit('joinedRoom', {
+      roomId: room.id,
+      userId: room.userId,
+      guestToken: client.data.newGuestToken,
+    });
+    client.data.newGuestToken = undefined;
 
     if (!isAdmin) {
       // Bring every connected admin into this conversation, and tell them the
@@ -161,8 +302,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!message) return;
     const room = await this.chatService.getRoomById(message.chatRoomId);
     if (!room) return;
-    const isAdmin = client.data.roleId === 1;
-    if (!isAdmin && room.userId !== client.data.userId) {
+    if (!this.ownsRoom(client, room)) {
       client.emit('error', { message: 'Access denied' });
       return;
     }
@@ -211,10 +351,35 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const isAdmin = client.data.roleId === 1;
-    const isOwner = room.userId === client.data.userId;
-    if (!isAdmin && !isOwner) {
+    if (!this.ownsRoom(client, room)) {
       client.emit('error', { message: 'Access denied' });
       return;
+    }
+
+    // A visitor: text only, no links or HTML, and a few messages a minute
+    // (vande-2011 #023). Files need an account, so no new upload path.
+    if (client.data.guestKey) {
+      if (data.fileUrl) {
+        client.emit('error', { message: 'Vui lòng đăng nhập để gửi tệp.' });
+        return;
+      }
+      const problem = guestMessageProblem(String(data.message));
+      if (problem) {
+        client.emit('error', { message: problem });
+        return;
+      }
+      const ip = client.data.ip ?? 'unknown';
+      if (
+        !guestLimits.messagesPerGuestMinute.hit(client.data.guestKey).ok ||
+        !guestLimits.messagesPerGuestHour.hit(client.data.guestKey).ok ||
+        !guestLimits.messagesPerIpMinute.hit(ip).ok
+      ) {
+        client.emit('error', {
+          message: 'Bạn gửi tin nhắn quá nhanh, vui lòng đợi một chút.',
+        });
+        return;
+      }
+      data.message = String(data.message).trim();
     }
 
     // A quote must point at a message of this same room — otherwise a client
@@ -311,9 +476,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    const isAdmin = client.data.roleId === 1;
-    const isOwner = room.userId === client.data.userId;
-    if (!isAdmin && !isOwner) {
+    if (!this.ownsRoom(client, room)) {
       client.emit('error', { message: 'Access denied' });
       return;
     }
@@ -333,6 +496,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { chatRoomId: number },
   ) {
     if (!data?.chatRoomId) return;
+    // Only someone in the conversation marks it read (vande-2011 #023).
+    const room = await this.chatService.getRoomById(data.chatRoomId);
+    if (!room || !this.ownsRoom(client, room)) return;
 
     await this.chatService.markAsRead(data.chatRoomId, client.data.userId);
     client.emit('markedAsRead', { chatRoomId: data.chatRoomId });

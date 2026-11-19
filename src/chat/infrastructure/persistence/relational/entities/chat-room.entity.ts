@@ -16,9 +16,19 @@ export class ChatRoomEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn()
   id: number;
 
+  /** Null for a visitor's conversation (vande-2011 #023). */
   @Index({ unique: true })
-  @Column({ type: Number })
-  userId: number;
+  @Column({ type: Number, nullable: true })
+  userId: number | null;
+
+  /** The visitor who holds this conversation, until they sign in (#023). */
+  @Index({ unique: true })
+  @Column({ type: String, length: 64, nullable: true })
+  guestKey: string | null;
+
+  /** Where a visitor's conversation was opened from, against abuse (#023). */
+  @Column({ type: String, length: 64, nullable: true })
+  guestIp: string | null;
 
   @ManyToOne(() => UserEntity, { eager: true })
   @JoinColumn({ name: 'userId' })

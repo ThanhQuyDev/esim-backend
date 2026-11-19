@@ -65,6 +65,10 @@ export class ChatMessageEntity extends EntityRelationalHelper {
   @JoinColumn({ name: 'replyToId' })
   replyTo?: ChatMessageEntity | null;
 
+  /** Written by a visitor without an account; senderId is null (#023). */
+  @Column({ type: Boolean, default: false })
+  fromGuest: boolean;
+
   @Column({ type: Boolean, default: false })
   isRead: boolean;
 

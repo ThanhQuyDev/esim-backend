@@ -16,9 +16,28 @@ export class ChatService {
   ) {}
 
   async getOrCreateRoom(userId: number): Promise<ChatRoom> {
+    // Never a room for the visitors' shared stand-in id (#023).
+    if (!(userId > 0)) throw new Error('Invalid user');
     const existing = await this.chatRoomRepository.findByUserId(userId);
     if (existing) return existing;
     return this.chatRoomRepository.create({ userId });
+  }
+
+  /** A visitor's conversation (vande-2011 #023). */
+  async findGuestRoom(guestKey: string): Promise<NullableType<ChatRoom>> {
+    return this.chatRoomRepository.findByGuestKey(guestKey);
+  }
+
+  async createGuestRoom(guestKey: string, ip: string): Promise<ChatRoom> {
+    return this.chatRoomRepository.createForGuest(guestKey, ip);
+  }
+
+  /** The visitor signed in: their conversation joins the account (#023). */
+  async adoptGuestRoom(
+    guestKey: string,
+    userId: number,
+  ): Promise<number | null> {
+    return this.chatRoomRepository.adoptGuestRoom(guestKey, userId);
   }
 
   async getRoomById(id: number): Promise<NullableType<ChatRoom>> {
