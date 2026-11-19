@@ -1020,8 +1020,15 @@ export class TopupService {
       this.logger.error(
         `listPackages: ${provider} failed for iccid=${iccid}: ${message}`,
       );
+      // Said in Vietnamese, with the reason when we know it (vande-2011 #009).
+      const status = (err as { response?: { status?: number } })?.response
+        ?.status;
       throw new BadGatewayException(
-        `Could not load topup packages from ${provider} right now. Please try again later.`,
+        status === 429
+          ? 'Nhà cung cấp đang giới hạn số lần gọi (quá nhiều yêu cầu). Vui lòng thử lại sau 1–2 phút.'
+          : status && status >= 500
+            ? 'Nhà cung cấp đang gặp lỗi, chưa lấy được danh sách gói topup. Vui lòng thử lại sau ít phút.'
+            : 'Chưa lấy được danh sách gói topup từ nhà cung cấp. Vui lòng thử lại sau ít phút.',
       );
     }
   }

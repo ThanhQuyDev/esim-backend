@@ -478,26 +478,65 @@ export class AiraloService {
    * @see Airalo API docs: GET /v2/sims/{iccid}/topups
    */
   async listTopupPackages(iccid: string): Promise<AiraloTopupPackage[]> {
-    const token = await this.authenticate();
+    // The same list for a minute (vande-2011 #009): the admin or partner opens
+    // "Topup hộ khách", closes it and opens it again, and each opening asked
+    // Airalo anew while it was already answering 429.
+    const cached = this.topupListCache.get(iccid);
+    if (cached && cached.until > Date.now()) return cached.list;
+
     const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
       infer: true,
     });
 
     this.logger.log(`Fetching Airalo topup packages for iccid=${iccid}`);
 
-    const { data } = await firstValueFrom(
-      this.httpService.get<AiraloTopupListResponse>(
-        `${baseUrl}/v2/sims/${iccid}/topups`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
+    const { data } = await this.retryOnceOnRateLimit(async () =>
+      firstValueFrom(
+        this.httpService.get<AiraloTopupListResponse>(
+          `${baseUrl}/v2/sims/${iccid}/topups`,
+          {
+            headers: {
+              Authorization: `Bearer ${await this.authenticate()}`,
+              Accept: 'application/json',
+            },
           },
-        },
+        ),
       ),
     );
 
-    return data.data ?? [];
+    const list = data.data ?? [];
+    this.topupListCache.set(iccid, { list, until: Date.now() + 60_000 });
+    return list;
+  }
+
+  private readonly topupListCache = new Map<
+    string,
+    { list: AiraloTopupPackage[]; until: number }
+  >();
+
+  /**
+   * One more try after a 429 (vande-2011 #009), for what a person is waiting
+   * on: the top-up list and the top-up itself. A 429 is Airalo refusing the
+   * call, so nothing was bought and asking again is safe. Waits what Airalo
+   * says, up to 5 seconds (2 when it says nothing); a longer wait is left to
+   * the person, with a clear message.
+   */
+  private async retryOnceOnRateLimit<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      const res = (
+        err as {
+          response?: { status?: number; headers?: Record<string, unknown> };
+        }
+      )?.response;
+      if (res?.status !== 429) throw err;
+      const after = Number(res.headers?.['retry-after']);
+      const waitSec = Number.isFinite(after) && after > 0 ? after : 2;
+      if (waitSec > 5) throw err;
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      return fn();
+    }
   }
 
   /**
@@ -509,7 +548,6 @@ export class AiraloService {
     iccid: string;
     description?: string;
   }): Promise<AiraloTopupOrderResponse['data']> {
-    const token = await this.authenticate();
     const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
       infer: true,
     });
@@ -524,18 +562,23 @@ export class AiraloService {
       `Submitting Airalo topup: package_id=${params.packageId}, iccid=${params.iccid}`,
     );
 
-    const { data } = await firstValueFrom(
-      this.httpService.post<AiraloTopupOrderResponse>(
-        `${baseUrl}/v2/orders/topups`,
-        body,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
+    // A 429 bought nothing: one more try (vande-2011 #009).
+    const { data } = await this.retryOnceOnRateLimit(async () =>
+      firstValueFrom(
+        this.httpService.post<AiraloTopupOrderResponse>(
+          `${baseUrl}/v2/orders/topups`,
+          body,
+          {
+            headers: {
+              Authorization: `Bearer ${await this.authenticate()}`,
+              Accept: 'application/json',
+            },
           },
-        },
+        ),
       ),
     );
+    // The list changed (the plan now has a top-up): ask again next time.
+    this.topupListCache.delete(params.iccid);
 
     // Read defensively: Airalo has already accepted the topup by now, and a
     // reply shaped differently must not turn a done topup into a "failed" one
