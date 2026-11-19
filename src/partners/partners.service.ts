@@ -853,12 +853,13 @@ function approvedInPeriodSql(from: string, to: string): string {
                      AND ct."createdAt" < ${to}::timestamptz)`;
 }
 
-/** The esim.vn icon for the statement's corner, or null when it is missing. */
+/**
+ * The esim.vn logo, mark and words, for the statement's corner (vande-2011
+ * #025: the mark alone was the wrong logo), or null when it is missing.
+ */
 function reconciliationLogo(): Buffer | null {
   try {
-    return readFileSync(
-      join(__dirname, '..', 'assets', 'logo_esimvn_icon.png'),
-    );
+    return readFileSync(join(__dirname, '..', 'assets', 'logo_esimvn.png'));
   } catch {
     return null;
   }

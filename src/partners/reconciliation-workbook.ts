@@ -102,7 +102,7 @@ function mmyyyy(date: Date): string {
 }
 
 /** Chiều rộng A..F của biên bản, theo đơn vị cột Excel. */
-const STATEMENT_WIDTH = 9 + 26 + 14 + 16 + 14 + 20;
+const STATEMENT_WIDTH = 19 + 16 + 14 + 16 + 14 + 20;
 
 /**
  * Chiều cao đủ cho `text` trong một ô gộp rộng `width` (doitac-0911 #010).
@@ -196,9 +196,10 @@ export function buildStatementSheet(
 ): void {
   const sales = data.kind === 'sales';
   sheet.columns = [
-    // Wide enough for the logo in A1 (doitac-0911 #007). Sum: STATEMENT_WIDTH.
-    { width: 9 },
-    { width: 26 },
+    // Wide enough for the full logo, mark and "esim.vn", in A1 (vande-2011
+    // #025; was the mark alone, doitac-0911 #007). Sum: STATEMENT_WIDTH.
+    { width: 19 },
+    { width: 16 },
     { width: 14 },
     { width: 16 },
     { width: 14 },
@@ -228,16 +229,17 @@ export function buildStatementSheet(
   };
   sheet.getRow(1).height = 36;
 
-  // The esim.vn mark at the top left, where the template has it
-  // (doitac-0911 #007): 197×126 kept in proportion, inside A1.
+  // The esim.vn logo at the top left, where the template has it
+  // (doitac-0911 #007): the mark with the words (vande-2011 #025), 651×134
+  // kept in proportion, inside A1.
   if (data.logo?.length) {
     const imageId = sheet.workbook.addImage({
       buffer: data.logo as never,
       extension: 'png',
     });
     sheet.addImage(imageId, {
-      tl: { col: 0.08, row: 0.1 },
-      ext: { width: 59, height: 38 },
+      tl: { col: 0.04, row: 0.2 },
+      ext: { width: 131, height: 27 },
       editAs: 'oneCell',
     });
   }
