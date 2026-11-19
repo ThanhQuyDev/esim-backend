@@ -4298,6 +4298,8 @@ export class OrdersService {
       for (const airaloOrderId of row.airaloOrderIds
         .split(',')
         .filter(Boolean)) {
+        // Airalo said 429: this can wait for the next hour (vande-2011 #003).
+        if (this.airaloService?.isRateLimited?.()) return;
         try {
           const { name, slug } =
             await this.airaloService.getOrderStatus(airaloOrderId);

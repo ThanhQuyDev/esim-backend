@@ -520,6 +520,10 @@ export class EsimsService {
 
   private async fetchProviderUsage(esim: Esim): Promise<DataUsageResult> {
     if (esim.provider === 'airalo') {
+      // Airalo answered 429 a moment ago: show what we have rather than ask
+      // again and keep the limit hit for the orders (vande-2011 #003).
+      if (this.airaloService?.isRateLimited?.())
+        return this.fallbackFromDb(esim);
       try {
         const usage = await this.airaloService.getDataUsage(esim.iccid);
         const airaloTotal = Number(usage.total) || 0;
@@ -886,6 +890,14 @@ export class EsimsService {
   private static readonly USAGE_REFRESH_BATCH = 100;
 
   /**
+   * Airalo calls per sweep (vande-2011 #003). Beta and production share one
+   * Airalo account and both swept every eSIM every 5 minutes; the 429s that
+   * followed refused the orders placed in between. The rest wait for the next
+   * sweep (least recently checked first, so each still gets its turn).
+   */
+  private static readonly AIRALO_USAGE_PER_RUN = 25;
+
+  /**
    * Refresh data usage, activation time and expiry for live eSIMs.
    *
    * Until now these numbers were only fetched when somebody opened an eSIM,
@@ -911,7 +923,19 @@ export class EsimsService {
     if (!esims.length) return;
 
     let refreshed = 0;
+    let airaloCalls = 0;
     for (const esim of esims) {
+      if (esim.provider === 'airalo') {
+        // Over the share, or Airalo said 429: leave it for the next sweep
+        // without marking it checked, so it stays first in line.
+        if (
+          airaloCalls >= EsimsService.AIRALO_USAGE_PER_RUN ||
+          this.airaloService?.isRateLimited?.()
+        ) {
+          continue;
+        }
+        airaloCalls++;
+      }
       try {
         await this.getDataUsage(esim);
         refreshed++;

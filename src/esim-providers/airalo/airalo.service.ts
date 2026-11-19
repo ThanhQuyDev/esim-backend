@@ -43,7 +43,61 @@ export class AiraloService {
     private readonly regionsService: RegionsService,
     private readonly profitMarginsService: ProfitMarginsService,
     private readonly providerSyncLogsService: ProviderSyncLogsService,
-  ) {}
+  ) {
+    // A refused token is dropped, and a 429 starts a pause for the jobs that
+    // can wait (vande-2011 #003). Only answers from Airalo are looked at.
+    this.httpService.axiosRef?.interceptors?.response?.use(
+      (res) => res,
+      (err: {
+        config?: { url?: string };
+        response?: { status?: number; headers?: Record<string, unknown> };
+      }) => {
+        const url = String(err?.config?.url ?? '');
+        const base = String(
+          this.configService.get('airalo.baseUrl', { infer: true }) ?? '',
+        );
+        if (base && url.startsWith(base)) {
+          const status = err?.response?.status;
+          if (status === 401) this.token = null;
+          if (status === 429) {
+            const raw = Number(err?.response?.headers?.['retry-after']);
+            this.noteRateLimited(Number.isFinite(raw) && raw > 0 ? raw : null);
+          }
+        }
+        return Promise.reject(err);
+      },
+    );
+  }
+
+  /**
+   * The access token, kept until shortly before it expires (vande-2011 #003).
+   * Every call used to ask `/v2/token` for a new one first — two requests for
+   * each usage check, order and top-up — and Airalo limits the token endpoint
+   * hard: the 5-minute usage sweeps of beta and production (one Airalo
+   * account) ran into 429, and so did the orders placed meanwhile.
+   */
+  private token: { value: string; expiresAt: number } | null = null;
+  private tokenRequest: Promise<string> | null = null;
+
+  /** Until when the jobs that can wait leave Airalo alone, after a 429. */
+  private rateLimitedUntil = 0;
+
+  /** A 429 from Airalo: pause background calls (default 2 minutes). */
+  noteRateLimited(
+    retryAfterSec: number | null,
+    now: number = Date.now(),
+  ): void {
+    const wait = Math.min(Math.max(retryAfterSec ?? 120, 30), 30 * 60);
+    this.rateLimitedUntil = Math.max(this.rateLimitedUntil, now + wait * 1000);
+  }
+
+  /**
+   * True while background work (usage sweep, refund polling) should not call
+   * Airalo. Orders and top-ups a person is waiting for still go.
+   */
+  isRateLimited(now: number = Date.now()): boolean {
+    return now < this.rateLimitedUntil;
+  }
 
   async syncPlans(): Promise<void> {
     this.logger.log('Starting airalo plan sync...');
@@ -119,6 +173,18 @@ export class AiraloService {
   }
 
   private async authenticate(): Promise<string> {
+    if (this.token && Date.now() < this.token.expiresAt)
+      return this.token.value;
+    // Callers at the same moment share one token request.
+    if (!this.tokenRequest) {
+      this.tokenRequest = this.requestToken().finally(() => {
+        this.tokenRequest = null;
+      });
+    }
+    return this.tokenRequest;
+  }
+
+  private async requestToken(): Promise<string> {
     const baseUrl = this.configService.getOrThrow('airalo.baseUrl', {
       infer: true,
     });
@@ -137,6 +203,16 @@ export class AiraloService {
       }),
     );
 
+    // Kept until a day before Airalo's own expiry (a year), at most 7 days.
+    const lifetimeSec = Number(data.data.expires_in) || 0;
+    const keepMs = Math.min(
+      Math.max(lifetimeSec - 86_400, 3_600) * 1000,
+      7 * 86_400_000,
+    );
+    this.token = {
+      value: data.data.access_token,
+      expiresAt: Date.now() + keepMs,
+    };
     return data.data.access_token;
   }
 
