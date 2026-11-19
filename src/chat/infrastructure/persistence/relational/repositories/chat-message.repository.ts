@@ -62,8 +62,14 @@ export class ChatMessageRelationalRepository implements ChatMessageRepository {
   }
 
   async markRoomAsRead(chatRoomId: number, senderId: number): Promise<void> {
+    // The automatic messages have no sender, and "senderId <> x" is never true
+    // for NULL: they stayed unread for good and kept the storefront's badge
+    // up (vande-2011 #022).
     await this.repo.update(
-      { chatRoomId, isRead: false, senderId: Not(senderId) },
+      [
+        { chatRoomId, isRead: false, senderId: Not(senderId) },
+        { chatRoomId, isRead: false, senderId: IsNull() },
+      ],
       { isRead: true },
     );
     // Seen means it arrived too (vande-1411 #035).
