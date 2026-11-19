@@ -10760,7 +10760,10 @@ export class PartnersService {
     );
 
     const lines = await this.dataSource.query(
-      `SELECT oi.id, oi.quantity, oi."vndPrice", p.name AS "planName",
+      `SELECT oi.id, oi.quantity, oi."vndPrice",
+              -- The standard name, with the days picked (vande-2011 #005);
+              -- the supplier's own name was shown here and in the queue.
+              ${planNameWithDaysSql()} AS "planName",
               p.provider, p."operatorName", p."dataMb", p.call, p.sms,
               p."durationDays", p.speed, p.type,
               p.slug, p."isKyc", p."topUp", p."fupSpeed",
