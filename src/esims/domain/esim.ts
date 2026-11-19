@@ -121,6 +121,13 @@ export class Esim {
   })
   lifecycleStatus?: string;
 
+  /**
+   * A partner's report still open on this eSIM (vande-2011 #010): `fault`
+   * (Báo lỗi) or `refund` (Yêu cầu hoàn tiền), for the red line under the
+   * ICCID in the admin's list.
+   */
+  partnerReport?: 'fault' | 'refund' | null;
+
   @ApiPropertyOptional({ type: String })
   esimTranNo: string | null;
 

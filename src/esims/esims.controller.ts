@@ -381,6 +381,12 @@ export class EsimsController {
     for (const esim of data) {
       esim.lifecycleStatus = esimLifecycleStatus(esim, esim.plan);
     }
+    // What a partner reported and is still waiting on (vande-2011 #010).
+    const reports = await this.esimsService.openPartnerReports(
+      data.map((e) => e.iccid),
+    );
+    for (const esim of data)
+      esim.partnerReport = reports.get(esim.iccid) ?? null;
 
     return infinityPagination(data, { page, limit }, count);
   }

@@ -1028,6 +1028,34 @@ export class EsimsService {
   }
 
   /**
+   * The partner reports still open on these eSIMs (vande-2011 #010), newest
+   * first: a report is open while its ticket is not resolved or closed (or,
+   * with no ticket, while it is pending) — the rule the partner portal uses.
+   */
+  async openPartnerReports(
+    iccids: string[],
+  ): Promise<Map<string, 'fault' | 'refund'>> {
+    const map = new Map<string, 'fault' | 'refund'>();
+    const list = iccids.filter(Boolean);
+    if (!list.length || !this.dataSource) return map;
+    const rows: { iccid: string; kind: string }[] = await this.dataSource.query(
+      `SELECT DISTINCT ON (fr.iccid) fr.iccid, fr.kind
+         FROM partner_esim_fault_report fr
+         LEFT JOIN ticket ft ON ft.id = fr."ticketId"
+        WHERE fr.iccid = ANY($1::text[])
+          AND (CASE WHEN fr."ticketId" IS NOT NULL AND ft.id IS NOT NULL
+                    THEN ft.status NOT IN ('resolved', 'closed')
+                    ELSE fr.status = 'pending' END)
+        ORDER BY fr.iccid, fr.id DESC`,
+      [list],
+    );
+    for (const row of rows) {
+      map.set(row.iccid, row.kind === 'refund' ? 'refund' : 'fault');
+    }
+    return map;
+  }
+
+  /**
    * "Lấy lại thông tin eSIM" (vande-2011 #004): the admin's button for one
    * eSIM. Reads from the supplier only; never buys or changes anything there.
    */
