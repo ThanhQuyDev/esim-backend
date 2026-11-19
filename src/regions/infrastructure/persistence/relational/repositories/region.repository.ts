@@ -1,3 +1,5 @@
+import { applySafeSort } from '../../../../../utils/safe-sort';
+import { planIsBillionAddonSql } from '../../../../../plans/plan-purchase-kind';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -71,6 +73,17 @@ export class RegionsRelationalRepository implements RegionRepository {
       )
       .addSelect('MIN(plan."vndPrice")', 'from_price')
       .addSelect('COUNT(DISTINCT plan.id)', 'plan_count')
+      // What kind of pack this region sells (vande-2011 #019): Billion sells
+      // the same countries as a plain pack, an add-on pack and a top-up pack
+      // under regions of the same name ("Asia 19"); the storefront adds
+      // " - addon" so the two rows can be told apart.
+      .addSelect(
+        `CASE WHEN COUNT(plan.id) = 0 THEN NULL
+              WHEN BOOL_AND(COALESCE(plan."isAddOn", false) OR ${planIsBillionAddonSql('plan')}) THEN 'addon'
+              WHEN BOOL_AND(COALESCE(plan."topUp", false)) THEN 'topup'
+              ELSE NULL END`,
+        'pack_kind',
+      )
       // Its parent's slugs and names, so a list missing the parent row (it
       // stops at 200) still links a pack's card to the parent's page
       // (vande-1411 #028).
@@ -201,14 +214,18 @@ export class RegionsRelationalRepository implements RegionRepository {
 
     qb.groupBy('region.id');
 
-    if (sortOptions?.length) {
-      for (const sort of sortOptions) {
-        qb.addOrderBy(
-          `region.${String(sort.orderBy)}`,
-          sort.order as 'ASC' | 'DESC',
-        );
-      }
-    } else {
+    // "Số lượng gói" sorts too (vande-2011 #019), by the same count the
+    // column shows; anything else only through the column whitelist.
+    const byPlans = sortOptions?.find((s) => s?.orderBy === 'planCount');
+    if (byPlans) {
+      qb.addOrderBy(
+        'COUNT(DISTINCT plan.id)',
+        String(byPlans.order ?? '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC',
+      );
+      qb.addOrderBy('region.id', 'ASC');
+    }
+    const otherSorts = sortOptions?.filter((s) => s?.orderBy !== 'planCount');
+    if (!applySafeSort(qb, 'region', otherSorts) && !byPlans) {
       qb.orderBy('region.createdAt', 'DESC');
     }
 
@@ -234,6 +251,8 @@ export class RegionsRelationalRepository implements RegionRepository {
         | null
         | undefined;
       domain.planCount = Number(rawResults.raw[index]?.plan_count ?? 0);
+      domain.packKind =
+        (rawResults.raw[index]?.pack_kind as 'addon' | 'topup' | null) ?? null;
       domain.childCount = Number(rawResults.raw[index]?.child_count ?? 0);
       domain.childTotal = Number(rawResults.raw[index]?.child_total ?? 0);
       domain.parent =

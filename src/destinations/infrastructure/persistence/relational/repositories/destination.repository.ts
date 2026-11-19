@@ -122,14 +122,29 @@ export class DestinationsRelationalRepository implements DestinationRepository {
 
     qb.andWhere('destination.deletedAt IS NULL');
 
-    if (!applySafeSort(qb, 'destination', sortOptions)) {
+    // "Số lượng gói" sorts too (vande-2011 #019): it is counted, not stored,
+    // so it is ordered by the same count; anything else goes through the
+    // column whitelist.
+    const byPlans = sortOptions?.find((s) => s?.orderBy === 'planCount');
+    if (byPlans) {
+      qb.addOrderBy(
+        `(SELECT COUNT(*) FROM "plan" sp WHERE sp."destinationId" = destination.id
+            AND sp."isActive" = true AND sp."deletedAt" IS NULL)`,
+        String(byPlans.order ?? '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC',
+      );
+      qb.addOrderBy('destination.id', 'ASC');
+    }
+    const otherSorts = sortOptions?.filter((s) => s?.orderBy !== 'planCount');
+    if (!applySafeSort(qb, 'destination', otherSorts) && !byPlans) {
       qb.addOrderBy('destination.createdAt', 'DESC');
     }
 
     const count = await qb.getCount();
 
-    qb.skip((paginationOptions.page - 1) * paginationOptions.limit);
-    qb.take(paginationOptions.limit);
+    // offset/limit: an ORDER BY on a count does not survive take/skip's
+    // two-query paging, and this query has no join that needs it.
+    qb.offset((paginationOptions.page - 1) * paginationOptions.limit);
+    qb.limit(paginationOptions.limit);
 
     const raw = await qb.getRawAndEntities();
 

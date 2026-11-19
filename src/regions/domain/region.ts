@@ -172,4 +172,11 @@ export class Region {
     description: 'Cheapest plan price (VND) in this region',
   })
   fromPrice?: number | null;
+
+  /**
+   * "addon" or "topup" when every plan of the region is that kind of pack
+   * (vande-2011 #019), else null.
+   */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  packKind?: 'addon' | 'topup' | null;
 }

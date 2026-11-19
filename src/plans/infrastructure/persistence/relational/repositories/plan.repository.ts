@@ -432,6 +432,13 @@ export class PlansRelationalRepository implements PlanRepository {
               'region-' || p."regionId")
           END AS loc,
           p."type" AS tab,
+          -- A region's top-up pack is a product of its own (vande-2011 #019):
+          -- Billion sells the same countries as a plain pack and as a top-up
+          -- pack, each under its own region. Compared together, the dearer
+          -- top-up pack never won, so its region listed a price but opened
+          -- with no plan at all.
+          CASE WHEN p."destinationId" IS NULL AND COALESCE(p."topUp", false)
+               THEN 'topup' ELSE '' END AS kind,
           p."durationDays",
           p."dataMb",
           p."isDomesticEsim",
@@ -460,10 +467,10 @@ export class PlansRelationalRepository implements PlanRepository {
       )
       UPDATE "plan" SET "isCheapest" = true
       WHERE id IN (
-        SELECT DISTINCT ON (loc, tab, "durationDays", "dataMb",
+        SELECT DISTINCT ON (loc, tab, kind, "durationDays", "dataMb",
                             "isDomesticEsim", voice) id
         FROM ranked
-        ORDER BY loc, tab, "durationDays", "dataMb",
+        ORDER BY loc, tab, kind, "durationDays", "dataMb",
                  "isDomesticEsim", voice,
                  cost ASC, speed_kbps DESC, id ASC
       )
