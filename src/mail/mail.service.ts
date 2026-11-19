@@ -354,8 +354,10 @@ export class MailService {
   /**
    * The parts of the eSIM email a distribution partner customises from
    * "Cấu hình thương hiệu" (doitac-1410 #044). Without a partner brand the
-   * email reads exactly as before: logo centred, black install button, the
-   * usage block when there is a link, no guide block, esim.vn footer.
+   * email reads as before — logo centred, black install button, the usage
+   * block when there is a link, esim.vn footer — and has the "Hướng dẫn cài
+   * đặt eSIM" block too (vande-2011 #030: it was left out of esim.vn's own
+   * email). A partner can still switch the block off.
    */
   private esimBrandContext(
     brand: PartnerBrand | undefined,
@@ -374,7 +376,7 @@ export class MailService {
       logoHeight: brand ? 80 : 48,
       usageCheckUrl: brand && !brand.showUsageCheck ? '' : usageCheckUrl,
       installGuideUrl:
-        brand?.showInstallGuide && base
+        (brand ? brand.showInstallGuide : true) && base
           ? `${base}${ESIM_INSTALL_GUIDE_PATH}`
           : '',
       partnerFooter: brand ? 'true' : '',
