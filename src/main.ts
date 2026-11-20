@@ -1,4 +1,7 @@
 import './utils/force-utc';
+import { PublicCatalogScrubInterceptor } from './utils/public-catalog-scrub';
+import { PlansService } from './plans/plans.service';
+import type { MarginTier } from './plans/multiday-price';
 import 'dotenv/config';
 import {
   ClassSerializerInterceptor,
@@ -35,7 +38,23 @@ async function bootstrap() {
     type: VersioningType.URI,
   });
   app.useGlobalPipes(new ValidationPipe(validationOptions));
+  // Margin tiers for day-pass prices, read at most once a minute.
+  const plansService = app.get(PlansService, { strict: false });
+  let tierCache: { at: number; tiers: MarginTier[] } | null = null;
+  const marginTiers = async (): Promise<MarginTier[]> => {
+    if (tierCache && Date.now() - tierCache.at < 60_000) return tierCache.tiers;
+    const tiers = await plansService.marginTiers();
+    tierCache = { at: Date.now(), tiers };
+    return tiers;
+  };
   app.useGlobalInterceptors(
+    // First, so it sees every response last, once serialized: no cost,
+    // supplier or sales figure leaves the API except to an admin
+    // (vande-2011 #041).
+    new PublicCatalogScrubInterceptor(
+      configService.getOrThrow('auth.secret', { infer: true }),
+      marginTiers,
+    ),
     // ResolvePromisesInterceptor is used to resolve promises in responses because class-transformer can't do it
     // https://github.com/typestack/class-transformer/issues/549
     new ResolvePromisesInterceptor(),

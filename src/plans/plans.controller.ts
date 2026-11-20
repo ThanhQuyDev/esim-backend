@@ -243,10 +243,13 @@ export class PlansController {
   }
 
   /**
-   * The margin tiers, so the storefront prices a multi-day pass exactly as
-   * checkout does: the margin once on the whole cost (vande #014). Public, like
-   * the plans themselves, which already carry their cost.
+   * The margin tiers (vande #014). Admin only since vande-2011 #041: public, it
+   * told anybody esim.vn's margin on every price band. The storefront gets each
+   * day pass's price for 1–365 days with the plan instead (`multidayK`).
    */
+  @ApiBearerAuth()
+  @Roles(RoleEnum.admin)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get('multiday-pricing')
   @HttpCode(HttpStatus.OK)
   multidayPricing() {
