@@ -1,3 +1,4 @@
+import { withCustomerTopupFlags } from './customer-topup-flags';
 import { planNameWithDaysSql } from '../plans/standard-plan-name';
 import { downloadFilename } from '../utils/download-filename';
 import {
@@ -309,9 +310,12 @@ export class EsimsController {
       paginationOptions: { page, limit },
     });
 
-    // What was topped up onto each eSIM, for the profile (#030, round 4).
+    // What was topped up onto each eSIM, for the profile (#030, round 4), and
+    // what the card may offer — the supplier is not sent (vande-2011 #042).
     return infinityPagination(
-      await this.esimsService.attachCustomerTopups(data),
+      (await this.esimsService.attachCustomerTopups(data)).map((e) =>
+        withCustomerTopupFlags(e),
+      ),
       { page, limit },
       count,
     );
@@ -330,7 +334,7 @@ export class EsimsController {
     if (!esim || esim.userId !== req.user.id) {
       throw new NotFoundException();
     }
-    return esim;
+    return withCustomerTopupFlags(esim);
   }
 
   @Roles(RoleEnum.user, RoleEnum.admin)

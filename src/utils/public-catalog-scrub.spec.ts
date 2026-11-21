@@ -168,6 +168,64 @@ describe('Dữ liệu kinh doanh không ra ngoài (vande-2011 #041)', () => {
     });
   });
 
+  describe("a customer's own eSIMs and topups (vande-2011 #042)", () => {
+    const esim = {
+      id: 7,
+      iccid: '8988',
+      provider: 'billion',
+      canTopUp: true,
+      topups: [{ topupProvider: 'BILLION', providerPackageId: 'SKU-1' }],
+      plan: { ...plan(), provider: 'billion' },
+    };
+
+    it('should not name an international supplier to a customer', () => {
+      const out = scrubBusinessData({ data: [esim] }, TIERS, 0, {
+        hideSupplier: true,
+      });
+      const json = JSON.stringify(out);
+      expect(json).not.toMatch(/billion|SKU-1/i);
+      expect(json).toContain('"canTopUp":true');
+    });
+
+    it("should keep a domestic carrier's name for a customer", () => {
+      const out = scrubBusinessData(
+        { provider: 'viettel-noidia', topupProvider: 'viettel' },
+        TIERS,
+        0,
+        { hideSupplier: true },
+      );
+      expect(out).toEqual({
+        provider: 'viettel-noidia',
+        topupProvider: 'viettel',
+      });
+    });
+
+    it('should still name the supplier to a partner', async () => {
+      const SECRET = 'k';
+      const jwt = new JwtService();
+      const run = (role: number) =>
+        lastValueFrom(
+          new PublicCatalogScrubInterceptor(SECRET, () =>
+            Promise.resolve(TIERS),
+          ).intercept(
+            {
+              getType: () => 'http',
+              switchToHttp: () => ({
+                getRequest: () => ({
+                  headers: {
+                    authorization: `Bearer ${jwt.sign({ id: 3, role: { id: role } }, { secret: SECRET })}`,
+                  },
+                }),
+              }),
+            } as never,
+            { handle: () => of({ provider: 'esimaccess' }) },
+          ),
+        ) as Promise<{ provider: string | null }>;
+      expect((await run(4)).provider).toBe('esimaccess');
+      expect((await run(2)).provider).toBeNull();
+    });
+  });
+
   it("should swap a supplier's flag for the storefront's own", () => {
     const out = scrubBusinessData(
       {

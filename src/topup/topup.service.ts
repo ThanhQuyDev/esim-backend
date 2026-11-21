@@ -525,11 +525,14 @@ export class TopupService {
     periodNum?: number | null,
   ): Promise<{ order: Order; vndAmount: number }> {
     const { provider } = await this.resolveProviderForIccid(dto.iccid);
-    if (provider !== dto.provider) {
+    if (dto.provider && provider !== dto.provider) {
       throw new BadRequestException(
         `Provider mismatch: iccid resolves to ${provider} but payload says ${dto.provider}`,
       );
     }
+    // The storefront no longer knows the supplier (vande-2011 #042): everything
+    // below — and the callers, which share this dto — use the resolved one.
+    dto.provider = provider;
 
     // Defense in depth: block checkout for providers we cannot recharge before
     // any money is collected. listPackages already returns [] for these, so a

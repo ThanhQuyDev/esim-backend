@@ -49,7 +49,35 @@ const ALWAYS_STRIP = new Set([
   'providers',
   'refundableOverride',
   'ipExport',
+  'providerPackageId',
 ]);
+
+/**
+ * A customer — signed in or not — is not told which supplier is behind an
+ * eSIM, a topup or an order either (vande-2011 #042): these keys lose a value
+ * that names one. A domestic carrier (Viettel, iTel…) is the product and stays.
+ * A partner still gets them: the partner portal works with its eSIMs'
+ * suppliers.
+ */
+const SUPPLIER_KEYS = new Set(['provider', 'topupProvider']);
+const SUPPLIERS = new Set([
+  'airalo',
+  'esimaccess',
+  'gadgetkorea',
+  'billion',
+  'billionconnect',
+  'microesim',
+  'japantravelsim',
+]);
+
+export function isSupplierName(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    SUPPLIERS.has(value.toLowerCase().replace(/[^a-z]/g, ''))
+  );
+}
+
+export type ScrubOptions = { hideSupplier?: boolean };
 
 /**
  * Pictures hot-linked from a supplier's CDN (Airalo's flags) name the supplier
@@ -122,20 +150,25 @@ export function scrubBusinessData(
   value: unknown,
   tiers: MarginTier[] | null,
   depth = 0,
+  opts: ScrubOptions = {},
 ): unknown {
   if (depth > 12) return value;
   if (Array.isArray(value)) {
-    return value.map((v) => scrubBusinessData(v, tiers, depth + 1));
+    return value.map((v) => scrubBusinessData(v, tiers, depth + 1, opts));
   }
   if (!isPlainObject(value)) return value;
   const base = isPlan(value) ? scrubPlan(value, tiers) : value;
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(base)) {
     if (ALWAYS_STRIP.has(key)) continue;
+    if (opts.hideSupplier && SUPPLIER_KEYS.has(key) && isSupplierName(v)) {
+      out[key] = null;
+      continue;
+    }
     out[key] =
       IMAGE_KEYS.has(key) && typeof v === 'string'
         ? ownImage(key, v, base)
-        : scrubBusinessData(v, tiers, depth + 1);
+        : scrubBusinessData(v, tiers, depth + 1, opts);
   }
   return out;
 }
@@ -154,28 +187,32 @@ export class PublicCatalogScrubInterceptor implements NestInterceptor {
     private readonly tiers: () => Promise<MarginTier[]>,
   ) {}
 
-  private isAdmin(context: ExecutionContext): boolean {
-    if (context.getType() !== 'http') return true;
+  /** The caller's role id; null for a visitor or a token that does not verify. */
+  private roleOf(context: ExecutionContext): number | null {
     const req = context.switchToHttp().getRequest<{
       headers?: Record<string, string | undefined>;
       user?: { role?: { id?: number } };
     }>();
-    if (Number(req.user?.role?.id) === RoleEnum.admin) return true;
+    const known = Number(req.user?.role?.id);
+    if (known) return known;
     const header = req.headers?.authorization ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-    if (!token) return false;
+    if (!token) return null;
     try {
       const payload = this.jwt.verify<{ role?: { id?: number } }>(token, {
         secret: this.authSecret,
       });
-      return Number(payload?.role?.id) === RoleEnum.admin;
+      return Number(payload?.role?.id) || null;
     } catch {
-      return false;
+      return null;
     }
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    if (this.isAdmin(context)) return next.handle();
+    if (context.getType() !== 'http') return next.handle();
+    const role = this.roleOf(context);
+    if (role === RoleEnum.admin) return next.handle();
+    const opts: ScrubOptions = { hideSupplier: role !== RoleEnum.partner };
     return next.handle().pipe(
       mergeMap((body) =>
         from(
@@ -187,7 +224,7 @@ export class PublicCatalogScrubInterceptor implements NestInterceptor {
             } catch {
               tiers = null;
             }
-            return scrubBusinessData(body, tiers);
+            return scrubBusinessData(body, tiers, 0, opts);
           })(),
         ),
       ),

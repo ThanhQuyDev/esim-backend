@@ -78,7 +78,13 @@ export class TopupCheckoutDto {
   @IsNotEmpty()
   packageId!: string;
 
-  @ApiProperty({ enum: TopupProvider, example: TopupProvider.AIRALO })
+  /**
+   * Optional (vande-2011 #042): the server works the supplier out from the
+   * eSIM, and the storefront is no longer told which supplier that is. When
+   * sent, it must still match.
+   */
+  @ApiPropertyOptional({ enum: TopupProvider, example: TopupProvider.AIRALO })
+  @IsOptional()
   @IsEnum(TopupProvider)
   provider!: TopupProvider;
 
