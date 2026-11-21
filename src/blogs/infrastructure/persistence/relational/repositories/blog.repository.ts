@@ -1,3 +1,9 @@
+import {
+  BLOG_SEARCH_COLUMNS,
+  plainLikePattern,
+  plainSearchText,
+  plainSqlText,
+} from '../../../../blog-search-text';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, In } from 'typeorm';
@@ -200,19 +206,14 @@ export class BlogRelationalRepository implements BlogRepository {
       });
     }
 
-    if (filterOptions?.search) {
+    // Case and Vietnamese marks ignored, the body searched too (vande-2011 #044).
+    if (filterOptions?.search && plainSearchText(filterOptions.search)) {
+      const search = plainLikePattern(filterOptions.search);
       qb.andWhere(
         new Brackets((sub) => {
-          sub
-            .where('blog.title ILIKE :search', {
-              search: `%${filterOptions.search}%`,
-            })
-            .orWhere('blog.category ILIKE :search', {
-              search: `%${filterOptions.search}%`,
-            })
-            .orWhere('blog.parent ILIKE :search', {
-              search: `%${filterOptions.search}%`,
-            });
+          for (const column of BLOG_SEARCH_COLUMNS) {
+            sub.orWhere(`${plainSqlText(column)} LIKE :search`, { search });
+          }
         }),
       );
     }
