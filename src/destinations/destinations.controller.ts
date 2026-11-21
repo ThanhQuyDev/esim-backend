@@ -93,7 +93,7 @@ export class DestinationsController {
   findBySlug(
     @Param('slug') slug: Destination['slug'],
   ): Promise<NullableType<Destination>> {
-    return this.destinationsService.findBySlug(slug);
+    return this.destinationsService.findBySlugOrFormer(slug);
   }
 
   @ApiOkResponse({

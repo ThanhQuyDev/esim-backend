@@ -106,6 +106,18 @@ export class RegionsService {
     return this.regionsRepository.findById(id);
   }
 
+  /**
+   * For the public `slug/:slug` lookup: also answers to a slug the page had
+   * before the English rename (vande-2011 #015), returning the page itself,
+   * so the storefront redirects the old link to the current one.
+   */
+  async findBySlugOrFormer(slug: string) {
+    const found = await this.regionsRepository.findBySlug(slug);
+    if (found) return found;
+    const current = await this.regionsRepository.findRenamedSlug(slug);
+    return current ? this.regionsRepository.findBySlug(current) : null;
+  }
+
   findBySlug(slug: Region['slug']): Promise<NullableType<Region>> {
     return this.regionsRepository.findBySlug(slug);
   }

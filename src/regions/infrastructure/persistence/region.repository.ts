@@ -24,6 +24,13 @@ export abstract class RegionRepository {
 
   abstract findBySlug(slug: Region['slug']): Promise<NullableType<Region>>;
 
+  /**
+   * The current slug of the page that answered to `slug` before the English
+   * rename (vande-2011 #015, table slug_rename_2011), so an old link can be
+   * redirected instead of ending on a 404.
+   */
+  abstract findRenamedSlug(slug: string): Promise<string | null>;
+
   abstract findByName(name: Region['name']): Promise<NullableType<Region>>;
 
   abstract findByExternalCode(

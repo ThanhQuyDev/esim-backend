@@ -28,6 +28,13 @@ export abstract class DestinationRepository {
     slug: Destination['slug'],
   ): Promise<NullableType<Destination>>;
 
+  /**
+   * The current slug of the page that answered to `slug` before the English
+   * rename (vande-2011 #015, table slug_rename_2011), so an old link can be
+   * redirected instead of ending on a 404.
+   */
+  abstract findRenamedSlug(slug: string): Promise<string | null>;
+
   abstract findByCountryCode(
     countryCode: Destination['countryCode'],
   ): Promise<NullableType<Destination>>;

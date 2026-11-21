@@ -75,7 +75,7 @@ export class RegionsController {
   findBySlug(
     @Param('slug') slug: Region['slug'],
   ): Promise<NullableType<Region>> {
-    return this.regionsService.findBySlug(slug);
+    return this.regionsService.findBySlugOrFormer(slug);
   }
 
   @ApiOkResponse({ type: Region })

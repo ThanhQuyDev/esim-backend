@@ -282,6 +282,22 @@ export class RegionsRelationalRepository implements RegionRepository {
     return RegionMapper.toDomain(entity);
   }
 
+  async findRenamedSlug(slug: string): Promise<string | null> {
+    try {
+      const rows: { slug: string }[] = await this.regionsRepository.query(
+        `SELECT t.slug FROM slug_rename_2011 r
+           JOIN "region" t ON t.id = r."entityId" AND t."deletedAt" IS NULL
+          WHERE r.kind = 'region' AND r."oldSlug" = $1
+          ORDER BY r.id DESC LIMIT 1`,
+        [slug],
+      );
+      return rows[0]?.slug ?? null;
+    } catch {
+      // No rename table (a database the migration has not reached).
+      return null;
+    }
+  }
+
   async findBySlug(slug: Region['slug']): Promise<NullableType<Region>> {
     const entity = await this.regionsRepository.findOne({
       where: [{ slug }, { slugVi: slug }],
