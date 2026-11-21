@@ -133,6 +133,8 @@ export class SupportedDevicesService {
 
     return DEVICE_TYPE_ORDER.filter((t) => groupMap.has(t)).map((t) => ({
       type: t,
+      // The category's own notes, under the tab's lead line (vande-2011 #031).
+      ...(notes.has(`type:${t}`) ? { notes: notes.get(`type:${t}`) } : {}),
       manufacturers: Array.from(groupMap.get(t)!.entries()).map(
         ([manufacturer, devs]) => ({
           manufacturer,

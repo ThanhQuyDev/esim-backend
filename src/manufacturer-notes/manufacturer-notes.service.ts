@@ -14,7 +14,8 @@ export class ManufacturerNotesService {
 
   async create(createDto: CreateManufacturerNoteDto) {
     return this.noteRepository.create({
-      manufacturer: createDto.manufacturer.trim(),
+      manufacturer: createDto.deviceType ? '' : createDto.manufacturer.trim(),
+      deviceType: createDto.deviceType ?? null,
       language: createDto.language,
       note: createDto.note,
       isActive: createDto.isActive ?? true,
@@ -50,7 +51,10 @@ export class ManufacturerNotesService {
     const own = new Map<string, string[]>();
     const other = new Map<string, string[]>();
     for (const note of notes) {
-      const key = note.manufacturer.trim().toLowerCase();
+      // A category's note is filed under `type:<category>` (vande-2011 #031).
+      const key = note.deviceType
+        ? `type:${note.deviceType}`
+        : note.manufacturer.trim().toLowerCase();
       const target = note.language === lang ? own : other;
       target.set(key, [...(target.get(key) ?? []), note.note]);
     }
@@ -69,7 +73,10 @@ export class ManufacturerNotesService {
     updateDto: UpdateManufacturerNoteDto,
   ) {
     return this.noteRepository.update(id, {
-      manufacturer: updateDto.manufacturer?.trim(),
+      manufacturer: updateDto.deviceType ? '' : updateDto.manufacturer?.trim(),
+      ...(updateDto.deviceType !== undefined
+        ? { deviceType: updateDto.deviceType }
+        : {}),
       language: updateDto.language,
       note: updateDto.note,
       isActive: updateDto.isActive,

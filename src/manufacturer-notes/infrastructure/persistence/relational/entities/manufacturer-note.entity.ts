@@ -42,6 +42,13 @@ export class ManufacturerNoteEntity extends EntityRelationalHelper {
   @Column({ nullable: false, type: Boolean, default: true })
   isActive: boolean;
 
+  /**
+   * Set on a note for a whole category (`Smart Watches`…) rather than one
+   * brand (vande-2011 #031); `manufacturer` is then empty.
+   */
+  @Column({ nullable: true, type: String })
+  deviceType: string | null;
+
   /** Order of a brand's notes on the page, lowest first (vande #042). */
   @Column({ nullable: false, type: 'int', default: 0 })
   sortOrder: number;

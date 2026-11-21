@@ -6,7 +6,9 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
+import { DeviceType } from '../../supported-devices/domain/supported-device';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export const MANUFACTURER_NOTE_LANGUAGES = ['vi', 'en'] as const;
@@ -19,9 +21,19 @@ export class CreateManufacturerNoteDto {
     description: 'Brand name, exactly as it appears on the device rows',
   })
   @IsString()
+  @ValidateIf((o: CreateManufacturerNoteDto) => !o.deviceType)
   @MinLength(1)
   @MaxLength(255)
   manufacturer: string;
+
+  /**
+   * A note for a whole category instead of one brand (vande-2011 #031):
+   * `manufacturer` may then be empty.
+   */
+  @ApiPropertyOptional({ enum: DeviceType, nullable: true })
+  @IsOptional()
+  @IsIn([...Object.values(DeviceType), null])
+  deviceType?: string | null;
 
   @ApiProperty({
     required: true,

@@ -82,6 +82,7 @@ import { TopBarsModule } from './top-bars/top-bars.module';
 import { MenuSlidesModule } from './menu-slides/menu-slides.module';
 import { SiteScriptsModule } from './site-scripts/site-scripts.module';
 import { ManufacturerNotesModule } from './manufacturer-notes/manufacturer-notes.module';
+import { DeviceCheckModule } from './device-check/device-check.module';
 import { ApnSupportModule } from './apn-support/apn-support.module';
 import { OverviewModule } from './overview/overview.module';
 
@@ -105,6 +106,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
     MenuSlidesModule,
     SiteScriptsModule,
     ManufacturerNotesModule,
+    DeviceCheckModule,
     ApnSupportModule,
     FootersModule,
     HeroBannersModule,

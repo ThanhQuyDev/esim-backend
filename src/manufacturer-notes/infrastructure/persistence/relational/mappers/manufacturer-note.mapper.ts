@@ -9,6 +9,7 @@ export class ManufacturerNoteMapper {
     domainEntity.note = raw.note;
     domainEntity.isActive = !!raw.isActive;
     domainEntity.sortOrder = Number(raw.sortOrder ?? 0);
+    domainEntity.deviceType = raw.deviceType ?? null;
     domainEntity.id = raw.id;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
@@ -22,6 +23,7 @@ export class ManufacturerNoteMapper {
     persistenceEntity.note = domainEntity.note;
     persistenceEntity.isActive = domainEntity.isActive ?? true;
     persistenceEntity.sortOrder = domainEntity.sortOrder ?? 0;
+    persistenceEntity.deviceType = domainEntity.deviceType ?? null;
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;
     }
