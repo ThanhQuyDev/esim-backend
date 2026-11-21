@@ -17,6 +17,7 @@ import validationOptions from './utils/validation-options';
 import { AllConfigType } from './config/config.type';
 import { ResolvePromisesInterceptor } from './utils/serializer.interceptor';
 import { corsOrigin } from './utils/cors-origins';
+import { PriceDisplayService } from './profit-margins/price-display.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -47,6 +48,18 @@ async function bootstrap() {
     tierCache = { at: Date.now(), tiers };
     return tiers;
   };
+  // Struck-out price on plans without a discount (vande-2011 #012), read at
+  // most once a minute.
+  const priceDisplay = app.get(PriceDisplayService, { strict: false });
+  let strikeCache: { at: number; percent: number } | null = null;
+  const autoStrikePercent = async (): Promise<number> => {
+    if (strikeCache && Date.now() - strikeCache.at < 60_000) {
+      return strikeCache.percent;
+    }
+    const { autoStrikePercent: percent } = await priceDisplay.get();
+    strikeCache = { at: Date.now(), percent };
+    return percent;
+  };
   app.useGlobalInterceptors(
     // First, so it sees every response last, once serialized: no cost,
     // supplier or sales figure leaves the API except to an admin
@@ -54,6 +67,7 @@ async function bootstrap() {
     new PublicCatalogScrubInterceptor(
       configService.getOrThrow('auth.secret', { infer: true }),
       marginTiers,
+      autoStrikePercent,
     ),
     // ResolvePromisesInterceptor is used to resolve promises in responses because class-transformer can't do it
     // https://github.com/typestack/class-transformer/issues/549

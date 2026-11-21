@@ -77,7 +77,19 @@ export function isSupplierName(value: unknown): boolean {
   );
 }
 
-export type ScrubOptions = { hideSupplier?: boolean };
+export type ScrubOptions = {
+  hideSupplier?: boolean;
+  /**
+   * A plan with no discount of its own gets a struck-out price set so the
+   * badge reads this percent (vande-2011 #012, admin setting; 0 = off).
+   */
+  autoStrikePercent?: number;
+};
+
+/** The struck-out price that makes `price` read `percent` off. */
+export function autoStrikeRetail(price: number, percent: number): string {
+  return (price / (1 - percent / 100)).toFixed(2);
+}
 
 /**
  * Pictures hot-linked from a supplier's CDN (Airalo's flags) name the supplier
@@ -122,6 +134,7 @@ export function multidayTable(
 function scrubPlan(
   plan: Record<string, unknown>,
   tiers: MarginTier[] | null,
+  opts: ScrubOptions = {},
 ): Record<string, unknown> {
   const domestic = Boolean(plan.isLocalInventory || plan.isDomesticEsim);
   const out: Record<string, unknown> = { ...plan };
@@ -136,6 +149,20 @@ function scrubPlan(
     if (!(retail > price)) out.retailPrice = plan.price;
   }
   delete out.apn;
+  // No discount of its own: the struck-out price the admin setting asks for
+  // (vande-2011 #012), or the real list price when that is higher still. A
+  // plan with its own discount keeps its real figures.
+  const percent = Number(opts.autoStrikePercent) || 0;
+  const price = Number(plan.price);
+  if (
+    percent > 0 &&
+    percent < 100 &&
+    price > 0 &&
+    !(Number(plan.discount) > 0)
+  ) {
+    const auto = autoStrikeRetail(price, percent);
+    if (!(Number(out.retailPrice) > Number(auto))) out.retailPrice = auto;
+  }
   return out;
 }
 
@@ -157,7 +184,7 @@ export function scrubBusinessData(
     return value.map((v) => scrubBusinessData(v, tiers, depth + 1, opts));
   }
   if (!isPlainObject(value)) return value;
-  const base = isPlan(value) ? scrubPlan(value, tiers) : value;
+  const base = isPlan(value) ? scrubPlan(value, tiers, opts) : value;
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(base)) {
     if (ALWAYS_STRIP.has(key)) continue;
@@ -185,6 +212,9 @@ export class PublicCatalogScrubInterceptor implements NestInterceptor {
   constructor(
     private readonly authSecret: string,
     private readonly tiers: () => Promise<MarginTier[]>,
+    /** Admin setting for plans without a discount (vande-2011 #012). */
+    private readonly autoStrikePercent: () => Promise<number> = () =>
+      Promise.resolve(0),
   ) {}
 
   /** The caller's role id; null for a visitor or a token that does not verify. */
@@ -224,7 +254,16 @@ export class PublicCatalogScrubInterceptor implements NestInterceptor {
             } catch {
               tiers = null;
             }
-            return scrubBusinessData(body, tiers, 0, opts);
+            let autoStrikePercent = 0;
+            try {
+              autoStrikePercent = await this.autoStrikePercent();
+            } catch {
+              autoStrikePercent = 0;
+            }
+            return scrubBusinessData(body, tiers, 0, {
+              ...opts,
+              autoStrikePercent,
+            });
           })(),
         ),
       ),

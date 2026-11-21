@@ -22,6 +22,8 @@ import { ProfitMarginTier } from './domain/profit-margin-tier';
 import { ProfitMarginsService } from './profit-margins.service';
 import { RolesGuard } from '../roles/roles.guard';
 import { QueryProfitMarginTierDto } from './dto/query-profit-margin-tier.dto';
+import { PriceDisplayService } from './price-display.service';
+import { UpdatePriceDisplayDto } from './dto/update-price-display.dto';
 
 @ApiTags('ProfitMargins')
 @ApiBearerAuth()
@@ -29,7 +31,24 @@ import { QueryProfitMarginTierDto } from './dto/query-profit-margin-tier.dto';
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Controller({ path: 'profit-margins', version: '1' })
 export class ProfitMarginsController {
-  constructor(private readonly profitMarginsService: ProfitMarginsService) {}
+  constructor(
+    private readonly profitMarginsService: ProfitMarginsService,
+    private readonly priceDisplay: PriceDisplayService,
+  ) {}
+
+  // ── Struck-out price on plans without a discount (vande-2011 #012) ──
+
+  @Get('price-display')
+  getPriceDisplay(): Promise<{ autoStrikePercent: number }> {
+    return this.priceDisplay.get();
+  }
+
+  @Put('price-display')
+  setPriceDisplay(
+    @Body() dto: UpdatePriceDisplayDto,
+  ): Promise<{ autoStrikePercent: number }> {
+    return this.priceDisplay.set(dto.autoStrikePercent);
+  }
 
   // ── Tier CRUD ──────────────────────────────────────────────
 
