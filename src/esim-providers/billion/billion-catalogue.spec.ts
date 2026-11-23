@@ -28,6 +28,38 @@ const price = (
 });
 
 describe('billionPlanVariants', () => {
+  it("should carry BILLION's own retail price for the struck-out price (vande-2011 #012)", () => {
+    const sku = product({
+      skuId: 'R1',
+      type: '3105',
+      planType: '1',
+      days: '1',
+      name: 'Japan-1GB',
+    });
+    const withRetail: BillionPrice = {
+      skuId: 'R1',
+      price: [
+        {
+          copies: '1',
+          days: '1',
+          settlementPrice: '6.0000',
+          retailPrice: '9.5000',
+        },
+        {
+          copies: '3',
+          days: '3',
+          settlementPrice: '15.0000',
+          retailPrice: '0',
+        },
+      ],
+    };
+    const v = billionPlanVariants(sku, withRetail);
+    expect(v.map((x) => [x.durationDays, x.cost, x.retail])).toEqual([
+      [1, 6, 9.5],
+      [3, 15, undefined],
+    ]);
+  });
+
   it('should expand a self-selected daily sku into one plan per duration', () => {
     const korea = product({
       skuId: 'K1',

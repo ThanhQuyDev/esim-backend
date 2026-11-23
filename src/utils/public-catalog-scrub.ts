@@ -149,9 +149,11 @@ function scrubPlan(
     if (!(retail > price)) out.retailPrice = plan.price;
   }
   delete out.apn;
-  // No discount of its own: the struck-out price the admin setting asks for
-  // (vande-2011 #012), or the real list price when that is higher still. A
-  // plan with its own discount keeps its real figures.
+  // No discount of its own: the supplier's own retail price when it is above
+  // ours (Airalo, eSIMAccess, Gadget Korea, Billion, our stock); otherwise —
+  // MicroEsim has none — the struck-out price the admin setting asks for
+  // (vande-2011 #012, changed 23/11). A plan with its own discount keeps its
+  // real figures.
   const percent = Number(opts.autoStrikePercent) || 0;
   const price = Number(plan.price);
   if (
@@ -161,7 +163,7 @@ function scrubPlan(
     !(Number(plan.discount) > 0)
   ) {
     const auto = autoStrikeRetail(price, percent);
-    if (!(Number(out.retailPrice) > Number(auto))) out.retailPrice = auto;
+    if (!(Number(out.retailPrice) > price)) out.retailPrice = auto;
   }
   return out;
 }

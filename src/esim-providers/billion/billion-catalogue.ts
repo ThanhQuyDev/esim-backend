@@ -31,6 +31,12 @@ export interface BillionPlanVariant {
   durationDays: number;
   /** Settlement price of this duration, in the provider's currency. */
   cost: number;
+  /**
+   * BILLION's own retail price of this duration (F003 `retailPrice`), same
+   * currency; the struck-out price on the product page (vande-2011 #012,
+   * 23/11). Absent when F003 gives none.
+   */
+  retail?: number;
   type: string;
   dataMb: number;
   fupSpeed: string | null;
@@ -291,6 +297,10 @@ export function billionPlanVariants(
         ...v,
         providerPlanId: encodeBillionPlanId(product.skuId, v.copies, true),
         cost: Math.round((v.cost + carrierFee) * 10000) / 10000,
+        retail:
+          v.retail != null
+            ? Math.round((v.retail + carrierFee) * 10000) / 10000
+            : undefined,
       }),
     );
   }
@@ -302,6 +312,7 @@ export function billionPlanVariants(
       const copies = parseInt(row.copies, 10);
       const days = parseInt(row.days ?? row.copies, 10);
       const cost = parseFloat(row.settlementPrice);
+      const retail = retailOf(row.retailPrice);
       if (!(copies > 0) || !(days > 0) || !Number.isFinite(cost)) continue;
       if (seen.has(copies)) continue;
       seen.add(copies);
@@ -310,6 +321,7 @@ export function billionPlanVariants(
         copies,
         durationDays: days,
         cost,
+        retail,
         type,
         dataMb,
         fupSpeed,
@@ -329,6 +341,7 @@ export function billionPlanVariants(
       copies: 1,
       durationDays: days,
       cost,
+      retail: retailOf(single.retailPrice),
       type,
       dataMb,
       fupSpeed,
@@ -361,4 +374,10 @@ export function billionActivationUntil(
   const utc = Date.UTC(+y, +mo - 1, +d, +h, +mi, +sec) - offsetMinutes * 60000;
   const date = new Date(utc);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** F003 `retailPrice` as a number, or undefined when missing or not positive. */
+function retailOf(raw: string | undefined): number | undefined {
+  const n = parseFloat(raw ?? '');
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }

@@ -240,7 +240,7 @@ describe('Dữ liệu kinh doanh không ra ngoài (vande-2011 #041)', () => {
       expect(out.price).toBe('2.24');
     });
 
-    it('should leave a real discount, and a list price above the -50% one, alone', () => {
+    it('should leave a real discount, and a supplier retail price above ours, alone', () => {
       const discounted = scrubBusinessData(
         plan({ retailPrice: '9.00', discount: 16 }),
         TIERS,
@@ -255,14 +255,15 @@ describe('Dữ liệu kinh doanh không ra ngoài (vande-2011 #041)', () => {
         on,
       ) as Record<string, unknown>;
       expect(higher.retailPrice).toBe('12.00');
-      // A real list price only a little above ours still reads -50%.
+      // The supplier's retail price wins whenever it is above ours, even by a
+      // little (23/11); only a plan without one reads -50%.
       const slightly = scrubBusinessData(
         plan({ retailPrice: '6.00', discount: 0 }),
         TIERS,
         0,
         on,
       ) as Record<string, unknown>;
-      expect(slightly.retailPrice).toBe('11.44');
+      expect(slightly.retailPrice).toBe('6.00');
     });
 
     it('should do nothing when the setting is 0', () => {

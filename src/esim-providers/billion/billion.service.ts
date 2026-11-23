@@ -541,6 +541,12 @@ export class BillionService {
     // BILLION_PRICE_CURRENCY. Làm tròn tới cent để không lưu một cái đuôi thập
     // phân vô nghĩa sinh ra từ tỷ giá.
     const costPrice = Math.round(variant.cost * hkdToUsd * 100) / 100;
+    // BILLION's own retail price, same currency, for the struck-out price
+    // (vande-2011 #012, 23/11); the cost when F003 gives none.
+    const retailPrice =
+      variant.retail != null
+        ? Math.round(variant.retail * hkdToUsd * 100) / 100
+        : costPrice;
 
     const apn = product.apn || product.country?.[0]?.apn || null;
     // Carriers sit in each country's `operatorInfo`, not in `operator` —
@@ -577,7 +583,7 @@ export class BillionService {
       dataMb,
       costPrice,
       price: costPrice,
-      retailPrice: costPrice,
+      retailPrice,
       currency: 'USD',
       sms: null,
       call: null,
